@@ -17,13 +17,15 @@
 	<key>CFBundlePackageType</key>
 	<string>XPC!</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.3</string>
+	<string>1.4</string>
 	<key>CFBundleVersion</key>
-	<string>202405090850</string>
+	<string>202610310040</string>
 	<key>NSExtension</key>
 	<dict>
 		<key>NSExtensionPointIdentifier</key>
 		<string>com.apple.widgetkit-extension</string>
 	</dict>
+	<key>OverlandAppGroup</key>
+	<string>group.$(OVERLAND_BUNDLE_IDENTIFIER)</string>
 </dict>
 </plist>
