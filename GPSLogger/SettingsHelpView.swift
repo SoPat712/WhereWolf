@@ -75,7 +75,7 @@ private struct SettingExplanation {
 }
 
 private enum SettingsSource {
-    case accuracy, activity, significant, background, coreLocation, readme, implementation, activityKit, audio, stikDebug
+    case accuracy, activity, significant, background, coreLocation, locationEngine, motion, adaptive, readme, implementation, activityKit, audio, stikDebug
 
     var title: String {
         switch self {
@@ -87,6 +87,9 @@ private enum SettingsSource {
         case .significant: return "Apple: Significant-change monitoring"
         case .background: return "Apple engineer: Background updates (iOS 16.4+)"
         case .coreLocation: return "Apple: Core Location"
+        case .locationEngine: return "Apple: Live location updates"
+        case .motion: return "Apple: Core Motion activity"
+        case .adaptive: return "Traccar: Position filtering"
         case .readme: return "Overland README: Usage profiles"
         case .implementation: return "Overland README (published version)"
         }
@@ -103,6 +106,9 @@ private enum SettingsSource {
         case .significant: path = "https://developer.apple.com/documentation/corelocation/cllocationmanager/startmonitoringsignificantlocationchanges()"
         case .background: path = "https://developer.apple.com/forums/thread/726945"
         case .coreLocation: path = "https://developer.apple.com/documentation/corelocation"
+        case .locationEngine: path = "https://developer.apple.com/videos/play/wwdc2023/10180/"
+        case .motion: path = "https://developer.apple.com/documentation/coremotion/cmmotionactivitymanager"
+        case .adaptive: path = "https://www.traccar.org/position-filtering/"
         case .readme: path = "https://github.com/SoPat712/Overland-iOS#usage-profiles"
         case .implementation: path = "https://github.com/SoPat712/Overland-iOS#api"
         }
@@ -115,16 +121,28 @@ enum SettingsHelpTopic: String {
     case presets = "Usage Presets"
     case permissions = "Permissions"
     case tracking = "Tracking"
+    case engine = "Location Engine"
     case precision = "Precision"
+    case motionAdaptive = "Motion & Adaptive Tracking"
+    case quality = "Point Selection & Quality"
     case stationary = "Stationary Behavior"
     case batching = "Logging and Sending"
     case background = "Background Indicator"
     case automation = "WiFi and Notifications"
     case server = "Server Configuration"
     case trip = "Trip Settings"
+    case locationHealth = "Location Updates & Recovery"
 
     fileprivate var entries: [SettingExplanation] {
         switch self {
+        case .locationHealth:
+            return [
+                .init("Automatically Retry Location Updates", "Off by default. When continuous tracking is expected but no fresh location arrives for the chosen time, Overland can restart acquisition. Old or repeated readings do not reset the retry limit. Fresh readings reset it even if your saved-point filters reject them. This avoids restarting GPS just because an accuracy, distance, time or stationary filter kept a point out of the queue.", .implementation),
+                .init("Retry limits and pauses", "The default wait is two minutes, adjustable from one to thirty minutes. After the first attempt, the next waits are twice and five times your chosen wait. Each app session permits at most three attempts without a fresh reading. A manual retry, an explicit tracking restart or a retry-setting change also resets the limit. Stop, lost location access, event-only modes, automatic pauses, radius pauses and adaptive power saving prevent automatic retries. Failed new-engine streams keep their existing fallback to the original engine.", .implementation),
+                .init("What a check can do", "These checks run only when iOS lets Overland execute. A timer cannot wake a suspended or terminated app. Background Recovery Monitoring and Visit Tracking provide separate location events that may let iOS relaunch the app. The checks do not change the ten-minute notification reminder, Live Activity appearance or saved-point settings, and cannot reconstruct points that were never received.", .coreLocation),
+                .init("Saving received locations", "A short iOS background execution allowance covers queue commits and waits for already-enqueued local history and Health route writes. It ends when those writes finish or iOS expires it. This protects work already received; it does not keep tracking alive indefinitely or acknowledge an upload.", .implementation),
+                .init("Save Location Health Log", "Off by default and independent of automatic retries. Saves at most 200 events from the past seven days in a protected, backup-excluded file on this device. It records observed gaps, skipped-point reasons, retries and resumed updates without coordinates, server addresses or credentials. It is never uploaded automatically. Share Health Log is an explicit sharing action. Turning logging off preserves existing entries; Clear Health Log deletes them without deleting locations. Events cannot prove why iOS stopped running the app.", .implementation)
+            ]
         case .presets:
             return [
                 .init("What changes", "Presets change normal tracking mode, accuracy, activity, pausing, resume distance, stationary thresholds, point filters, the background indicator and visit tracking. They leave the server, credentials, logging format, send interval, batch size and trip-specific settings alone. The resume distance is shared with trips and does change. They do not start a stopped tracker. Finish an active trip before applying one. Editing a covered setting changes the selector to Custom.", .implementation),
@@ -137,7 +155,8 @@ enum SettingsHelpTopic: String {
         case .permissions:
             return [
                 .init("Location access", "iOS controls whether Overland may obtain location. When in Use permits foreground use and some active background sessions; Always supports background location use more broadly. Denied or restricted access must be addressed in iOS Settings. Permission alone does not start tracking.", .coreLocation),
-                .init("Precise Location", "If Precise Location is disabled in iOS Settings, requesting a smaller accuracy value cannot restore precise fixes.", .accuracy)
+                .init("Precise Location", "If Precise Location is disabled in iOS Settings, requesting a smaller accuracy value cannot restore precise fixes.", .accuracy),
+                .init("Motion & Fitness", "Core Motion permission is separate from Location Access. Use Allow Motion & Fitness to grant activity access. Existing trip step counting also uses this permission. Denied or restricted access disables motion confirmation but does not stop ordinary location tracking.", .motion)
             ]
         case .tracking:
             return [
@@ -146,42 +165,75 @@ enum SettingsHelpTopic: String {
                 .init("Significant changes", "iOS schedules these events, not the send interval or distance filter. Apple describes movements of around 500 m or more and says not to expect updates more often than every five minutes. Network availability affects timeliness. This is unsuitable for a detailed walking route.", .significant),
                 .init("Visit Tracking", "Records iOS-detected arrivals and departures at places. Visit events are separate from continuous route points and may arrive after the visit occurred.", .coreLocation)
             ]
+        case .engine:
+            return [
+                .init("Benefits", "The new engine automatically pauses GPS while stationary and resumes when you move. It avoids delivering the same stationary locations repeatedly. On iOS 18 and later, it also reports more detailed reasons for missing updates, such as limited accuracy or authorization.", .locationEngine),
+                .init("Tradeoffs", "iOS chooses accuracy and pause timing using your Activity Type. Desired Accuracy and Pause Updates Automatically cannot override live updates. Use the original engine to request custom or Navigation accuracy, or to disable automatic pausing. The new engine does not guarantee lower battery use, higher precision or uninterrupted recording.", .locationEngine),
+                .init("Both engines can pause", "The original engine also supports automatic pausing when Pause Updates Automatically is enabled. Overland can install a resume region after a pause. The new engine handles movement-based resume itself, so pausing is not a capability unique to the new engine.", .coreLocation),
+                .init("Trip behavior", "An automatic pause ends an active trip. The new engine can pause even when the trip's Pause Updates Automatically setting is off. To disable automatic pauses during trips, leave Use new location engine off and turn the trip's Pause Updates Automatically setting off.", .implementation),
+                .init("Background and the indicator", "With Always access and the background indicator off, the new engine needs an active Status or Minimal Live Activity for background updates. Blank omits the Lock Screen widget and uses the original engine in this configuration. If an activity ends, Overland also falls back to the original engine without changing your preferences. Trips have a separate indicator setting. When in Use access may require the system indicator.", .locationEngine),
+                .init("Defaults and presets", "The toggle defaults off and does not change preset values, saved-point filters, queueing or uploads. Off preserves the existing engine selection: Best accuracy with automatic pausing can still use live updates. Disabling automatic pausing with this toggle off selects the original engine.", .implementation),
+                .init("Stream recovery", "After three retries fail, Overland falls back to the original engine. This failure remains latched until an explicit start, Retry, refresh, engine change or restored location access. Foregrounding alone does not repeat the failed retry cycle.", .implementation)
+            ]
         case .precision:
             return [
-                .init("Accuracy Preset / Desired Accuracy", "Custom requests an accuracy in meters; a smaller value asks for a more precise fix. Best requests the best available accuracy; Navigation requests navigation-grade accuracy. These are requests, not guarantees: less accurate fixes may arrive first, and higher precision can take more time and power. Desired accuracy affects standard updates, not significant-change monitoring.", .accuracy),
+                .init("Requested Accuracy / Target Accuracy", "Custom requests an accuracy in meters; a smaller value asks for a more precise fix. Best requests the best available accuracy; Navigation requests navigation-grade accuracy. These are requests, not guarantees: less accurate fixes may arrive first, and higher precision can take more time and power. The new engine lets iOS choose accuracy. This request does not change the saved-point filter.", .accuracy),
+                .init("Why the request and filter are separate", "A 10 m request can return a valid 20 m fix. Automatically setting the saved-point limit to 10 m would discard it and could create gaps. Requested Accuracy changes the request only. The main Usage Presets set both, with the saved-point accuracy filter Off. Custom filters stay independent of the request.", .implementation),
                 .init("Activity Type", "Tells iOS the expected activity: Other, Automotive, Fitness, other Navigation, or Airborne. It is a hint used when deciding whether updates can pause, not a motion classifier or trip label. Choose the activity you actually expect to perform.", .activity),
                 .init("Min Distance Between Points", "Discards received points closer than this many meters to the last accepted fix. Off keeps them. This filters recorded data after delivery; it does not directly reduce GPS sampling or guarantee lower battery use.", .implementation),
                 .init("Min Time Between Points", "Discards received points less than this many seconds after the last accepted fix. Off disables this filter. It is not a request to iOS for a fixed sampling interval.", .implementation),
-                .init("Max Accuracy of Points", "Rejects fixes whose reported horizontal uncertainty exceeds this many meters. Lower values are stricter and may leave gaps indoors or during a weak fix. Off accepts any otherwise-valid accuracy. This is different from the accuracy requested from iOS.", .implementation)
+                .init("Max Saved-Point Error", "Rejects fixes whose reported horizontal uncertainty exceeds this many meters. Lower values are stricter and may leave gaps indoors or during a weak fix. Off accepts any otherwise-valid accuracy. This filter applies to normal tracking and trips, independently of the accuracy requested from iOS.", .implementation),
+                .init("Slider detents", "Tick marks snap to common time, distance and count settings with selection feedback. Values between the marks are still available. Tap the displayed value to enter an exact number. Dragging previews the setting; releasing the slider saves it.", .implementation)
+            ]
+        case .motionAdaptive:
+            return [
+                .init("Motion & Fitness permission", "Core Motion can classify activity such as walking, running, cycling, automotive movement and stillness. Use Allow Motion & Fitness to grant activity access; changing an advanced option never prompts. Existing trip step queries can also request this permission. Denied or restricted access leaves motion confirmation unavailable; a motion callback cannot wake a suspended app by itself.", .motion),
+                .init("Motion-assisted tracking", "An opt-in motion hint can help Overland interpret movement and, when separately enabled, resume after a motion-confirmed stop. It does not replace location, improve reported accuracy or guarantee a timely callback.", .motion),
+                .init("Adaptive Tracking", "After a sustained, confirmed stop, adaptive tracking lowers the requested accuracy while retaining coarse updates and an exit region. This can save power but may delay departure detection. Moving tracking returns to the saved accuracy and pause settings. Existing trips remain unchanged unless Apply During Trips is enabled.", .adaptive),
+                .init("Adaptive thresholds", "Dwell, radius and resume-radius values describe Overland's stop confirmation and movement watch. Require Motion Confirmation keeps detailed tracking active when motion is unknown or permission is unavailable. Turn it off to allow GPS-only stop confirmation. It never prompts for permission automatically.", .implementation),
+                .init("Trip behavior", "Adaptive Tracking is independent of the existing trip controls. Enable Apply During Trips explicitly if you accept quieter trip tracking; otherwise trips retain their saved accuracy and pause behavior.", .implementation)
+            ]
+        case .quality:
+            return [
+                .init("Any threshold", "The existing distance AND time minima remain unchanged when this is off. When on, a point can qualify by distance, time or the optional turn trigger. This changes which returned fixes are saved; it is not a request for a particular sampling interval.", .adaptive),
+                .init("Reject Implausible Jumps", "The filter compares displacement, elapsed time and reported uncertainty against your maximum speed. An implausible jump is held back until another nearby fix, at least one second later, confirms relocation. Raise the limit for fast travel or leave it off. It does not guarantee true accuracy or road-snap points.", .adaptive),
+                .init("Adaptive Max Error / Idle Accuracy", "Max Error limits fixes used to confirm a stop. Idle Accuracy is the location request after that stop. Both remain separate from Max Saved-Point Error, which controls saved points. These values are thresholds and requests, not guarantees about the true position on the ground.", .implementation)
             ]
         case .stationary:
             return [
-                .init("Stop Within Radius / Stop After", "In Both mode, Overland pauses standard updates after the accepted fixes remain within the radius for the configured time. Significant-change monitoring continues and can resume them after movement. Radius Off disables this behavior. This is separate from iOS automatic pausing and does not stop an active trip.", .implementation),
-                .init("Pause Updates Automatically", "Allows iOS to decide when standard updates can pause. Turning it off favors continuity and may use more power. Overland handles pause callbacks and can install a resume region; during a trip, automatic pausing can end the trip.", .implementation),
+                .init("Stop Within Radius / Stop After", "In Both mode, Overland pauses standard updates after validated raw fixes remain within the radius for the configured time. Significant-change monitoring continues and a fresh movement event can resume them. Old callbacks cannot clear the pause. Radius Off disables this behavior. This is separate from iOS automatic pausing and does not stop an active trip.", .implementation),
+                .init("Pause Updates Automatically", "Allows iOS to decide when the original engine's standard updates can pause. Turning it off favors continuity and may use more power. The new engine manages pausing itself. Overland handles pause callbacks and can install a resume region; during a trip, automatic pausing can end the trip.", .implementation),
                 .init("Resume After Moving", "After an automatic pause, Overland creates a circular region around the last fix. Exiting it can resume an enabled tracker. This distance is shared by normal and trip settings. Region delivery is not an exact crossing alarm. Off disables the resume region; disabling automatic pausing also clears this value.", .implementation)
             ]
         case .batching:
             return [
                 .init("Logging Mode", "All Data queues GeoJSON records. Only Latest deliberately replaces queued location data with the latest update. OwnTracks uses OwnTracks JSON and sends one location per request; unsent fixes stay queued. Select the format your server accepts.", .implementation),
                 .init("Locations per Batch", "Limits the number of queued records in a GeoJSON request. Smaller batches make smaller requests; larger ones can drain a backlog with fewer requests. OwnTracks sends one point at a time regardless of this setting.", .implementation),
-                .init("Send Interval / Send Every", "Automatic sends are considered when locations arrive after this interval. This is not an exact background timer. Off means manual sending. Failed attempts retain their points; Last Sent changes only after the server acknowledges success.", .implementation)
+                .init("Send Interval / Send Every", "Automatic sends are considered when locations arrive after this interval. This is not an exact background timer. Off means manual sending. Failed attempts retain their points; Last Sent changes only after the server acknowledges success.", .implementation),
+                .init("Background Uploads", "An opt-in operating-system scheduler can ask Overland to drain pending records while the app is not active. It has no exact interval and does not change the queue acknowledgment rules.", .implementation),
+                .init("Retry Connectivity Failures", "When enabled, eligible network failures can retry when connectivity returns. Retry-After and authentication errors remain authoritative; this option does not retry a server rejection indefinitely.", .implementation),
+                .init("Include Tracking Stats", "Adds tracking configuration to new GeoJSON points and queues diagnostic events such as pause and resume. OwnTracks omits these stats. Applies to new records; previously saved records are unchanged.", .implementation),
+                .init("Delete Pending Uploads", "After confirmation, permanently deletes the records currently queued for your destination, including trip summaries and imported workout points. It preserves local history, saved workout routes, active tracking and the active trip. Deletion is unavailable during an upload; if the database commit fails, records and retry state are kept.", .implementation)
             ]
         case .runtime:
             return [
-                .init("Tracking Live Activity", "Starts while tracking is enabled and Overland is in the foreground. Minimal is on by default. Status adds the last successful send time in the expanded Dynamic Island; Blank supplies zero-sized content. Normal Lock Screen content is empty. iOS controls visibility and can still reserve space. Activities expire after up to eight hours and can be dismissed. Open Overland or tap Retry to start another; tracking itself continues independently.", .activityKit),
-                .init("Open Overland reminder", "Uses the same deadline as the existing ten-minute location reminder. When it passes, the Live Activity shows the same message asking you to open Overland. Tap it to open Tracker. The notification remains controlled by Notifications, and its existing suppression rules still apply. A missed deadline cannot prove the app was killed or the server is offline. iOS controls when the warning appears, and cannot show it after the activity ends or is dismissed.", .activityKit),
-                .init("Silent Audio", "An optional loop of digital silence using the audio playback background mode. It mixes with other audio, uses no microphone, and stops when tracking stops or location access is lost. Calls and audio interruptions can pause it. If playback stays paused, use Retry Background Helpers. This is an experimental keepalive technique, not a guarantee or a battery improvement.", .stikDebug),
-                .init("Distribution and reliability", "Apple documents the audio background mode for audible playback. A silent keepalive may conflict with App Store review requirements. Blank Live Activities are also experimental. These options do not bypass force-quit, permissions, system termination, or your existing stationary-pause settings. Test background recording on a physical device.", .audio)
+                .init("Background Recovery Monitoring", "An independent, default-off significant-change monitor runs alongside Standard tracking and during trips when enabled with Always access. It can give iOS a reason to relaunch Overland after system termination. It does not replace precise tracking, guarantee a wake interval, override Stop or radius pause, or bypass force-quit. Background App Refresh restrictions can prevent relaunch. Coarse fixes still pass the existing saved-point filters. Extra callbacks may cost energy; device battery savings have not been measured.", .significant),
+                .init("Tracking Live Activity", "Starts while tracking is enabled and Overland is in the foreground. Minimal is on by default. Status adds the last successful send time in the expanded Dynamic Island. Blank keeps the Island empty, including reminders, and starts an app-only activity without a Lock Screen widget. Status and Minimal supply an empty Lock Screen view that iOS can still display as a card. Blank uses the original location engine with Always access and the background indicator off. Activities expire after up to eight hours and can be dismissed. Open Overland or tap Retry to start another; tracking itself continues independently.", .activityKit),
+                .init("Dynamic Island priority", "Overland uses a relevance score of zero and sends no Live Activity alerts. The score ranks activities from Overland; it cannot give Music or another app priority. iOS chooses which activities appear attached to the Island or in a smaller bubble. Overland cannot force the smaller presentation while keeping its activity active.", .activityKit),
+                .init("Open Overland reminder", "Uses the same deadline as the existing ten-minute location reminder. When it passes, Status and Minimal show the same message in the Dynamic Island asking you to open Overland. Blank stays empty. Tap the activity to open Tracker. The separate notification remains controlled by Notifications, and its existing suppression rules still apply. A missed deadline cannot prove the app was killed or the server is offline. iOS controls when the warning appears, and cannot show it after the activity ends or is dismissed.", .activityKit),
+                .init("Silent Audio", "An optional loop of digital silence using the audio playback background mode. It mixes with other audio, uses no microphone, and stops when tracking stops or location access is lost. While enabled and playing, a health check detects unexpected stops. Recovery tries up to three times with backoff, then waits for Retry Background Helpers. Automatic recovery waits during calls, interruptions and audio-service loss, and resumes only when allowed. This is an experimental keepalive technique, not a guarantee or a battery improvement.", .stikDebug),
+                .init("Distribution and reliability", "Apple documents the audio background mode for audible playback. A silent keepalive may conflict with App Store review requirements. These options do not bypass force-quit, permissions, system termination, or your existing stationary-pause settings. Test background recording on a physical device.", .audio)
             ]
         case .background:
             return [
-                .init("Show Background Indicator", "Requests the system's visible location-use indicator during background tracking. It is not a permission switch, and turning it off does not stop collection. The actual appearance is controlled by iOS.", .coreLocation),
+                .init("Show Background Indicator", "Controls the location-use indicator during background tracking. Trips have a separate setting. With Always access, turning it off releases the indicator session. The new engine needs an active Status or Minimal Live Activity for background updates; Blank or no activity uses the original engine to honor this setting. When in Use access can require the system indicator. Turning it off does not stop collection.", .coreLocation),
+                .init("Explicit Service Session", "On iOS 18 and later, asks Core Location for an explicit authorization session for background delivery. It requires already-Always access and remains opt-in. The request does not guarantee that iOS will run the app or deliver a fix at a particular time.", .coreLocation),
                 .init("Background continuity", "In the linked iOS 16.4 discussion, an Apple engineer describes suspension with combined standard/significant updates at low accuracy and with distance filtering. The guidance uses continuous background permission, no manager distance filter, and requested accuracy below 1,000 m, or enables the indicator. This is guidance for that configuration, not a guarantee for every device or OS release. Overland's saved-point filters are separate from the manager's distance filter.", .background)
             ]
         case .automation:
             return [
-                .init("WiFi Zones", "Associates a network name with fixed coordinates to use at that location. BSSID can distinguish access points sharing a name. iOS must expose the network information; missing permission or entitlement can prevent a match. Use the actual location of the network, not a general city center.", .implementation),
-                .init("Notifications", "Controls Overland's local tracking and send-related notifications. iOS notification permission is also required. This does not turn location tracking or background execution on.", .implementation)
+                .init("WiFi Zones", "Select several networks to share one coordinate pair. Saving an existing SSID/BSSID updates its location instead of creating a duplicate. Different BSSIDs under the same name may have different locations; an entry without a BSSID matches any access point. The picker includes connected, observed and configured networks, with manual entry. iOS does not expose a general nearby-network scan. Autofill and matching need location permission and Access WiFi Information in the app's signing profile. Use the actual network location.", .implementation),
+                .init("Notifications", "Controls Overland's local tracking and send-related notifications. Problems Only keeps the existing missed-update reminder and upload errors, while hiding routine pause, resume and trip messages. iOS notification permission is also required. Notifications do not turn location tracking or background execution on. They are separate from the blank Island's presentation.", .implementation)
             ]
         case .server:
             return [

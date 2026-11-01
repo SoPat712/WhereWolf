@@ -1,0 +1,1405 @@
+import MapKit
+import SafariServices
+import SwiftUI
+
+enum MapViewport {
+    static func visibleRect(in bounds: CGRect, safeTop: CGFloat, drawerTop: CGFloat?) -> CGRect {
+        let top = min(bounds.maxY, max(bounds.minY, safeTop))
+        let bottom = min(bounds.maxY, max(top, drawerTop ?? bounds.maxY))
+        return CGRect(x: bounds.minX, y: top, width: bounds.width, height: bottom - top)
+    }
+
+    static func center(in bounds: CGRect, safeTop: CGFloat, drawerTop: CGFloat?) -> CGPoint {
+        let rect = visibleRect(in: bounds, safeTop: safeTop, drawerTop: drawerTop)
+        return CGPoint(x: rect.midX, y: rect.midY)
+    }
+
+    static func anchoredCenter(_ anchor: CLLocationCoordinate2D, projectionCenter: CLLocationCoordinate2D,
+                               projectionTarget: CLLocationCoordinate2D, scale: Double = 1) -> CLLocationCoordinate2D {
+        let origin = MKMapPoint(anchor)
+        let center = MKMapPoint(projectionCenter)
+        let target = MKMapPoint(projectionTarget)
+        let width = MKMapRect.world.width
+        var dx = center.x - target.x
+        if dx > width / 2 { dx -= width }
+        if dx < -width / 2 { dx += width }
+        var x = (origin.x + dx * scale).truncatingRemainder(dividingBy: width)
+        if x < 0 { x += width }
+        let y = min(MKMapRect.world.maxY, max(0, origin.y + (center.y - target.y) * scale))
+        return MKMapPoint(x: x, y: y).coordinate
+    }
+}
+
+struct MapCameraTransition {
+    let from: MapCamera
+    var to: MapCamera
+    let start: TimeInterval
+    var length: TimeInterval = Self.duration
+    static let duration: TimeInterval = 1
+
+    func progress(at time: TimeInterval) -> Double {
+        let duration = max(0.001, length)
+        if time >= start + duration { return 1 }
+        return min(1, max(0, (time - start) / duration))
+    }
+
+    func camera(at time: TimeInterval) -> MapCamera {
+        let progress = progress(at: time)
+        if progress == 0 { return from }
+        if progress == 1 { return to }
+        let amount = progress * progress * progress * (progress * (progress * 6 - 15) + 10)
+        let distance = exp(log(max(1, from.distance))
+            + (log(max(1, to.distance)) - log(max(1, from.distance))) * amount)
+        // Keep the focus in view as the scale changes, including very large zooms.
+        let centerAmount = abs(to.distance - from.distance) > 1
+            ? min(1, max(0, (distance - from.distance) / (to.distance - from.distance))) : amount
+        let center = ReplayCoordinate(from.centerCoordinate)
+            .interpolated(to: ReplayCoordinate(to.centerCoordinate), fraction: centerAmount).coordinate
+        var heading = to.heading - from.heading
+        heading -= (heading / 360).rounded() * 360
+        return MapCamera(centerCoordinate: center,
+                         distance: distance,
+                         heading: from.heading + heading * amount,
+                         pitch: from.pitch + (to.pitch - from.pitch) * amount)
+    }
+}
+
+enum MapZoom {
+    static let minimumDistance: CLLocationDistance = 50
+    static let maximumDistance: CLLocationDistance = 40_000_000
+    static let duration: TimeInterval = 0.32
+
+    static func distance(from current: CLLocationDistance, inward: Bool) -> CLLocationDistance {
+        let start = current.isFinite && current > 0 ? current : 2_000
+        return min(maximumDistance, max(minimumDistance, start * (inward ? 0.5 : 2)))
+    }
+}
+
+struct MapZoomResult {
+    let camera: MapCamera
+    let replayFollowing: Bool
+}
+
+struct LiveMapMotion {
+    private(set) var point: MKMapPoint?
+    private(set) var target: MKMapPoint?
+    private(set) var velocity = CGVector.zero
+    private var lastFrame: TimeInterval?
+    private var lastFix: TimeInterval = 0
+    private static let response = 6.0
+
+    var coordinate: CLLocationCoordinate2D? {
+        guard let point else { return nil }
+        let world = MKMapRect.world.width
+        var x = point.x.truncatingRemainder(dividingBy: world)
+        if x < 0 { x += world }
+        return MKMapPoint(x: x, y: point.y).coordinate
+    }
+
+    mutating func receive(_ coordinate: CLLocationCoordinate2D, at time: TimeInterval) -> Bool {
+        guard CLLocationCoordinate2DIsValid(coordinate) else { return false }
+        var next = MKMapPoint(coordinate)
+        guard next.x.isFinite, next.y.isFinite else { return false }
+        guard let point else {
+            self.point = next
+            target = next
+            lastFrame = time
+            lastFix = time
+            return false
+        }
+        next.x -= ((next.x - point.x) / MKMapRect.world.width).rounded() * MKMapRect.world.width
+        if let target, hypot(next.x - target.x, next.y - target.y) < 0.001 { return false }
+        advance(at: time)
+        target = next
+        lastFix = time
+        return true
+    }
+
+    mutating func advance(at time: TimeInterval) {
+        guard let point, let target, let lastFrame, time > lastFrame else { return }
+        let elapsed = min(0.1, time - lastFrame)
+        self.lastFrame = time
+        let decay = exp(-Self.response * elapsed)
+        func axis(_ position: Double, _ goal: Double, _ speed: Double) -> (Double, Double) {
+            let error = position - goal
+            let combined = speed + Self.response * error
+            return (goal + (error + combined * elapsed) * decay,
+                    (speed - Self.response * combined * elapsed) * decay)
+        }
+        let x = axis(point.x, target.x, velocity.dx)
+        let y = axis(point.y, target.y, velocity.dy)
+        self.point = MKMapPoint(x: x.0, y: y.0)
+        velocity = CGVector(dx: x.1, dy: y.1)
+    }
+
+    func settled(at time: TimeInterval, tolerance: Double) -> Bool {
+        guard let point, let target else { return true }
+        return time - lastFix >= 1.25
+            && hypot(point.x - target.x, point.y - target.y) < tolerance
+            && hypot(velocity.dx, velocity.dy) < tolerance * Self.response
+    }
+
+    mutating func finish() {
+        point = target
+        velocity = .zero
+    }
+}
+
+private final class PresentedUserLocationView: MKUserLocationView {
+    var presentedCenter: CGPoint? { didSet { projectPosition() } }
+    private var positionObservation: NSKeyValueObservation?
+    private var projecting = false
+
+    override init(annotation: (any MKAnnotation)?, reuseIdentifier: String?) {
+        super.init(annotation: annotation, reuseIdentifier: reuseIdentifier)
+        observePosition()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        observePosition()
+    }
+
+    override func action(for layer: CALayer, forKey event: String) -> (any CAAction)? {
+        if event == "position", presentedCenter != nil { return NSNull() }
+        return super.action(for: layer, forKey: event)
+    }
+
+    private func observePosition() {
+        // MapKit can update the annotation layer without calling UIView's center setter.
+        positionObservation = layer.observe(\.position, options: [.new]) { [weak self] _, _ in
+            self?.projectPosition()
+        }
+    }
+
+    private func projectPosition() {
+        guard !projecting, let presentedCenter else { return }
+        projecting = true
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.position = presentedCenter
+        layer.removeAnimation(forKey: "position")
+        CATransaction.commit()
+        projecting = false
+    }
+}
+
+struct ReplayHeadingMotion {
+    private(set) var angle: Double?
+    private var target: Double?
+    private var velocity = 0.0
+    private var lastFrame: TimeInterval?
+    private static let response = 26.0
+
+    mutating func receive(_ next: Double, at time: TimeInterval) {
+        guard next.isFinite else { return }
+        guard angle != nil else {
+            angle = next
+            target = next
+            lastFrame = time
+            return
+        }
+        advance(at: time)
+        guard let angle else { return }
+        // Unwrap around the displayed heading so crossing north never adds a full turn.
+        let delta = atan2(sin(next - angle), cos(next - angle))
+        target = angle + delta
+    }
+
+    mutating func advance(at time: TimeInterval) {
+        guard let angle, let target, let lastFrame, time > lastFrame else { return }
+        let elapsed = min(0.1, time - lastFrame)
+        self.lastFrame = time
+        let error = angle - target
+        let combined = velocity + Self.response * error
+        let decay = exp(-Self.response * elapsed)
+        self.angle = target + (error + combined * elapsed) * decay
+        velocity = (velocity - Self.response * combined * elapsed) * decay
+    }
+
+    var settled: Bool {
+        guard let angle, let target else { return true }
+        return abs(angle - target) < .pi / 720 && abs(velocity) < .pi / 180
+    }
+
+    mutating func finish() {
+        angle = target
+        velocity = 0
+    }
+}
+
+private final class ReplayMarkerView: MKMarkerAnnotationView {
+    private var directionKey: Int?
+    private let glyphs: NSCache<NSNumber, UIImage> = {
+        let cache = NSCache<NSNumber, UIImage>()
+        cache.countLimit = 90
+        return cache
+    }()
+
+    func face(_ angle: CGFloat?) {
+        let degrees = angle.map { $0 * 180 / .pi } ?? -1
+        let key = angle == nil ? -1 : (Int(degrees.rounded()) % 360 + 360) % 360
+        guard directionKey != key else { return }
+        directionKey = key
+        let cacheKey = NSNumber(value: key)
+        if let image = glyphs.object(forKey: cacheKey) {
+            glyphImage = image
+            return
+        }
+        let symbol = UIImage(systemName: "location.north.fill",
+                             withConfiguration: UIImage.SymbolConfiguration(pointSize: 16, weight: .semibold))?
+            .withTintColor(.white, renderingMode: .alwaysOriginal)
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 24, height: 24)).image { context in
+            let drawing = context.cgContext
+            drawing.translateBy(x: 12, y: 12)
+            if key >= 0, let symbol {
+                drawing.rotate(by: CGFloat(key) * .pi / 180)
+                symbol.draw(at: CGPoint(x: -symbol.size.width / 2, y: -symbol.size.height / 2))
+            } else {
+                drawing.setFillColor(UIColor.white.cgColor)
+                drawing.fillEllipse(in: CGRect(x: -4, y: -4, width: 8, height: 8))
+            }
+        }.withRenderingMode(.alwaysTemplate)
+        glyphs.setObject(image, forKey: cacheKey)
+        glyphImage = image
+    }
+}
+
+@MainActor
+private final class ReplayHeadingFrameTarget: NSObject {
+    private weak var coordinator: NativeMapSurface.Coordinator?
+
+    init(coordinator: NativeMapSurface.Coordinator) { self.coordinator = coordinator }
+
+    @objc func frame(_ link: CADisplayLink) {
+        guard let coordinator else { link.invalidate(); return }
+        coordinator.advanceReplayHeading(at: link.timestamp)
+    }
+}
+
+private final class MapContactRecognizer: UIGestureRecognizer {
+    var onContact: ((Bool) -> Void)?
+    private var contacts: Set<UITouch> = []
+
+    override func canPrevent(_ preventedGestureRecognizer: UIGestureRecognizer) -> Bool { false }
+    override func canBePrevented(by preventingGestureRecognizer: UIGestureRecognizer) -> Bool { false }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        let first = contacts.isEmpty
+        contacts.formUnion(touches)
+        if first { onContact?(true) }
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
+        contacts.subtract(touches)
+        if contacts.isEmpty {
+            onContact?(false)
+            state = .failed
+        }
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+        touchesEnded(touches, with: event)
+    }
+
+    override func reset() {
+        super.reset()
+        contacts.removeAll()
+        onContact?(false)
+    }
+}
+
+private final class AttributionMapView: MKMapView {
+    private final class Credit {
+        weak var view: UIView?
+        let transform: CGAffineTransform
+
+        init(_ view: UIView) {
+            self.view = view
+            transform = view.transform
+        }
+    }
+
+    private var credits: [Credit] = []
+    var drawerTop: CGFloat? {
+        didSet {
+            guard drawerTop != oldValue else { return }
+            setNeedsLayout()
+            onViewportChange?()
+        }
+    }
+    var onViewportChange: (() -> Void)?
+    var onMapLayout: (() -> Void)?
+    private var lastViewport: CGRect = .null
+    private weak var legalLabel: UIView?
+    private let legalButton = UIButton(type: .custom)
+
+    var visibleCenter: CGPoint {
+        MapViewport.center(in: bounds, safeTop: bounds.minY + safeAreaInsets.top, drawerTop: drawerTop)
+    }
+
+    override func safeAreaInsetsDidChange() {
+        super.safeAreaInsetsDidChange()
+        DispatchQueue.main.async { [weak self] in self?.onViewportChange?() }
+    }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        insetsLayoutMarginsFromSafeArea = false
+        layoutMargins = .zero
+        configureLegalButton()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        insetsLayoutMarginsFromSafeArea = false
+        layoutMargins = .zero
+        configureLegalButton()
+    }
+
+    private func configureLegalButton() {
+        legalButton.accessibilityLabel = NSLocalizedString("Legal", comment: "Apple Maps legal information")
+        legalButton.accessibilityIdentifier = "overland.map.legal"
+        legalButton.accessibilityTraits = .link
+        legalButton.addTarget(self, action: #selector(openLegal), for: .touchUpInside)
+        legalButton.isHidden = true
+        addSubview(legalButton)
+    }
+
+    @objc private func openLegal() {
+        if legalLabel?.accessibilityActivate() == true { return }
+        var responder: UIResponder? = next
+        while let current = responder {
+            if let controller = current as? UIViewController {
+                let browser = SFSafariViewController(url: URL(string: "https://www.apple.com/legal/internet-services/maps/legal-en.html")!)
+                browser.dismissButtonStyle = .done
+                browser.preferredControlTintColor = .systemBlue
+                controller.present(browser, animated: !UIAccessibility.isReduceMotionEnabled)
+                return
+            }
+            responder = current.next
+        }
+    }
+
+    override func layoutSubviews() {
+        for credit in credits { credit.view?.transform = credit.transform }
+        credits.removeAll()
+        super.layoutSubviews()
+        onMapLayout?()
+        guard bounds.width > 0, bounds.height > 0 else { return }
+        if lastViewport != bounds {
+            lastViewport = bounds
+            DispatchQueue.main.async { [weak self] in self?.onViewportChange?() }
+        }
+        var candidates: [(UIView, CGRect)] = []
+        func collect(_ view: UIView) {
+            guard view !== legalButton, !view.isHidden, view.alpha > 0.01,
+                  !(view is MKAnnotationView) else { return }
+            let frame = view.convert(view.bounds, to: self)
+            if frame.width > 0, frame.height > 0, frame.height <= 64,
+               frame.minY >= bounds.maxY - 96, frame.maxY <= bounds.maxY + 16 {
+                candidates.append((view, frame))
+                return
+            }
+            for child in view.subviews { collect(child) }
+        }
+        for child in subviews { collect(child) }
+        guard !candidates.isEmpty else {
+            legalButton.isHidden = true
+            return
+        }
+        let top = bounds.minY + MapChrome.attributionTop(safeTop: safeAreaInsets.top)
+        func move(_ view: UIView, to origin: CGPoint) {
+            guard let parent = view.superview else { return }
+            let frame = view.convert(view.bounds, to: self)
+            credits.append(Credit(view))
+            let start = parent.convert(CGPoint.zero, from: self)
+            let end = parent.convert(CGPoint(x: origin.x - frame.minX, y: origin.y - frame.minY), from: self)
+            view.transform = view.transform.concatenating(
+                CGAffineTransform(translationX: end.x - start.x, y: end.y - start.y))
+        }
+        var fragments: [UIView] = []
+        func compactContents(_ view: UIView) {
+            guard !view.isHidden, view.alpha > 0.01 else { return }
+            let frame = view.convert(view.bounds, to: self)
+            if frame.width > 0, frame.height > 0, frame.width < bounds.width * 0.6, frame.height <= 64 {
+                fragments.append(view)
+                return
+            }
+            for child in view.subviews { compactContents(child) }
+        }
+        for (view, frame) in candidates {
+            if frame.width < bounds.width * 0.6 {
+                fragments.append(view)
+            } else {
+                move(view, to: CGPoint(x: frame.minX, y: top))
+                for child in view.subviews { compactContents(child) }
+            }
+        }
+        fragments.sort { $0.convert($0.bounds, to: self).minX < $1.convert($1.bounds, to: self).minX }
+        let height = max(22, fragments.map { $0.convert($0.bounds, to: self).height }.max() ?? 22)
+        var left = MapChrome.edge
+        for fragment in fragments {
+            let frame = fragment.convert(fragment.bounds, to: self)
+            move(fragment, to: CGPoint(x: left, y: top + (height - frame.height) / 2))
+            left += frame.width + 8
+        }
+        let link = fragments.first(where: { $0.accessibilityTraits.contains(.link) })
+            ?? fragments.last(where: { $0.bounds.height <= 24 && $0.bounds.width >= 20 })
+        if let label = link {
+            if label !== legalLabel {
+                legalLabel?.accessibilityElementsHidden = false
+                legalLabel = label
+                label.accessibilityElementsHidden = true
+            }
+            let frame = label.convert(label.bounds, to: self)
+            legalButton.frame = CGRect(x: frame.midX - max(44, frame.width) / 2,
+                y: max(bounds.minY, frame.midY - 22), width: max(44, frame.width), height: 44)
+            legalButton.isHidden = false
+            if subviews.last !== legalButton { bringSubviewToFront(legalButton) }
+        } else {
+            legalButton.isHidden = true
+        }
+    }
+
+}
+
+struct NativeMapSurface: UIViewRepresentable {
+    var position: MapCameraPosition
+    var mapType: MKMapType
+    var coordinates: [CLLocationCoordinate2D]
+    var replayRoute: ReplayRouteGeometry?
+    var replayPosition: Double
+    var replayAccuracy: CLLocationAccuracy? = nil
+    var replayActive = false
+    var replayFollowing = true
+    var replayFollowDistance: CLLocationDistance? = nil
+    var replayOverview = false
+    // SwiftUI animation transactions do not cross the shell's separate map hosting controller.
+    var replayCameraAction = 0
+    // A live recenter must also reach the map when its cached request is already follow.
+    var recenterAction = 0
+    var selected: CLLocationCoordinate2D?
+    var selectedTitle: String
+    var sceneActive: Bool
+    var pageActive: Bool
+    var onCameraChange: (MapCamera, Bool) -> Void
+    var onInteraction: () -> Void
+
+    @MainActor static func setDrawerTop(_ value: CGFloat, on map: MKMapView) {
+        guard let map = map as? AttributionMapView else { return }
+        let top = min(map.bounds.maxY, max(map.bounds.minY, value))
+        if abs((map.drawerTop ?? -.greatestFiniteMagnitude) - top) > 0.1 { map.drawerTop = top }
+    }
+
+    @MainActor static func visibleCenter(on map: MKMapView) -> CGPoint {
+        (map as? AttributionMapView)?.visibleCenter
+            ?? MapViewport.center(in: map.bounds, safeTop: map.bounds.minY + map.safeAreaInsets.top, drawerTop: nil)
+    }
+
+    @MainActor private static func cameraCenter(on map: MKMapView) -> CGPoint {
+        let viewport = map.bounds.inset(by: map.layoutMargins)
+        return CGPoint(x: viewport.midX, y: viewport.midY)
+    }
+
+    @MainActor static func displayedUserCoordinate(on map: MKMapView) -> CLLocationCoordinate2D? {
+        (map.delegate as? Coordinator)?.displayedLiveCoordinate ?? map.userLocation.location?.coordinate
+    }
+
+#if targetEnvironment(simulator)
+    @MainActor static func displayedTrailCoordinate(on map: MKMapView) -> CLLocationCoordinate2D? {
+        (map.delegate as? Coordinator)?.displayedTrailCoordinate
+    }
+    @MainActor static func replayAuditValues(on map: MKMapView) -> [String: Double] {
+        (map.delegate as? Coordinator)?.replayAuditValues ?? [:]
+    }
+#endif
+
+    @MainActor static func zoom(inward: Bool, on map: MKMapView) -> MapZoomResult? {
+        (map.delegate as? Coordinator)?.zoom(inward: inward, on: map)
+    }
+
+    @MainActor static func replayOverviewDistance(on map: MKMapView) -> CLLocationDistance? {
+        guard let line = (map.delegate as? Coordinator)?.replayPolyline ?? map.overlays.compactMap({ $0 as? MKPolyline }).first,
+              map.visibleMapRect.width > 0 else { return nil }
+        let fitted = map.mapRectThatFits(line.boundingMapRect, edgePadding: replayEdgePadding(on: map))
+        return map.camera.centerCoordinateDistance * fitted.width / map.visibleMapRect.width
+    }
+
+    @MainActor private static func replayEdgePadding(on map: MKMapView) -> UIEdgeInsets {
+        let visible = MapViewport.visibleRect(in: map.bounds,
+            safeTop: map.bounds.minY + map.safeAreaInsets.top,
+            drawerTop: (map as? AttributionMapView)?.drawerTop)
+        let padding = min(24, max(0, visible.height / 4))
+        return UIEdgeInsets(top: visible.minY - map.bounds.minY + padding, left: 24,
+                           bottom: map.bounds.maxY - visible.maxY + padding, right: 24)
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    func makeUIView(context: Context) -> MKMapView {
+        makeMap(coordinator: context.coordinator)
+    }
+
+    @MainActor func makeMap(coordinator: Coordinator) -> MKMapView {
+        let map = AttributionMapView(frame: .zero)
+        map.delegate = coordinator
+        map.showsUserLocation = sceneActive && pageActive && !replayActive && replayRoute == nil
+        map.showsCompass = false
+        // Native follow mode changes the chosen zoom; presentation follows fixes here.
+        map.userTrackingMode = .none
+        coordinator.map = map
+        let contact = MapContactRecognizer(target: nil, action: nil)
+        contact.cancelsTouchesInView = false
+        contact.delaysTouchesBegan = false
+        contact.delaysTouchesEnded = false
+        contact.onContact = { [weak coordinator] active in coordinator?.mapContactChanged(active) }
+        map.addGestureRecognizer(contact)
+        map.onViewportChange = { [weak coordinator, weak map] in
+            guard let map else { return }
+            coordinator?.viewportChanged(on: map)
+        }
+        map.onMapLayout = { [weak coordinator, weak map] in
+            guard let map else { return }
+            coordinator?.alignMarkers(on: map)
+        }
+        coordinator.update(self, animated: false)
+        DispatchQueue.main.async { [weak coordinator, weak map] in
+            guard let map else { return }
+            coordinator?.observeGestures(in: map)
+        }
+        return map
+    }
+
+    func updateUIView(_ map: MKMapView, context: Context) {
+        context.coordinator.update(self, animated: context.transaction.animation != nil)
+    }
+
+    static func dismantleUIView(_ map: MKMapView, coordinator: Coordinator) {
+        coordinator.stopCameraTransition()
+        coordinator.stopLiveMotion()
+        coordinator.stopReplayHeading()
+        coordinator.clearMapContact()
+        map.showsUserLocation = false
+        map.delegate = nil
+    }
+
+    @MainActor
+    final class Coordinator: NSObject, MKMapViewDelegate {
+        private enum Request: Equatable {
+            case camera(MapCamera)
+            case region(Double, Double, Double, Double)
+            case overview(ObjectIdentifier)
+            case follow
+            case automatic
+        }
+
+        var parent: NativeMapSurface
+        weak var map: MKMapView?
+        private var request: Request?
+        private var revision = 0
+        private var interacting = false
+        private var hasMapContact = false
+        private var cameraContactTime: TimeInterval?
+        private var followingInitialized = false
+        private var hasInitialCamera = false
+        private var anchorCoordinate: CLLocationCoordinate2D?
+        private var correctionsRemaining = 0
+        private var aligning = false
+        private var observedGestures = Set<ObjectIdentifier>()
+        private var tripCoordinates: [CLLocationCoordinate2D] = []
+        private var tripLine: MKPolyline?
+        private var replayRoute: ReplayRouteGeometry?
+        private var replayPresentation: ReplayRoutePresentation?
+        private let replayTrailLayer = ReplayTrailLayer()
+        private let replayAccuracyLayer = ReplayAccuracyLayer()
+        var replayPolyline: MKPolyline? { replayPresentation?.future }
+#if targetEnvironment(simulator)
+        var displayedTrailCoordinate: CLLocationCoordinate2D? { replayTrailLayer.coordinate }
+        var replayAuditValues: [String: Double] {
+            var values = replayPresentation?.auditValues ?? [:]
+            values["nativePosePosition"] = parent.replayPosition
+            // The sheet's presentation frame can lag the viewport supplied to the map during a spring.
+            if let map, let top = (map as? AttributionMapView)?.drawerTop {
+                values["targetDrawerTop"] = map.convert(CGPoint(x: 0, y: top), to: nil).y
+                values["targetSafeTop"] = map.convert(CGPoint(x: 0, y: map.bounds.minY + map.safeAreaInsets.top), to: nil).y
+            }
+            return values
+        }
+#endif
+        private var selectedPoint: MKPointAnnotation?
+        private var selectedIsReplay = false
+        private var cameraActionAnimating = false
+        private var cameraZooming = false
+        private var zoomKeepsCentering = false
+        private var cameraTransition: MapCameraTransition?
+        private var cameraDestination: MapCamera?
+        private var cameraDisplayLink: CADisplayLink?
+        private var replayHeading = ReplayHeadingMotion()
+        private var replayHeadingDisplayLink: CADisplayLink?
+        private var liveMotion = LiveMapMotion()
+        private var liveDisplayLink: CADisplayLink?
+        private(set) var displayedLiveCoordinate: CLLocationCoordinate2D?
+        private var latestLiveTimestamp: Date?
+        private var replayDetached: Bool { parent.replayActive && !parent.replayFollowing && !parent.replayOverview }
+
+        init(_ parent: NativeMapSurface) {
+            self.parent = parent
+        }
+
+        func update(_ parent: NativeMapSurface, animated: Bool) {
+            let wasVisible = self.parent.sceneActive && self.parent.pageActive
+            let wasDetached = replayDetached
+            let replayModeChanged = parent.replayActive != self.parent.replayActive
+            let cameraAction = parent.replayCameraAction != self.parent.replayCameraAction
+                || parent.recenterAction != self.parent.recenterAction
+            self.parent = parent
+            guard let map else { return }
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            defer { CATransaction.commit() }
+            if replayDetached && !wasDetached {
+                stopCameraTransition()
+                anchorCoordinate = nil
+                correctionsRemaining = 0
+            }
+            if map.mapType != parent.mapType { map.mapType = parent.mapType }
+            let visible = parent.sceneActive && parent.pageActive
+            let showLocation = visible && !parent.replayActive && parent.replayRoute == nil
+            if map.showsUserLocation != showLocation { map.showsUserLocation = showLocation }
+            if !showLocation { stopLiveMotion() }
+            if !visible || replayModeChanged || (parent.replayRoute == nil && !cameraZooming) {
+                stopCameraTransition()
+            }
+            if !visible || parent.replayRoute == nil {
+                stopReplayHeading()
+                if parent.replayRoute == nil { replayHeading = ReplayHeadingMotion() }
+            }
+            updateOverlays(map)
+            updateSelection(map)
+            observeGestures(in: map)
+            if cameraAction {
+                applyPosition(map, animated: visible && !UIAccessibility.isReduceMotionEnabled, force: true)
+            } else if !cameraActionAnimating && !interacting && !hasMapContact {
+                applyPosition(map, animated: animated && !UIAccessibility.isReduceMotionEnabled)
+            }
+            if visible && !wasVisible { viewportChanged(on: map) }
+            alignMarkers(on: map)
+        }
+
+        private func sameCoordinates(_ lhs: [CLLocationCoordinate2D], _ rhs: [CLLocationCoordinate2D]) -> Bool {
+            lhs.count == rhs.count && zip(lhs, rhs).allSatisfy { pair in
+                pair.0.latitude == pair.1.latitude && pair.0.longitude == pair.1.longitude
+            }
+        }
+
+        private func updateOverlays(_ map: MKMapView) {
+            if replayRoute !== parent.replayRoute {
+                if let replayPresentation { map.removeOverlays(replayPresentation.overlays) }
+                replayRoute = parent.replayRoute
+                replayPresentation = nil
+                if let coordinates = replayRoute?.coordinates, !coordinates.isEmpty {
+                    let presentation = ReplayRoutePresentation(coordinates: coordinates)
+                    replayPresentation = presentation
+                    _ = presentation.updateCachedTrail(position: parent.replayPosition)
+                    map.addOverlays(presentation.overlays, level: .aboveRoads)
+                }
+            }
+            if let change = replayPresentation?.updateCachedTrail(position: parent.replayPosition) {
+                if !change.added.isEmpty { map.addOverlays(change.added, level: .aboveRoads) }
+                if !change.removed.isEmpty { map.removeOverlays(change.removed) }
+            }
+            if !sameCoordinates(tripCoordinates, parent.coordinates) {
+                if let tripLine { map.removeOverlay(tripLine) }
+                tripCoordinates = parent.coordinates
+                tripLine = parent.coordinates.count > 1
+                    ? MKPolyline(coordinates: parent.coordinates, count: parent.coordinates.count) : nil
+                if let tripLine { map.addOverlay(tripLine, level: .aboveRoads) }
+            }
+        }
+
+        private func updateSelection(_ map: MKMapView) {
+            let replay = parent.replayActive || parent.replayRoute != nil
+            if selectedIsReplay != replay {
+                if let selectedPoint { map.removeAnnotation(selectedPoint) }
+                selectedPoint = nil
+                selectedIsReplay = replay
+            }
+            guard let coordinate = parent.selected else {
+                if let selectedPoint { map.removeAnnotation(selectedPoint) }
+                selectedPoint = nil
+                return
+            }
+            if let selectedPoint {
+                if selectedPoint.coordinate.latitude != coordinate.latitude
+                    || selectedPoint.coordinate.longitude != coordinate.longitude {
+                    UIView.performWithoutAnimation { selectedPoint.coordinate = coordinate }
+                }
+                if selectedPoint.title != parent.selectedTitle { selectedPoint.title = parent.selectedTitle }
+            } else {
+                let point = MKPointAnnotation()
+                point.coordinate = coordinate
+                point.title = parent.selectedTitle
+                selectedPoint = point
+                map.addAnnotation(point)
+            }
+        }
+
+        func alignMarkers(on map: MKMapView) {
+            guard parent.sceneActive, parent.pageActive else {
+                replayTrailLayer.hide()
+                replayAccuracyLayer.hide()
+                return
+            }
+            if cameraZooming && zoomKeepsCentering, let coordinate = zoomAnchor(on: map) {
+                if anchorCoordinate?.latitude != coordinate.latitude || anchorCoordinate?.longitude != coordinate.longitude {
+                    anchorCoordinate = coordinate
+                    correctionsRemaining = 6
+                }
+                alignAnchor(on: map)
+            }
+            if parent.replayRoute != nil, let selectedPoint, let view = map.view(for: selectedPoint) {
+                align(view, to: selectedPoint.coordinate, on: map)
+                replayAccuracyLayer.update(coordinate: selectedPoint.coordinate, accuracy: parent.replayAccuracy, on: map, below: view)
+                if let route = replayPresentation?.future {
+                    replayTrailLayer.update(route: route, position: parent.replayPosition,
+                        coordinate: selectedPoint.coordinate, on: map, below: view)
+                } else {
+                    replayTrailLayer.hide()
+                }
+                updateReplayDirection(view, coordinate: selectedPoint.coordinate, on: map)
+            } else {
+                replayTrailLayer.hide()
+                replayAccuracyLayer.hide()
+                if map.showsUserLocation, let displayedLiveCoordinate, let view = map.view(for: map.userLocation) {
+                    align(view, to: displayedLiveCoordinate, on: map)
+                }
+            }
+        }
+
+        private func align(_ view: MKAnnotationView, to coordinate: CLLocationCoordinate2D, on map: MKMapView) {
+            guard let container = view.superview else { return }
+            let point = map.convert(coordinate, toPointTo: container)
+            guard point.x.isFinite, point.y.isFinite else { return }
+            let center = CGPoint(x: point.x + view.centerOffset.x, y: point.y + view.centerOffset.y)
+            (view as? PresentedUserLocationView)?.presentedCenter = center
+            guard hypot(view.center.x - center.x, view.center.y - center.y) > 0.01 else { return }
+            // MapKit can defer moving a native annotation until its next layout pass.
+            UIView.performWithoutAnimation { view.center = center }
+        }
+
+        private func updateReplayDirection(_ view: MKAnnotationView, coordinate: CLLocationCoordinate2D,
+                                           on map: MKMapView) {
+            guard let view = view as? ReplayMarkerView else { return }
+            guard let direction = parent.replayRoute?.direction(at: parent.replayPosition) else {
+                stopReplayHeading()
+                replayHeading = ReplayHeadingMotion()
+                view.face(nil)
+                return
+            }
+            replayHeading.receive(atan2(Double(direction.dx), -Double(direction.dy)), at: CACurrentMediaTime())
+            if !parent.sceneActive || !parent.pageActive || view.window == nil
+                || UIAccessibility.isReduceMotionEnabled || replayHeading.settled {
+                stopReplayHeading()
+            } else if replayHeadingDisplayLink == nil {
+                let target = ReplayHeadingFrameTarget(coordinator: self)
+                let link = CADisplayLink(target: target, selector: #selector(ReplayHeadingFrameTarget.frame(_:)))
+                let maximum = Float(map.window?.windowScene?.screen.maximumFramesPerSecond ?? 60)
+                link.preferredFrameRateRange = CAFrameRateRange(minimum: min(60, maximum), maximum: maximum, preferred: maximum)
+                link.add(to: .main, forMode: .common)
+                replayHeadingDisplayLink = link
+            }
+            renderReplayDirection(view, coordinate: coordinate, on: map)
+        }
+
+        func stopReplayHeading() {
+            replayHeadingDisplayLink?.invalidate()
+            replayHeadingDisplayLink = nil
+            replayHeading.finish()
+        }
+
+        fileprivate func advanceReplayHeading(at time: TimeInterval) {
+            guard let map, parent.sceneActive, parent.pageActive, parent.replayRoute != nil,
+                  let selectedPoint, let view = map.view(for: selectedPoint) as? ReplayMarkerView else {
+                stopReplayHeading()
+                return
+            }
+            replayHeading.advance(at: time)
+            if UIAccessibility.isReduceMotionEnabled || replayHeading.settled { stopReplayHeading() }
+            renderReplayDirection(view, coordinate: selectedPoint.coordinate, on: map)
+        }
+
+        private func renderReplayDirection(_ view: ReplayMarkerView, coordinate: CLLocationCoordinate2D,
+                                           on map: MKMapView) {
+            guard let heading = replayHeading.angle else {
+                view.face(nil)
+                return
+            }
+            let direction = CGVector(dx: sin(heading), dy: -cos(heading))
+            let world = MKMapRect.world
+            let origin = MKMapPoint(coordinate)
+            let distance = min(world.width / 1024,
+                max(1, map.visibleMapRect.width / max(1, Double(map.bounds.width)) * 24))
+            var x = (origin.x + direction.dx * distance).truncatingRemainder(dividingBy: world.width)
+            if x < 0 { x += world.width }
+            let y = min(world.maxY, max(0, origin.y + direction.dy * distance))
+            let start = map.convert(coordinate, toPointTo: map)
+            let end = map.convert(MKMapPoint(x: x, y: y).coordinate, toPointTo: map)
+            let dx = end.x - start.x
+            let dy = end.y - start.y
+            let angle = dx.isFinite && dy.isFinite && hypot(dx, dy) > 0.01
+                ? atan2(dx, -dy)
+                : atan2(direction.dx, -direction.dy) - CGFloat(map.camera.heading) * .pi / 180
+            view.face(angle)
+        }
+
+        private func applyPosition(_ map: MKMapView, animated: Bool, force: Bool = false) {
+            let next: Request
+            if parent.replayOverview, let route = parent.replayRoute {
+                next = .overview(ObjectIdentifier(route))
+            } else if parent.replayFollowing, parent.replayRoute != nil, let coordinate = parent.selected {
+                next = .camera(MapCamera(centerCoordinate: coordinate,
+                    distance: parent.replayFollowDistance ?? parent.position.camera?.distance ?? 2_000,
+                    heading: map.camera.heading, pitch: Double(map.camera.pitch)))
+            } else if parent.position.followsUserLocation {
+                next = .follow
+            } else if let camera = parent.position.camera {
+                next = .camera(camera)
+            } else if let region = parent.position.region {
+                next = .region(region.center.latitude, region.center.longitude,
+                               region.span.latitudeDelta, region.span.longitudeDelta)
+            } else {
+                next = .automatic
+            }
+            guard force || request != next else { return }
+            request = next
+            revision += 1
+            interacting = false
+            followingInitialized = false
+            if animated, parent.replayRoute != nil {
+                let destination: MapCamera?
+                switch next {
+                case .overview: destination = replayOverviewCamera(on: map)
+                case .camera(let camera): destination = camera
+                default: destination = nil
+                }
+                if let destination {
+                    startCameraTransition(to: destination, on: map)
+                    return
+                }
+            }
+            switch next {
+            case .overview:
+                anchorCoordinate = nil
+                correctionsRemaining = 0
+                hasInitialCamera = true
+                fitReplayRoute(on: map, animated: animated)
+            case .camera(let camera):
+                setCamera(camera, on: map, animated: animated)
+            case .region(let latitude, let longitude, let latitudeDelta, let longitudeDelta):
+                let center = replayDetached ? CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+                    : parent.selected ?? CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+                anchorCoordinate = replayDetached ? nil : center
+                correctionsRemaining = replayDetached ? 0 : 6
+                hasInitialCamera = true
+                map.setRegion(MKCoordinateRegion(
+                    center: center,
+                    span: MKCoordinateSpan(latitudeDelta: latitudeDelta, longitudeDelta: longitudeDelta)
+                ), animated: animated)
+                if !animated { alignAnchor(on: map) }
+            case .follow:
+                followUser(on: map, animated: false)
+            case .automatic:
+                anchorCoordinate = nil
+                break
+            }
+        }
+
+        func stopCameraTransition() {
+            cameraDisplayLink?.invalidate()
+            cameraDisplayLink = nil
+            cameraTransition = nil
+            cameraContactTime = nil
+            cameraDestination = nil
+            cameraActionAnimating = false
+            cameraZooming = false
+            zoomKeepsCentering = false
+        }
+
+        func zoom(inward: Bool, on map: MKMapView) -> MapZoomResult? {
+            guard parent.sceneActive, parent.pageActive else { return nil }
+            let wasInteracting = interacting
+            let previousGoal = cameraZooming ? cameraDestination?.distance : nil
+            let distance = MapZoom.distance(from: previousGoal ?? map.camera.centerCoordinateDistance, inward: inward)
+            revision += 1
+            interacting = false
+            if parent.replayActive {
+                parent.replayFollowing = !replayDetached && !wasInteracting
+                parent.replayOverview = false
+                parent.replayFollowDistance = distance
+            }
+            var destination = MapCamera(map.camera)
+            destination.distance = distance
+            let anchor = zoomAnchor(on: map)
+            if let anchor { destination.centerCoordinate = anchor }
+            if !parent.position.followsUserLocation { parent.position = .camera(destination) }
+            request = parent.position.followsUserLocation ? .follow : .camera(destination)
+            let point = anchor.map { map.convert($0, toPointTo: map) }
+            let center = NativeMapSurface.visibleCenter(on: map)
+            let centered = point.map { hypot($0.x - center.x, $0.y - center.y) < 2 } ?? false
+            startCameraTransition(to: destination, on: map, zoom: true, keepsCentering: centered)
+            return MapZoomResult(camera: destination, replayFollowing: parent.replayFollowing)
+        }
+
+        private func zoomAnchor(on map: MKMapView) -> CLLocationCoordinate2D? {
+            if parent.replayActive { return parent.replayFollowing ? parent.selected : nil }
+            if parent.position.followsUserLocation {
+                return displayedLiveCoordinate ?? map.userLocation.location?.coordinate
+            }
+            return parent.selected
+        }
+
+        private func startCameraTransition(to destination: MapCamera, on map: MKMapView,
+                                           zoom: Bool = false, keepsCentering: Bool = false) {
+            stopCameraTransition()
+            anchorCoordinate = nil
+            correctionsRemaining = 0
+            hasInitialCamera = true
+            cameraDestination = destination
+            cameraZooming = zoom
+            zoomKeepsCentering = keepsCentering
+            let anchored = zoom ? zoomAnchor(on: map) != nil : !replayDetached
+            let start = CACurrentMediaTime()
+            cameraTransition = MapCameraTransition(from: MapCamera(map.camera),
+                to: anchored ? MapCamera(anchoredCamera(destination, on: map)) : destination,
+                start: start, length: zoom ? MapZoom.duration : MapCameraTransition.duration)
+            if hasMapContact { cameraContactTime = start }
+            cameraActionAnimating = true
+            if UIAccessibility.isReduceMotionEnabled, let transition = cameraTransition {
+                advanceCameraTransition(at: transition.start + transition.length)
+                return
+            }
+            let target = CameraFrameTarget(coordinator: self)
+            let link = CADisplayLink(target: target, selector: #selector(CameraFrameTarget.frame(_:)))
+            let maximum = Float(map.window?.windowScene?.screen.maximumFramesPerSecond ?? 60)
+            link.preferredFrameRateRange = CAFrameRateRange(minimum: min(60, maximum), maximum: maximum, preferred: maximum)
+            link.add(to: .main, forMode: .common)
+            cameraDisplayLink = link
+        }
+
+        func advanceCameraTransition(at time: TimeInterval) {
+            guard let map, var transition = cameraTransition, var destination = cameraDestination,
+                  parent.sceneActive, parent.pageActive, !interacting else {
+                stopCameraTransition()
+                return
+            }
+            guard !hasMapContact || UIAccessibility.isReduceMotionEnabled else { return }
+            let focusCoordinate = cameraZooming ? zoomAnchor(on: map) : nil
+            if let focusCoordinate {
+                destination.centerCoordinate = focusCoordinate
+            } else if !cameraZooming, !replayDetached, !parent.replayOverview, let coordinate = parent.selected {
+                destination.centerCoordinate = coordinate
+            }
+            let anchored = cameraZooming ? focusCoordinate != nil : !replayDetached
+            transition.to = anchored ? MapCamera(anchoredCamera(destination, on: map)) : destination
+            cameraTransition = transition
+            let end = UIAccessibility.isReduceMotionEnabled ? transition.start + transition.length : time
+            var camera = transition.camera(at: end)
+            if cameraZooming && zoomKeepsCentering, let focusCoordinate {
+                camera.centerCoordinate = focusCoordinate
+                camera = MapCamera(anchoredCamera(camera, on: map))
+                anchorCoordinate = focusCoordinate
+                correctionsRemaining = 6
+            }
+            revision += 1
+            UIView.performWithoutAnimation { map.setCamera(MKMapCamera(camera), animated: false) }
+            alignMarkers(on: map)
+            if transition.progress(at: end) == 1 {
+                let overview = parent.replayOverview
+                let wasZooming = cameraZooming
+                stopCameraTransition()
+                if wasZooming {
+                    anchorCoordinate = focusCoordinate
+                    correctionsRemaining = focusCoordinate == nil ? 0 : 6
+                } else if !overview && !replayDetached {
+                    anchorCoordinate = destination.centerCoordinate
+                }
+            }
+        }
+
+        private func replayOverviewCamera(on map: MKMapView) -> MapCamera? {
+            guard let route = replayPresentation?.future, map.bounds.width > 0, map.bounds.height > 0 else { return nil }
+            let rect = route.boundingMapRect
+            let center = MKMapPoint(x: rect.midX, y: rect.midY).coordinate
+            let minimum = MKMapPointsPerMeterAtLatitude(center.latitude) * 150
+            let visible = MapViewport.visibleRect(in: map.bounds,
+                safeTop: map.bounds.minY + map.safeAreaInsets.top,
+                drawerTop: (map as? AttributionMapView)?.drawerTop).insetBy(dx: 24, dy: 24)
+            guard visible.width > 0, visible.height > 0 else { return nil }
+            let mid = CGPoint(x: map.bounds.midX, y: map.bounds.midY)
+            let a = MKMapPoint(map.convert(mid, toCoordinateFrom: map))
+            let b = MKMapPoint(map.convert(CGPoint(x: mid.x + 1, y: mid.y), toCoordinateFrom: map))
+            var dx = b.x - a.x
+            dx -= (dx / MKMapRect.world.width).rounded() * MKMapRect.world.width
+            let unitsPerPoint = hypot(dx, b.y - a.y)
+            guard unitsPerPoint > 0 else { return nil }
+            let required = max(max(minimum, rect.width) / visible.width, max(minimum, rect.height) / visible.height)
+            let distance = map.camera.centerCoordinateDistance * required / unitsPerPoint
+                * MKMapPointsPerMeterAtLatitude(a.coordinate.latitude) / MKMapPointsPerMeterAtLatitude(center.latitude)
+            return MapCamera(centerCoordinate: center, distance: distance)
+        }
+
+        private func fitReplayRoute(on map: MKMapView, animated: Bool) {
+            guard let first = replayRoute?.coordinates.first, map.bounds.width > 0, map.bounds.height > 0 else { return }
+            let point = MKMapPoint(first)
+            let rect = replayPresentation?.future.boundingMapRect ?? MKMapRect(x: point.x, y: point.y, width: 0, height: 0)
+            let minimum = MKMapPointsPerMeterAtLatitude(first.latitude) * 150
+            let fitted = MKMapRect(x: rect.midX - max(minimum, rect.width) / 2,
+                                   y: rect.midY - max(minimum, rect.height) / 2,
+                                   width: max(minimum, rect.width), height: max(minimum, rect.height))
+            map.setVisibleMapRect(fitted, edgePadding: NativeMapSurface.replayEdgePadding(on: map), animated: animated)
+        }
+
+        private func setCamera(_ camera: MapCamera, on map: MKMapView, animated: Bool) {
+            if replayDetached {
+                anchorCoordinate = nil
+                correctionsRemaining = 0
+                hasInitialCamera = true
+                map.setCamera(MKMapCamera(camera), animated: animated)
+                return
+            }
+            let center = parent.selected ?? camera.centerCoordinate
+            anchorCoordinate = center
+            correctionsRemaining = 6
+            hasInitialCamera = true
+            var target = camera
+            target.centerCoordinate = center
+            map.setCamera(anchoredCamera(target, on: map), animated: animated)
+            if !animated { alignAnchor(on: map) }
+        }
+
+        private func anchoredCamera(_ camera: MapCamera, on map: MKMapView) -> MKMapCamera {
+            let center = camera.centerCoordinate
+            let next = MKMapCamera(lookingAtCenter: center, fromDistance: camera.distance,
+                                   pitch: CGFloat(camera.pitch), heading: camera.heading)
+            let previous = MapCamera(map.camera)
+            if map.bounds.width > 0, map.bounds.height > 0, previous.distance > 1,
+               abs(previous.pitch - camera.pitch) < 0.1, abs(previous.heading - camera.heading) < 0.1 {
+                let middle = map.convert(NativeMapSurface.cameraCenter(on: map), toCoordinateFrom: map)
+                let target = map.convert(NativeMapSurface.visibleCenter(on: map), toCoordinateFrom: map)
+                let scale = camera.distance / previous.distance
+                    * MKMapPointsPerMeterAtLatitude(center.latitude) / MKMapPointsPerMeterAtLatitude(middle.latitude)
+                if CLLocationCoordinate2DIsValid(middle), CLLocationCoordinate2DIsValid(target), scale.isFinite {
+                    // Apply the visible-area offset before starting an animation, avoiding a second pan afterward.
+                    next.centerCoordinate = MapViewport.anchoredCenter(center, projectionCenter: middle,
+                                                                       projectionTarget: target, scale: scale)
+                }
+            }
+            return next
+        }
+
+        func viewportChanged(on map: MKMapView) {
+            guard parent.sceneActive, parent.pageActive, !interacting, !cameraActionAnimating, !hasMapContact else { return }
+            if parent.replayOverview {
+                revision += 1
+                fitReplayRoute(on: map, animated: false)
+                return
+            }
+            guard anchorCoordinate != nil else { return }
+            revision += 1
+            correctionsRemaining = 6
+            alignAnchor(on: map)
+        }
+
+        private func alignAnchor(on map: MKMapView) {
+            guard !aligning, !interacting, !hasMapContact, correctionsRemaining > 0,
+                  parent.sceneActive, parent.pageActive, let anchorCoordinate,
+                  let map = map as? AttributionMapView, map.bounds.width > 0, map.bounds.height > 0 else { return }
+            let target = map.visibleCenter
+            let point = map.convert(anchorCoordinate, toPointTo: map)
+            guard point.x.isFinite, point.y.isFinite else { return }
+            guard hypot(point.x - target.x, point.y - target.y) > 0.5 else {
+                correctionsRemaining = 0
+                return
+            }
+            let projectionCenter = map.convert(NativeMapSurface.cameraCenter(on: map), toCoordinateFrom: map)
+            let projectionTarget = map.convert(target, toCoordinateFrom: map)
+            guard CLLocationCoordinate2DIsValid(projectionCenter),
+                  CLLocationCoordinate2DIsValid(projectionTarget) else { return }
+            correctionsRemaining -= 1
+            let camera = map.camera.copy() as! MKMapCamera
+            // The model camera can lead MapKit's rendered projection. Never add an offset to that camera.
+            camera.centerCoordinate = MapViewport.anchoredCenter(anchorCoordinate, projectionCenter: projectionCenter,
+                                                                projectionTarget: projectionTarget)
+            aligning = true
+            map.setCamera(camera, animated: false)
+            aligning = false
+        }
+
+        private func followUser(on map: MKMapView, animated: Bool) {
+            guard parent.sceneActive, parent.pageActive, !parent.replayOverview, !cameraActionAnimating,
+                  parent.position.followsUserLocation, !interacting, !hasMapContact,
+                  let coordinate = displayedLiveCoordinate ?? map.userLocation.location?.coordinate,
+                  CLLocationCoordinate2DIsValid(coordinate) else { return }
+            if followingInitialized {
+                let point = map.convert(coordinate, toPointTo: map)
+                let target = NativeMapSurface.visibleCenter(on: map)
+                if hypot(point.x - target.x, point.y - target.y) < 0.1 {
+                    anchorCoordinate = coordinate
+                    correctionsRemaining = 0
+                    return
+                }
+            }
+            var camera = MapCamera(map.camera)
+            camera.centerCoordinate = coordinate
+            if !hasInitialCamera { camera.distance = 2_000 }
+            followingInitialized = true
+            revision += 1
+            setCamera(camera, on: map, animated: animated)
+        }
+
+        func stopLiveMotion() {
+            liveDisplayLink?.invalidate()
+            liveDisplayLink = nil
+            liveMotion = LiveMapMotion()
+            displayedLiveCoordinate = nil
+            latestLiveTimestamp = nil
+        }
+
+        private func receiveLiveLocation(_ location: CLLocation, on map: MKMapView) {
+            guard parent.sceneActive, parent.pageActive, map.showsUserLocation else { return }
+            if let latestLiveTimestamp, location.timestamp < latestLiveTimestamp { return }
+            latestLiveTimestamp = location.timestamp
+            if UIAccessibility.isReduceMotionEnabled {
+                liveDisplayLink?.invalidate()
+                liveDisplayLink = nil
+                liveMotion = LiveMapMotion()
+                _ = liveMotion.receive(location.coordinate, at: CACurrentMediaTime())
+                displayedLiveCoordinate = liveMotion.coordinate
+                followUser(on: map, animated: false)
+                alignMarkers(on: map)
+                return
+            }
+            let first = liveMotion.point == nil
+            let moving = liveMotion.receive(location.coordinate, at: CACurrentMediaTime())
+            if first {
+                displayedLiveCoordinate = location.coordinate
+                followUser(on: map, animated: false)
+            } else if moving, liveDisplayLink == nil {
+                let target = CameraFrameTarget(coordinator: self, live: true)
+                let link = CADisplayLink(target: target, selector: #selector(CameraFrameTarget.frame(_:)))
+                let maximum = Float(map.window?.windowScene?.screen.maximumFramesPerSecond ?? 60)
+                link.preferredFrameRateRange = CAFrameRateRange(minimum: min(60, maximum), maximum: maximum, preferred: maximum)
+                link.add(to: .main, forMode: .common)
+                liveDisplayLink = link
+            }
+            alignMarkers(on: map)
+        }
+
+        fileprivate func advanceLiveLocation(at time: TimeInterval) {
+            guard let map, parent.sceneActive, parent.pageActive, map.showsUserLocation else {
+                stopLiveMotion()
+                return
+            }
+            liveMotion.advance(at: time)
+            let tolerance = max(0.001, map.visibleMapRect.width / max(1, Double(map.bounds.width)) * 0.1)
+            let finished = UIAccessibility.isReduceMotionEnabled || liveMotion.settled(at: time, tolerance: tolerance)
+            if finished { liveMotion.finish() }
+            displayedLiveCoordinate = liveMotion.coordinate
+            followUser(on: map, animated: false)
+            alignMarkers(on: map)
+            if finished {
+                liveDisplayLink?.invalidate()
+                liveDisplayLink = nil
+            }
+        }
+
+        func mapContactChanged(_ active: Bool, at time: TimeInterval = CACurrentMediaTime()) {
+            guard hasMapContact != active else { return }
+            hasMapContact = active
+            if active {
+                cameraContactTime = cameraTransition == nil ? nil : time
+            } else if let paused = cameraContactTime, let transition = cameraTransition {
+                cameraTransition = MapCameraTransition(from: transition.from, to: transition.to,
+                    start: transition.start + max(0, time - paused), length: transition.length)
+            }
+            if !active { cameraContactTime = nil }
+            // A tap resumes following; a recognized pan retains its own camera and deferred delegate commit.
+            guard !active, !interacting, !cameraActionAnimating, parent.sceneActive, parent.pageActive,
+                  let map else { return }
+            if parent.position.followsUserLocation { followUser(on: map, animated: false) }
+            else { viewportChanged(on: map) }
+        }
+
+        func clearMapContact() {
+            hasMapContact = false
+            cameraContactTime = nil
+        }
+
+        func observeGestures(in view: UIView) {
+            for gesture in view.gestureRecognizers ?? [] {
+                let tap = gesture as? UITapGestureRecognizer
+                let changesCamera = gesture is UIPanGestureRecognizer || gesture is UIPinchGestureRecognizer
+                    || gesture is UIRotationGestureRecognizer
+                    || (tap.map { $0.numberOfTapsRequired > 1 || $0.numberOfTouchesRequired > 1 } ?? false)
+                if changesCamera, observedGestures.insert(ObjectIdentifier(gesture)).inserted {
+                    gesture.addTarget(self, action: #selector(gestureChanged(_:)))
+                }
+            }
+            for child in view.subviews { observeGestures(in: child) }
+        }
+
+        private func hasActiveGesture(in view: UIView) -> Bool {
+            if (view.gestureRecognizers ?? []).contains(where: { $0.state == .began || $0.state == .changed }) {
+                return true
+            }
+            return view.subviews.contains { hasActiveGesture(in: $0) }
+        }
+
+        @objc private func gestureChanged(_ gesture: UIGestureRecognizer) {
+            if gesture.state == .began || gesture.state == .changed
+                || (gesture is UITapGestureRecognizer && gesture.state == .ended) {
+                beginInteraction()
+            }
+        }
+
+        private func beginInteraction() {
+            stopCameraTransition()
+            guard !interacting else { return }
+            interacting = true
+            anchorCoordinate = nil
+            correctionsRemaining = 0
+            revision += 1
+            let currentRevision = revision
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.revision == currentRevision else { return }
+                self.parent.onInteraction()
+            }
+        }
+
+        func mapView(_ mapView: MKMapView, regionWillChangeAnimated animated: Bool) {
+            observeGestures(in: mapView)
+            if hasActiveGesture(in: mapView) { beginInteraction() }
+        }
+
+        func mapViewDidChangeVisibleRegion(_ mapView: MKMapView) {
+            alignMarkers(on: mapView)
+        }
+
+        func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
+            guard !hasActiveGesture(in: mapView) else {
+                beginInteraction()
+                return
+            }
+            if cameraActionAnimating {
+                return
+            }
+            if !interacting, correctionsRemaining > 0 {
+                let before = MapCamera(mapView.camera)
+                alignAnchor(on: mapView)
+                if MapCamera(mapView.camera) != before { return }
+            }
+            let byUser = interacting
+            let displayed = MapCamera(mapView.camera)
+            var camera = displayed
+            if !byUser, let anchorCoordinate { camera.centerCoordinate = anchorCoordinate }
+            let reported = camera
+            let currentRevision = revision
+            DispatchQueue.main.async { [weak self, weak mapView] in
+                guard let self, let mapView, self.revision == currentRevision,
+                      !self.hasActiveGesture(in: mapView), MapCamera(mapView.camera) == displayed else { return }
+                if byUser {
+                    self.interacting = false
+                    self.request = .camera(reported)
+                    self.parent.position = .camera(reported)
+                } else if self.interacting {
+                    return
+                }
+                self.parent.onCameraChange(reported, byUser)
+            }
+        }
+
+        func mapView(_ mapView: MKMapView, didUpdate userLocation: MKUserLocation) {
+            if let location = userLocation.location { receiveLiveLocation(location, on: mapView) }
+        }
+
+        func mapView(_ mapView: MKMapView, rendererFor overlay: any MKOverlay) -> MKOverlayRenderer {
+            if let renderer = replayPresentation?.renderer(for: overlay) { return renderer }
+            guard let line = overlay as? MKPolyline else { return MKOverlayRenderer(overlay: overlay) }
+            let renderer = MKPolylineRenderer(polyline: line)
+            renderer.lineCap = .round
+            renderer.lineJoin = .round
+            renderer.strokeColor = .systemBlue
+            renderer.lineWidth = ReplayRouteStyle.pastWidth
+            return renderer
+        }
+
+        func mapView(_ mapView: MKMapView, didAdd views: [MKAnnotationView]) {
+            for view in views where view.annotation is MKUserLocation {
+                view.accessibilityIdentifier = "overland.map.user-location"
+            }
+            alignMarkers(on: mapView)
+        }
+
+        func mapView(_ mapView: MKMapView, viewFor annotation: any MKAnnotation) -> MKAnnotationView? {
+            if annotation is MKUserLocation {
+                let view = mapView.dequeueReusableAnnotationView(withIdentifier: "LiveLocation") as? PresentedUserLocationView
+                    ?? PresentedUserLocationView(annotation: annotation, reuseIdentifier: "LiveLocation")
+                view.presentedCenter = nil
+                view.annotation = annotation
+                view.accessibilityIdentifier = "overland.map.user-location"
+                return view
+            }
+            if parent.replayRoute != nil {
+                let view = mapView.dequeueReusableAnnotationView(withIdentifier: "ReplayPoint") as? ReplayMarkerView
+                    ?? ReplayMarkerView(annotation: annotation, reuseIdentifier: "ReplayPoint")
+                view.annotation = annotation
+                view.markerTintColor = .systemBlue
+                view.glyphTintColor = .white
+                updateReplayDirection(view, coordinate: annotation.coordinate, on: mapView)
+                view.titleVisibility = .hidden
+                view.subtitleVisibility = .hidden
+                view.animatesWhenAdded = false
+                view.isAccessibilityElement = true
+                view.accessibilityLabel = parent.selectedTitle
+                view.accessibilityIdentifier = "overland.map.replay-marker"
+                view.displayPriority = .required
+                view.canShowCallout = false
+                return view
+            }
+            let view = mapView.dequeueReusableAnnotationView(withIdentifier: "SelectedPoint") as? MKMarkerAnnotationView
+                ?? MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: "SelectedPoint")
+            view.annotation = annotation
+            view.markerTintColor = .systemBlue
+            view.glyphImage = UIImage(systemName: "mappin.circle.fill")
+            view.canShowCallout = false
+            return view
+        }
+    }
+}
+
+private extension MKMapCamera {
+    convenience init(_ camera: MapCamera) {
+        self.init(lookingAtCenter: camera.centerCoordinate, fromDistance: camera.distance,
+                  pitch: CGFloat(camera.pitch), heading: camera.heading)
+    }
+}
+
+@MainActor
+private final class CameraFrameTarget: NSObject {
+    private weak var coordinator: NativeMapSurface.Coordinator?
+    private let live: Bool
+
+    init(coordinator: NativeMapSurface.Coordinator, live: Bool = false) {
+        self.coordinator = coordinator
+        self.live = live
+    }
+
+    @objc func frame(_ link: CADisplayLink) {
+        guard let coordinator else { link.invalidate(); return }
+        if live { coordinator.advanceLiveLocation(at: link.timestamp) }
+        else { coordinator.advanceCameraTransition(at: link.timestamp) }
+    }
+}

@@ -1,0 +1,760 @@
+import XCTest
+import MapKit
+import SwiftUI
+@testable import Overland
+
+final class HistoryPlaybackTests: XCTestCase {
+    func testLiveMapMovesContinuouslyAcrossSuccessiveFixesAndSettlesWithoutOvershoot() {
+        let origin = MKMapPoint(CLLocationCoordinate2D(latitude: 45, longitude: -122))
+        var motion = LiveMapMotion()
+        XCTAssertFalse(motion.receive(origin.coordinate, at: 0))
+        var previous = origin.x
+        for frame in 1...360 {
+            let time = Double(frame) / 60
+            if frame == 1 || frame == 61 || frame == 121 {
+                let point = motion.point!
+                let velocity = motion.velocity
+                let goal = MKMapPoint(x: origin.x + Double((frame - 1) / 60 + 1) * 300, y: origin.y)
+                XCTAssertTrue(motion.receive(goal.coordinate, at: time - 1 / 60))
+                XCTAssertEqual(motion.point!.x, point.x, accuracy: 0.000001)
+                XCTAssertEqual(motion.velocity.dx, velocity.dx, accuracy: 0.000001)
+            }
+            motion.advance(at: time)
+            XCTAssertGreaterThanOrEqual(motion.point!.x, previous)
+            XCTAssertLessThanOrEqual(motion.point!.x, origin.x + 900.000001)
+            XCTAssertLessThan(motion.point!.x - previous, 12)
+            previous = motion.point!.x
+        }
+        XCTAssertTrue(motion.settled(at: 6, tolerance: 0.01))
+        motion.finish()
+        XCTAssertEqual(motion.point!.x, origin.x + 900, accuracy: 0.000001)
+    }
+
+    func testLiveMapKeepsDatelineMotionShortAndIgnoresIdenticalFixes() {
+        var motion = LiveMapMotion()
+        let from = CLLocationCoordinate2D(latitude: 0, longitude: 179.99)
+        let to = CLLocationCoordinate2D(latitude: 0, longitude: -179.99)
+        XCTAssertFalse(motion.receive(from, at: 0))
+        XCTAssertFalse(motion.receive(from, at: 0.5))
+        XCTAssertTrue(motion.receive(to, at: 0.5))
+        XCTAssertLessThan(abs(motion.target!.x - motion.point!.x), MKMapRect.world.width / 100)
+        for frame in 31...180 {
+            motion.advance(at: Double(frame) / 60)
+            XCTAssertTrue(CLLocationCoordinate2DIsValid(motion.coordinate!))
+            XCTAssertGreaterThan(abs(motion.coordinate!.longitude), 179.98)
+        }
+    }
+
+    func testHistoryCameraTransitionCompletesInOneSecondAtEveryZoomRange() {
+        let center = CLLocationCoordinate2D(latitude: 45, longitude: -122)
+        for distances in [(150.0, 30_000_000.0), (30_000_000.0, 150.0), (2_000.0, 80_000.0)] {
+            let from = MapCamera(centerCoordinate: center, distance: distances.0)
+            let to = MapCamera(centerCoordinate: CLLocationCoordinate2D(latitude: 46, longitude: -120),
+                               distance: distances.1)
+            let transition = MapCameraTransition(from: from, to: to, start: 50)
+            XCTAssertEqual(transition.camera(at: 50), from)
+            XCTAssertEqual(transition.camera(at: 51), to)
+            XCTAssertEqual(transition.camera(at: 52), to)
+            let samples = (0...120).map { transition.camera(at: 50 + Double($0) / 120).distance }
+            XCTAssertTrue(zip(samples, samples.dropFirst()).allSatisfy {
+                distances.0 < distances.1 ? $0.0 <= $0.1 : $0.0 >= $0.1
+            })
+            let finalRatio = max(samples[119], samples[120]) / min(samples[119], samples[120])
+            XCTAssertLessThan(finalRatio, 1.001)
+        }
+    }
+
+    func testHistoryCameraUsesShortestDatelineAndHeadingPaths() {
+        let from = MapCamera(centerCoordinate: CLLocationCoordinate2D(latitude: 0, longitude: 179),
+                             distance: 1_000, heading: 350)
+        let to = MapCamera(centerCoordinate: CLLocationCoordinate2D(latitude: 0, longitude: -179),
+                           distance: 100_000, heading: 10)
+        let transition = MapCameraTransition(from: from, to: to, start: 0)
+        let middle = transition.camera(at: 0.5)
+        XCTAssertGreaterThan(abs(middle.centerCoordinate.longitude), 179)
+        XCTAssertEqual(middle.distance, 10_000, accuracy: 0.000001)
+        XCTAssertEqual(middle.heading.truncatingRemainder(dividingBy: 360), 0, accuracy: 0.000001)
+    }
+
+    func testHistoryZoomDoesNotLeaveThePanUntilStreetLevel() {
+        let from = MapCamera(centerCoordinate: CLLocationCoordinate2D(latitude: 45, longitude: -122),
+                             distance: 2_000_000)
+        let to = MapCamera(centerCoordinate: CLLocationCoordinate2D(latitude: 46, longitude: -120), distance: 150)
+        let transition = MapCameraTransition(from: from, to: to, start: 0)
+        let start = MKMapPoint(from.centerCoordinate), end = MKMapPoint(to.centerCoordinate)
+        let initialScreenOffset = hypot(end.x - start.x, end.y - start.y) / from.distance
+        for step in 1..<120 {
+            let camera = transition.camera(at: Double(step) / 120)
+            let point = MKMapPoint(camera.centerCoordinate)
+            let screenOffset = hypot(end.x - point.x, end.y - point.y) / camera.distance
+            XCTAssertLessThanOrEqual(screenOffset, initialScreenOffset * 1.001)
+        }
+    }
+
+    func testVisibleMapCenterTracksDrawerAndSafeArea() {
+        let bounds = CGRect(x: 0, y: 0, width: 400, height: 900)
+        XCTAssertEqual(MapViewport.center(in: bounds, safeTop: 60, drawerTop: 760), CGPoint(x: 200, y: 410))
+        XCTAssertEqual(MapViewport.center(in: bounds, safeTop: 60, drawerTop: 360), CGPoint(x: 200, y: 210))
+        XCTAssertEqual(MapViewport.center(in: bounds, safeTop: 60, drawerTop: nil), CGPoint(x: 200, y: 480))
+    }
+
+    func testVisibleMapCenterClampsDrawerOvershootAndUsesLocalBounds() {
+        let bounds = CGRect(x: 20, y: 30, width: 400, height: 800)
+        XCTAssertEqual(MapViewport.center(in: bounds, safeTop: 80, drawerTop: 1_000), CGPoint(x: 220, y: 455))
+        XCTAssertEqual(MapViewport.center(in: bounds, safeTop: 80, drawerTop: 0), CGPoint(x: 220, y: 80))
+    }
+
+    func testVisibleMapRectExcludesDrawerAndTopSafeArea() {
+        let bounds = CGRect(x: 20, y: 30, width: 400, height: 800)
+        XCTAssertEqual(MapViewport.visibleRect(in: bounds, safeTop: 80, drawerTop: 600),
+                       CGRect(x: 20, y: 80, width: 400, height: 520))
+        XCTAssertEqual(MapViewport.visibleRect(in: bounds, safeTop: 80, drawerTop: nil),
+                       CGRect(x: 20, y: 80, width: 400, height: 750))
+        XCTAssertEqual(MapViewport.visibleRect(in: bounds, safeTop: 80, drawerTop: 0).height, 0)
+    }
+
+    func testLocationButtonChoosesTheClosestRelativeZoom() {
+        XCTAssertEqual(ReplayCameraFocus.nearest(current: 200_000, point: 1_000, trail: 50_000), .trail)
+        XCTAssertEqual(ReplayCameraFocus.nearest(current: 40_000, point: 1_000, trail: 50_000), .trail)
+        XCTAssertEqual(ReplayCameraFocus.nearest(current: 600, point: 1_000, trail: 50_000), .point)
+        XCTAssertEqual(ReplayCameraFocus.nearest(current: 4_000, point: 1_000, trail: 50_000), .point)
+        XCTAssertEqual(ReplayCameraFocus.nearest(current: .nan, point: 1_000, trail: 50_000), .point)
+        XCTAssertEqual(ReplayCameraFocus.nearest(current: 1_000, point: 0, trail: 50_000), .point)
+    }
+
+    func testMapAnchorCorrectionTakesShortestPathAcrossDateline() {
+        let center = CLLocationCoordinate2D(latitude: 0, longitude: 179.9)
+        let selected = CLLocationCoordinate2D(latitude: 0, longitude: -179.9)
+        let result = MapViewport.anchoredCenter(center, projectionCenter: selected, projectionTarget: center)
+        XCTAssertEqual(result.longitude, -179.9, accuracy: 0.000001)
+        XCTAssertEqual(result.latitude, 0, accuracy: 0.000001)
+    }
+
+    func testMapAnchorCorrectionDoesNotAccumulateWhenProjectionLagsCamera() {
+        let anchor = MKMapPoint(CLLocationCoordinate2D(latitude: 45.5, longitude: -122.6))
+        let offset = MKMapPoint(x: 120, y: 600)
+        let initial = MapViewport.anchoredCenter(anchor.coordinate, projectionCenter: anchor.coordinate,
+                                                projectionTarget: MKMapPoint(x: anchor.x - offset.x,
+                                                                            y: anchor.y - offset.y).coordinate)
+        for displacement in [0.0, 300.0, 600.0, 1_200.0] {
+            let center = MKMapPoint(x: anchor.x, y: anchor.y + displacement)
+            let target = MKMapPoint(x: center.x - offset.x, y: center.y - offset.y)
+            let repeated = MapViewport.anchoredCenter(anchor.coordinate, projectionCenter: center.coordinate,
+                                                      projectionTarget: target.coordinate)
+            XCTAssertEqual(repeated.latitude, initial.latitude, accuracy: 0.000001)
+            XCTAssertEqual(repeated.longitude, initial.longitude, accuracy: 0.000001)
+        }
+        XCTAssertEqual(MKMapPoint(initial).y, anchor.y + offset.y, accuracy: 0.001)
+    }
+
+    @MainActor func testNearbyScrubbingShowsPrefetchedDetailsImmediately() {
+        let points = locations(5)
+        var requests = [[Int64]]()
+        let model = HistoryPlaybackModel(pointLoader: { _, completion in completion(points) },
+                                         payloadLoader: { ids, completion in
+            requests.append(ids)
+            completion(self.payloads(ids))
+        })
+        model.setConsumerActive(true)
+        XCTAssertEqual(requests.count, 1)
+        model.beginRulerInteraction()
+        model.scrub(rulerPosition: 2.25, liveEdge: Date())
+        XCTAssertEqual(model.payload?.device, "device-3")
+        model.scrub(rulerPosition: 1.25, liveEdge: Date())
+        XCTAssertEqual(model.payload?.device, "device-4")
+        XCTAssertEqual(requests.count, 1)
+    }
+
+    @MainActor func testRapidScrubbingCoalescesReadsAndShowsLatestSelection() {
+        let points = locations(400)
+        var pending = [([Int64], ([Int64: RecordedPayload]) -> Void)]()
+        let model = HistoryPlaybackModel(pointLoader: { _, completion in completion(points) },
+                                         payloadLoader: { pending.append(($0, $1)) })
+        model.setConsumerActive(true)
+        model.beginRulerInteraction()
+        model.scrub(rulerPosition: 300, liveEdge: Date())
+        model.scrub(rulerPosition: 350, liveEdge: Date())
+        XCTAssertEqual(pending.count, 1)
+        pending[0].1(payloads(pending[0].0))
+        XCTAssertNil(model.payload)
+        XCTAssertEqual(pending.count, 2)
+        XCTAssertTrue(pending[1].0.contains(51))
+        pending[1].1(payloads(pending[1].0))
+        XCTAssertEqual(model.selectedPoint?.id, 51)
+        XCTAssertEqual(model.payload?.device, "device-51")
+        XCTAssertEqual(pending.count, 2)
+    }
+
+    @MainActor func testInactiveConsumerDoesNotLoadReplayDetails() {
+        let points = locations(100)
+        var pending = [([Int64], ([Int64: RecordedPayload]) -> Void)]()
+        let model = HistoryPlaybackModel(pointLoader: { _, completion in completion(points) },
+                                         payloadLoader: { pending.append(($0, $1)) })
+        model.setConsumerActive(true)
+        model.setConsumerActive(false)
+        pending[0].1(payloads(pending[0].0))
+        model.scrub(pointAt: 10)
+        XCTAssertNil(model.payload)
+        XCTAssertEqual(pending.count, 1)
+    }
+
+    @MainActor func testInterpolatedMarkerMovesAlongStableRecordedRoute() {
+        let points = locations(3)
+        let model = HistoryPlaybackModel(pointLoader: { _, completion in completion(points) },
+                                         payloadLoader: { ids, completion in
+            completion(self.payloads(ids))
+        })
+        model.setConsumerActive(true)
+        model.beginRulerInteraction()
+        model.scrub(rulerPosition: 1.75, liveEdge: Date())
+        let coordinate = model.playbackCoordinate
+        let route = model.routeGeometry!
+        let pose = model.renderPose!
+        model.scrub(rulerPosition: 1.25, liveEdge: Date())
+        XCTAssertNotEqual(model.playbackCoordinate, coordinate)
+        XCTAssertTrue(model.routeGeometry === route)
+        XCTAssertGreaterThan(model.renderPose!.position, pose.position)
+        XCTAssertEqual(route.coordinates.map(\.latitude), points.map(\.latitude))
+        XCTAssertEqual(route.coordinates.map(\.longitude), points.map(\.longitude))
+    }
+
+    @MainActor func testFullDayRouteRetainsEveryPointAcrossScrubs() {
+        let start = Date().addingTimeInterval(-23.5 * 3600)
+        let points = (0..<86_400).map { index -> RecordedLocation in
+            let latitude = 45.0 + sin(Double(index) * 1.7) * 0.0001
+            let longitude = -122.0 + Double(index) * 0.000001
+            return RecordedLocation(id: Int64(index + 1), timestamp: start.addingTimeInterval(Double(index) * 0.95),
+                                    latitude: latitude, longitude: longitude)
+        }
+        let model = HistoryPlaybackModel(pointLoader: { _, completion in completion(points) },
+                                         payloadLoader: { _, completion in completion([:]) })
+        model.setConsumerActive(true)
+        model.scrub(pointAt: 1000)
+        let route = model.routeGeometry!
+        XCTAssertEqual(route.coordinates.count, points.count)
+        XCTAssertTrue(zip(route.coordinates, points).allSatisfy { pair in
+            pair.0.latitude == pair.1.latitude && pair.0.longitude == pair.1.longitude
+        })
+        for index in [1001, 20_000, 599, 70_000, 0, points.count - 1, 1000] {
+            model.scrub(pointAt: index)
+            XCTAssertTrue(model.routeGeometry === route)
+            XCTAssertEqual(model.playbackCoordinate, ReplayCoordinate(points[index].coordinate))
+        }
+    }
+
+    @MainActor func testTrailFollowsFractionalPlaybackAndReverseScrubbing() {
+        let (model, _) = replay(at: [0, 60, 120])
+        defer { model.pause() }
+        model.playbackRate = 1
+        model.togglePlayback()
+        let route = model.routeGeometry!
+        model.advancePlayback(by: 0.25)
+        let first = model.renderPose!
+        XCTAssertGreaterThan(first.position, 0)
+        XCTAssertEqual(model.selectedIndex, 0)
+        model.advancePlayback(by: 0.25)
+        XCTAssertEqual(model.selectedIndex, 0)
+        XCTAssertGreaterThan(model.renderPose!.position, first.position)
+        model.beginRulerInteraction()
+        model.scrub(rulerPosition: 2.25, liveEdge: Date())
+        let forward = model.renderPose!
+        model.scrub(rulerPosition: 2.9, liveEdge: Date())
+        XCTAssertEqual(model.selectedIndex, 0)
+        XCTAssertLessThan(model.renderPose!.position, forward.position)
+        XCTAssertEqual(model.renderPose!.position, model.playbackIndex)
+        XCTAssertEqual(model.renderPose!.coordinate, model.playbackCoordinate)
+        XCTAssertTrue(model.routeGeometry === route)
+    }
+
+    @MainActor func testRenderPoseStaysCoherentAcrossLoggedPoints() {
+        let (model, points) = replay(at: [0, 60, 120, 180, 240])
+        defer { model.pause() }
+        model.playbackRate = 1
+        model.togglePlayback()
+        var previous = 0.0
+        for _ in 0..<1440 {
+            model.advancePlayback(by: 1.0 / 120)
+            let pose = model.renderPose!
+            XCTAssertGreaterThanOrEqual(pose.position, previous)
+            let index = Int(pose.position)
+            let expected = ReplayCoordinate(points[index].coordinate).interpolated(
+                to: ReplayCoordinate(points[index + 1].coordinate), fraction: pose.position - Double(index))
+            XCTAssertEqual(pose.coordinate.latitude, expected.latitude, accuracy: 0.0000000001)
+            XCTAssertEqual(pose.coordinate.longitude, expected.longitude, accuracy: 0.0000000001)
+            XCTAssertEqual(model.playbackCoordinate, pose.coordinate)
+            XCTAssertEqual(model.cameraCenter, pose.coordinate)
+            previous = pose.position
+        }
+        XCTAssertGreaterThan(model.playbackIndex, 2.9)
+    }
+
+    func testTripLineRetainsEveryPointWhenScrubbing() {
+        let points: [[String: NSNumber]] = (0..<2401).map { index in
+            ["id": NSNumber(value: index), "latitude": NSNumber(value: 45.0 + Double(index) * 0.00001),
+             "longitude": NSNumber(value: -122.0 + sin(Double(index)) * 0.001)]
+        }
+        var trip = TripMapState(points: points)
+        XCTAssertEqual(trip.displayCoords.count, points.count)
+        trip.followingLive = false
+        trip.scrubID = 1800
+        let first = trip.displayCoords
+        XCTAssertEqual(first.count, 1801)
+        trip.scrubID = 1801
+        let second = trip.displayCoords
+        XCTAssertEqual(second.count, 1802)
+        XCTAssertEqual(first.map(\.latitude), second.dropLast().map(\.latitude))
+        XCTAssertEqual(first.map(\.longitude), second.dropLast().map(\.longitude))
+    }
+
+    func testCoarseRulerGainScalesToFillTheTimelineAndClamps() {
+        XCTAssertEqual(HistoryRulerCoarseDrag.gain(tickCount: 48, rulerWidth: 320), 24)
+        XCTAssertEqual(HistoryRulerCoarseDrag.gain(tickCount: 86_400, rulerWidth: 320), 9_720, accuracy: 0.000001)
+        XCTAssertEqual(HistoryRulerCoarseDrag.position(after: 0, translation: 320,
+                                                        tickCount: 86_400, rulerWidth: 320), 86_400,
+                       accuracy: 0.000001)
+        XCTAssertEqual(HistoryRulerCoarseDrag.position(after: 86_400, translation: -320,
+                                                        tickCount: 86_400, rulerWidth: 320), 0,
+                       accuracy: 0.000001)
+    }
+
+    func testCoarseRulerGainHasAnUpperBoundForVeryDenseHistories() {
+        XCTAssertEqual(HistoryRulerCoarseDrag.gain(tickCount: 1_000_000, rulerWidth: 320),
+                       HistoryRulerCoarseDrag.maximumGain)
+    }
+
+    @MainActor func testRouteOnlyRebuildsWhenStoredPointsChange() {
+        let points = locations(5)
+        var reads = 0
+        let model = HistoryPlaybackModel(pointLoader: { _, completion in
+            reads += 1
+            completion(reads == 1 ? Array(points.prefix(3)) : reads == 2 ? [] : Array(points.suffix(2)))
+        }, payloadLoader: { _, completion in completion([:]) })
+        model.setConsumerActive(true)
+        model.scrub(pointAt: 1)
+        let original = model.routeGeometry!
+        model.reload()
+        XCTAssertTrue(model.routeGeometry === original)
+        model.reload()
+        let updated = model.routeGeometry!
+        XCTAssertFalse(updated === original)
+        XCTAssertEqual(updated.coordinates.count, points.count)
+        XCTAssertEqual(updated.coordinates.map(\.latitude), points.map(\.latitude))
+        model.scrub(pointAt: 4)
+        XCTAssertTrue(model.routeGeometry === updated)
+        model.returnToLive()
+        XCTAssertNil(model.routeGeometry)
+    }
+
+    @MainActor func testChronologicalLoadsAdvanceCursorByLargestID() {
+        let samples = locations(2)
+        let points = [RecordedLocation(id: 5, timestamp: samples[0].timestamp,
+                                      latitude: samples[0].latitude, longitude: samples[0].longitude), samples[1]]
+        var cursors = [Int64]()
+        let model = HistoryPlaybackModel(pointLoader: { after, completion in
+            cursors.append(after)
+            completion(after == 0 ? points : [])
+        }, payloadLoader: { ids, completion in completion(self.payloads(ids)) })
+        model.setConsumerActive(true)
+        model.reload()
+        XCTAssertEqual(cursors, [0, 5])
+        XCTAssertEqual(model.points.count, 2)
+    }
+
+    func testReplayPaceIsSlowerAcrossDenseNormalAndLongIntervals() {
+        XCTAssertEqual(ReplayPacing.rates, [0.25, 0.5, 1, 2, 5, 10, 25, 50])
+        XCTAssertEqual(ReplayPacing.segmentDuration(recordedInterval: 1, rate: 1), 0.2, accuracy: 0.000001)
+        XCTAssertEqual(ReplayPacing.segmentDuration(recordedInterval: 5, rate: 1), 1.0 / 3, accuracy: 0.000001)
+        XCTAssertEqual(ReplayPacing.segmentDuration(recordedInterval: 60, rate: 1), 4, accuracy: 0.000001)
+        XCTAssertEqual(ReplayPacing.segmentDuration(recordedInterval: 3600, rate: 1), 16, accuracy: 0.000001)
+        for rate in ReplayPacing.rates {
+            XCTAssertEqual(ReplayPacing.segmentDuration(recordedInterval: 60, rate: rate), 4 / rate, accuracy: 0.000001)
+        }
+    }
+
+    func testInvalidReplayRatesAndIntervalsKeepFinitePositiveDurations() {
+        for rate in [0.0, -1, .nan, .infinity] {
+            XCTAssertEqual(ReplayPacing.segmentDuration(recordedInterval: 60, rate: rate), 4)
+        }
+        for interval in [0.0, -1, .nan, .infinity] {
+            XCTAssertEqual(ReplayPacing.segmentDuration(recordedInterval: interval, rate: 0.5), 4)
+        }
+    }
+
+    @MainActor func testFractionalReplayRatesPreservePositionAcrossSpeedChanges() {
+        let (model, _) = replay(at: [0, 60, 120])
+        defer { model.pause() }
+        XCTAssertEqual(model.playbackRate, 1)
+        model.playbackRate = 0.25
+        model.togglePlayback()
+        model.advancePlayback(by: 4)
+        XCTAssertEqual(model.playbackIndex, 0.25, accuracy: 0.000001)
+        let pose = model.renderPose
+        model.playbackRate = 0.5
+        XCTAssertEqual(model.renderPose, pose)
+        model.advancePlayback(by: 2)
+        XCTAssertEqual(model.playbackIndex, 0.5, accuracy: 0.000001)
+        model.playbackRate = 0.25
+        model.advancePlayback(by: 1.6)
+        XCTAssertEqual(model.playbackIndex, 0.6, accuracy: 0.000001)
+    }
+
+    @MainActor func testReplayCompressesLongGapsAndInterpolatesMovement() {
+        let (model, points) = replay(at: [0, 3600, 3660])
+        defer { model.pause() }
+        model.playbackRate = 1
+        model.togglePlayback()
+        model.advancePlayback(by: 4)
+        XCTAssertEqual(model.playbackIndex, 0.25, accuracy: 0.000001)
+        XCTAssertEqual(model.playbackTime!, points[0].timestamp.timeIntervalSince1970 + 900, accuracy: 0.000001)
+        XCTAssertGreaterThan(model.playbackCoordinate!.latitude, points[0].latitude)
+        XCTAssertLessThan(model.playbackCoordinate!.latitude, points[1].latitude)
+
+        model.advancePlayback(by: 14)
+        XCTAssertEqual(model.playbackIndex, 1.5, accuracy: 0.000001)
+        XCTAssertEqual(model.playbackTime!, points[0].timestamp.timeIntervalSince1970 + 3630, accuracy: 0.000001)
+    }
+
+    @MainActor func testReplaySpeedChangeKeepsTheCurrentPosition() {
+        let (model, _) = replay(at: [0, 60, 120])
+        defer { model.pause() }
+        model.playbackRate = 1
+        model.togglePlayback()
+        model.advancePlayback(by: 1)
+        let coordinate = model.playbackCoordinate
+        let time = model.playbackTime
+        model.playbackRate = 2
+        XCTAssertEqual(model.playbackCoordinate, coordinate)
+        XCTAssertEqual(model.playbackTime, time)
+        model.advancePlayback(by: 0.5)
+        XCTAssertEqual(model.playbackIndex, 0.5, accuracy: 0.000001)
+    }
+
+    @MainActor func testFasterReplayAlsoSpeedsUpDenseRecordings() {
+        let intervals = (0...20).map(Double.init)
+        let (normal, _) = replay(at: intervals)
+        let (faster, _) = replay(at: intervals)
+        defer { normal.pause(); faster.pause() }
+        normal.playbackRate = 1
+        faster.playbackRate = 2
+        normal.togglePlayback()
+        faster.togglePlayback()
+        normal.advancePlayback(by: 0.4)
+        faster.advancePlayback(by: 0.4)
+        XCTAssertEqual(normal.playbackIndex, 2, accuracy: 0.000001)
+        XCTAssertEqual(faster.playbackIndex, 4, accuracy: 0.000001)
+    }
+
+    @MainActor func testPlaybackCarriesFrameTimeAcrossPointsAndStopsAtTheEnd() {
+        let (model, points) = replay(at: [0, 60, 120, 180])
+        model.playbackRate = 1
+        model.togglePlayback()
+        model.advancePlayback(by: 6)
+        XCTAssertEqual(model.playbackIndex, 1.5, accuracy: 0.000001)
+        XCTAssertEqual(model.selectedPoint?.id, points[1].id)
+        model.advancePlayback(by: 400)
+        XCTAssertFalse(model.isPlaying)
+        XCTAssertEqual(model.playbackIndex, 3)
+        XCTAssertEqual(model.playbackCoordinate, ReplayCoordinate(points[3].coordinate))
+    }
+
+    @MainActor func testPlaybackResumesFromFractionalScrubAndSeekResetsProgress() {
+        let (model, _) = replay(at: [0, 60, 120])
+        defer { model.pause() }
+        model.playbackRate = 1
+        model.beginRulerInteraction()
+        model.scrub(rulerPosition: 1.5, liveEdge: Date())
+        model.togglePlayback()
+        model.advancePlayback(by: 0.8)
+        XCTAssertEqual(model.playbackIndex, 1.7, accuracy: 0.000001)
+        model.pause()
+        model.advancePlayback(by: 40)
+        XCTAssertEqual(model.playbackIndex, 1.7, accuracy: 0.000001)
+        model.togglePlayback()
+        model.advancePlayback(by: 0.4)
+        XCTAssertEqual(model.playbackIndex, 1.8, accuracy: 0.000001)
+        model.select(0)
+        model.togglePlayback()
+        model.advancePlayback(by: 1)
+        XCTAssertEqual(model.playbackIndex, 0.25, accuracy: 0.000001)
+    }
+
+    @MainActor func testPlaybackHandlesEqualTimestampsWithoutSkippingMovement() {
+        let (model, points) = replay(at: [0, 0, 60])
+        defer { model.pause() }
+        model.playbackRate = 1
+        model.togglePlayback()
+        model.advancePlayback(by: 1)
+        XCTAssertEqual(model.playbackIndex, 0.5, accuracy: 0.000001)
+        XCTAssertEqual(model.playbackTime, points[0].timestamp.timeIntervalSince1970)
+        model.advancePlayback(by: 3)
+        XCTAssertEqual(model.playbackIndex, 1.5, accuracy: 0.000001)
+    }
+
+    @MainActor func testLatePointDoesNotRewindAnActiveReplay() {
+        let start = Date().addingTimeInterval(-3600)
+        let first = RecordedLocation(id: 1, timestamp: start, latitude: 45, longitude: -122)
+        let last = RecordedLocation(id: 3, timestamp: start.addingTimeInterval(120), latitude: 45.0002, longitude: -122)
+        let late = RecordedLocation(id: 4, timestamp: start.addingTimeInterval(60), latitude: 45.0001, longitude: -122)
+        var reads = 0
+        let model = HistoryPlaybackModel(pointLoader: { _, completion in
+            reads += 1
+            completion(reads == 1 ? [first, last] : reads == 2 ? [late] : [])
+        }, payloadLoader: { ids, completion in completion(self.payloads(ids)) })
+        defer { model.pause() }
+        model.setConsumerActive(true)
+        model.playbackRate = 1
+        model.togglePlayback()
+        model.advancePlayback(by: 6)
+        let time = model.playbackTime
+        model.reload()
+        XCTAssertEqual(model.playbackTime, time)
+        XCTAssertEqual(model.selectedPoint?.id, first.id)
+        model.pause()
+        XCTAssertEqual(model.selectedPoint?.id, late.id)
+        XCTAssertEqual(model.playbackIndex, 1.5, accuracy: 0.000001)
+        model.togglePlayback()
+        model.advancePlayback(by: 0.4)
+        XCTAssertGreaterThan(model.playbackTime!, time!)
+    }
+
+    @MainActor func testRetentionIncreaseUsesFullSnapshotWithoutDuplicateIDsAndPreservesSelection() {
+        let now = Date()
+        let old = RecordedLocation(id: 1, timestamp: now.addingTimeInterval(-36 * 60 * 60), latitude: 45, longitude: -122)
+        let recent = RecordedLocation(id: 2, timestamp: now.addingTimeInterval(-2 * 60 * 60), latitude: 45.001, longitude: -122)
+        var hours = 24.0
+        var cursors = [Int64]()
+        let model = HistoryPlaybackModel(pointLoader: { after, completion in
+            cursors.append(after)
+            completion([old, recent, recent])
+        }, payloadLoader: { _, completion in completion([:]) }, retentionDuration: { hours * 60 * 60 })
+        model.setConsumerActive(true)
+        XCTAssertEqual(model.points.map(\.id), [recent.id])
+        model.select(0)
+        let selectedTime = model.playbackTime
+
+        hours = 72
+        model.retentionDidChange()
+
+        XCTAssertEqual(model.points.map(\.id), [old.id, recent.id])
+        XCTAssertEqual(Set(model.points.map(\.id)).count, model.points.count)
+        XCTAssertEqual(model.selectedPoint?.id, recent.id)
+        XCTAssertEqual(model.playbackTime, selectedTime)
+        XCTAssertEqual(model.renderPose?.position, 1)
+        XCTAssertEqual(model.renderPose?.coordinate, ReplayCoordinate(recent.coordinate))
+        XCTAssertEqual(cursors, [0, 0])
+    }
+
+    @MainActor func testRetentionSnapshotKeepsRulerAndRoutePoseTogetherWhenPointsArrive() {
+        let now = Date()
+        let old = RecordedLocation(id: 1, timestamp: now.addingTimeInterval(-36 * 3600), latitude: 45, longitude: -122)
+        let recent = RecordedLocation(id: 2, timestamp: now.addingTimeInterval(-2 * 3600), latitude: 45.001, longitude: -122)
+        let next = RecordedLocation(id: 3, timestamp: now.addingTimeInterval(-3600), latitude: 45.002, longitude: -122)
+        var samples = [old, recent, next]
+        var hours = 24.0
+        let model = HistoryPlaybackModel(pointLoader: { _, completion in completion(samples) },
+                                         payloadLoader: { _, completion in completion([:]) },
+                                         retentionDuration: { hours * 3600 })
+        model.setConsumerActive(true)
+        model.beginRulerInteraction()
+        model.scrub(rulerPosition: 1.5, liveEdge: now)
+        let coordinate = model.renderPose?.coordinate
+        let time = model.playbackTime
+        hours = 72
+        model.retentionDidChange()
+        samples.append(RecordedLocation(id: 4, timestamp: now, latitude: 45.003, longitude: -122))
+        model.endRulerInteraction()
+        XCTAssertEqual(model.points.count, 4)
+        XCTAssertEqual(model.renderPose?.coordinate, coordinate)
+        XCTAssertEqual(model.playbackTime, time)
+        XCTAssertEqual(model.renderPose?.position, 1.5)
+        XCTAssertEqual(model.rulerPosition, 2.5)
+        XCTAssertEqual(model.playbackIndex, 1.5)
+    }
+
+    @MainActor func testRetentionShrinkExpiresSelectedPointAndKeepsCurrentPolicy() {
+        let now = Date()
+        let old = RecordedLocation(id: 1, timestamp: now.addingTimeInterval(-36 * 60 * 60), latitude: 45, longitude: -122)
+        let recent = RecordedLocation(id: 2, timestamp: now.addingTimeInterval(-2 * 60 * 60), latitude: 45.001, longitude: -122)
+        var hours = 72.0
+        let model = HistoryPlaybackModel(pointLoader: { _, completion in completion([old, recent]) },
+                                         payloadLoader: { _, completion in completion([:]) },
+                                         retentionDuration: { hours * 60 * 60 })
+        model.setConsumerActive(true)
+        model.select(0)
+        hours = 24
+        model.retentionDidChange()
+
+        XCTAssertEqual(model.points.map(\.id), [recent.id])
+        XCTAssertEqual(model.selectedPoint?.id, recent.id)
+        XCTAssertEqual(model.rulerTime, recent.timestamp)
+        XCTAssertEqual(model.retentionInterval, 24.0 * 60 * 60, accuracy: 0.000001)
+    }
+
+    @MainActor func testRetentionChangeFiltersStaleInFlightResultsAndReloadsInactiveLater() {
+        let now = Date()
+        let old = RecordedLocation(id: 1, timestamp: now.addingTimeInterval(-36 * 60 * 60), latitude: 45, longitude: -122)
+        let recent = RecordedLocation(id: 2, timestamp: now.addingTimeInterval(-2 * 60 * 60), latitude: 45.001, longitude: -122)
+        var hours = 72.0
+        var pending = [(Int64, ([RecordedLocation]) -> Void)]()
+        let model = HistoryPlaybackModel(pointLoader: { after, completion in
+            pending.append((after, completion))
+        }, payloadLoader: { _, completion in completion([:]) }, retentionDuration: { hours * 60 * 60 })
+        model.setConsumerActive(true)
+        XCTAssertEqual(pending.map { $0.0 }, [0])
+        hours = 24
+        model.retentionDidChange()
+        pending[0].1([old, recent])
+        XCTAssertEqual(model.points.map(\.id), [recent.id])
+        XCTAssertEqual(pending.map { $0.0 }, [0, 0])
+        pending[1].1([old, recent])
+        XCTAssertEqual(model.points.map(\.id), [recent.id])
+
+        let inactive = HistoryPlaybackModel(pointLoader: { after, completion in
+            pending.append((after, completion))
+        }, payloadLoader: { _, completion in completion([:]) }, retentionDuration: { hours * 60 * 60 })
+        inactive.setConsumerActive(true)
+        inactive.setConsumerActive(false)
+        hours = 72
+        inactive.retentionDidChange()
+        let request = pending.removeLast()
+        request.1([old, recent])
+        XCTAssertTrue(inactive.points.isEmpty)
+        inactive.setConsumerActive(true)
+        XCTAssertFalse(pending.isEmpty)
+        pending.removeLast().1([old, recent])
+        XCTAssertEqual(inactive.points.map(\.id), [old.id, recent.id])
+    }
+
+    @MainActor func testReloadCoalescesWhileRulerDraggingAndPlayback() {
+        var points = locations(2)
+        var reads = 0
+        let model = HistoryPlaybackModel(pointLoader: { after, completion in
+            reads += 1
+            completion(points.filter { $0.id > after })
+        }, payloadLoader: { _, completion in completion([:]) })
+        model.setConsumerActive(true)
+        model.beginRulerInteraction()
+        points.append(RecordedLocation(id: 3, timestamp: Date(), latitude: 45.01, longitude: -122))
+        model.reload()
+        XCTAssertEqual(reads, 1)
+        model.endRulerInteraction()
+        XCTAssertEqual(reads, 2)
+
+        model.select(0)
+        model.togglePlayback()
+        points.append(RecordedLocation(id: 4, timestamp: Date(), latitude: 45.02, longitude: -122))
+        model.reload()
+        XCTAssertEqual(reads, 2)
+        model.pause()
+        XCTAssertEqual(reads, 3)
+        XCTAssertEqual(Set(model.points.map(\.id)).count, model.points.count)
+    }
+
+    @MainActor func testSevenDayRouteRetainsEveryPointAndReusesGeometryDuringInteraction() {
+        let count = 120_960
+        let now = Date()
+        let start = now.addingTimeInterval(-Double(count - 1) * 5)
+        var samples = (0..<count).map { index in
+            RecordedLocation(id: Int64(index + 1), timestamp: start.addingTimeInterval(Double(index) * 5),
+                             latitude: 45 + Double(index) * 0.0000001, longitude: -122)
+        }
+        var reads = 0
+        let model = HistoryPlaybackModel(pointLoader: { after, completion in
+            reads += 1
+            completion(samples.filter { $0.id > after })
+        }, payloadLoader: { _, completion in completion([:]) }, retentionDuration: { 7 * 24 * 3600 })
+        model.setConsumerActive(true)
+        model.scrub(pointAt: count / 2)
+        let route = model.routeGeometry!
+        XCTAssertEqual(route.coordinates.count, count)
+        XCTAssertEqual(route.coordinates.first?.latitude, samples.first?.latitude)
+        XCTAssertEqual(route.coordinates.last?.latitude, samples.last?.latitude)
+        model.beginRulerInteraction()
+        samples.append(RecordedLocation(id: Int64(count + 1), timestamp: Date(), latitude: 45.02, longitude: -122))
+        for position in 1...60 {
+            model.reload()
+            model.scrub(rulerPosition: Double(position * 100), liveEdge: now)
+            XCTAssertTrue(model.routeGeometry === route)
+        }
+        XCTAssertEqual(reads, 1)
+        model.endRulerInteraction()
+        XCTAssertEqual(reads, 2)
+        XCTAssertEqual(model.points.count, count + 1)
+        XCTAssertEqual(model.routeGeometry?.coordinates.count, count + 1)
+    }
+
+    @MainActor func testReplayStopsAndCannotRestartWhileConsumerIsInactive() {
+        let (model, _) = replay(at: [0, 60, 120])
+        model.togglePlayback()
+        model.advancePlayback(by: 0.1)
+        let time = model.playbackTime
+        model.setConsumerActive(false)
+        model.togglePlayback()
+        model.advancePlayback(by: 10)
+        XCTAssertFalse(model.isPlaying)
+        XCTAssertEqual(model.playbackTime, time)
+    }
+
+    @MainActor private func replay(at intervals: [TimeInterval]) -> (HistoryPlaybackModel, [RecordedLocation]) {
+        let start = Date().addingTimeInterval(-12 * 60 * 60)
+        let points = intervals.enumerated().map { index, interval in
+            RecordedLocation(id: Int64(index + 1), timestamp: start.addingTimeInterval(interval),
+                             latitude: 45 + Double(index) * 0.0001, longitude: -122)
+        }
+        let model = HistoryPlaybackModel(pointLoader: { _, completion in completion(points) },
+                                         payloadLoader: { ids, completion in completion(self.payloads(ids)) })
+        model.setConsumerActive(true)
+        return (model, points)
+    }
+
+    private func locations(_ count: Int) -> [RecordedLocation] {
+        let start = Date().addingTimeInterval(-1_000)
+        return (0..<count).map {
+            RecordedLocation(id: Int64($0 + 1), timestamp: start.addingTimeInterval(Double($0)),
+                             latitude: 45 + Double($0) * 0.0001, longitude: -122)
+        }
+    }
+
+    @MainActor func testReplayAccuracyInterpolatesRecordedValuesAndClearsOnLive() {
+        let points = locations(3)
+        let model = HistoryPlaybackModel(pointLoader: { _, completion in completion(points) },
+                                         payloadLoader: { ids, completion in
+            completion(Dictionary(uniqueKeysWithValues: ids.map { id in
+                (id, RecordedPayload(format: "GeoJSON", speed: nil, accuracy: Double(id) * 10,
+                                     altitude: nil, device: nil, battery: nil, rawJSON: Data()))
+            }))
+        })
+        model.setConsumerActive(true)
+        model.beginRulerInteraction()
+        model.scrub(rulerPosition: Double(points.count) - 0.5, liveEdge: Date())
+        model.endRulerInteraction()
+        XCTAssertEqual(model.playbackAccuracy!, 15, accuracy: 0.000001)
+        model.select(1)
+        XCTAssertEqual(model.playbackAccuracy!, 20, accuracy: 0.000001)
+        model.returnToLive()
+        XCTAssertNil(model.playbackAccuracy)
+    }
+
+    @MainActor func testReplayDoesNotInventAccuracyForMissingOrInvalidRecords() {
+        let points = locations(3)
+        let model = HistoryPlaybackModel(pointLoader: { _, completion in completion(points) },
+                                         payloadLoader: { ids, completion in
+            completion(Dictionary(uniqueKeysWithValues: ids.map { id in
+                (id, RecordedPayload(format: "GeoJSON", speed: nil, accuracy: id == 1 ? nil : -1,
+                                     altitude: nil, device: nil, battery: nil, rawJSON: Data()))
+            }))
+        })
+        model.setConsumerActive(true)
+        for index in 0..<3 {
+            model.select(index)
+            XCTAssertNil(model.playbackAccuracy)
+        }
+    }
+
+    private func payloads(_ ids: [Int64]) -> [Int64: RecordedPayload] {
+        Dictionary(uniqueKeysWithValues: ids.map { id in
+            (id, RecordedPayload(format: "GeoJSON", speed: 2, accuracy: 5, altitude: 10,
+                                 device: "device-\(id)", battery: "50%", rawJSON: Data("{}".utf8)))
+        })
+    }
+}

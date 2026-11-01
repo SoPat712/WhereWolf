@@ -1,8 +1,12 @@
 import SwiftUI
 import UIKit
 
-final class MapControlPanelController: UIViewController, UIGestureRecognizerDelegate {
-    var onTopChange: ((CGFloat) -> Void)?
+// A Find My style drawer: one glass sheet whose bottom holds the tab strip. Collapsed, the
+// sheet is just the tab capsule; expanded, the tabs float in their own capsule under the content.
+final class MapControlPanelController: UIViewController, UIGestureRecognizerDelegate, UIScrollViewDelegate {
+    var onCollapsedTopChange: ((CGFloat) -> Void)?
+    var onPresentedTopChange: ((CGFloat) -> Void)?
+    var animationClock: (() -> CFTimeInterval)?
     enum Position: String {
         case collapsed = "Collapsed"
         case expanded = "Expanded"
@@ -12,43 +16,84 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
     private let grabber = AdjustablePanelGrabber(frame: .zero)
     private let grabberMark = UIView(frame: .zero)
     private let scrollView = UIScrollView(frame: .zero)
-    private let reservedTabRegion = UIView(frame: .zero)
+    private let tabsContainer = UIView(frame: .zero)
+    private let tabsBackground = UIVisualEffectView(effect: nil)
     private let controlsHost: UIHostingController<AnyView>
+    private var hostContentHeightConstraint: NSLayoutConstraint!
+    private let tabsHost: UIHostingController<AnyView>
     private var panelBottomConstraint: NSLayoutConstraint!
     private var panelHeightConstraint: NSLayoutConstraint!
     private var panelWidthConstraint: NSLayoutConstraint!
+    private var grabberHeightConstraint: NSLayoutConstraint!
     private var controlsHeightConstraint: NSLayoutConstraint!
     private var controlsWidthConstraint: NSLayoutConstraint!
-    private var reservedHeightConstraint: NSLayoutConstraint!
-    private var settleAnimator: UIViewPropertyAnimator?
-    private var topDisplayLink: CADisplayLink?
+    private var tabsHeightConstraint: NSLayoutConstraint!
+    private var tabsTopConstraint: NSLayoutConstraint!
+    private var tabsBottomConstraint: NSLayoutConstraint!
+    private var drawerPan: UIPanGestureRecognizer!
+    private struct Settle {
+        let start: CFTimeInterval
+        let height: CGFloat
+        let velocity: CGFloat
+        let target: CGFloat
+        let frequency: CGFloat
+        let damping: CGFloat
+        let resizesContent: Bool
+    }
+    private var spring: Settle?
+    private var tabsWidthConstraint: NSLayoutConstraint!
     private var measurementScheduled = false
-    private var animationGeneration = 0
+    private var measurementNeeded = true
+    private var measuredWidth: CGFloat = 0
     private var dragOriginHeight: CGFloat = 0
+    private var dragOriginOffset: CGFloat = 0
+    private var dragStartsInScroll = false
+    private var updatingDrag = false
+    private var drawerOwnsDrag = false
+#if targetEnvironment(simulator)
+    private var dragSamples: [[String: Double]] = []
+    private var settleSamples: [[String: Double]] = []
+    private let usesAuditClock = ProcessInfo.processInfo.environment["OVERLAND_UI_AUDIT"] == "1"
+    private var auditTime: CFTimeInterval = 0
+#endif
     private var isDragging = false
+    private var contentEnabled = true
+    private var contentInteracting = false
     private var position = Position.expanded
+    private var controlsRevision = 0
+    private var controlsContentHeight: CGFloat = 0
     private var measuredContentHeight: CGFloat = 0
-    private var lastLayoutDiagnostic: String?
+    private var measuredTabsHeight: CGFloat = 60
+    private var topDisplayLink: CADisplayLink?
+    private var lastPresentedTop: CGFloat = -.greatestFiniteMagnitude
     private var lastReportedTop: CGFloat = -.greatestFiniteMagnitude
 
-    private let grabberHeight: CGFloat = 28
+    private let grabberHeight: CGFloat = 12
     private let minimumTopClearance: CGFloat = 24
-    private let compactPanelTargetWidth: CGFloat = 272
-    private let nativeBarOverlap: CGFloat = 9
-    private let maximumExpandedWidth: CGFloat = 620
-    private let viewportMargin: CGFloat = 12
-    private let maximumBottomInset: CGFloat = 18
-    private let contentTopPadding: CGFloat = 8
-    private let contentBottomPadding: CGFloat = 14
+    private let maximumWidth: CGFloat = 620
+    private let collapsedWidthRatio: CGFloat = 0.85
+    private let expandedWidthRatio: CGFloat = 0.95
+    private let tabsInset: CGFloat = 12
+    private let tabsBottomInset: CGFloat = 6
+    private let expandedCornerRadius: CGFloat = 46
+    private let contentTopPadding: CGFloat = 4
+    private let contentBottomPadding: CGFloat = 6
 
-    init(controls: AnyView) {
-        controlsHost = UIHostingController(rootView: controls)
+    init(controls: AnyView, tabs: AnyView) {
+        controlsHost = UIHostingController(rootView: AnyView(EmptyView()))
+        tabsHost = UIHostingController(rootView: tabs)
         if #available(iOS 26.0, *) {
-            effectView = UIVisualEffectView(effect: UIGlassEffect(style: .regular))
+            let glass = UIGlassEffect(style: .regular)
+            glass.isInteractive = true
+            effectView = UIVisualEffectView(effect: glass)
         } else {
             effectView = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterial))
         }
         super.init(nibName: nil, bundle: nil)
+#if targetEnvironment(simulator)
+        if usesAuditClock { animationClock = { [weak self] in self?.auditTime ?? 0 } }
+#endif
+        setControls(controls)
     }
 
     @available(*, unavailable)
@@ -58,52 +103,107 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
 
     override func loadView() {
         view = PanelPassthroughView(frame: .zero)
+        view.backgroundColor = .clear
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
         configurePanel()
-        configureControlsHost()
+        configureHost(controlsHost, in: scrollView)
+        configureTabs()
+#if targetEnvironment(simulator)
+        let audit = PanelGeometryAuditView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
+        audit.isAccessibilityElement = true
+        audit.accessibilityLabel = "Drawer geometry"
+        audit.isUserInteractionEnabled = false
+        audit.value = { [weak self] in self?.geometryAuditValue() ?? "" }
+        view.addSubview(audit)
+#endif
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        updateMeasuredContentHeight()
-        updatePanelMetrics(preservePresentedHeight: isDragging || settleAnimator?.state == .active)
+        let waitingForMeasurement = measurementScheduled && measuredWidth > 0
+        if !isDragging && spring == nil && !contentInteracting && !waitingForMeasurement,
+           measurementNeeded || abs(measuredWidth - view.bounds.width) > 0.5 {
+            updateMeasuredHeights()
+        }
+        updatePanelMetrics(preservePresentedHeight: isDragging || spring != nil || contentInteracting || waitingForMeasurement)
+        reportCollapsedTop()
         reportPanelTop()
-    }
-
-    deinit {
-        topDisplayLink?.invalidate()
     }
 
     override func preferredContentSizeDidChange(forChildContentContainer container: UIContentContainer) {
         super.preferredContentSizeDidChange(forChildContentContainer: container)
-        guard container === controlsHost else { return }
+        guard container === controlsHost || container === tabsHost else { return }
         scheduleMeasurement()
     }
 
-    func update(controls: AnyView) {
+    func update(controls: AnyView, tabs: AnyView) {
         loadViewIfNeeded()
-        controlsHost.rootView = controls
-        controlsHost.view.invalidateIntrinsicContentSize()
+        _ = freezePresentationGeometry()
+        isDragging = false
+        contentInteracting = false
+        scrollView.setContentOffset(.zero, animated: false)
+        setControls(controls)
+        tabsHost.rootView = tabs
+        controlsHost.view.setNeedsLayout()
         scheduleMeasurement()
-    }
-
-    func refreshPanelTop() {
-        lastReportedTop = -.greatestFiniteMagnitude
-        if isViewLoaded { reportPanelTop() }
+        controlsHost.view.layoutIfNeeded()
     }
 
     func expand() {
         loadViewIfNeeded()
-        guard position != .expanded || settleAnimator != nil || isDragging else { return }
-        guard view.bounds.width > 0, view.bounds.height > 0 else {
-            position = .expanded
-            grabber.accessibilityValue = position.rawValue
+        guard contentEnabled, position != .expanded || spring != nil || isDragging else { return }
+        settle(to: .expanded)
+    }
+
+    func setContentEnabled(_ enabled: Bool) {
+        loadViewIfNeeded()
+        guard enabled != contentEnabled else { return }
+        settle(to: enabled ? .expanded : .collapsed, force: true, contentEnabled: enabled)
+    }
+
+    func setContentInteracting(_ interacting: Bool) {
+        guard interacting != contentInteracting else { return }
+        contentInteracting = interacting
+        if interacting {
+            _ = freezePresentationGeometry()
             return
         }
-        settle(to: .expanded)
+        guard !isDragging, spring == nil, view.bounds.width > 0 else {
+            scheduleMeasurement()
+            return
+        }
+        updateMeasuredHeights()
+        let values = detents()
+        let target = position == .expanded ? values.expanded : values.collapsed
+        if abs(panelHeightConstraint.constant - target) > 0.5 {
+            settle(to: position, force: true, resizesContent: position == .expanded)
+        } else {
+            view.setNeedsLayout()
+        }
+    }
+
+    // MARK: - Layout
+
+    private func setControls(_ controls: AnyView) {
+        controlsRevision += 1
+        let revision = controlsRevision
+        controlsHost.rootView = AnyView(
+            controls
+                .fixedSize(horizontal: false, vertical: true)
+                .onGeometryChange(for: CGFloat.self) { proxy in
+                    ceil(proxy.size.height)
+                } action: { [weak self] height in
+                    guard let self, revision == controlsRevision, height.isFinite, height > 0,
+                          abs(height - controlsContentHeight) > 0.5 else { return }
+                    controlsContentHeight = height
+                    scheduleMeasurement()
+                }
+                // Keep the controls at the top even before UIKit adopts their new height.
+                .frame(maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .top)
+        )
     }
 
     private func configurePanel() {
@@ -111,10 +211,12 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
         effectView.clipsToBounds = true
         effectView.layer.cornerCurve = .continuous
         view.addSubview(effectView)
+        (view as? PanelPassthroughView)?.sheet = effectView
+        (view as? PanelPassthroughView)?.grabber = grabber
 
         panelBottomConstraint = effectView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         panelHeightConstraint = effectView.heightAnchor.constraint(equalToConstant: 300)
-        panelWidthConstraint = effectView.widthAnchor.constraint(equalToConstant: compactPanelTargetWidth)
+        panelWidthConstraint = effectView.widthAnchor.constraint(equalToConstant: 360)
         NSLayoutConstraint.activate([
             effectView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             panelBottomConstraint,
@@ -137,215 +239,321 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
 
         grabberMark.translatesAutoresizingMaskIntoConstraints = false
         grabberMark.backgroundColor = .tertiaryLabel
-        grabberMark.layer.cornerRadius = 2.5
+        grabberMark.layer.cornerRadius = 3
         grabberMark.isUserInteractionEnabled = false
+        grabberMark.accessibilityIdentifier = "overland.panel.grabber-mark"
         grabber.addSubview(grabberMark)
 
         scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.bounces = false
         scrollView.alwaysBounceVertical = false
         scrollView.alwaysBounceHorizontal = false
         scrollView.showsVerticalScrollIndicator = true
+        scrollView.delegate = self
+        scrollView.contentInsetAdjustmentBehavior = .never
         content.addSubview(scrollView)
 
-        reservedTabRegion.translatesAutoresizingMaskIntoConstraints = false
-        reservedTabRegion.isUserInteractionEnabled = false
-        content.addSubview(reservedTabRegion)
+        tabsContainer.translatesAutoresizingMaskIntoConstraints = false
+        tabsContainer.accessibilityIdentifier = "overland.panel.tabs"
+        content.addSubview(tabsContainer)
 
+        grabberHeightConstraint = grabber.heightAnchor.constraint(equalToConstant: grabberHeight)
         controlsHeightConstraint = scrollView.heightAnchor.constraint(equalToConstant: 0)
-        reservedHeightConstraint = reservedTabRegion.heightAnchor.constraint(equalToConstant: 0)
+        tabsHeightConstraint = tabsContainer.heightAnchor.constraint(equalToConstant: measuredTabsHeight)
+        tabsTopConstraint = tabsContainer.topAnchor.constraint(equalTo: scrollView.bottomAnchor)
+        tabsBottomConstraint = tabsContainer.bottomAnchor.constraint(equalTo: content.bottomAnchor,
+                                                                    constant: -tabsBottomInset)
         NSLayoutConstraint.activate([
             grabber.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             grabber.trailingAnchor.constraint(equalTo: content.trailingAnchor),
             grabber.topAnchor.constraint(equalTo: content.topAnchor),
-            grabber.heightAnchor.constraint(equalToConstant: grabberHeight),
+            grabberHeightConstraint,
 
             grabberMark.centerXAnchor.constraint(equalTo: grabber.centerXAnchor),
-            grabberMark.centerYAnchor.constraint(equalTo: grabber.topAnchor, constant: 8.5),
-            grabberMark.widthAnchor.constraint(equalToConstant: 42),
-            grabberMark.heightAnchor.constraint(equalToConstant: 5),
+            grabberMark.centerYAnchor.constraint(equalTo: grabber.centerYAnchor),
+            grabberMark.widthAnchor.constraint(equalToConstant: 48),
+            grabberMark.heightAnchor.constraint(equalToConstant: 6),
 
             scrollView.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: content.trailingAnchor),
             scrollView.topAnchor.constraint(equalTo: grabber.bottomAnchor),
             controlsHeightConstraint,
 
-            reservedTabRegion.leadingAnchor.constraint(equalTo: content.leadingAnchor),
-            reservedTabRegion.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            reservedTabRegion.topAnchor.constraint(equalTo: scrollView.bottomAnchor),
-            reservedTabRegion.bottomAnchor.constraint(equalTo: content.bottomAnchor),
-            reservedHeightConstraint,
+            tabsContainer.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: tabsInset),
+            tabsContainer.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -tabsInset),
+            tabsTopConstraint,
+            tabsBottomConstraint,
+            tabsHeightConstraint,
         ])
 
-        let pan = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
-        pan.delegate = self
-        grabber.addGestureRecognizer(pan)
+        drawerPan = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
+        drawerPan.delegate = self
+        effectView.addGestureRecognizer(drawerPan)
     }
 
-    private func configureControlsHost() {
-        controlsHost.safeAreaRegions = []
-        addChild(controlsHost)
-        controlsHost.view.translatesAutoresizingMaskIntoConstraints = false
-        controlsHost.view.backgroundColor = .clear
-        controlsHost.view.isOpaque = false
-        controlsHost.sizingOptions = [.intrinsicContentSize, .preferredContentSize]
-        scrollView.addSubview(controlsHost.view)
-        controlsWidthConstraint = controlsHost.view.widthAnchor.constraint(equalToConstant: maximumExpandedWidth)
+    private func configureTabs() {
+        tabsBackground.translatesAutoresizingMaskIntoConstraints = false
+        tabsBackground.clipsToBounds = true
+        tabsBackground.layer.cornerCurve = .continuous
+        tabsBackground.isUserInteractionEnabled = false
+        tabsContainer.addSubview(tabsBackground)
         NSLayoutConstraint.activate([
-            controlsHost.view.centerXAnchor.constraint(equalTo: scrollView.frameLayoutGuide.centerXAnchor),
-            controlsHost.view.topAnchor.constraint(
-                equalTo: scrollView.contentLayoutGuide.topAnchor,
-                constant: contentTopPadding
-            ),
-            controlsHost.view.bottomAnchor.constraint(
-                equalTo: scrollView.contentLayoutGuide.bottomAnchor,
-                constant: -(contentBottomPadding + nativeBarOverlap)
-            ),
+            tabsBackground.leadingAnchor.constraint(equalTo: tabsContainer.leadingAnchor),
+            tabsBackground.trailingAnchor.constraint(equalTo: tabsContainer.trailingAnchor),
+            tabsBackground.topAnchor.constraint(equalTo: tabsContainer.topAnchor),
+            tabsBackground.bottomAnchor.constraint(equalTo: tabsContainer.bottomAnchor),
+        ])
+
+        tabsHost.safeAreaRegions = []
+        tabsHost.sizingOptions = [.preferredContentSize]
+        addChild(tabsHost)
+        tabsHost.view.translatesAutoresizingMaskIntoConstraints = false
+        tabsHost.view.backgroundColor = .clear
+        tabsHost.view.isOpaque = false
+        tabsContainer.addSubview(tabsHost.view)
+        tabsWidthConstraint = tabsHost.view.widthAnchor.constraint(equalToConstant: 320)
+        NSLayoutConstraint.activate([
+            tabsHost.view.centerXAnchor.constraint(equalTo: tabsContainer.centerXAnchor),
+            tabsWidthConstraint,
+            tabsHost.view.topAnchor.constraint(equalTo: tabsContainer.topAnchor),
+            tabsHost.view.bottomAnchor.constraint(equalTo: tabsContainer.bottomAnchor),
+        ])
+        tabsHost.didMove(toParent: self)
+        if #available(iOS 26.0, *) {
+            tabsBackground.effect = UIGlassEffect(style: .regular)
+        } else {
+            tabsBackground.effect = UIBlurEffect(style: .systemThinMaterial)
+        }
+    }
+
+    private func configureHost(_ host: UIHostingController<AnyView>, in scrollView: UIScrollView) {
+        host.safeAreaRegions = []
+        addChild(host)
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        host.view.backgroundColor = .clear
+        host.view.isOpaque = false
+        host.sizingOptions = []
+        scrollView.addSubview(host.view)
+        controlsWidthConstraint = host.view.widthAnchor.constraint(equalToConstant: maximumWidth)
+        hostContentHeightConstraint = host.view.heightAnchor.constraint(equalToConstant: 1)
+        NSLayoutConstraint.activate([
+            host.view.centerXAnchor.constraint(equalTo: scrollView.frameLayoutGuide.centerXAnchor),
+            host.view.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor,
+                                           constant: contentTopPadding),
+            host.view.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor,
+                                              constant: -contentBottomPadding),
             controlsWidthConstraint,
+            hostContentHeightConstraint,
             scrollView.contentLayoutGuide.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor),
         ])
-        controlsHost.didMove(toParent: self)
+        host.didMove(toParent: self)
     }
 
     private func scheduleMeasurement() {
-        guard !measurementScheduled else { return }
+        measurementNeeded = true
+        guard !measurementScheduled, !isDragging, !contentInteracting else { return }
         measurementScheduled = true
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             measurementScheduled = false
+            if !isDragging, !contentInteracting, measuredWidth > 0 {
+                updateMeasuredHeights()
+                let values = detents()
+                let target = position == .expanded ? values.expanded : values.collapsed
+                // Repeated measurements must not restart a spring already heading to this target.
+                if abs((spring?.target ?? panelHeightConstraint.constant) - target) > 0.5 {
+                    settle(to: position, force: true, resizesContent: position == .expanded)
+                    return
+                }
+            }
             view.setNeedsLayout()
             view.layoutIfNeeded()
         }
     }
 
-    private func updateMeasuredContentHeight() {
+    private func updateMeasuredHeights() {
         guard view.bounds.width > 0 else { return }
-        let fittingWidth = expandedWidth()
-        controlsWidthConstraint.constant = fittingWidth
-        let fitting = controlsHost.sizeThatFits(
-            in: CGSize(width: fittingWidth, height: CGFloat.greatestFiniteMagnitude)
-        )
-        let height = ceil(fitting.height + contentTopPadding + contentBottomPadding + nativeBarOverlap)
-        guard height.isFinite, abs(height - measuredContentHeight) > 0.5 else { return }
-        measuredContentHeight = height
-    }
+        measurementNeeded = false
+        measuredWidth = view.bounds.width
+        let width = expandedWidth()
+        controlsWidthConstraint.constant = width
+        tabsWidthConstraint.constant = max(1, collapsedWidth() - tabsInset * 2)
+        hostContentHeightConstraint.constant = max(1, controlsContentHeight)
+        let height = controlsContentHeight + contentTopPadding + contentBottomPadding
+        if height.isFinite, abs(height - measuredContentHeight) > 0.5 { measuredContentHeight = height }
 
-    private func windowBottomInset() -> CGFloat {
-        view.window?.safeAreaInsets.bottom ?? view.safeAreaInsets.bottom
+        let tabs = tabsHost.sizeThatFits(in: CGSize(width: collapsedWidth() - tabsInset * 2,
+                                                    height: .greatestFiniteMagnitude))
+        let tabsHeight = ceil(tabs.height)
+        if tabsHeight.isFinite, tabsHeight > 0, abs(tabsHeight - measuredTabsHeight) > 0.5 {
+            measuredTabsHeight = tabsHeight
+            tabsHeightConstraint.constant = tabsHeight
+        }
+        tabsBackground.layer.cornerRadius = measuredTabsHeight / 2
     }
 
     private func panelBottomInset() -> CGFloat {
-        min(maximumBottomInset, windowBottomInset())
+        let safeBottom = view.window?.safeAreaInsets.bottom ?? view.safeAreaInsets.bottom
+        return safeBottom > 0 ? max(10, safeBottom - 24) : 8
     }
 
-    private func nativeTabReservedHeight() -> CGFloat {
-        let safeBottom = windowBottomInset()
-        if #available(iOS 26.0, *), let tabs = tabBarController {
-            let frame = tabs.contentLayoutGuide.layoutFrame
-            if frame.width > 0, frame.height > 0, frame.maxY > 0 {
-                let surface = max(0, tabs.view.bounds.maxY - safeBottom - frame.maxY)
-                return surface + safeBottom
-            }
-            return max(max(tabs.tabBar.bounds.height, safeBottom), 49)
-        }
-
-        let inheritedBottom = view.safeAreaInsets.bottom
-        let tabSurface = max(0, inheritedBottom - safeBottom)
-        if tabSurface > 0 { return tabSurface + safeBottom }
-        return max(tabBarController?.tabBar.bounds.height ?? 49, safeBottom)
+    private func expandedWidth() -> CGFloat {
+        max(1, min(maximumWidth, (view.bounds.width * expandedWidthRatio).rounded()))
     }
 
-    private func panelTabRegionHeight() -> CGFloat {
-        max(0, nativeTabReservedHeight() - panelBottomInset() - nativeBarOverlap)
+    private func collapsedWidth() -> CGFloat {
+        min(expandedWidth(), (view.bounds.width * collapsedWidthRatio).rounded())
+    }
+
+    // The drawer widens with the drag, from a compact tab capsule to a near full-width sheet.
+    private func width(for height: CGFloat,
+                       detents: (collapsed: CGFloat, expanded: CGFloat, content: CGFloat)) -> CGFloat {
+        let fraction = detents.content > 0 ? progress(for: height, detents: detents) : 0
+        return collapsedWidth() + (expandedWidth() - collapsedWidth()) * fraction
     }
 
     private func detents() -> (collapsed: CGFloat, expanded: CGFloat, content: CGFloat) {
-        let collapsed = grabberHeight + panelTabRegionHeight()
-        let availableBottom = view.bounds.height - panelBottomInset()
+        let collapsed = (contentEnabled ? grabberHeight : 0) + measuredTabsHeight + tabsBottomInset
         let capacity = max(
             0,
-            availableBottom - view.safeAreaInsets.top - minimumTopClearance - collapsed
+            view.bounds.height - panelBottomInset() - view.safeAreaInsets.top - minimumTopClearance - collapsed
         )
-        let content = min(measuredContentHeight, capacity)
+        let content = contentEnabled ? min(measuredContentHeight, capacity) : 0
         return (collapsed, collapsed + content, content)
+    }
+
+    private func progress(for height: CGFloat,
+                          detents: (collapsed: CGFloat, expanded: CGFloat, content: CGFloat)) -> CGFloat {
+        let travel = max(1, detents.expanded - detents.collapsed)
+        return (height - detents.collapsed) / travel
+    }
+
+    private func cornerRadius(for height: CGFloat,
+                              detents: (collapsed: CGFloat, expanded: CGFloat, content: CGFloat)) -> CGFloat {
+        let collapsedRadius = detents.collapsed / 2
+        let fraction = detents.content > 0 ? progress(for: height, detents: detents) : 0
+        return collapsedRadius + (expandedCornerRadius - collapsedRadius) * fraction
     }
 
     private func updatePanelMetrics(preservePresentedHeight: Bool) {
         guard view.bounds.width > 0, panelHeightConstraint != nil else { return }
         let values = detents()
-        let bottomInset = panelBottomInset()
-        let reserved = panelTabRegionHeight()
-        panelBottomConstraint.constant = -bottomInset
-        reservedHeightConstraint.constant = reserved
-        controlsWidthConstraint.constant = expandedWidth()
-        controlsHeightConstraint.constant = preservePresentedHeight
-            ? min(values.content, max(0, panelHeightConstraint.constant - values.collapsed))
-            : (position == .expanded ? values.content : 0)
-
-        let overflow = measuredContentHeight > values.content + 0.5
-        scrollView.isScrollEnabled = position == .expanded && overflow
-        scrollView.accessibilityElementsHidden = position == .collapsed
-        scrollView.isUserInteractionEnabled = position == .expanded
-
-        let targetHeight = position == .expanded ? values.expanded : values.collapsed
-        if !preservePresentedHeight { panelHeightConstraint.constant = targetHeight }
-        panelWidthConstraint.constant = width(for: panelHeightConstraint.constant, detents: values)
-        effectView.layer.cornerRadius = cornerRadius(for: panelHeightConstraint.constant, detents: values)
-
-        let diagnostic = String(
-            format: "position=%@ panel=%.1fx%.1f bottom=%.1f tabRegion=%.1f measured=%.1f visible=%.1f scroll=%@",
-            position.rawValue, panelWidthConstraint.constant, panelHeightConstraint.constant,
-            bottomInset, reserved, measuredContentHeight, values.content, overflow ? "yes" : "no"
-        )
-        if !preservePresentedHeight, diagnostic != lastLayoutDiagnostic {
-            lastLayoutDiagnostic = diagnostic
-            NSLog("Overland panel %@", diagnostic)
+        panelBottomConstraint.constant = -panelBottomInset()
+        updateContentSpacing()
+        let overflows = measuredContentHeight > values.content + 0.5
+        scrollView.isScrollEnabled = contentEnabled && position == .expanded && overflows
+        scrollView.showsVerticalScrollIndicator = scrollView.isScrollEnabled
+        if !scrollView.isScrollEnabled, scrollView.contentOffset != .zero {
+            scrollView.setContentOffset(.zero, animated: false)
         }
+        scrollView.accessibilityElementsHidden = position == .collapsed
+        scrollView.isUserInteractionEnabled = contentEnabled
+        if !preservePresentedHeight {
+            panelHeightConstraint.constant = position == .expanded ? values.expanded : values.collapsed
+        }
+        applyProgress(height: panelHeightConstraint.constant, detents: values)
     }
 
-    private func compactWidth() -> CGFloat {
-        max(1, min(compactPanelTargetWidth, view.bounds.width - viewportMargin * 2))
+    // The hosting view keeps its layout width; only its transform follows the sheet.
+    private func applyProgress(height: CGFloat,
+                               detents: (collapsed: CGFloat, expanded: CGFloat, content: CGFloat)) {
+        let fraction = detents.content > 0 ? progress(for: height, detents: detents) : 0
+        let resizesContent = spring?.resizesContent == true
+        let alpha = resizesContent ? 1 : min(1, max(0, fraction))
+        panelHeightConstraint.constant = height
+        panelWidthConstraint.constant = resizesContent ? expandedWidth() : width(for: height, detents: detents)
+        controlsHeightConstraint.constant = max(0, height - detents.collapsed)
+        tabsTopConstraint.constant = min(0, height - detents.collapsed)
+        effectView.layer.cornerRadius = resizesContent ? expandedCornerRadius : cornerRadius(for: height, detents: detents)
+        tabsBackground.alpha = alpha
+        scrollView.alpha = alpha
+        let scale = (panelWidthConstraint.constant - tabsInset * 2) / max(1, tabsWidthConstraint.constant)
+        tabsHost.view.transform = CGAffineTransform(scaleX: scale, y: 1)
     }
 
-    private func expandedWidth() -> CGFloat {
-        max(compactWidth(), max(1, min(maximumExpandedWidth, view.bounds.width - viewportMargin * 2)))
-    }
-
-    private func width(for height: CGFloat,
-                       detents: (collapsed: CGFloat, expanded: CGFloat, content: CGFloat)) -> CGFloat {
-        let travel = max(1, detents.expanded - detents.collapsed)
-        let progress = min(1, max(0, (height - detents.collapsed) / travel))
-        return compactWidth() + (expandedWidth() - compactWidth()) * progress
-    }
-
-    private func cornerRadius(for height: CGFloat,
-                              detents: (collapsed: CGFloat, expanded: CGFloat, content: CGFloat)) -> CGFloat {
-        let collapsedRadius = min(detents.collapsed / 2, compactWidth() / 2)
-        let travel = max(1, detents.expanded - detents.collapsed)
-        let progress = min(1, max(0, (height - detents.collapsed) / travel))
-        return collapsedRadius + (30 - collapsedRadius) * progress
-    }
+    // MARK: - Dragging
 
     @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
+        guard contentEnabled else { return }
         let values = detents()
         switch gesture.state {
         case .began:
-            animationGeneration += 1
             isDragging = true
             let displayed = freezePresentationGeometry()
-            dragOriginHeight = min(values.expanded, max(values.collapsed, displayed))
-            applyInteractiveHeight(dragOriginHeight, detents: values)
+            dragOriginHeight = displayed
+            drawerOwnsDrag = dragOriginHeight < values.expanded - 0.5
+#if targetEnvironment(simulator)
+            dragSamples.removeAll(keepingCapacity: true)
+#endif
+            updateDrag()
         case .changed:
-            let proposed = dragOriginHeight - gesture.translation(in: view).y
-            applyInteractiveHeight(min(values.expanded, max(values.collapsed, proposed)), detents: values)
+            updateDrag()
         case .ended, .cancelled, .failed:
+            updateDrag()
             isDragging = false
-            let midpoint = (values.collapsed + values.expanded) / 2
-            settle(
-                to: panelHeightConstraint.constant >= midpoint ? .expanded : .collapsed,
-                force: true
-            )
+            if !drawerOwnsDrag {
+                position = .expanded
+                grabber.accessibilityValue = position.rawValue
+                updatePanelMetrics(preservePresentedHeight: false)
+                return
+            }
+            let velocity = gesture.velocity(in: view).y
+            let target: Position
+            if abs(velocity) > 500 {
+                target = velocity < 0 ? .expanded : .collapsed
+            } else {
+                target = panelHeightConstraint.constant >= (values.collapsed + values.expanded) / 2
+                    ? .expanded : .collapsed
+            }
+            settle(to: target, force: true, velocity: -velocity)
         default:
             break
+        }
+    }
+
+    private func updateDrag() {
+        guard isDragging, !updatingDrag else { return }
+        updatingDrag = true
+        defer { updatingDrag = false }
+        let values = detents()
+        let translation = drawerPan.translation(in: view).y
+        // A single travel budget crosses the scroll top without resetting either pan.
+        let travel = dragOriginHeight - values.expanded
+            + (dragStartsInScroll ? dragOriginOffset : 0) - translation
+        let height = min(max(values.expanded, dragOriginHeight),
+                         max(min(values.collapsed, dragOriginHeight), values.expanded + travel))
+        drawerOwnsDrag = height < values.expanded - 0.5
+        if abs(panelHeightConstraint.constant - height) > 0.01 {
+            applyInteractiveHeight(height, detents: values)
+        }
+        if dragStartsInScroll || drawerOwnsDrag {
+            let top = -scrollView.adjustedContentInset.top
+            let maxOffset = scrollView.isScrollEnabled
+                ? max(0, scrollView.contentSize.height - scrollView.bounds.height) : 0
+            let offset = dragStartsInScroll ? min(maxOffset, max(0, travel)) : 0
+            if abs(scrollView.contentOffset.y - (top + offset)) > 0.01 {
+                scrollView.contentOffset.y = top + offset
+            }
+        }
+#if targetEnvironment(simulator)
+        let now = CACurrentMediaTime()
+        if now - (dragSamples.last?["time"] ?? 0) >= 0.025 {
+            dragSamples.append(["time": now, "height": height,
+                                "offset": scrollView.contentOffset.y, "translation": translation,
+                                "width": panelWidthConstraint.constant])
+            if dragSamples.count > 400 { dragSamples.removeFirst() }
+        }
+#endif
+    }
+
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        if isDragging { updateDrag() }
+    }
+
+    func scrollViewWillEndDragging(_ scrollView: UIScrollView, withVelocity velocity: CGPoint,
+                                  targetContentOffset: UnsafeMutablePointer<CGPoint>) {
+        if drawerOwnsDrag {
+            targetContentOffset.pointee.y = -scrollView.adjustedContentInset.top
         }
     }
 
@@ -354,10 +562,7 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
         detents: (collapsed: CGFloat, expanded: CGFloat, content: CGFloat)
     ) {
         UIView.performWithoutAnimation {
-            panelHeightConstraint.constant = height
-            panelWidthConstraint.constant = width(for: height, detents: detents)
-            controlsHeightConstraint.constant = min(detents.content, max(0, height - detents.collapsed))
-            effectView.layer.cornerRadius = cornerRadius(for: height, detents: detents)
+            applyProgress(height: height, detents: detents)
             view.layoutIfNeeded()
         }
         reportPanelTop()
@@ -367,85 +572,119 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
         settle(to: position == .collapsed ? .expanded : .collapsed)
     }
 
-    private func settle(to newPosition: Position, force: Bool = false) {
-        guard force || newPosition != position || settleAnimator != nil || isDragging else { return }
+    private func updateContentSpacing() {
+        grabberHeightConstraint.constant = contentEnabled ? grabberHeight : 0
+        tabsTopConstraint.constant = 0
+        tabsBottomConstraint.constant = -tabsBottomInset
+        grabber.alpha = contentEnabled ? 1 : 0
+    }
+
+    private func settle(to newPosition: Position, force: Bool = false,
+                        contentEnabled enabled: Bool? = nil, velocity: CGFloat = 0, resizesContent: Bool = false) {
+        guard force || newPosition != position || spring != nil || isDragging else { return }
+        let height = freezePresentationGeometry()
+        isDragging = false
+        if let enabled {
+            contentEnabled = enabled
+            grabber.isEnabled = enabled
+            grabber.isAccessibilityElement = enabled
+            drawerPan.isEnabled = enabled
+        }
+        position = newPosition
         guard view.bounds.width > 0, view.bounds.height > 0 else {
-            position = newPosition
+            updateContentSpacing()
             grabber.accessibilityValue = position.rawValue
             return
         }
-        animationGeneration += 1
-        let generation = animationGeneration
-        _ = freezePresentationGeometry()
-        position = newPosition
-        scrollView.accessibilityElementsHidden = newPosition == .collapsed
-        scrollView.isUserInteractionEnabled = newPosition == .expanded
-
+        updateContentSpacing()
         let values = detents()
-        let targetHeight = newPosition == .expanded ? values.expanded : values.collapsed
-        let updates = { [self] in
-            panelHeightConstraint.constant = targetHeight
-            panelWidthConstraint.constant = width(for: targetHeight, detents: values)
-            controlsHeightConstraint.constant = newPosition == .expanded ? values.content : 0
-            effectView.layer.cornerRadius = cornerRadius(for: targetHeight, detents: values)
+        let target = newPosition == .expanded ? values.expanded : values.collapsed
+        var frequency: CGFloat = 22
+#if targetEnvironment(simulator)
+        if ProcessInfo.processInfo.environment["OVERLAND_UI_AUDIT"] == "1" { frequency = 4.5 }
+        settleSamples.removeAll(keepingCapacity: true)
+#endif
+        let reduceMotion = UIAccessibility.isReduceMotionEnabled
+        let releaseVelocity = reduceMotion ? 0 : velocity
+        spring = Settle(start: animationClock?() ?? CACurrentMediaTime(), height: height, velocity: releaseVelocity,
+                        target: target, frequency: frequency, damping: reduceMotion ? 1 : 0.8,
+                        resizesContent: resizesContent)
+        UIView.performWithoutAnimation {
+            updatePanelMetrics(preservePresentedHeight: true)
             view.layoutIfNeeded()
         }
-
-        if UIAccessibility.isReduceMotionEnabled {
-            UIView.performWithoutAnimation(updates)
-            finishSettle(generation: generation)
-            return
-        }
-
-        let animator = UIViewPropertyAnimator(duration: 0.42, dampingRatio: 0.86, animations: updates)
-        animator.addCompletion { [weak self] _ in self?.finishSettle(generation: generation) }
-        settleAnimator = animator
+#if targetEnvironment(simulator)
+        sampleSettle()
+#endif
         startTrackingTop()
-        animator.startAnimation()
     }
 
     private func freezePresentationGeometry() -> CGFloat {
-        let displayedHeight = effectView.layer.presentation()?.bounds.height ?? effectView.bounds.height
-        let displayedWidth = effectView.layer.presentation()?.bounds.width ?? effectView.bounds.width
-        let values = detents()
-        settleAnimator?.stopAnimation(true)
-        settleAnimator = nil
+        // Every displayed frame is also the model state, including an interrupted spring.
+        spring = nil
         stopTrackingTop()
-
-        let wasDragging = isDragging
-        isDragging = true
-        UIView.performWithoutAnimation {
-            panelBottomConstraint.constant = -panelBottomInset()
-            panelHeightConstraint.constant = displayedHeight
-            panelWidthConstraint.constant = displayedWidth
-            reservedHeightConstraint.constant = panelTabRegionHeight()
-            controlsHeightConstraint.constant = min(
-                values.content,
-                max(0, displayedHeight - values.collapsed)
-            )
-            effectView.layer.cornerRadius = cornerRadius(for: displayedHeight, detents: values)
-            view.layoutIfNeeded()
-        }
-        isDragging = wasDragging
-        return displayedHeight
+        return panelHeightConstraint.constant
     }
 
-    private func finishSettle(generation: Int) {
-        guard generation == animationGeneration else { return }
-        settleAnimator = nil
-        stopTrackingTop()
-        updatePanelMetrics(preservePresentedHeight: false)
-        reportPanelTop()
-        grabber.accessibilityValue = position.rawValue
-        UIAccessibility.post(notification: .layoutChanged, argument: grabber)
+    @objc private func advanceSpring(_ link: CADisplayLink) {
+        guard let spring else { return }
+#if targetEnvironment(simulator)
+        // CPU guarding must not skip the audit's interaction window between delivered frames.
+        if usesAuditClock { auditTime += link.duration > 0 ? link.duration : 1.0 / 60 }
+#endif
+        let t = max(0, CGFloat((animationClock?() ?? link.targetTimestamp) - spring.start))
+        let w = spring.frequency
+        let x = spring.height - spring.target
+        let v = spring.velocity
+        let displacement: CGFloat
+        if spring.damping == 1 {
+            displacement = (x + (v + w * x) * t) * exp(-w * t)
+        } else {
+            let decay = spring.damping * w
+            let oscillation = w * sqrt(1 - spring.damping * spring.damping)
+            displacement = exp(-decay * t) * (x * cos(oscillation * t)
+                + (v + decay * x) / oscillation * sin(oscillation * t))
+        }
+        let values = detents()
+        let overshoot: CGFloat = spring.damping == 1 ? 0 : 3
+        let maximum = spring.resizesContent ? max(values.expanded, spring.height) : values.expanded
+        let minimum = spring.resizesContent ? min(values.collapsed, spring.height) : values.collapsed
+        let height = min(maximum + overshoot, max(minimum - overshoot, spring.target + displacement))
+        applyInteractiveHeight(height, detents: values)
+#if targetEnvironment(simulator)
+        sampleSettle()
+#endif
+        if t * w >= 12, abs(displacement) < 0.1 {
+            self.spring = nil
+            stopTrackingTop()
+            if measurementNeeded { scheduleMeasurement() }
+            UIView.performWithoutAnimation {
+                updatePanelMetrics(preservePresentedHeight: false)
+                view.layoutIfNeeded()
+            }
+            reportPanelTop()
+            grabber.accessibilityValue = position.rawValue
+#if targetEnvironment(simulator)
+            sampleSettle()
+#endif
+            if contentEnabled && !spring.resizesContent {
+                UIAccessibility.post(notification: .layoutChanged, argument: grabber)
+            }
+        }
     }
 
     private func startTrackingTop() {
         guard topDisplayLink == nil else { return }
-        let link = CADisplayLink(target: self, selector: #selector(reportPanelTop))
-        link.preferredFramesPerSecond = 30
+        let link = CADisplayLink(target: self, selector: #selector(advanceSpring(_:)))
+        let maximum = maximumFrameRate
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: min(80, maximum),
+                                                       maximum: maximum, preferred: maximum)
         link.add(to: .main, forMode: .common)
         topDisplayLink = link
+    }
+
+    private var maximumFrameRate: Float {
+        Float(view.window?.windowScene?.screen.maximumFramesPerSecond ?? 60)
     }
 
     private func stopTrackingTop() {
@@ -453,38 +692,163 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
         topDisplayLink = nil
     }
 
+    func currentGeometry() -> (top: CGFloat, collapsedTop: CGFloat) {
+        let sheet = effectView.layer.presentation() ?? effectView.layer
+        let frame = sheet.convert(sheet.bounds, to: view.layer.presentation() ?? view.layer)
+        return (frame.minY, view.bounds.height - panelBottomInset() - detents().collapsed)
+    }
+
+    var isLayoutSettled: Bool {
+        measuredWidth > 0 && !measurementNeeded && !measurementScheduled && spring == nil
+    }
+
     @objc private func reportPanelTop() {
         guard view.bounds.height > 0, panelHeightConstraint != nil else { return }
         let modelTop = view.bounds.height + panelBottomConstraint.constant - panelHeightConstraint.constant
-        let top: CGFloat
-        if settleAnimator != nil, let presentationTop = effectView.layer.presentation()?.frame.minY,
-           presentationTop > 0 {
-            top = presentationTop
-        } else {
-            top = modelTop
-        }
-        guard top.isFinite, top > 0, abs(top - lastReportedTop) > 0.5 else { return }
-        lastReportedTop = top
-        onTopChange?(top)
+        let top = modelTop
+        guard top.isFinite, top > 0, abs(top - lastPresentedTop) > 0.5 else { return }
+        lastPresentedTop = top
+        onPresentedTopChange?(top)
     }
 
+    private func reportCollapsedTop() {
+        guard view.bounds.height > 0, panelHeightConstraint != nil else { return }
+        let top = view.bounds.height - panelBottomInset() - detents().collapsed
+        guard top.isFinite, top > 0, abs(top - lastReportedTop) > 0.5 else { return }
+        lastReportedTop = top
+        onCollapsedTopChange?(top)
+    }
+
+#if targetEnvironment(simulator)
+    private func sampleSettle() {
+        let frame = effectView.convert(effectView.bounds, to: view)
+        var sample: [String: Double] = [
+            "time": CACurrentMediaTime(), "height": frame.height, "width": frame.width,
+            "radius": effectView.layer.cornerRadius, "materialAlpha": tabsBackground.alpha,
+            "contentAlpha": scrollView.alpha,
+        ]
+        func collect(_ candidate: UIView) {
+            if let identifier = candidate.accessibilityIdentifier,
+               identifier.hasPrefix("overland.drawer.icon.") {
+                let frame = candidate.convert(candidate.bounds, to: view)
+                sample[identifier] = frame.midX
+            }
+            for child in candidate.subviews { collect(child) }
+        }
+        collect(tabsHost.view)
+        settleSamples.append(sample)
+        if settleSamples.count > 600 { settleSamples.removeFirst() }
+    }
+
+    private func geometryAuditValue() -> String {
+        let sheet = effectView.layer.presentation() ?? effectView.layer
+        let container = view.layer.presentation() ?? view.layer
+        let frame = sheet.convert(sheet.bounds, to: container)
+        let tabs = tabsContainer.layer.presentation() ?? tabsContainer.layer
+        let tabFrame = tabs.convert(tabs.bounds, to: container)
+        let safeBottom = view.window?.safeAreaInsets.bottom ?? view.safeAreaInsets.bottom
+        let values: [String: Any] = [
+            "sheetX": frame.minX, "sheetY": frame.minY,
+            "sheetWidth": frame.width, "sheetHeight": frame.height,
+            "sheetBottom": frame.maxY, "safeBottomY": view.bounds.maxY - safeBottom,
+            "safeBottom": safeBottom, "screenHeight": view.bounds.height,
+            "tabsBottom": tabFrame.maxY, "tabHeight": tabFrame.height,
+            "settings": contentEnabled ? 0 : 1,
+            "scrollOffset": scrollView.contentOffset.y,
+            "contentHeight": scrollView.contentSize.height,
+            "scrollHeight": scrollView.bounds.height,
+            "expandedHeight": detents().expanded,
+            "collapsedHeight": detents().collapsed,
+            "dragging": isDragging,
+            "samples": dragSamples,
+            "settleSamples": settleSamples,
+            "reduceMotion": UIAccessibility.isReduceMotionEnabled,
+            "maximumFramesPerSecond": maximumFrameRate,
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: values) else { return "" }
+        return String(data: data, encoding: .utf8) ?? ""
+    }
+#endif
+
     func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        guard contentEnabled else { return false }
         guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return true }
         let velocity = pan.velocity(in: view)
+        dragStartsInScroll = scrollView.isScrollEnabled && scrollView.bounds.contains(pan.location(in: scrollView))
+        dragOriginOffset = max(0, scrollView.contentOffset.y + scrollView.adjustedContentInset.top)
         return abs(velocity.y) > abs(velocity.x)
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                           shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        gestureRecognizer === drawerPan
+            && (otherGestureRecognizer === scrollView.panGestureRecognizer
+                || otherGestureRecognizer.view?.isDescendant(of: tabsHost.view) == true)
     }
 }
 
 private final class PanelPassthroughView: UIView {
+    weak var sheet: UIVisualEffectView?
+    weak var grabber: AdjustablePanelGrabber?
+
+    private func hitsGrabber(_ point: CGPoint) -> Bool {
+        guard let grabber, grabber.isEnabled, grabber.alpha > 0.01 else { return false }
+        return grabber.point(inside: grabber.convert(point, from: self), with: nil)
+    }
+
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        if hitsGrabber(point) { return true }
+        guard let sheet, !sheet.isHidden, sheet.alpha > 0.01 else { return false }
+        let layer = sheet.layer.presentation() ?? sheet.layer
+        let local = layer.convert(point, from: self.layer.presentation() ?? self.layer)
+        return UIBezierPath(roundedRect: layer.bounds, cornerRadius: layer.cornerRadius).contains(local)
+    }
+
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-        let hit = super.hitTest(point, with: event)
-        return hit === self ? nil : hit
+        if hitsGrabber(point) { return grabber }
+        guard self.point(inside: point, with: event), let sheet else { return nil }
+        for child in sheet.contentView.subviews.reversed() {
+            guard let local = presentedPoint(point, in: child) else { continue }
+            if let scroll = child as? UIScrollView {
+                for content in scroll.subviews.reversed() {
+                    guard let local = presentedPoint(point, in: content) else { continue }
+                    if let target = content.hitTest(local, with: event) { return target }
+                }
+                return scroll
+            }
+            if let target = child.hitTest(local, with: event) { return target }
+        }
+        return sheet.contentView
+    }
+
+    private func presentedPoint(_ point: CGPoint, in view: UIView) -> CGPoint? {
+        guard view.isUserInteractionEnabled, !view.isHidden, view.alpha > 0.01 else { return nil }
+        let displayed = view.layer.presentation() ?? view.layer
+        let local = displayed.convert(point, from: layer.presentation() ?? layer)
+        guard displayed.bounds.contains(local) else { return nil }
+        return CGPoint(
+            x: view.bounds.minX + (local.x - displayed.bounds.minX) * view.bounds.width / max(1, displayed.bounds.width),
+            y: view.bounds.minY + (local.y - displayed.bounds.minY) * view.bounds.height / max(1, displayed.bounds.height)
+        )
     }
 }
 
 private final class AdjustablePanelGrabber: UIControl {
     var onIncrement: (() -> Void)?
     var onDecrement: (() -> Void)?
+
+    private var touchBounds: CGRect {
+        CGRect(x: 0, y: min(0, bounds.height - 44), width: bounds.width, height: max(44, bounds.height))
+    }
+
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        touchBounds.contains(point)
+    }
+
+    override var accessibilityFrame: CGRect {
+        get { UIAccessibility.convertToScreenCoordinates(touchBounds, in: self) }
+        set { }
+    }
 
     override func accessibilityIncrement() {
         onIncrement?()
@@ -494,3 +858,13 @@ private final class AdjustablePanelGrabber: UIControl {
         onDecrement?()
     }
 }
+
+#if targetEnvironment(simulator)
+private final class PanelGeometryAuditView: UIView {
+    var value: (() -> String)?
+    override var accessibilityValue: String? {
+        get { value?() }
+        set { }
+    }
+}
+#endif

@@ -7,24 +7,39 @@ struct TripView: View {
     @Binding var trip: TripMapState
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ScaledMetric(relativeTo: .caption) private var timelineHeight: CGFloat = 34
+    @State private var showingSettings = false
 
-    private let modes: [(String, String)] = [
-        ("walk", "figure.walk"), ("run", "figure.run"), ("bicycle", "bicycle"), ("car", "car.fill"),
-        ("taxi", "car.side"), ("bus", "bus.fill"), ("train", "tram.fill"), ("plane", "airplane"),
-        ("boat", "sailboat.fill"), ("scooter", "scooter"), ("tram", "tram"),
-        ("metro", "tram.tunnel.fill"), ("gondola", "cablecar.fill"), ("monorail", "tram.fill"), ("sleigh", "snowflake"),
-    ]
 
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 12) {
+            header
             if bridge.tripInProgress {
                 scrubber
             }
             card
         }
+        .fixedSize(horizontal: false, vertical: true)
         .onAppear {
             bridge.refresh()
+        }
+        .onChange(of: bridge.tripMode) { _, mode in
+            guard trip.followingLive, let coordinate = GLManager.shared().lastLocation?.coordinate else { return }
+            camera = .camera(MapKit.MapCamera(centerCoordinate: coordinate,
+                distance: TripModeStore.closeZoom(mode) ? 1_000 : 10_000))
+        }
+        .sheet(isPresented: $showingSettings) {
+            TripSettingsSheet { showingSettings = false }
+        }
+    }
+
+    private var header: some View {
+        DrawerHeader(title: "Trip",
+                     subtitle: bridge.tripInProgress ? "Recording · \(TripModeStore.name(bridge.tripMode))" : "Ready to record",
+                     indicator: bridge.tripInProgress ? .red : nil) {
+            DrawerCircleButton(symbol: "slider.horizontal.3", label: "Trip Settings") {
+                showingSettings = true
+            }
         }
     }
 
@@ -83,9 +98,8 @@ struct TripView: View {
             }
             .frame(height: max(34, timelineHeight))
         }
-        .padding(12)
-        .padding(.horizontal)
-        .padding(.bottom, 4)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 4)
     }
 
     private func chip(_ i: Int) -> some View {
@@ -98,51 +112,46 @@ struct TripView: View {
             .frame(minHeight: max(34, timelineHeight))
             .contentShape(Capsule())
             .background {
-                Capsule().fill(selected ? AnyShapeStyle(Color.blue.opacity(0.35)) : live ? AnyShapeStyle(Color.green.opacity(0.25)) : AnyShapeStyle(.quaternary.opacity(0.7)))
+                Capsule().fill(selected ? AnyShapeStyle(.tint) : live ? AnyShapeStyle(Color.green.opacity(0.25)) : AnyShapeStyle(Color.drawerCard))
             }
-            .foregroundStyle(selected || live ? .primary : .secondary)
+            .foregroundStyle(selected ? Color.white : live ? Color.primary : Color.secondary)
     }
 
     // MARK: Trip card
 
     private var card: some View {
-        VStack(spacing: 14) {
-            if dynamicTypeSize.isAccessibilitySize {
-                VStack(spacing: 10) {
-                    tripStat("DISTANCE", value: distText)
-                    tripStat("TIME", value: durationText)
+        VStack(spacing: 12) {
+            VStack(spacing: 14) {
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(spacing: 10) {
+                        tripStat("DISTANCE", value: distText)
+                        tripStat("TIME", value: durationText)
+                    }
+                } else {
+                    HStack(spacing: 16) {
+                        tripStat("DISTANCE", value: distText)
+                        tripStat("TIME", value: durationText)
+                    }
                 }
-            } else {
-                HStack(spacing: 16) {
-                    tripStat("DISTANCE", value: distText)
-                    tripStat("TIME", value: durationText)
+                Divider()
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Travel Mode").font(.subheadline)
+                        modePicker
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    HStack {
+                        Text("Travel Mode").font(.subheadline)
+                        Spacer()
+                        modePicker
+                    }
                 }
             }
-
-            if dynamicTypeSize.isAccessibilitySize {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Travel Mode").font(.subheadline)
-                    modePicker
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                HStack {
-                    Text("Travel Mode").font(.subheadline)
-                    Spacer()
-                    modePicker
-                }
-            }
-
-            if !bridge.tripInProgress {
-                Text("Choose a travel mode, then start the trip. Your route is drawn on the map as points are recorded.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
+            .drawerCard()
 
             Button {
-                bridge.tripInProgress ? GLManager.shared().endTrip() : GLManager.shared().startTrip()
+                bridge.tripInProgress ? GLTripActions.endTripRestoringTracking() : GLTripActions.startTrip(withMode: nil)
                 trip = TripMapState()
                 camera = .userLocation(fallback: .automatic)
                 bridge.refresh()
@@ -154,10 +163,8 @@ struct TripView: View {
                     .padding(.vertical, 8)
             }
             .glassButtonStyle(prominent: true, tint: bridge.tripInProgress ? .red : .blue)
+            .padding(.horizontal, 16)
         }
-        .padding(16)
-        .padding(.horizontal)
-        .padding(.bottom, 4)
     }
 
     private func tripStat(_ title: String, value: String) -> some View {
@@ -175,11 +182,18 @@ struct TripView: View {
 
     private var modePicker: some View {
         Picker("Travel Mode", selection: $bridge.tripMode) {
-            ForEach(modes, id: \.0) { mode, icon in
-                Label(mode.capitalized, systemImage: icon).tag(mode)
+            ForEach(bridge.tripModes, id: \.id) { mode in
+                Label {
+                    Text(mode.name)
+                } icon: {
+                    if let image = TripModeStore.image(symbol: mode.symbol) {
+                        Image(uiImage: image).renderingMode(.template).resizable().scaledToFit().frame(width: 18, height: 18)
+                    }
+                }.tag(mode.id)
             }
         }
         .pickerStyle(.menu)
+        .labelsHidden()
         .tint(.primary)
         .font(.subheadline.weight(.medium))
         .disabled(bridge.tripInProgress)
@@ -232,14 +246,10 @@ struct TripMapState {
 
     var displayCoords: [CLLocationCoordinate2D] {
         let end = followingLive ? points.count : (scrubIndex.map { $0 + 1 } ?? points.count)
-        let coords = points.prefix(end).compactMap { point -> CLLocationCoordinate2D? in
+        return points.prefix(end).compactMap { point -> CLLocationCoordinate2D? in
             guard let lat = point["latitude"]?.doubleValue,
                   let lon = point["longitude"]?.doubleValue else { return nil }
             return CLLocationCoordinate2D(latitude: lat, longitude: lon)
         }
-        let limit = 600
-        guard coords.count > limit, limit > 1 else { return coords }
-        let stride = Double(coords.count - 1) / Double(limit - 1)
-        return (0..<limit).map { coords[Int((Double($0) * stride).rounded())] }
     }
 }

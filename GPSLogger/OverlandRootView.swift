@@ -5,51 +5,61 @@ enum SettingsDestination: Hashable {
     case server
     case wifiZones
     case trip
+    case tracking
+    case stationary
+    case sending
+    case background
 }
 
 struct OverlandRootView: View {
+    @State private var sceneID = UUID()
     @State private var selection = 0
+    @State private var tabActivation = 0
     @State private var mapTab = 0
     @State private var settingsPath: [SettingsDestination] = []
     @State private var mapAppearance = MapAppearance.standard
     @State private var camera = MapCameraPosition.userLocation(fallback: .automatic)
     @State private var trip = TripMapState()
+    @State private var tripRevision: Int?
     @State private var history = HistoryPlaybackModel()
     @State private var bridge = GLManagerBridge.shared
-    @State private var liveCameraTask: Task<Void, Never>?
-    @State private var panelTop: CGFloat?
+    @State private var drawerGeometry = MapDrawerGeometry()
+    @State private var recenterRequest = 0
+    @State private var replayCameraDistance: CLLocationDistance?
+    @State private var replayOverview = false
+    @State private var replayCameraFree = false
+    @State private var replayCameraAction = 0
     @Environment(\.scenePhase) private var scenePhase
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private enum MapAppearance: String, CaseIterable {
         case standard = "Map"
         case hybrid = "Hybrid"
         case imagery = "Satellite"
 
-        var style: MapStyle {
+        var mapType: MKMapType {
             switch self {
             case .standard: return .standard
             case .hybrid: return .hybrid
-            case .imagery: return .imagery
+            case .imagery: return .satellite
             }
         }
     }
 
     var body: some View {
         GeometryReader { geometry in
-            let initialClearance = dynamicTypeSize.isAccessibilitySize
-                ? min(560, geometry.size.height * 0.64)
-                : min(483, geometry.size.height * 0.55)
-            // MapKit positions its own credit from the map's safe area.
-            let creditClearance = panelTop.map { max(0, geometry.size.height - $0 + 9) }
-                ?? initialClearance
-            OverlandNativeTabs(
-                selection: $selection,
-                panelTop: $panelTop,
-                map: AnyView(mapPage(reserving: creditClearance)),
+            OverlandShell(
+                drawerGeometry: drawerGeometry,
+                selection: selection,
+                activation: tabActivation,
+                controlsID: mapTab,
+                contentInteracting: selection == 0 && history.isRulerInteracting,
+                map: AnyView(mapPage(viewport: geometry.frame(in: .global).inset(by: UIEdgeInsets(
+                                        top: -geometry.safeAreaInsets.top, left: 0,
+                                        bottom: -geometry.safeAreaInsets.bottom, right: 0)),
+                                     safeTop: geometry.safeAreaInsets.top)),
                 controls: AnyView(panelContent),
-                settings: AnyView(settingsPage),
-                onSelect: selectTab
+                tabs: AnyView(DrawerTabStrip(selection: selection, onSelect: selectTab).tint(.blue)),
+                settings: AnyView(settingsPage)
             )
             .ignoresSafeArea(.container)
         }
@@ -57,52 +67,64 @@ struct OverlandRootView: View {
             if follows {
                 trip.followingLive = true
                 trip.scrubID = trip.points.last?["id"]?.int64Value
-                history.returnToLive()
+                if history.isBrowsing { history.returnToLive() }
             }
         }
         .onChange(of: history.cameraCenter) { previous, center in
             focusHistoryPosition(center, from: previous)
         }
         .onChange(of: bridge.tripInProgress) { _, _ in
+            tripRevision = nil
             trip = TripMapState()
             reloadTripPoints()
         }
-        .onChange(of: bridge.tick) { _, tick in
-            reloadTripPoints()
-            if tick % 60 == 0 { history.expireOldPoints() }
+        .onChange(of: bridge.tick) { _, _ in reloadTripPoints() }
+        .onChange(of: bridge.clockTick) { _, tick in
+            if scenePhase == .active, selection == 0, tick % 60 == 0 { history.expireOldPoints() }
         }
-        .onChange(of: selection) { _, _ in reloadTripPoints() }
+        .onChange(of: selection) { _, _ in updateConsumers() }
         .onReceive(NotificationCenter.default.publisher(for: .recentLocationHistoryChanged)) { _ in
             history.reload()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .recentLocationHistoryRetentionChanged)) { _ in
+            history.retentionDidChange()
+        }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { history.reload() }
-            else { history.pause() }
+            bridge.setSceneActive(phase == .active, id: sceneID)
+            updateConsumers()
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OverlandOpenTracker"))) { _ in
-            selection = 0
             selectTab(0)
         }
-        .onAppear { history.reload() }
+        .onAppear {
+            bridge.setSceneActive(scenePhase == .active, id: sceneID)
+            updateConsumers()
+        }
+        .onDisappear {
+            bridge.setSceneActive(false, id: sceneID)
+            history.setConsumerActive(false)
+        }
         .tint(.blue)
     }
 
-    private func mapPage(reserving bottomClearance: CGFloat) -> some View {
-        map
-            .safeAreaInset(edge: .bottom, spacing: 8) {
-                Color.clear.frame(height: bottomClearance)
-            }
-            .overlay(alignment: .topLeading) {
-                if mapTab == 0 {
-                    TrackerSpeedometer(replaySpeed: history.payload?.speed, isReplaying: history.isBrowsing)
-                        .padding(.leading, 14)
-                        .padding(.top, 6)
-                }
+    private func mapPage(viewport: CGRect, safeTop: CGFloat) -> some View {
+        Color.clear
+            .background {
+                map()
+                    .ignoresSafeArea()
             }
             .overlay(alignment: .topTrailing) {
-                mapControls
-                    .padding(.trailing, 14)
-                    .padding(.top, 6)
+                VStack(alignment: .center, spacing: 8) {
+                    TrackerSpeedometer(replaySpeed: history.payload?.speed,
+                                       isReplaying: mapTab == 0 && history.isBrowsing)
+                        .allowsHitTesting(false)
+                    mapControls(auditValue: cameraAuditValue(safeTop: viewport.minY + safeTop))
+                }
+                .padding(.trailing, MapChrome.edge)
+                .padding(.top, MapChrome.topInset)
+            }
+            .onChange(of: recenterRequest) { _, _ in
+                camera = .userLocation(fallback: .automatic)
             }
     }
 
@@ -126,15 +148,27 @@ struct OverlandRootView: View {
                         WifiZoneListView()
                     case .trip:
                         TripSettingsView()
-                            .navigationBarTitleDisplayMode(.inline)
-                            .toolbar(.visible, for: .navigationBar)
+                    case .tracking:
+                        TrackingSettingsView()
+                    case .stationary:
+                        StationarySettingsView()
+                    case .sending:
+                        SendingSettingsView()
+                    case .background:
+                        BackgroundSettingsView()
                     }
                 }
         }
     }
 
+    private func updateConsumers() {
+        history.setConsumerActive(scenePhase == .active && selection == 0)
+        reloadTripPoints()
+    }
+
     private func reloadTripPoints() {
-        guard selection == 1 else { return }
+        guard scenePhase == .active, selection == 1, tripRevision != bridge.tick else { return }
+        tripRevision = bridge.tick
         guard let gl = GLManager.shared(), bridge.tripInProgress,
               let points = gl.currentTripPoints() as? [[String: NSNumber]] else {
             trip = TripMapState()
@@ -154,37 +188,50 @@ struct OverlandRootView: View {
         }
     }
 
-    private var map: some View {
-        let coords = mapTab == 1 ? trip.displayCoords : history.displayCoordinates
-        let future = mapTab == 0 ? history.futureCoordinates : []
-        return Map(position: $camera) {
-            UserAnnotation { CurrentLocationMarker() }
-            if future.count > 1 {
-                MapPolyline(coordinates: future)
-                    .stroke(.teal.opacity(0.65),
-                            style: StrokeStyle(lineWidth: 4, lineCap: .round,
-                                               lineJoin: .round, dash: [7, 6]))
-            }
-            if coords.count > 1 {
-                MapPolyline(coordinates: coords)
-                    .stroke(.blue, style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
-            }
-            if mapTab == 1, !trip.followingLive, let coordinate = trip.scrubbedCoordinate {
-                Marker("Trip point", systemImage: "mappin.circle.fill", coordinate: coordinate)
-                    .tint(.blue)
-            }
-            if mapTab == 0, history.isBrowsing,
-               let coordinate = history.playbackCoordinate?.coordinate ?? history.selectedPoint?.coordinate {
-                Marker("Recorded point", systemImage: "mappin.circle.fill", coordinate: coordinate)
-                    .tint(.blue)
-            }
-        }
-        .mapStyle(mapAppearance.style)
-        .mapControls { }
+    private func map() -> some View {
+        let replayPose = history.renderPose
+        let coords = mapTab == 1 ? trip.displayCoords : []
+        let selected = mapTab == 1 && !trip.followingLive ? trip.scrubbedCoordinate
+            : mapTab == 0 && history.isBrowsing
+                ? replayPose?.coordinate.coordinate : nil
+        return NativeMapSurface(position: camera, mapType: mapAppearance.mapType,
+                                coordinates: coords,
+                                replayRoute: mapTab == 0 && replayPose != nil ? history.routeGeometry : nil,
+                                replayPosition: replayPose?.position ?? 0,
+                                replayAccuracy: history.playbackAccuracy,
+                                replayActive: mapTab == 0 && history.isBrowsing,
+                                replayFollowing: !replayCameraFree,
+                                replayFollowDistance: replayCameraDistance ?? 2_000,
+                                replayOverview: mapTab == 0 && replayOverview,
+                                replayCameraAction: replayCameraAction, recenterAction: recenterRequest,
+                                selected: selected,
+                                selectedTitle: mapTab == 1 ? "Trip point" : "Recorded point",
+                                sceneActive: scenePhase == .active, pageActive: selection < 2,
+                                onCameraChange: cameraChanged, onInteraction: stopFollowing)
     }
 
-    private var mapControls: some View {
-        VStack(spacing: 0) {
+    private func stopFollowing() {
+        if mapTab == 0, history.isBrowsing {
+            replayCameraFree = true
+            replayOverview = false
+        }
+    }
+
+    private func cameraChanged(_ current: MapCamera, byUser: Bool) {
+        if byUser {
+            if mapTab == 0, history.isBrowsing { replayCameraFree = true }
+            replayOverview = false
+            mapPanned(current)
+            return
+        }
+        guard mapTab != 0 || !replayOverview else { return }
+        guard !camera.followsUserLocation, let region = camera.region,
+              region.span.latitudeDelta.isFinite, region.span.latitudeDelta > 0 else { return }
+        camera = .camera(current)
+    }
+
+    private func mapControls(auditValue: String) -> some View {
+        MapControlsHost(content: AnyView(VStack(spacing: 0) {
             Menu {
                 Picker("Map style", selection: $mapAppearance) {
                     ForEach(MapAppearance.allCases, id: \.self) { appearance in
@@ -197,38 +244,89 @@ struct OverlandRootView: View {
                     .contentShape(Rectangle())
             }
             .accessibilityLabel("Map style")
-            Button {
-                trip.followingLive = true
-                trip.scrubID = trip.points.last?["id"]?.int64Value
-                returnToLive()
-            } label: {
-                Image(systemName: camera.followsUserLocation ? "location.fill" : "location")
+            Button(action: locationButtonPressed) {
+                Image(systemName: mapTab == 0 && history.isBrowsing
+                      ? (replayOverview || replayCameraFree ? "location" : "location.fill")
+                      : (camera.followsUserLocation ? "location.fill" : "location"))
                     .frame(width: 48, height: 48)
                     .contentShape(Rectangle())
             }
-            .accessibilityLabel("Show My Location")
-            if mapTab == 1 {
-                Button {
-                    settingsPath = [.trip]
-                    selection = 2
-                } label: {
-                    Image(systemName: "slider.horizontal.3")
-                        .frame(width: 48, height: 48)
-                        .contentShape(Rectangle())
-                }
-                .accessibilityLabel("Trip Settings")
+            .accessibilityLabel(mapTab == 0 && history.isBrowsing
+                                 ? (locationButtonShowsOverview ? "Show Entire Trail" : "Show Recorded Location")
+                                 : "Show My Location")
+            .accessibilityIdentifier("overland.map.location")
+            .accessibilityValue(auditValue)
+            Button { zoomMap(inward: true) } label: {
+                Image(systemName: "plus")
+                    .frame(width: 48, height: MapChrome.buttonHeight)
+                    .contentShape(Rectangle())
             }
+            .accessibilityLabel("Zoom In")
+            .accessibilityIdentifier("overland.map.zoom-in")
+            Button { zoomMap(inward: false) } label: {
+                Image(systemName: "minus")
+                    .frame(width: 48, height: MapChrome.buttonHeight)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel("Zoom Out")
+            .accessibilityIdentifier("overland.map.zoom-out")
         }
         .font(.system(size: 20, weight: .medium))
         .foregroundStyle(.primary)
         .buttonStyle(.plain)
         .padding(.vertical, 4)
-        .frame(width: 52)
-        .glassTabBarBackground()
-        .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
+        .frame(width: MapChrome.width)
+        .glassCapsule()
+        .contentShape(Capsule())
+        .clipShape(Capsule())
+        .shadow(color: .black.opacity(0.12), radius: 8, y: 3)))
+        .frame(width: MapChrome.width, height: MapChrome.controlsHeight)
+    }
+
+    private func zoomMap(inward: Bool) {
+        guard let map = drawerGeometry.readMap?(), let result = NativeMapSurface.zoom(inward: inward, on: map) else { return }
+        if mapTab == 0, history.isBrowsing {
+            replayCameraDistance = result.camera.distance
+            replayCameraFree = !result.replayFollowing
+            replayOverview = false
+            camera = .camera(result.camera)
+        } else if !camera.followsUserLocation {
+            camera = .camera(result.camera)
+        }
+    }
+
+    private func mapPanned(_ current: MapCamera) {
+        camera = .camera(current)
+    }
+
+    private func locationButtonPressed() {
+        if mapTab == 0, history.isBrowsing {
+            let overview = locationButtonShowsOverview
+            if replayCameraFree, !overview, let map = drawerGeometry.readMap?() {
+                replayCameraDistance = map.camera.centerCoordinateDistance
+            }
+            withAnimation(.easeInOut(duration: 0.45)) {
+                replayCameraFree = false
+                replayOverview = overview
+                replayCameraAction &+= 1
+            }
+            if !replayOverview { focusHistoryPosition(history.cameraCenter) }
+            return
+        }
+        trip.followingLive = true
+        trip.scrubID = trip.points.last?["id"]?.int64Value
+        returnToLive()
+    }
+
+    private var locationButtonShowsOverview: Bool {
+        guard replayCameraFree, let map = drawerGeometry.readMap?(),
+              let trail = NativeMapSurface.replayOverviewDistance(on: map) else { return !replayOverview }
+        return ReplayCameraFocus.nearest(current: map.camera.centerCoordinateDistance,
+                                         point: replayCameraDistance ?? 2_000, trail: trail) == .trail
     }
 
     private func selectTab(_ index: Int) {
+        tabActivation += 1
         if index == 2 { settingsPath = [] }
         if index != 0 { history.pause() }
         selection = index
@@ -237,18 +335,21 @@ struct OverlandRootView: View {
     }
 
     private func focusHistoryPosition(_ position: ReplayCoordinate?, from previous: ReplayCoordinate? = nil) {
-        guard selection == 0, history.isBrowsing, let coordinate = position?.coordinate else { return }
-        liveCameraTask?.cancel()
-        let span = history.isPlaying ? 0.005 * sqrt(Double(history.playbackRate)) : 0.005
-        let target = MapCameraPosition.region(MKCoordinateRegion(
-            center: coordinate,
-            span: MKCoordinateSpan(latitudeDelta: span, longitudeDelta: span)
-        ))
+        guard selection == 0, history.isBrowsing, !replayOverview,
+              let coordinate = position?.coordinate else { return }
+        if replayCameraFree {
+            // Playback, including its final frame, must not recapture a manually moved camera.
+            guard history.isRulerInteracting || history.playbackTime == nil else { return }
+            replayCameraDistance = drawerGeometry.readMap?()?.camera.centerCoordinateDistance ?? replayCameraDistance
+            replayCameraFree = false
+        }
+        let target = MapCameraPosition.camera(MapCamera(centerCoordinate: coordinate,
+                                                        distance: replayCameraDistance ?? 2_000))
         let jumpDistance = previous.map {
             CLLocation(latitude: $0.latitude, longitude: $0.longitude)
                 .distance(from: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude))
         } ?? 0
-        if history.isPlaying || jumpDistance > 1_000 || UIAccessibility.isReduceMotionEnabled {
+        if history.isPlaying || history.isRulerInteracting || jumpDistance > 1_000 || UIAccessibility.isReduceMotionEnabled {
             var transaction = Transaction(animation: nil)
             transaction.disablesAnimations = true
             withTransaction(transaction) { camera = target }
@@ -259,42 +360,167 @@ struct OverlandRootView: View {
     }
 
     private func returnToLive() {
-        liveCameraTask?.cancel()
+        replayOverview = false
+        replayCameraFree = false
         withAnimation(.easeInOut(duration: 0.35)) { history.returnToLive() }
-        guard selection == 0, let location = GLManager.shared()?.lastLocation,
-              !UIAccessibility.isReduceMotionEnabled else {
-            camera = .userLocation(fallback: .automatic)
-            return
-        }
-
-        withAnimation(.easeInOut(duration: 0.65)) {
-            camera = .region(MKCoordinateRegion(
-                center: location.coordinate,
-                span: MKCoordinateSpan(latitudeDelta: 0.005, longitudeDelta: 0.005)
-            ))
-        }
-        liveCameraTask = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(700))
-            guard !Task.isCancelled, !history.isBrowsing, selection == 0 else { return }
-            camera = .userLocation(fallback: .automatic)
-        }
+        recenterRequest += 1
     }
 
-}
-
-extension View {
-    @ViewBuilder
-    func glassTabBarBackground() -> some View {
-        if #available(iOS 26.0, *) {
-            self.glassEffect(.regular.interactive(), in: .capsule)
-        } else {
-            self.background(Capsule().fill(.ultraThinMaterial))
-        }
+    private func cameraAuditValue(safeTop: CGFloat) -> String {
+#if targetEnvironment(simulator)
+        let map = drawerGeometry.readMap?()
+        let target = map.map { $0.convert(NativeMapSurface.visibleCenter(on: $0), to: nil) } ?? .zero
+        let coordinate = map.flatMap { NativeMapSurface.displayedUserCoordinate(on: $0) }
+            ?? drawerGeometry.userLocation?.coordinate
+        let replayMarker = map.flatMap { map in
+            guard history.isBrowsing,
+                  let annotation = map.annotations.first(where: { $0 is MKPointAnnotation }) else { return nil as CGPoint? }
+            if let view = map.view(for: annotation), let container = view.superview {
+                return container.convert(CGPoint(x: view.center.x - view.centerOffset.x,
+                    y: view.center.y - view.centerOffset.y), to: nil)
+            }
+            return map.convert(annotation.coordinate, toPointTo: nil)
+        } ?? .zero
+        let trailMarker = map.flatMap { map in
+            NativeMapSurface.displayedTrailCoordinate(on: map).map { map.convert($0, toPointTo: nil) }
+        } ?? .zero
+        let projectedMarker = map.flatMap { map in
+            map.annotations.first(where: { $0 is MKPointAnnotation }).map { map.convert($0.coordinate, toPointTo: nil) }
+        } ?? .zero
+        let drawerTop = Double(drawerGeometry.read?()?.top ?? 0)
+        var values: [String: Double] = [
+            "safeTop": safeTop, "drawerTop": drawerTop,
+            "mapSafeTop": Double(map?.safeAreaInsets.top ?? 0),
+            "mapFrameY": Double(map.map { $0.convert($0.bounds, to: nil).minY } ?? 0),
+            "slowDrawer": ProcessInfo.processInfo.environment["OVERLAND_UI_AUDIT"] == "1" ? 1 : 0,
+            "targetX": target.x, "targetY": target.y,
+            "targetDrawerTop": drawerTop, "targetSafeTop": safeTop,
+            "latitude": coordinate?.latitude ?? 0, "longitude": coordinate?.longitude ?? 0,
+            "displayedLatitude": drawerGeometry.userLocation?.coordinate.latitude ?? 0,
+            "replayBrowsing": history.isBrowsing ? 1 : 0,
+            "replayOverview": replayOverview ? 1 : 0,
+            "replayCameraFree": replayCameraFree ? 1 : 0,
+            "replayPosition": history.playbackIndex,
+            "replayPlaying": history.isPlaying ? 1 : 0,
+            "replayCount": Double(history.points.count),
+            "mapDistance": map?.camera.centerCoordinateDistance ?? 0,
+            "cameraLatitude": map?.camera.centerCoordinate.latitude ?? 0,
+            "cameraLongitude": map?.camera.centerCoordinate.longitude ?? 0,
+            "replayMarkerX": replayMarker.x, "replayMarkerY": replayMarker.y,
+            "trailMarkerX": trailMarker.x, "trailMarkerY": trailMarker.y,
+            "projectedMarkerX": projectedMarker.x, "projectedMarkerY": projectedMarker.y,
+        ]
+        if let map { values.merge(NativeMapSurface.replayAuditValues(on: map)) { _, current in current } }
+        if let data = try? JSONSerialization.data(withJSONObject: values),
+           let value = String(data: data, encoding: .utf8) { return value }
+#endif
+        return ""
     }
+
 }
 
 final class OverlandRootHosting: NSObject {
     @objc static func makeRoot() -> UIViewController {
-        UIHostingController(rootView: OverlandRootView())
+        OverlandHostingController()
+    }
+}
+
+private final class OverlandHostingController: UIHostingController<AnyView> {
+    private var visible = false
+
+    init() {
+        super.init(rootView: AnyView(OverlandRootView().environment(\.scenePhase, .background)))
+        for name in [UIScene.didActivateNotification, UIScene.willDeactivateNotification,
+                     UIScene.didEnterBackgroundNotification, UIScene.willEnterForegroundNotification] {
+            NotificationCenter.default.addObserver(self, selector: #selector(sceneChanged(_:)), name: name, object: nil)
+        }
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    deinit { NotificationCenter.default.removeObserver(self) }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        visible = true
+        let state = view.window?.windowScene?.activationState
+        setPhase(state == .foregroundActive ? .active : state == .foregroundInactive ? .inactive : .background)
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        visible = false
+        setPhase(.background)
+    }
+
+    @objc private func sceneChanged(_ notification: Notification) {
+        guard let scene = notification.object as? UIWindowScene, scene === viewIfLoaded?.window?.windowScene else { return }
+        guard visible else { return }
+        switch notification.name {
+        case UIScene.didActivateNotification: setPhase(.active)
+        case UIScene.didEnterBackgroundNotification: setPhase(.background)
+        default: setPhase(.inactive)
+        }
+    }
+
+    private func setPhase(_ phase: ScenePhase) {
+        rootView = AnyView(OverlandRootView().environment(\.scenePhase, phase))
+    }
+}
+
+private struct MapControlsHost: UIViewControllerRepresentable {
+    let content: AnyView
+
+    func makeUIViewController(context: Context) -> MapControlsController {
+        MapControlsController(content: content)
+    }
+
+    func updateUIViewController(_ controller: MapControlsController, context: Context) {
+        controller.host.rootView = content
+    }
+}
+
+private final class MapControlsController: UIViewController {
+    let host: UIHostingController<AnyView>
+
+    init(content: AnyView) {
+        host = UIHostingController(rootView: content)
+        host.safeAreaRegions = []
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func loadView() {
+        view = MapControlsBoundary(frame: .zero)
+        view.accessibilityIdentifier = "overland.map.controls"
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        addChild(host)
+        host.view.backgroundColor = .clear
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(host.view)
+        NSLayoutConstraint.activate([
+            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            host.view.topAnchor.constraint(equalTo: view.topAnchor),
+            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+        host.didMove(toParent: self)
+    }
+}
+
+private final class MapControlsBoundary: UIView {
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        UIBezierPath(roundedRect: bounds, cornerRadius: bounds.width / 2).contains(point)
+    }
+
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        guard self.point(inside: point, with: event) else { return nil }
+        return super.hitTest(point, with: event)
     }
 }

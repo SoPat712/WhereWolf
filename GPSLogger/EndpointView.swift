@@ -9,19 +9,24 @@ struct EndpointView: View {
     @State private var acceptHTTP = false
     @State private var headers: [HeaderField] = []
     @State private var bridge = GLManagerBridge.shared
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var configured: Bool { bridge.endpointSet }
 
     var body: some View {
         Form {
             Section {
-                HStack {
-                    Text("Status")
-                    Spacer()
-                    Label(configured ? "Configured" : "Not Configured",
-                          systemImage: configured ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                        .foregroundStyle(configured ? .green : .orange)
-                        .font(.callout)
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Status")
+                        connectionStatus
+                    }
+                } else {
+                    HStack {
+                        Text("Status")
+                        Spacer()
+                        connectionStatus
+                    }
                 }
                 if configured {
                     HStack {
@@ -113,7 +118,7 @@ struct EndpointView: View {
                 Section { Text("Saved").foregroundStyle(.secondary) }
             }
         }
-        .navigationTitle("")
+        .navigationTitle("Server")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
         .onChange(of: url) { _, _ in saved = false }
@@ -126,6 +131,14 @@ struct EndpointView: View {
             load()
             bridge.refresh()
         }
+    }
+
+    private var connectionStatus: some View {
+        Label(configured ? "Configured" : "Not Configured",
+              systemImage: configured ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+            .foregroundStyle(configured ? .green : .orange)
+            .font(.callout)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private var sendChart: some View {

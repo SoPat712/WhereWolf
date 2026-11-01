@@ -10,6 +10,7 @@
 
 #import "SceneDelegate.h"
 #import "GLManager.h"
+#import "GLTripActions.h"
 #import "NSArray+map.h"
 #import "Overland-Swift.h"
 @import SwiftUI;
@@ -18,8 +19,8 @@
 
 - (void)sceneWillEnterForeground:(UIScene *)scene {
     
-    if([[NSUserDefaults standardUserDefaults] boolForKey:GLPurgeQueueOnNextLaunchDefaultsName]) {
-        [[GLManager sharedManager] deleteAllData];
+    if([[NSUserDefaults standardUserDefaults] boolForKey:GLPurgeQueueOnNextLaunchDefaultsName]
+       && [[GLManager sharedManager] deleteAllData]) {
         [[NSUserDefaults standardUserDefaults] setBool:NO forKey:GLPurgeQueueOnNextLaunchDefaultsName];
     }
 
@@ -82,11 +83,18 @@
 
     // Offer frequent travel modes when idle and Stop Trip while recording a trip.
     if(![GLManager sharedManager].tripInProgress) {
-        NSArray *tripModes = [[GLManager sharedManager] tripModesByFrequency];
+        NSArray *frequent = [[GLManager sharedManager] tripModesByFrequency];
+        NSMutableArray *tripModes = [NSMutableArray array];
+        for(NSString *mode in frequent) if([GLTripModeStore containsModeID:mode]) [tripModes addObject:mode];
+        for(NSString *mode in GLTripModeStore.allModeIDs) if(![tripModes containsObject:mode]) [tripModes addObject:mode];
+        if(tripModes.count > 4) [tripModes removeObjectsInRange:NSMakeRange(4, tripModes.count - 4)];
         app.shortcutItems = [tripModes mapObjectsUsingBlock:^id(id obj, NSUInteger idx) {
-            UIApplicationShortcutIcon *icon = [UIApplicationShortcutIcon iconWithTemplateImageName:obj];
+            NSString *symbol = [GLTripModeStore symbolForModeID:obj];
+            UIApplicationShortcutIcon *icon = [GLTripModeStore isCustomSymbol:symbol]
+                ? [UIApplicationShortcutIcon iconWithTemplateImageName:symbol]
+                : [UIApplicationShortcutIcon iconWithSystemImageName:symbol];
             return [[UIApplicationShortcutItem alloc] initWithType:obj
-                                                    localizedTitle:obj
+                                                    localizedTitle:[GLTripModeStore nameForModeID:obj]
                                                  localizedSubtitle:nil
                                                               icon:icon
                                                           userInfo:nil];
@@ -115,28 +123,39 @@
     if(connectionOptions.URLContexts.count > 0) {
         [self scene:scene openURLContexts:connectionOptions.URLContexts];
     }
+    for(NSUserActivity *activity in connectionOptions.userActivities) [self handleTrackingActivity:activity];
     if(connectionOptions.shortcutItem != nil) {
-        NSLog(@"App launched. connectionOptions = %@", connectionOptions);
         [self handleLaunchFromShortcutItem:connectionOptions.shortcutItem];
     }
 }
 
 - (void)windowScene:(UIWindowScene *)windowScene performActionForShortcutItem:(UIApplicationShortcutItem *)shortcutItem completionHandler:(void (^)(BOOL))completionHandler {
-    NSLog(@"Quick Action requested when app already loaded");
-    NSLog(@"shortcutItem = %@", shortcutItem);
-    
     [self handleLaunchFromShortcutItem:shortcutItem];
     completionHandler(YES);
 }
 
 - (void)handleLaunchFromShortcutItem:(UIApplicationShortcutItem *)shortcutItem {
     if([shortcutItem.type isEqualToString:@"stop"]) {
-        [[GLManager sharedManager] endTrip];
+        [GLTripActions endTripRestoringTracking];
     } else if([[GLManager GLTripModes] containsObject:shortcutItem.type]) {
-        [GLManager sharedManager].currentTripMode = shortcutItem.type;
-        [[GLManager sharedManager] startTrip];
+        [GLTripActions startTripWithMode:shortcutItem.type];
     }
 }
 
+
+- (void)scene:(UIScene *)scene continueUserActivity:(NSUserActivity *)activity {
+    [self handleTrackingActivity:activity];
+}
+
+- (void)handleTrackingActivity:(NSUserActivity *)activity {
+    NSString *type = [NSString stringWithFormat:@"%@.startTracking", NSBundle.mainBundle.bundleIdentifier];
+    if([activity.activityType isEqual:type] || [activity.activityType isEqual:@"com.aaronpk.overland.startTracking"]) {
+        [[GLManager sharedManager] startAllUpdates];
+    }
+}
+
+- (void)sceneDidBecomeActive:(UIScene *)scene {
+    [[GLManager sharedManager] syncTripLiveActivity];
+}
 
 @end
