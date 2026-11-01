@@ -34,7 +34,10 @@
 //You must must fill these out to define the method by which objects are serialized to/from data
 @property (copy) NSData *(^serializer)(id object);
 @property (copy) id (^deserializer)(NSData *data);
+@property (readonly, strong, nonatomic) NSError *lastError;
 
-- (void)accessCollection:(NSString *)collection withBlock:(void (^)(id <LOLDatabaseAccessor>accessor))block;
+- (BOOL)accessCollection:(NSString *)collection withBlock:(void (^)(id <LOLDatabaseAccessor>accessor))block;
+- (BOOL)importRecords:(NSArray<NSDictionary *> *)records keys:(NSArray<NSString *> *)keys
+       intoCollection:(NSString *)collection insertedCount:(NSUInteger *)insertedCount;
 
 @end

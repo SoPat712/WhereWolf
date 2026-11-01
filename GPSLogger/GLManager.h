@@ -9,6 +9,7 @@
 #import <Foundation/Foundation.h>
 #import <CoreLocation/CoreLocation.h>
 #import <CoreMotion/CoreMotion.h>
+#import "GLCloudFileWriter.h"
 @import UserNotifications;
 
 static NSString *const GLReminderChangedNotification = @"GLReminderChangedNotification";
@@ -19,6 +20,7 @@ static NSString *const GLAuthorizationStatusChangedNotification = @"GLAuthorizat
 static NSString *const GLSendingStartedNotification = @"GLSendingStartedNotification";
 static NSString *const GLSendingFinishedNotification = @"GLSendingFinishedNotification";
 static NSString *const GLSettingsChangedNotification = @"GLSettingsChangedNotification";
+static NSString *const GLUploadStateChangedNotification = @"GLUploadStateChangedNotification";
 
 static NSString *const GLAPIEndpointDefaultsName = @"GLAPIEndpointDefaults";
 static NSString *const GLAPIAccessTokenDefaultsName = @"GLAPIAccessTokenDefaults";
@@ -45,6 +47,13 @@ static NSString *const GLConsiderHTTP200SuccessDefaultsName = @"GLConsiderHTTP20
 static NSString *const GLPreciseSettingsDefaults = @"GLPreciseSettingsDefaults";
 static NSString *const GLBackgroundIndicatorDefaultsName = @"GLBackgroundIndicatorDefaults";
 static NSString *const GLLoggingModeDefaultsName = @"GLLoggingModeDefaults";
+static NSString *const GLDestinationDefaultsName = @"GLDestination";
+static NSString *const GLCloudFileModeDefaultsName = @"GLCloudFileMode";
+static NSString *const GLDiscardPointsWithoutGPSDefaultsName = @"GLDiscardPointsWithoutGPSDefaults";
+static NSString *const GLTripDiscardPointsWithoutGPSDefaultsName = @"GLTripDiscardPointsWithoutGPSDefaults";
+static NSString *const GLDiscardPointsWhileStationaryDefaultsName = @"GLDiscardPointsWhileStationaryDefaults";
+static NSString *const GLTripDiscardPointsWhileStationaryDefaultsName = @"GLTripDiscardPointsWhileStationaryDefaults";
+static NSString *const GLTripLiveActivityEnabledDefaultsName = @"GLTripLiveActivityEnabled";
 static NSString *const GLTripModeStatsDefaultsName = @"GLTripModeStats";
 static NSString *const GLVisitTrackingEnabledDefaultsName = @"GLVisitTrackingEnabledDefaults";
 static NSString *const GLLastTimeMovedBeyondStopThresholdDefaultsName = @"GLLastTimeMovedBeyondStopThresholdDefaults";
@@ -70,7 +79,9 @@ static NSString *const GLTripTrackingEnabledDefaultsName = @"GLTripTrackingEnabl
 static NSString *const GLTripModeDefaultsName = @"GLTripModeDefaults";
 static NSString *const GLTripStartTimeDefaultsName = @"GLTripStartTimeDefaults";
 static NSString *const GLTripStartLocationDefaultsName = @"GLTripStartLocationDefaults";
+static NSString *const GLUseNewLocationEngineDefaultsName = @"GLUseNewLocationEngine";
 static NSString *const GLWifiZonesDefaultsName = @"WifiZones";
+static NSString *const GLWifiKnownNetworksDefaultsName = @"WifiKnownNetworks";
 
 static NSString *const GLTripModeWalk = @"walk";
 static NSString *const GLTripModeRun = @"run";
@@ -115,18 +126,59 @@ typedef void (^CaseBlock)(void);
 
 @interface GLManager : NSObject <CLLocationManagerDelegate, UNUserNotificationCenterDelegate>
 
+@property BOOL savesToICloudDrive;
+@property GLCloudFileMode cloudFileMode;
+- (BOOL)hasDestination;
+- (BOOL)usesOwntracksFormat;
+@property BOOL discardPointsWithoutGPS;
+@property BOOL discardPointsWithoutGPSDuringTrip;
+@property (readonly) BOOL discardPointsWithoutGPSCurrentValue;
+@property BOOL discardPointsWhileStationary;
+@property BOOL discardPointsWhileStationaryDuringTrip;
+@property (readonly) BOOL discardPointsWhileStationaryCurrentValue;
+@property BOOL tripLiveActivityEnabled;
+- (void)syncTripLiveActivity;
+@property (strong, nonatomic, readonly) CLLocation *lastDeviceLocation;
+@property (strong, nonatomic, readonly) NSString *lastSendErrorTitle;
+@property (strong, nonatomic, readonly) NSString *lastSendErrorMessage;
+
 + (GLManager *)sharedManager;
 
 + (NSString *)currentWifiHotSpotName;
 + (NSDictionary *)currentWifiNetworkInfo;
++ (NSString * _Nullable)normalizedWifiBSSID:(NSString * _Nullable)bssid;
++ (NSArray<NSDictionary<NSString *, NSString *> *> *)knownWifiNetworks;
 
 @property (strong, nonatomic, readonly) CLLocationManager *locationManager;
 @property (strong, nonatomic, readonly) CMMotionActivityManager *motionActivityManager;
 
 @property (strong, nonatomic) NSNumber *sendingInterval;
 @property BOOL pausesAutomatically;
+@property (nonatomic) BOOL useNewLocationEngine;
+@property (nonatomic, readonly) BOOL hasContinuousUpdates;
+@property (nonatomic, readonly) BOOL shouldUseLiveUpdates;
+@property (nonatomic, readonly) NSString *engineState;
+@property (nonatomic, copy) NSDictionary<NSString *, NSNumber *> *advancedTrackingOptions;
+@property (nonatomic, readonly) NSString *adaptiveTrackingStatus;
+@property (nonatomic, readonly) NSString *motionAuthorizationStatus;
+@property (nonatomic, readonly) NSString *motionSummary;
+@property (nonatomic, readonly) CLLocation *lastReceivedLocation;
+@property (nonatomic, readonly) NSUInteger rejectedJumpCount;
+@property (nonatomic, readonly) NSDictionary<NSString *, id> *locationUpdateHealth;
+- (void)loadLocationHealthLog:(void (^)(NSArray<NSDictionary *> *events))completion;
+- (void)clearLocationHealthLog:(void (^)(void))completion;
+- (void)noteLocationLaunch:(BOOL)locationEvent;
+@property (nonatomic, readonly) BOOL pendingUploads;
+@property (nonatomic, readonly) BOOL uploadsBlocked;
+@property (nonatomic, readonly) NSDate *uploadRetryDate;
+- (void)setAdvancedTrackingOption:(NSNumber *)value forKey:(NSString *)key;
+- (void)requestMotionPermission;
+- (void)reconcileTracking;
+- (void)resumePendingUpload;
+- (void)resumeUploadAfterConnectivity;
 @property BOOL includeTrackingStats;
 @property BOOL notificationsEnabled;
+@property BOOL problemNotificationsOnly;
 @property (nonatomic) CLLocationDistance resumesAfterDistance;
 @property (nonatomic) CLLocationDistance discardPointsWithinDistance;
 @property (nonatomic) CLLocationDistance stopsAutomaticallyRadius;
@@ -170,7 +222,7 @@ typedef void (^CaseBlock)(void);
 - (void)startAllUpdates;
 - (void)stopAllUpdates;
 - (void)refreshLocation;
-- (void)deleteAllData;
+- (BOOL)deleteAllData;
 
 - (NSString *)authorizationStatusAsString;
 - (void)requestAuthorizationPermission;
@@ -207,13 +259,18 @@ typedef NS_ENUM(NSInteger, GLSendStatus) {
 @property (strong, nonatomic, readonly) NSString *wifiZoneName;
 @property (strong, nonatomic, readonly) NSString *wifiZoneLatitude;
 @property (strong, nonatomic, readonly) NSString *wifiZoneLongitude;
-@property (strong, nonatomic, readonly) NSArray<NSDictionary<NSString *, NSString *> *> *wifiZones;
+@property (strong, nonatomic, readonly) NSArray<NSDictionary<NSString *, id> *> *wifiZones;
+- (NSArray<NSDictionary<NSString *, NSString *> *> *)knownWifiNetworksIncludingSavedZones:(BOOL)includeSavedZones NS_SWIFT_NAME(knownWifiNetworks(includingSavedZones:));
+- (BOOL)addWifiNetworks:(NSArray<NSDictionary<NSString *, NSString *> *> *)networks latitude:(NSString *)latitude longitude:(NSString *)longitude;
 - (void)saveNewWifiZone:(NSString *)name withLatitude:(NSString *)latitude andLongitude:(NSString *)longitude;
 - (void)addWifiZoneWithName:(NSString *)name latitude:(NSString *)latitude longitude:(NSString *)longitude bssid:(NSString * _Nullable)bssid;
 - (void)removeWifiZoneAtIndex:(NSInteger)index;
 - (CLLocation *)currentLocationFromWifiName:(NSString *)wifi bssid:(NSString *)bssid;
 - (void)processEngineLocation:(CLLocation *)location;
+- (void)enqueueWorkoutImportRecords:(NSArray<NSDictionary *> *)records
+                        completion:(void (^)(NSUInteger inserted, NSString * _Nullable error))completion;
 - (void)processEngineStationary:(BOOL)stationary;
+- (void)updateLocationEngine;
 + (BOOL)isValidEndpoint:(NSString *)endpoint;
 @property (nonatomic, copy) NSDictionary<NSString *, NSString *> *customHTTPHeaders;
 

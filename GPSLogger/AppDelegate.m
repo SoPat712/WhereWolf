@@ -39,10 +39,18 @@
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
 
-    NSLog(@"Application launched with options: %@", launchOptions);
-    
     [GLManager sharedManager];
+    [[GLManager sharedManager] noteLocationLaunch:launchOptions[UIApplicationLaunchOptionsLocationKey] != nil];
     [[OverlandBackgroundRuntime shared] start];
+    [[SharedStateObserver shared] start];
+    [[HealthTripRecorder shared] start];
+    [[WorkoutRouteImporter shared] start];
+    [[GLManager sharedManager] syncTripLiveActivity];
+    [[OverlandUploadScheduler shared] start];
+#if OVERLAND_TESTFLIGHT_DIAGNOSTICS
+    // TESTFLIGHT ONLY — REMOVE BEFORE APP STORE RELEASE
+    [TestFlightDiagnostics start];
+#endif
     
     if([launchOptions objectForKey:UIApplicationLaunchOptionsLocationKey]) {
         [[GLManager sharedManager] logAction:@"application_launched_with_location"];

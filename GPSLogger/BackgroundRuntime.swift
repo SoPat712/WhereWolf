@@ -4,10 +4,68 @@ import Observation
 import UIKit
 import UserNotifications
 
+// Keep this type in the app target; no widget configuration registers its presentation.
+struct IslandOnlyTrackingAttributes: ActivityAttributes {
+    typealias ContentState = TrackingActivityAttributes.ContentState
+    var startedAt: Date
+}
+
+@MainActor
+private enum TrackingActivityHandle {
+    case widget(Activity<TrackingActivityAttributes>)
+    case islandOnly(Activity<IslandOnlyTrackingAttributes>)
+
+    static var all: [Self] {
+        Activity<TrackingActivityAttributes>.activities.map(Self.widget)
+            + Activity<IslandOnlyTrackingAttributes>.activities.map(Self.islandOnly)
+    }
+
+    var id: String {
+        switch self {
+        case .widget(let activity): return activity.id
+        case .islandOnly(let activity): return activity.id
+        }
+    }
+
+    var state: ActivityState {
+        switch self {
+        case .widget(let activity): return activity.activityState
+        case .islandOnly(let activity): return activity.activityState
+        }
+    }
+
+    var isActive: Bool { state == .active || state == .stale }
+
+    var isIslandOnly: Bool {
+        if case .islandOnly = self { return true }
+        return false
+    }
+
+    func update(_ content: ActivityContent<TrackingActivityAttributes.ContentState>) async {
+        switch self {
+        case .widget(let activity): await activity.update(content)
+        case .islandOnly(let activity): await activity.update(content)
+        }
+    }
+
+    func end() async {
+        switch self {
+        case .widget(let activity): await activity.end(nil, dismissalPolicy: .immediate)
+        case .islandOnly(let activity): await activity.end(nil, dismissalPolicy: .immediate)
+        }
+    }
+}
+
 @Observable
 @MainActor
 @objc final class OverlandBackgroundRuntime: NSObject {
     @objc static let shared = OverlandBackgroundRuntime()
+
+    static var hasActiveTrackingActivity: Bool { TrackingActivityHandle.all.contains { $0.isActive } }
+
+    static var hasBackgroundLocationActivity: Bool {
+        TrackingActivityHandle.all.contains { $0.isActive && !$0.isIslandOnly }
+    }
 
     private enum Key {
         static let liveActivity = "OverlandLiveActivityEnabled"
@@ -18,8 +76,9 @@ import UserNotifications
     private(set) var activityStatus = "Waiting for tracking"
     private let audio = SilentAudioSession()
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
-    @ObservationIgnored private var activity: Activity<TrackingActivityAttributes>?
+    @ObservationIgnored private var activity: TrackingActivityHandle?
     @ObservationIgnored private var activityObserver: Task<Void, Never>?
+    @ObservationIgnored private var delayedUpdate: Task<Void, Never>?
     @ObservationIgnored private var updateTask: Task<Void, Never>?
     @ObservationIgnored private var reminderRevision = 0
     @ObservationIgnored private var reminderDeadline: Date?
@@ -50,6 +109,7 @@ import UserNotifications
         set {
             guard TrackingActivityAttributes.Appearance(rawValue: newValue) != nil else { return }
             UserDefaults.standard.set(newValue, forKey: Key.appearance)
+            suppressed = false
             refresh()
         }
     }
@@ -79,6 +139,7 @@ import UserNotifications
             Task { @MainActor in
                 guard let self else { return }
                 self.suppressed = false
+                GLManager.shared().reconcileTracking()
                 self.refresh()
                 self.audio.refresh()
                 self.reloadReminder()
@@ -147,12 +208,13 @@ import UserNotifications
             activityStatus = "Live Activities are disabled in iOS Settings"
             return
         }
-        if activity == nil {
-            if let existing = Activity<TrackingActivityAttributes>.activities.first(where: {
-                $0.activityState == .active || $0.activityState == .stale
-            }) {
-                observe(existing)
-            }
+        let islandOnly = appearance == "blank"
+        let replacingCurrent = activity.map { $0.isIslandOnly != islandOnly } ?? false
+        if replacingCurrent || TrackingActivityHandle.all.contains(where: { $0.isIslandOnly != islandOnly }) {
+            await endActivities()
+        }
+        if activity == nil, let existing = TrackingActivityHandle.all.first(where: { $0.isActive }) {
+            observe(existing)
         }
         let gl = GLManager.shared()!
         let state = TrackingActivityAttributes.ContentState(
@@ -160,18 +222,28 @@ import UserNotifications
             appearance: TrackingActivityAttributes.Appearance(rawValue: appearance) ?? .minimal,
             reminderDeadline: reminderDeadline
         )
-        let content = ActivityContent(state: state, staleDate: reminderDeadline)
+        let content = ActivityContent(state: state, staleDate: reminderDeadline, relevanceScore: 0)
         if let activity {
             let structuralChange = lastContent?.appearance != state.appearance || lastContent?.isTrip != state.isTrip
-                || lastContent?.reminderDeadline != state.reminderDeadline
+                || (lastContent?.reminderDeadline == nil) != (state.reminderDeadline == nil)
             // Send Every can be one second; the status surface does not need that update rate.
             if lastContent != state && (structuralChange || Date().timeIntervalSince(lastUpdate) >= 30) {
                 await activity.update(content)
                 guard self.activity?.id == activity.id else { return }
                 lastContent = state
                 lastUpdate = Date()
+                delayedUpdate?.cancel()
+                delayedUpdate = nil
+            } else if lastContent != state && delayedUpdate == nil {
+                let delay = max(0, 30 - Date().timeIntervalSince(lastUpdate))
+                delayedUpdate = Task { [weak self] in
+                    do { try await Task.sleep(for: .seconds(delay)) } catch { return }
+                    guard let self else { return }
+                    self.delayedUpdate = nil
+                    self.refresh()
+                }
             }
-            activityStatus = state.appearance == .blank ? "Active · blank layout requested" : "Active"
+            activityStatus = "Active"
             return
         }
         guard !suppressed else {
@@ -183,12 +255,18 @@ import UserNotifications
             return
         }
         do {
-            let newActivity = try Activity.request(attributes: TrackingActivityAttributes(startedAt: Date()),
-                                                   content: content, pushType: nil)
+            let newActivity: TrackingActivityHandle
+            if islandOnly {
+                newActivity = .islandOnly(try Activity.request(attributes: IslandOnlyTrackingAttributes(startedAt: Date()),
+                                                              content: content, pushType: nil))
+            } else {
+                newActivity = .widget(try Activity.request(attributes: TrackingActivityAttributes(startedAt: Date()),
+                                                          content: content, pushType: nil))
+            }
             observe(newActivity)
             lastContent = state
             lastUpdate = Date()
-            activityStatus = state.appearance == .blank ? "Active · blank layout requested" : "Active"
+            activityStatus = "Active"
         } catch {
             suppressed = true
             activityStatus = "Could not start: \(error.localizedDescription)"
@@ -196,21 +274,31 @@ import UserNotifications
     }
 
     private func endActivities() async {
+        delayedUpdate?.cancel()
+        delayedUpdate = nil
         activityObserver?.cancel()
         activityObserver = nil
         activity = nil
         lastContent = nil
-        for old in Activity<TrackingActivityAttributes>.activities {
-            await old.end(nil, dismissalPolicy: .immediate)
+        for old in TrackingActivityHandle.all { await old.end() }
+        GLManager.shared().updateLocationEngine()
+    }
+
+    private func observe(_ activity: TrackingActivityHandle) {
+        self.activity = activity
+        GLManager.shared().updateLocationEngine()
+        activityObserver?.cancel()
+        switch activity {
+        case .widget(let activity): activityObserver = observeStates(activity)
+        case .islandOnly(let activity): activityObserver = observeStates(activity)
         }
     }
 
-    private func observe(_ activity: Activity<TrackingActivityAttributes>) {
-        self.activity = activity
-        activityObserver?.cancel()
-        activityObserver = Task { [weak self] in
+    private func observeStates<Attributes: ActivityAttributes>(_ activity: Activity<Attributes>) -> Task<Void, Never> {
+        Task { [weak self] in
             for await state in activity.activityStateUpdates {
                 guard !Task.isCancelled, let self, self.activity?.id == activity.id else { return }
+                GLManager.shared().updateLocationEngine()
                 if state == .dismissed || state == .ended {
                     self.activity = nil
                     self.suppressed = true

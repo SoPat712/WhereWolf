@@ -1,6 +1,23 @@
 import AVFoundation
 import Observation
 
+struct AudioRecoveryBudget {
+    private(set) var attempts = 0
+    private var playingSince: TimeInterval?
+
+    mutating func reset() { attempts = 0; playingSince = nil }
+    mutating func started(at time: TimeInterval) { playingSince = time }
+    mutating func checkStable(at time: TimeInterval) {
+        if let playingSince, time - playingSince >= 60 { attempts = 0 }
+    }
+    mutating func nextDelay() -> TimeInterval? {
+        playingSince = nil
+        guard attempts < 3 else { return nil }
+        attempts += 1
+        return pow(2, Double(attempts))
+    }
+}
+
 @Observable
 @MainActor
 final class SilentAudioSession {
@@ -38,6 +55,11 @@ private final class SilentAudioWorker: NSObject, AVAudioPlayerDelegate, @uncheck
     private var ownsAudioSession = false
     private var player: AVAudioPlayer?
     private var isPlaying = false
+    private var mediaAvailable = true
+    private var healthTimer: DispatchSourceTimer?
+    private var recoveryWork: DispatchWorkItem?
+    private var recoveryGeneration = 0
+    private var recovery = AudioRecoveryBudget()
 
     init(report: @escaping @Sendable (String, Bool) -> Void) {
         self.report = report
@@ -55,9 +77,21 @@ private final class SilentAudioWorker: NSObject, AVAudioPlayerDelegate, @uncheck
             guard let self else { return }
             self.queue.async { self.handleMediaServicesReset() }
         })
+        observers.append(center.addObserver(forName: AVAudioSession.mediaServicesWereLostNotification,
+                                            object: nil, queue: nil) { [weak self] _ in
+            guard let self else { return }
+            self.queue.async {
+                self.mediaAvailable = false
+                self.cancelRecovery()
+                self.stopPlayback()
+                if self.enabled { self.publish("Waiting for the audio service", playing: false) }
+            }
+        })
     }
 
     deinit {
+        healthTimer?.cancel()
+        recoveryWork?.cancel()
         for observer in observers { NotificationCenter.default.removeObserver(observer) }
     }
 
@@ -74,6 +108,8 @@ private final class SilentAudioWorker: NSObject, AVAudioPlayerDelegate, @uncheck
             guard self.enabled else { return }
             self.interrupted = false
             self.requiresReenable = false
+            self.cancelRecovery()
+            self.recovery.reset()
             self.refreshPlayback()
         }
     }
@@ -81,9 +117,13 @@ private final class SilentAudioWorker: NSObject, AVAudioPlayerDelegate, @uncheck
     private func applyEnabled(_ value: Bool) {
         guard enabled != value else { return }
         enabled = value
+        cancelRecovery()
+        recovery.reset()
         if value {
             requiresReenable = false
-            if interrupted {
+            if !mediaAvailable {
+                publish("Waiting for the audio service", playing: false)
+            } else if interrupted {
                 publish("Silent audio paused for an interruption", playing: false)
             } else {
                 start()
@@ -96,14 +136,14 @@ private final class SilentAudioWorker: NSObject, AVAudioPlayerDelegate, @uncheck
     }
 
     private func refreshPlayback() {
-        guard enabled, !interrupted, !requiresReenable else { return }
+        guard enabled, mediaAvailable, !interrupted, !requiresReenable, recoveryWork == nil else { return }
         if player?.isPlaying == true { return }
         if isPlaying { stopPlayback() }
         start()
     }
 
     private func start() {
-        guard enabled, !interrupted, !requiresReenable, !isPlaying else { return }
+        guard enabled, mediaAvailable, !interrupted, !requiresReenable, !isPlaying else { return }
         do {
             let nextPlayer = try AVAudioPlayer(data: Self.silentWAV())
             nextPlayer.delegate = self
@@ -114,23 +154,27 @@ private final class SilentAudioWorker: NSObject, AVAudioPlayerDelegate, @uncheck
             ownsAudioSession = true
             guard nextPlayer.prepareToPlay() else {
                 stopPlayback()
-                publish("Silent audio could not be decoded.", playing: false)
+                recover("Silent audio could not be decoded")
                 return
             }
             guard nextPlayer.play() else {
                 stopPlayback()
-                publish("Silent audio could not start.", playing: false)
+                recover("Silent audio could not start")
                 return
             }
             player = nextPlayer
+            recovery.started(at: ProcessInfo.processInfo.systemUptime)
+            startHealthChecks()
             publish("Silent audio active", playing: true)
         } catch {
             stopPlayback()
-            publish("Silent audio could not start: \(error.localizedDescription)", playing: false)
+            recover("Silent audio could not start: \(error.localizedDescription)")
         }
     }
 
     private func stopPlayback() {
+        healthTimer?.cancel()
+        healthTimer = nil
         player?.stop()
         player = nil
         isPlaying = false
@@ -139,10 +183,55 @@ private final class SilentAudioWorker: NSObject, AVAudioPlayerDelegate, @uncheck
         try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
     }
 
+    private func startHealthChecks() {
+        healthTimer?.cancel()
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + 30, repeating: 30, leeway: .seconds(5))
+        timer.setEventHandler { [weak self] in
+            guard let self, self.enabled, self.mediaAvailable, !self.interrupted, !self.requiresReenable else { return }
+            if self.player?.isPlaying == true {
+                self.recovery.checkStable(at: ProcessInfo.processInfo.systemUptime)
+            } else {
+                self.stopPlayback()
+                self.recover("Silent audio stopped unexpectedly")
+            }
+        }
+        healthTimer = timer
+        timer.resume()
+    }
+
+    private func cancelRecovery() {
+        recoveryGeneration += 1
+        recoveryWork?.cancel()
+        recoveryWork = nil
+    }
+
+    private func recover(_ message: String) {
+        guard enabled, mediaAvailable, !interrupted, !requiresReenable else { return }
+        cancelRecovery()
+        guard let delay = recovery.nextDelay() else {
+            requiresReenable = true
+            publish("\(message). Tap Retry to try again.", playing: false)
+            return
+        }
+        let generation = recoveryGeneration
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.recoveryGeneration == generation else { return }
+            self.recoveryWork = nil
+            self.refreshPlayback()
+        }
+        recoveryWork = work
+        publish("Recovering silent audio · attempt \(recovery.attempts) of 3", playing: false)
+        queue.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
     private func handleInterruption(_ value: UInt, options: UInt) {
         guard let type = AVAudioSession.InterruptionType(rawValue: value) else { return }
         switch type {
         case .began:
+            cancelRecovery()
+            healthTimer?.cancel()
+            healthTimer = nil
             interrupted = true
             player?.stop()
             player = nil
@@ -152,6 +241,8 @@ private final class SilentAudioWorker: NSObject, AVAudioPlayerDelegate, @uncheck
             interrupted = false
             guard enabled else { return }
             if AVAudioSession.InterruptionOptions(rawValue: options).contains(.shouldResume) {
+                requiresReenable = false
+                recovery.reset()
                 start()
             } else {
                 requiresReenable = true
@@ -163,6 +254,9 @@ private final class SilentAudioWorker: NSObject, AVAudioPlayerDelegate, @uncheck
     }
 
     private func handleMediaServicesReset() {
+        mediaAvailable = true
+        cancelRecovery()
+        recovery.reset()
         player?.stop()
         player = nil
         isPlaying = false
@@ -176,7 +270,7 @@ private final class SilentAudioWorker: NSObject, AVAudioPlayerDelegate, @uncheck
         queue.async {
             guard self.player.map(ObjectIdentifier.init) == identity else { return }
             self.stopPlayback()
-            self.publish(detail.map { "Silent audio stopped: \($0)" } ?? "Silent audio could not be decoded.", playing: false)
+            self.recover(detail.map { "Silent audio stopped: \($0)" } ?? "Silent audio could not be decoded")
         }
     }
 
@@ -185,7 +279,7 @@ private final class SilentAudioWorker: NSObject, AVAudioPlayerDelegate, @uncheck
         queue.async {
             guard self.player.map(ObjectIdentifier.init) == identity else { return }
             self.stopPlayback()
-            self.publish("Silent audio stopped unexpectedly.", playing: false)
+            self.recover("Silent audio stopped unexpectedly")
         }
     }
 

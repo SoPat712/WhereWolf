@@ -10,10 +10,16 @@
 
 #import "sqlite3.h"
 
+@interface LOLDatabase ()
+@property (readwrite, strong, nonatomic) NSError *lastError;
+- (void)recordError;
+@end
+
 @interface _LOLDatabaseAccessor : NSObject <LOLDatabaseAccessor>
 - (id)initWithDatabase:(LOLDatabase *)db collection:(NSString *)collection;
-- (void)done;
+- (BOOL)done;
 - (void)rollbackAndFinalize;
+- (void)markTransactionFailed;
 @end
 
 @implementation LOLDatabase {
@@ -58,18 +64,72 @@
     
 }
 
-- (void)accessCollection:(NSString *)collection withBlock:(void (^)(id <LOLDatabaseAccessor>))block;
+- (BOOL)accessCollection:(NSString *)collection withBlock:(void (^)(id <LOLDatabaseAccessor>))block;
 {
-    _LOLDatabaseAccessor *a = [[_LOLDatabaseAccessor alloc] initWithDatabase:self collection:collection];
-    if (!a) return;
+    @synchronized(self) {
+        self.lastError = nil;
+        _LOLDatabaseAccessor *a = [[_LOLDatabaseAccessor alloc] initWithDatabase:self collection:collection];
+        if (!a) return NO;
+        @try {
+            if (block) block(a);
+        } @catch (NSException *exception) {
+            [a rollbackAndFinalize];
+            @throw;
+        }
+        return [a done];
+    }
+}
 
-    @try {
-        if (block) block(a);
-    } @catch (NSException *exception) {
-        [a rollbackAndFinalize];
-        @throw;
-    } @finally {
-        [a done];
+- (void)recordError {
+    if(self.lastError) return;
+    int code = sqlite3_extended_errcode(db);
+    NSString *message = code == SQLITE_OK ? @"Queue serialization failed" : [NSString stringWithUTF8String:sqlite3_errmsg(db)];
+    self.lastError = [NSError errorWithDomain:@"LOLDatabase" code:code == SQLITE_OK ? SQLITE_MISMATCH : code
+        userInfo:@{NSLocalizedDescriptionKey: message}];
+}
+
+- (BOOL)importRecords:(NSArray<NSDictionary *> *)records keys:(NSArray<NSString *> *)keys
+       intoCollection:(NSString *)collection insertedCount:(NSUInteger *)insertedCount {
+    @synchronized(self) {
+        if(insertedCount) *insertedCount = 0;
+        self.lastError = nil;
+        if(records.count != keys.count) return NO;
+        _LOLDatabaseAccessor *accessor = [[_LOLDatabaseAccessor alloc] initWithDatabase:self collection:collection];
+        if(!accessor) return NO;
+        sqlite3_stmt *lookup = NULL;
+        sqlite3_stmt *receipt = NULL;
+        NSUInteger inserted = 0;
+        // Receipts and queued records commit together, including when an upload already removed a record.
+        BOOL ready = sqlite3_exec(db, "CREATE TABLE IF NOT EXISTS LOLImportReceipts (key TEXT PRIMARY KEY NOT NULL)", NULL, NULL, NULL) == SQLITE_OK
+            && sqlite3_prepare_v2(db, "SELECT 1 FROM LOLImportReceipts WHERE key = ?", -1, &lookup, NULL) == SQLITE_OK
+            && sqlite3_prepare_v2(db, "INSERT INTO LOLImportReceipts (key) VALUES (?)", -1, &receipt, NULL) == SQLITE_OK;
+        if(!ready) [accessor markTransactionFailed];
+        for(NSUInteger i = 0; ready && i < records.count; i++) {
+            NSString *key = keys[i];
+            if(![key isKindOfClass:NSString.class] || key.length == 0
+               || sqlite3_bind_text(lookup, 1, key.UTF8String, -1, SQLITE_TRANSIENT) != SQLITE_OK) {
+                [accessor markTransactionFailed]; break;
+            }
+            int found = sqlite3_step(lookup);
+            sqlite3_reset(lookup);
+            sqlite3_clear_bindings(lookup);
+            if(found == SQLITE_ROW) continue;
+            if(found != SQLITE_DONE) { [accessor markTransactionFailed]; break; }
+            [accessor setDictionary:records[i] forKey:key];
+            if(self.lastError) break;
+            if(sqlite3_bind_text(receipt, 1, key.UTF8String, -1, SQLITE_TRANSIENT) != SQLITE_OK
+               || sqlite3_step(receipt) != SQLITE_DONE) {
+                [accessor markTransactionFailed]; break;
+            }
+            sqlite3_reset(receipt);
+            sqlite3_clear_bindings(receipt);
+            inserted++;
+        }
+        if(lookup) sqlite3_finalize(lookup);
+        if(receipt) sqlite3_finalize(receipt);
+        BOOL committed = [accessor done];
+        if(committed && insertedCount) *insertedCount = inserted;
+        return committed;
     }
 }
 
@@ -101,6 +161,7 @@
     
     q = @"BEGIN TRANSACTION;";
     if (sqlite3_exec(_d->db, [q UTF8String], NULL, NULL, NULL) != SQLITE_OK) {
+        [_d recordError];
         NSLog(@"Couldn't begin a transaction!");
         return nil;
     }
@@ -109,6 +170,7 @@
     q = [[NSString alloc] initWithFormat:@"CREATE TABLE IF NOT EXISTS '%@' ('key' CHAR PRIMARY KEY  NOT NULL  UNIQUE, 'data' BLOB);", collection];
     if (sqlite3_exec(_d->db, [q UTF8String], NULL, NULL, NULL) != SQLITE_OK) {
         NSLog(@"table failed to be created %s", sqlite3_errmsg(_d->db));
+        [_d recordError];
         [self rollbackAndFinalize];
         return nil;
     }
@@ -117,6 +179,7 @@
     status = sqlite3_prepare_v2(_d->db, [q UTF8String], -1, &getByKeyStatement, NULL);
     if (status != SQLITE_OK) {
         NSLog(@"Error with get query! %s", sqlite3_errmsg(_d->db));
+        [_d recordError];
         [self rollbackAndFinalize];
         return nil;
     }
@@ -125,6 +188,7 @@
     status = sqlite3_prepare_v2(_d->db, [q UTF8String], -1, &enumerateStatement, NULL);
     if (status != SQLITE_OK) {
         NSLog(@"Error with enumerate query! %s", sqlite3_errmsg(_d->db));
+        [_d recordError];
         [self rollbackAndFinalize];
         return nil;
     }
@@ -133,6 +197,7 @@
     status = sqlite3_prepare_v2(_d->db, [q UTF8String], -1, &countStatement, NULL);
     if (status != SQLITE_OK) {
         NSLog(@"Error with count query! %s", sqlite3_errmsg(_d->db));
+        [_d recordError];
         [self rollbackAndFinalize];
         return nil;
     }
@@ -141,6 +206,7 @@
     status = sqlite3_prepare_v2(_d->db, [q UTF8String], -1, &setByKeyStatement, NULL);
     if (status != SQLITE_OK) {
         NSLog(@"Error with set query! %s", sqlite3_errmsg(_d->db));
+        [_d recordError];
         [self rollbackAndFinalize];
         return nil;
     }
@@ -149,6 +215,7 @@
     status = sqlite3_prepare_v2(_d->db, [q UTF8String], -1, &removeByKeyStatement, NULL);
     if (status != SQLITE_OK) {
         NSLog(@"Error with delete query! %s", sqlite3_errmsg(_d->db));
+        [_d recordError];
         [self rollbackAndFinalize];
         return nil;
     }
@@ -157,6 +224,7 @@
     status = sqlite3_prepare_v2(_d->db, [q UTF8String], -1, &deleteAllStatement, NULL);
     if (status != SQLITE_OK) {
         NSLog(@"Error with delete all query! %s", sqlite3_errmsg(_d->db));
+        [_d recordError];
         [self rollbackAndFinalize];
         return nil;
     }
@@ -164,24 +232,22 @@
     return self;
 }
 
-- (void)done;
+- (BOOL)done;
 {
     [self finalizeStatements];
-
-    if (!transactionOpen) return;
-
+    if (!transactionOpen) return NO;
     if (transactionFailed) {
         [self rollbackTransaction];
-        return;
+        return NO;
     }
-
-    NSString *q = @"COMMIT TRANSACTION;";
-    if (sqlite3_exec(_d->db, [q UTF8String], NULL, NULL, NULL) != SQLITE_OK) {
+    if (sqlite3_exec(_d->db, "COMMIT TRANSACTION;", NULL, NULL, NULL) != SQLITE_OK) {
+        [_d recordError];
         NSLog(@"Couldn't end a transaction! %s", sqlite3_errmsg(_d->db));
         [self rollbackTransaction];
-        return;
+        return NO;
     }
     transactionOpen = NO;
+    return YES;
 }
 
 - (void)dealloc {
@@ -231,6 +297,7 @@
 }
 
 - (void)markTransactionFailed {
+    [_d recordError];
     transactionFailed = YES;
 }
 

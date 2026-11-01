@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import CoreLocation
 
 // One entry per HTTP send attempt, oldest first.
 struct SendStatusEntry: Identifiable, Equatable {
@@ -9,14 +10,148 @@ struct SendStatusEntry: Identifiable, Equatable {
     let kind: Kind
 }
 
-// Notifications and polling refresh SwiftUI's view of the Objective-C manager.
+struct WifiZoneNetwork: Hashable, Identifiable {
+    let name: String
+    let bssid: String?
+    var id: Self { self }
+
+    init?(name: String, bssid: String? = nil) {
+        guard !name.isEmpty, name.utf8.count <= 32 else { return nil }
+        let address = (bssid ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if address.isEmpty {
+            self.bssid = nil
+        } else {
+            guard let normalized = GLManager.normalizedWifiBSSID(address) else { return nil }
+            if normalized == "00:00:00:00:00:00", ["wi-fi", "wlan"].contains(name.lowercased()) { return nil }
+            self.bssid = normalized
+        }
+        self.name = name
+    }
+
+    init?(_ dictionary: [String: String]) {
+        self.init(name: dictionary["name"] ?? dictionary["SSID"] ?? "",
+                  bssid: dictionary["bssid"] ?? dictionary["BSSID"])
+    }
+
+    var dictionary: [String: String] {
+        var result = ["name": name]
+        if let bssid { result["bssid"] = bssid }
+        return result
+    }
+}
+
+// Notifications refresh SwiftUI's view of the Objective-C manager.
 // Settings use its setters to preserve persistence and tracking changes.
 @Observable
 final class GLManagerBridge {
     static let shared = GLManagerBridge()
 
+    private(set) var tripModes = TripModeStore.modes
+    private(set) var tripModesRevision = 0
+    private(set) var healthRequestInFlight = false
+    private(set) var healthAuthorizationError: String?
+    private(set) var latestSendError: String?
+
+    func refreshTripModes() {
+        tripModes = TripModeStore.modes
+        tripModesRevision += 1
+    }
+
+    func saveTripModes(_ modes: [TripMode]) -> Bool {
+        guard TripModeStore.save(modes) else { return false }
+        refreshTripModes()
+        refresh()
+        return true
+    }
+
+    func restoreTripModes() -> Bool {
+        guard TripModeStore.restoreDefaults() else { return false }
+        refreshTripModes()
+        refresh()
+        return true
+    }
+
+    var savesToICloudDrive: Bool {
+        get { _ = tick; return GLManager.shared().savesToICloudDrive }
+        set { GLManager.shared().savesToICloudDrive = newValue; refresh() }
+    }
+    var cloudFileMode: Int {
+        get { _ = tick; return GLManager.shared().cloudFileMode.rawValue }
+        set { GLManager.shared().cloudFileMode = GLCloudFileMode(rawValue: newValue) ?? .daily; refresh() }
+    }
+    var cloudAvailable: Bool { GLCloudFileWriter.isAvailable() }
+    var historyRetentionHours: Double {
+        get { _ = tick; return Double(HistoryRetention.hours) }
+        set {
+            guard newValue.isFinite else { return }
+            let hours = min(Double(HistoryRetention.maximumHours), max(Double(HistoryRetention.minimumHours), newValue))
+            RecentLocationHistory.shared.setRetentionHours(Int(hours.rounded()))
+            refresh()
+        }
+    }
+
+    func loadHistoryStorageSummary() async -> HistoryStorageSummary {
+        await withCheckedContinuation { continuation in
+            RecentLocationHistory.shared.loadStorageSummary { continuation.resume(returning: $0) }
+        }
+    }
+
+    var tripLiveActivityEnabled: Bool {
+        get { _ = tick; return GLManager.shared().tripLiveActivityEnabled }
+        set { GLManager.shared().tripLiveActivityEnabled = newValue; refresh() }
+    }
+    var discardWithoutGPS: Bool {
+        get { _ = tick; return GLManager.shared().discardPointsWithoutGPS }
+        set { GLManager.shared().discardPointsWithoutGPS = newValue; refresh() }
+    }
+    var tripDiscardWithoutGPS: Bool {
+        get { _ = tick; return GLManager.shared().discardPointsWithoutGPSDuringTrip }
+        set { GLManager.shared().discardPointsWithoutGPSDuringTrip = newValue; refresh() }
+    }
+    var discardStationary: Bool {
+        get { _ = tick; return GLManager.shared().discardPointsWhileStationary }
+        set { GLManager.shared().discardPointsWhileStationary = newValue; refresh() }
+    }
+    var tripDiscardStationary: Bool {
+        get { _ = tick; return GLManager.shared().discardPointsWhileStationaryDuringTrip }
+        set { GLManager.shared().discardPointsWhileStationaryDuringTrip = newValue; refresh() }
+    }
+    var healthAvailable: Bool { HealthTripRecorder.isAvailable }
+    @MainActor var workoutImporter: WorkoutRouteImporter { .shared }
+    @MainActor func setAutomaticWorkoutImport(_ enabled: Bool) { WorkoutRouteImporter.shared.setAutomatic(enabled) }
+    @MainActor func setWorkoutImportDays(_ days: Int) { WorkoutRouteImporter.shared.setDays(days) }
+    var healthEnabled: Bool { _ = tick; return HealthTripRecorder.shared.isEnabled }
+    var healthLastError: String? { _ = tick; return HealthTripRecorder.shared.lastError }
+
+    func setHealthEnabled(_ enabled: Bool) {
+        guard !healthRequestInFlight else { return }
+        healthAuthorizationError = nil
+        guard enabled else {
+            HealthTripRecorder.shared.isEnabled = false
+            refresh()
+            return
+        }
+        healthRequestInFlight = true
+        HealthTripRecorder.shared.requestAuthorization { [weak self] error in
+            guard let self else { return }
+            healthRequestInFlight = false
+            healthAuthorizationError = error
+            if error == nil { HealthTripRecorder.shared.isEnabled = true }
+            refresh()
+        }
+    }
+
+    static var activityTypes: [CLActivityType] {
+        var types: [CLActivityType] = [.other, .automotiveNavigation, .fitness, .otherNavigation, .airborne]
+        if #available(iOS 27.0, *) { types.append(.maritime) }
+        return types
+    }
+
     private(set) var tick = 0
+    private(set) var clockTick = 0
     private(set) var trackingEnabled = false
+    private(set) var engineStatus = "Unavailable"
+    private(set) var authorizationStatus = "Not Determined"
     private(set) var queueCount = 0
     private(set) var lastLocationAge = "–"
     private(set) var lastLocationText = "–"
@@ -25,42 +160,89 @@ final class GLManagerBridge {
     private(set) var tripInProgress = false
     private(set) var sending = false
     private(set) var endpointSet = false
+    private(set) var destinationSet = false
     private(set) var speedUnit = "MPH"
     private(set) var lastSentText = "–"
     private(set) var sendHistory: [SendStatusEntry] = []
+    private(set) var adaptiveTrackingStatus = "Off"
+    private(set) var motionAuthorizationStatus = "Unavailable"
+    private(set) var motionSummary = "Motion activity is unavailable."
+    private(set) var lastReceivedLocation: CLLocation?
+    private(set) var lastReceivedLocationText = "–"
+    private(set) var lastReceivedLocationAge = "–"
+    private(set) var lastReceivedAccuracyText = "No location yet"
+    private(set) var rejectedJumpCount: UInt = 0
+    private(set) var pendingUploads = false
+    private(set) var uploadsBlocked = false
+    private(set) var uploadRetryDate: Date?
 
-    private var timer: Timer?
+    @ObservationIgnored private var timer: Timer?
+    @ObservationIgnored private var observers: [NSObjectProtocol] = []
+    @ObservationIgnored private var activeScenes: Set<UUID> = []
 
     private init() {
         let nc = NotificationCenter.default
         for name in [GLNewDataNotification, GLSendingStartedNotification, GLSendingFinishedNotification,
                      GLSettingsChangedNotification, GLAuthorizationStatusChangedNotification, GLNewActivityNotification,
-                     GLTrackingStateChangedNotification] {
-            nc.addObserver(forName: Notification.Name(name), object: nil, queue: .main) { [weak self] _ in
-                self?.refresh()
-            }
-        }
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            self?.refresh()
+                     GLTrackingStateChangedNotification, GLUploadStateChangedNotification,
+                     "OverlandEngineStateChanged", "OverlandLiveUpdatesFailed", "OverlandUploadSchedulerStateChanged",
+                     "OverlandLocationHealthChanged"] {
+            observers.append(nc.addObserver(forName: Notification.Name(name), object: nil, queue: .main) { [weak self] _ in
+                guard let self, !self.activeScenes.isEmpty else { return }
+                self.refresh()
+            })
         }
         refresh()
+    }
+
+    func setSceneActive(_ active: Bool, id: UUID) {
+        if active { activeScenes.insert(id) } else { activeScenes.remove(id) }
+        if activeScenes.isEmpty {
+            timer?.invalidate()
+            timer = nil
+        } else if timer == nil {
+            refresh()
+            timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+                self?.refreshClock()
+            }
+            timer?.tolerance = 0.25
+        }
+    }
+
+    private func refreshClock() {
+        guard let gl = GLManager.shared() else { return }
+        clockTick += 1
+        lastLocationAge = gl.lastLocation.map { Self.timeFormatted(max(0, Int(-$0.timestamp.timeIntervalSinceNow))) } ?? "–"
+        lastSentText = gl.lastSentDate.map { Self.timeFormatted(max(0, Int(-$0.timeIntervalSinceNow))) + " ago" } ?? "–"
+        updateReceivedLocation(gl.lastReceivedLocation)
+        rejectedJumpCount = gl.rejectedJumpCount
     }
 
     func refresh() {
         guard let gl = GLManager.shared() else { return }
         tick += 1
+        let catalog = TripModeStore.modes
+        if tripModes != catalog { tripModes = catalog; tripModesRevision += 1 }
+        latestSendError = gl.lastSendErrorMessage
         trackingEnabled = gl.trackingEnabled
+        engineStatus = ["receiving": "Receiving", "stationary": "Stationary", "authorization-limited": "Location access limited",
+                        "accuracy-limited": "Accuracy limited", "unavailable": "Unavailable", "failed": "Engine failed"][gl.engineState] ?? "Unavailable"
+        authorizationStatus = gl.authorizationStatusAsString()
         queueCount = Int(gl.currentPointsInQueue)
         tripInProgress = gl.tripInProgress()
         sending = gl.sendInProgress
         endpointSet = !(gl.apiEndpointURL() ?? "").isEmpty
+        destinationSet = gl.hasDestination()
         speedUnit = (Locale.current.measurementSystem == .metric) ? "KM/H" : "MPH"
+        adaptiveTrackingStatus = gl.adaptiveTrackingStatus
+        motionAuthorizationStatus = gl.motionAuthorizationStatus
+        motionSummary = gl.motionSummary
+        rejectedJumpCount = gl.rejectedJumpCount
+        pendingUploads = gl.pendingUploads
+        uploadsBlocked = gl.uploadsBlocked
+        uploadRetryDate = gl.uploadRetryDate
 
-        if let sent = gl.lastSentDate {
-            lastSentText = Self.timeFormatted(max(0, Int(-sent.timeIntervalSinceNow))) + " ago"
-        } else {
-            lastSentText = "–"
-        }
+        refreshClock()
 
         let results = (gl.recentSendResults() as? [[String: NSNumber]]) ?? []
         sendHistory = results.enumerated().map { idx, entry in
@@ -85,6 +267,7 @@ final class GLManagerBridge {
             lastAccuracyText = "No location yet"
             speed = 0
         }
+
     }
 
     func saveServer(url: String, token: String, deviceId: String, uniqueId: Bool, acceptHTTP: Bool, headers: [String: String]) {
@@ -102,6 +285,37 @@ final class GLManagerBridge {
         refresh()
     }
 
+    var wifiZones: [[String: String]] {
+        _ = tick
+        return (GLManager.shared().wifiZones ?? []).map { $0.compactMapValues { $0 as? String } }
+    }
+
+    func wifiNetworkSnapshot() -> (current: WifiZoneNetwork?, known: [WifiZoneNetwork], location: CLLocation?) {
+        let info = (GLManager.currentWifiNetworkInfo() as? [String: String]) ?? [:]
+        let current = WifiZoneNetwork(info)
+        let gl = GLManager.shared()!
+        let known = (gl.knownWifiNetworks(includingSavedZones: true) ?? []).compactMap(WifiZoneNetwork.init)
+        return (current, known, wifiZoneLocation)
+    }
+
+    var wifiZoneLocation: CLLocation? {
+        _ = clockTick
+        guard let gl = GLManager.shared(), let location = gl.lastReceivedLocation ?? gl.lastLocation,
+              CLLocationCoordinate2DIsValid(location.coordinate), abs(location.timestamp.timeIntervalSinceNow) <= 60 else { return nil }
+        return location
+    }
+
+    func saveWifiNetworks(_ networks: [WifiZoneNetwork], latitude: String, longitude: String) -> Bool {
+        let saved = GLManager.shared().addWifiNetworks(networks.map(\.dictionary), latitude: latitude, longitude: longitude)
+        if saved { refresh() }
+        return saved
+    }
+
+    func removeWifiZones(at offsets: IndexSet) {
+        for index in offsets.sorted(by: >) { GLManager.shared().removeWifiZone(at: index) }
+        refresh()
+    }
+
     private static func timeFormatted(_ totalSeconds: Int) -> String {
         let seconds = totalSeconds % 60
         let minutes = (totalSeconds / 60) % 60
@@ -110,6 +324,19 @@ final class GLManagerBridge {
             return String(format: "%d:%02d:%02d", hours, minutes, seconds)
         }
         return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    private func updateReceivedLocation(_ location: CLLocation?) {
+        lastReceivedLocation = location
+        guard let location else {
+            lastReceivedLocationText = "–"
+            lastReceivedLocationAge = "–"
+            lastReceivedAccuracyText = "No location yet"
+            return
+        }
+        lastReceivedLocationText = String(format: "%.4f\n%.4f", location.coordinate.latitude, location.coordinate.longitude)
+        lastReceivedLocationAge = Self.timeFormatted(max(0, Int(-location.timestamp.timeIntervalSinceNow)))
+        lastReceivedAccuracyText = String(format: "±%.0f m", location.horizontalAccuracy)
     }
 
     // MARK: Settings
@@ -134,6 +361,71 @@ final class GLManagerBridge {
             newValue ? GLManager.shared().startAllUpdates() : GLManager.shared().stopAllUpdates()
             refresh()
         }
+    }
+
+    var useNewLocationEngine: Bool {
+        get { _ = tick; return GLManager.shared().useNewLocationEngine }
+        set { GLManager.shared().useNewLocationEngine = newValue; refresh() }
+    }
+
+    func advancedBool(_ key: String) -> Bool {
+        _ = tick
+        return GLManager.shared().advancedTrackingOptions[key]?.boolValue ?? false
+    }
+
+    func setAdvancedBool(_ value: Bool, forKey key: String) {
+        GLManager.shared().setAdvancedTrackingOption(NSNumber(value: value), forKey: key)
+        refresh()
+    }
+
+    func advancedValue(_ key: String) -> Double {
+        _ = tick
+        return GLManager.shared().advancedTrackingOptions[key]?.doubleValue ?? 0
+    }
+
+    func setAdvancedValue(_ value: Double, forKey key: String) {
+        GLManager.shared().setAdvancedTrackingOption(NSNumber(value: value), forKey: key)
+        refresh()
+    }
+
+    var hasContinuousUpdates: Bool {
+        _ = tick
+        return GLManager.shared().hasContinuousUpdates
+    }
+
+    var backgroundRefreshStatus: String {
+        _ = tick
+        switch UIApplication.shared.backgroundRefreshStatus {
+        case .available: return "Available"
+        case .denied: return "Off or Limited by Low Power Mode"
+        case .restricted: return "Restricted by iOS"
+        @unknown default: return "Unavailable"
+        }
+    }
+
+    var locationHealth: [String: Any] {
+        _ = tick
+        _ = clockTick
+        return GLManager.shared().locationUpdateHealth
+    }
+
+    func loadLocationHealthLog() async -> [LocationHealthEntry] {
+        await withCheckedContinuation { continuation in
+            GLManager.shared().loadLocationHealthLog { entries in
+                continuation.resume(returning: (entries ?? []).compactMap(LocationHealthEntry.init))
+            }
+        }
+    }
+
+    func clearLocationHealthLog() async {
+        await withCheckedContinuation { continuation in
+            GLManager.shared().clearLocationHealthLog { continuation.resume() }
+        }
+    }
+
+    func retryLocationUpdates() {
+        GLManager.shared().refreshLocation()
+        refresh()
     }
 
     var trackingModeIndex: Int {
@@ -194,19 +486,10 @@ final class GLManagerBridge {
     }
 
     var activityIndex: Int {
-        get {
-            _ = tick
-            switch GLManager.shared().activityType {
-            case .automotiveNavigation: return 1
-            case .fitness: return 2
-            case .otherNavigation: return 3
-            case .airborne: return 4
-            default: return 0
-            }
-        }
+        get { _ = tick; return Self.activityTypes.firstIndex(of: GLManager.shared().activityType) ?? 0 }
         set {
-            let values: [CLActivityType] = [.other, .automotiveNavigation, .fitness, .otherNavigation, .airborne]
-            GLManager.shared().activityType = values[newValue]
+            guard Self.activityTypes.indices.contains(newValue) else { return }
+            GLManager.shared().activityType = Self.activityTypes[newValue]
             refresh()
         }
     }
@@ -238,7 +521,65 @@ final class GLManagerBridge {
     @MainActor var liveActivityStatus: String { OverlandBackgroundRuntime.shared.activityStatus }
     @MainActor var silentAudioStatus: String { OverlandBackgroundRuntime.shared.audioStatus }
 
-    @MainActor func retryBackgroundRuntime() { OverlandBackgroundRuntime.shared.retry() }
+    @MainActor var actualLocationEngine: String {
+        _ = tick
+        let gl = GLManager.shared()!
+        guard trackingEnabled else { return "Stopped" }
+        let authorization = gl.locationManager.authorizationStatus
+        guard authorization == .authorizedAlways || authorization == .authorizedWhenInUse else { return "Waiting for location access" }
+        if gl.didPauseByRadius { return "Paused within radius" }
+        if !gl.hasContinuousUpdates { return "Event-based updates" }
+        return OverlandLocationEngine.shared.usingLiveUpdates ? "New · live updates" : "Original · location manager"
+    }
+
+    @MainActor var locationEngineReason: String {
+        _ = tick
+        let gl = GLManager.shared()!
+        guard trackingEnabled, gl.hasContinuousUpdates, !gl.didPauseByRadius else { return "" }
+        let authorization = gl.locationManager.authorizationStatus
+        guard authorization == .authorizedAlways || authorization == .authorizedWhenInUse else {
+            return "Allow location access to resume tracking."
+        }
+        if OverlandLocationEngine.shared.liveUpdatesFailed {
+            return "The new location engine stopped after repeated failures; the original location manager is collecting fixes. Tap Retry Background Helpers to try the new engine again."
+        }
+        let adaptiveStatus = gl.adaptiveTrackingStatus.lowercased()
+        if adaptiveStatus.contains("quiet") || adaptiveStatus.contains("stationary") || adaptiveStatus.contains("lower accuracy") {
+            return "Adaptive tracking is quiet after a confirmed stop; it is using a coarser request while watching for movement."
+        }
+        if OverlandLocationEngine.shared.usingLiveUpdates { return "iOS chooses accuracy and automatic pause timing." }
+        let indicator = gl.tripInProgress() ? gl.showBackgroundLocationIndicatorDuringTrip : gl.showBackgroundLocationIndicator
+        if !indicator, gl.locationManager.authorizationStatus == .authorizedAlways,
+           !OverlandBackgroundRuntime.hasBackgroundLocationActivity {
+            return OverlandBackgroundRuntime.shared.appearance == "blank"
+                && OverlandBackgroundRuntime.hasActiveTrackingActivity
+                ? "Blank Island with the indicator off uses the original engine for background tracking."
+                : "The original engine keeps background tracking available without a supporting Live Activity."
+        }
+        return "Using your saved accuracy and automatic-pause settings."
+    }
+
+    @MainActor func retryBackgroundRuntime() {
+        OverlandLocationEngine.shared.resetLiveUpdatesFailure()
+        GLManager.shared()?.updateLocationEngine()
+        OverlandBackgroundRuntime.shared.retry()
+        refresh()
+    }
+
+    @MainActor var uploadSchedulerStatus: String {
+        _ = tick
+        return OverlandUploadScheduler.shared.status
+    }
+
+    func requestMotionPermission() {
+        GLManager.shared().requestMotionPermission()
+        refresh()
+    }
+
+    func retryPendingUpload() {
+        GLManager.shared().sendQueueNow()
+        refresh()
+    }
 
     var backgroundIndicator: Bool {
         get {
@@ -396,6 +737,22 @@ final class GLManagerBridge {
         }
     }
 
+    var includeTrackingStats: Bool {
+        get { _ = tick; return GLManager.shared().includeTrackingStats }
+        set { GLManager.shared().includeTrackingStats = newValue; refresh() }
+    }
+
+    func deletePendingUploads() -> Bool {
+        let deleted = GLManager.shared().deleteAllData()
+        refresh()
+        return deleted
+    }
+
+    var problemNotificationsOnly: Bool {
+        get { _ = tick; return GLManager.shared().problemNotificationsOnly }
+        set { GLManager.shared().problemNotificationsOnly = newValue; refresh() }
+    }
+
     // MARK: Trip Settings (applied only while a trip is in progress)
 
     var tripAccuracyPreset: Int {
@@ -446,7 +803,7 @@ final class GLManagerBridge {
     }
 
     var tripDuration: Double {
-        _ = tick
+        _ = clockTick
         return max(0, GLManager.shared().currentTripDuration())
     }
 
@@ -485,12 +842,10 @@ final class GLManagerBridge {
     }
 
     var tripActivityIndex: Int {
-        get {
-            _ = tick
-            return Int(GLManager.shared().activityTypeDuringTrip.rawValue) - 1
-        }
+        get { _ = tick; return Self.activityTypes.firstIndex(of: GLManager.shared().activityTypeDuringTrip) ?? 0 }
         set {
-            GLManager.shared().activityTypeDuringTrip = CLActivityType(rawValue: newValue + 1) ?? .other
+            guard Self.activityTypes.indices.contains(newValue) else { return }
+            GLManager.shared().activityTypeDuringTrip = Self.activityTypes[newValue]
             refresh()
         }
     }
@@ -540,36 +895,6 @@ final class GLManagerBridge {
             UserDefaults.standard.set(newValue, forKey: GLScreenLockEnabledDefaultsName)
             UIApplication.shared.isIdleTimerDisabled = newValue && tripInProgress
             refresh()
-        }
-    }
-}
-
-extension View {
-    @ViewBuilder
-    func glassButtonStyle(prominent: Bool = false, tint: Color? = nil) -> some View {
-        if #available(iOS 26.0, *) {
-            if prominent {
-                self.buttonStyle(.glassProminent).tint(tint)
-            } else {
-                self.buttonStyle(.glass).tint(tint)
-            }
-        } else {
-            if prominent {
-                self.buttonStyle(.borderedProminent).tint(tint)
-            } else {
-                self.buttonStyle(.bordered).tint(tint)
-            }
-        }
-    }
-}
-
-extension View {
-    @ViewBuilder
-    func glassPanel(cornerRadius: CGFloat) -> some View {
-        if #available(iOS 26.0, *) {
-            self.glassEffect(.regular, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        } else {
-            self.background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         }
     }
 }
