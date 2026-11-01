@@ -3,13 +3,13 @@
 set -euo pipefail
 
 APP_PATH="${1:-}"
-SIM="${SIM:-iPhone 17 Pro}"
+SIM="${SIM:-Overland Regression}"
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
 SHOTS="$DIR/Screenshots"
 DERIVED_DATA="${DERIVED_DATA:-/tmp/overland-smoke-build}"
-BUILD_JOBS="${BUILD_JOBS:-2}"
-if [ "$BUILD_JOBS" != "2" ]; then
-    echo "Use BUILD_JOBS=2 to keep build concurrency within the project limit." >&2
+BUILD_JOBS="${BUILD_JOBS:-1}"
+if [ "$BUILD_JOBS" != "1" ] && [ "$BUILD_JOBS" != "2" ]; then
+    echo "Use BUILD_JOBS=1 (preferred) or 2 to keep build concurrency within the project limit." >&2
     exit 1
 fi
 
@@ -29,7 +29,8 @@ fi
 xcrun simctl bootstatus "$UDID" -b
 
 if [ -z "$APP_PATH" ]; then
-    nice -n 10 xcodebuild -jobs "$BUILD_JOBS" -workspace "$DIR/Overland.xcworkspace" -scheme Overland \
+    python3 "$DIR/ci_scripts/resource_guard.py" --work-root "$DERIVED_DATA" --target 50 --resume 35 -- \
+        nice -n 10 xcodebuild -jobs "$BUILD_JOBS" -workspace "$DIR/Overland.xcworkspace" -scheme Overland \
         -destination "platform=iOS Simulator,id=$UDID" -derivedDataPath "$DERIVED_DATA" build
     APP_PATH="$DERIVED_DATA/Build/Products/Debug-iphonesimulator/Overland.app"
 fi

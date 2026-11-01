@@ -24,25 +24,67 @@ For Android, see [Colota](https://github.com/dietrichmax/colota) and its
 
 ## About this fork
 
-This fork uses SwiftUI screens inside a native UIKit tab controller, with Liquid
+This fork uses SwiftUI screens inside a UIKit shell, with Liquid
 Glass on iOS 26 and later and material backgrounds on earlier versions. It
 requires iOS 17.
 
-Tracker and Trip share a map with a draggable panel behind the native tab bar.
-Drag the handle above the tabs to expand or collapse the controls. The panel
-fits its contents; on small screens or with large text, it stops at the available
-height and lets you scroll. Settings has its own page without a map. Sliders
-support exact numeric entry.
+Tracker and Trip share a map with a Find My style drawer. Collapsed, the drawer
+is a single glass capsule holding the grabber and the Tracker, Trip, and Settings
+tabs and spans about 85% of the screen width. Drag the grabber or the tabs upward,
+or tap a map tab, to open it; it widens to about 95% as it rises. Open, it
+shows a glass timeline and one compact control row, with the tabs in their own
+capsule at the bottom. Details default closed: use the labeled Details capsule
+for current location data or the selected replay point. Closing details restores
+the compact drawer. Fitting content stays flat, without vertical scrolling or
+bounce. On small screens or with large text, the drawer stops at the available
+height and lets overflowing content scroll. Tab changes immediately retarget
+the drawer's current animation to the new content height. Drag
+sideways across the tabs to switch pages. Settings replaces the map and scrolls
+above the collapsed drawer. Sliders have common-value detents and selection
+feedback, and still support exact numeric entry. Dragging previews a setting;
+releasing saves it once.
 
-UIKit handles tab selection, drag gestures, icons, and labels. The panel uses
-regular `UIGlassEffect` on iOS 26 and later, with a material fallback on older
-versions. The tabs stay in place as the panel resizes.
+Hold the history ruler briefly, then drag to scroll through larger stretches of
+the timeline. A Liquid Glass time bubble with readable text appears above the
+ruler while held (blur material before iOS 26), and
+releasing stops it immediately.
+Normal dragging keeps its original precision and momentum. Trip Settings starts
+with a translucent glass background and fades toward the grouped Settings
+background as the sheet expands; collapsing reverses the fade. Cards use the
+same secondary grouped colors as the main Settings form in light and dark mode.
+
+UIKit handles the drawer's drag gestures and detents; SwiftUI draws the tabs. The
+drawer uses interactive `UIGlassEffect` on iOS 26 and later, with a material
+fallback on older versions. Its spring follows the display's available refresh
+rate, up to 120 Hz on ProMotion iPhones. The app enables
+`CADisableMinimumFrameDurationOnPhone`; iOS still controls the actual rate.
+Drawer geometry and map-credit positioning stay in UIKit so animation frames
+do not rebuild the SwiftUI root. The tabs stay in place as the drawer resizes.
+
+Settings → Support → Tip Jar opens a SwiftUI screen with a bottom selector for
+SoPat712, the creator of this fork, and aaronpk, Overland's original creator. SoPat712's
+page keeps the existing one-time, monthly, and yearly in-app tip products and
+Restore Purchases, using StoreKit 2. Aaron's page offers one-time $5, $10, $25,
+or custom USD tips through Cash App, PayPal, or Venmo only when StoreKit reports
+the US App Store storefront; otherwise it shows his open-source credit and a
+link to Overland on GitHub. The payment links open in the browser. The legacy
+Tip Jar controller and main storyboard have been removed.
 
 The fork includes PR #180's precision controls, accuracy filter, and stationary
 stopping, plus its later notification, persisted pause-state, and safe-settings
 follow-ups. It also adds multiple WiFi zones with optional BSSID matching,
 custom HTTP headers, server-certificate diagnostics, and the last 50 send
 outcomes for the current app session.
+
+Upstream features through October 28, 2026 include editable trip modes,
+Shortcuts and Siri actions, widgets and Control Center controls, an optional
+trip Live Activity, iCloud Drive exports, Apple Health workouts and routes,
+stationary-point filtering, and WiFi-zone placement on a map. These use the
+fork’s existing screens and glass styling. Health, iCloud, WiFi identity and
+widget sharing require the corresponding signing capabilities. See the
+[integration notes](docs/upstream-integration.md) for behavior and build options.
+Trip icons include Google’s [Material Symbols](https://github.com/google/material-design-icons),
+licensed under Apache License 2.0.
 
 Queue and networking fixes address empty OwnTracks sends, incorrect timestamps,
 and batch counts. The location source preserves custom accuracy and pause
@@ -52,23 +94,169 @@ See [AGENTS.md](AGENTS.md) for build commands and [BATTERY_AUDIT.md](BATTERY_AUD
 for unresolved background-tracking findings. Battery improvements require device
 measurements; simulator checks do not establish energy savings.
 
+## Tracking correctness and diagnostics
+
+Presentation work pauses when no scene is active. Background location delivery,
+recording, uploads, reminders and Live Activity updates remain independent of
+scene visibility. Replay catches up when Tracker becomes visible; the trip map
+loads when Trip becomes visible.
+
+WiFi zones replace only a fresh current fix, keep its timestamp, and use the
+zone radius or 50 m accuracy. Historical fixes in a delivered batch remain
+intact. Future-dated fixes and repeated identical fixes
+are rejected; delayed history has no blanket age cutoff. Radius pausing uses
+validated raw fixes before recording filters and resets on tracking, preset
+and trip transitions. Automatic pausing still ends a trip.
+
+Successful uploads drain eligible backlog without waiting for another fix.
+Send Now, pause and trip-end flushes include the remaining partial batch.
+Transient failures back off from 5 seconds to one hour with jitter; 429/503
+Retry-After deadlines take precedence. Authentication and configuration failures
+retain the queue and wait for changed server settings or Send Now. Error alerts
+are limited to one per five minutes. Failed queue commits do not advance the
+accepted-fix baseline, and failed trip-summary commits leave the trip available
+to retry. Trip distance updates incrementally from committed trip points.
+
+Settings → Tracking & Precision includes **Use new location engine**, off by
+default. It selects `CLLocationUpdate.liveUpdates` for continuous acquisition,
+using the selected activity type. iOS may pause GPS when stationary and resume
+it automatically; the stream cannot enforce numeric desired accuracy or a
+pause-off policy. Preset values, recording filters, significant changes, visits
+and radius pause remain unchanged. The toggle is disabled when continuous
+updates are unavailable and is never selected by a preset. Turning it off
+preserves the existing engine selection, including Custom Best with automatic
+pause. Tracker shows engine health and location authorization. A failed live
+stream gets at most three retries per activation, then switches to
+`CLLocationManager`. The failure stays latched until an explicit start, Retry,
+engine change, refresh, or restored location authorization. Returning to the
+foreground does not start an endless retry cycle.
+
+The Location Engine info button explains benefits, tradeoffs, pausing in both
+engines, trip behavior, background fallback and defaults. Automatic pausing ends
+an active trip; the new engine can pause even when the trip pause setting is off.
+
+The original engine also supports automatic pausing when enabled. With Always
+location access and the background indicator off, live updates require an active
+Status or Minimal Live Activity. Blank uses the original engine: its app-only
+activity does not keep the live-update stream delivering in the background.
+Without a supporting activity, Overland also uses the original engine to honor
+the indicator setting. Activity creation, dismissal and expiry update that selection
+without changing saved preferences. Trips retain their separate indicator setting.
+
+### Optional tracking policies
+
+These controls are independent of Usage Presets. They default off and retain
+their values when a preset changes. Each section has an info button explaining
+its behavior and limits.
+
+- **Motion & Adaptive Tracking** provides an explicit Motion & Fitness
+  permission button, motion-assisted recovery, a separate choice to resume a
+  radius pause on movement, and configurable confidence. Motion describes
+  activity; it does not improve GPS accuracy or wake a suspended app by itself.
+  Recorded GeoJSON motion labels use the activity at the fix's timestamp.
+- **Adaptive Tracking** can lower requested accuracy after a confirmed stop.
+  Dwell, cluster radius, confirmation accuracy, idle accuracy and exit radius
+  are configurable. Motion confirmation is required by default; without it,
+  tracking stays detailed. You can choose GPS-only confirmation instead. Coarse
+  updates continue and an exit region with Always access helps restore detailed
+  tracking, but departure detection can be delayed. Trips require a separate
+  opt-in. While moving, the saved accuracy and engine settings apply.
+- **Point Selection & Quality → Any threshold** changes saved-point selection
+  from distance AND time to distance OR time OR a configurable turn. Only
+  enabled thresholds participate. A turn requires a usable course while moving.
+  These are recording rules, not guaranteed GPS delivery intervals.
+- **Reject Implausible Jumps** compares displacement, elapsed time and both
+  fixes' reported uncertainty against a configurable speed limit. A second
+  nearby fix at least one second later can confirm a relocation. It preserves
+  original coordinates and timestamps; flight users can raise the limit or
+  leave it off.
+- **Sending → Background Uploads** asks iOS for network-connected processing
+  time when an eligible queue remains. iOS decides when it runs. **Retry
+  Connectivity Failures** separately retries a network failure when an observed
+  connection returns. Both reuse the existing uploader, acknowledgment rules
+  and queue. Server Retry-After and authentication blocks remain in force.
+- **Background → Explicit Service Session** retains an iOS 18+ authorization
+  session while continuous tracking is enabled and Always access is already
+  granted. It does not request a permission upgrade or guarantee execution.
+- **Background → Background Recovery Monitoring** adds significant-change
+  monitoring alongside Standard tracking and trips. It defaults off and requires
+  Always access and device support. This gives iOS another opportunity to relaunch
+  Overland after system termination; it cannot promise a wake interval or bypass
+  force-quit. The page also shows the system Background App Refresh status.
+- **Background → Location Updates & Recovery** contains two independent,
+  default-off options. **Automatically Retry Location Updates** checks for missing
+  updates or old readings while continuous tracking is expected. The default wait
+  is two minutes, adjustable from one to thirty minutes. It makes at most three
+  attempts per app session without a fresh fix, waiting longer between attempts.
+  Fresh locations reset the limit even when point filters reject them. Stop,
+  automatic pauses, stationary radius pauses, adaptive power saving and lost
+  permission prevent retries. The check cannot wake a suspended app or recover
+  points that were never received.
+- **Save Location Health Log**, on that same page, keeps up to 200 events for seven
+  days in a protected, backup-excluded local file. Entries describe observed gaps,
+  retries and reasons points were skipped. They contain no coordinates, server
+  addresses or credentials. Share and clear actions are explicit; turning the log
+  off stops new entries and preserves saved ones. The log cannot prove why iOS
+  stopped running the app.
+
+Received location batches automatically request a short background execution
+allowance before saving. It covers the queue commit and waits for local history
+and Health route writes already queued by that batch. Completion and expiration
+end the allowance once. This protects received data without changing upload
+acknowledgments, point filters, presets, reminders or Live Activity appearance.
+
+Tracker's expanded details distinguish the last received fix, last saved point
+and last successful upload, and show adaptive state and held-back jump counts.
+The compact drawer stays unchanged. Core Location, storage and uploads continue
+independently of scene visibility.
+
+For a dense mixed-movement history, you can retain your 10 m / 5 s limits and
+choose Any threshold if you want either limit to save a returned fix. Adaptive
+tracking is a separate battery/coverage tradeoff. Measure it on the routes you
+care about before relying on it for prompt departure capture. See
+[policy details and remote keys](docs/tracking-improvements.md#optional-tracking-policies).
+
+Release builds temporarily define `OVERLAND_TESTFLIGHT_DIAGNOSTICS`. This
+compiles a local MetricKit collector and Settings → Diagnostics. It retains the
+latest 100 JSON reports in Application Support/Diagnostics, excluded from
+backups. Nothing is uploaded automatically; Share exports only the report you
+choose. iOS 17–26 use `MXMetricManager`; iOS 27 uses one retained `MetricManager`.
+System report delivery and battery effects require physical-device testing.
+
+See [the implementation report](docs/tracking-improvements.md) for the researched
+OwnTracks HTTP contract and validation results.
+
+### Before App Store release
+
+- [ ] Remove the TestFlight diagnostics collector, Diagnostics screen and launch
+  hook, and remove `OVERLAND_TESTFLIGHT_DIAGNOSTICS` from Swift and Objective-C
+  Release build settings. Verify the App Store binary contains none of them.
+
 ## Background runtime options
 
 Settings → Background Runtime adds two helpers that follow Start/Stop Tracking:
 
 - **Tracking Live Activity** defaults to Minimal, a location icon in the Dynamic
   Island. Status also shows the last successful send in the expanded view.
-  Blank requests zero-sized content. Normal Lock Screen content is transparent
-  and empty; iOS may still reserve a surface. There is no documented switch to
-  restrict a Live Activity to the Dynamic Island.
+  Blank starts a separate app-only activity whose attributes have no registered
+  widget configuration. The compact blank Island and absence of a Lock Screen
+  card were verified on an iOS 27 simulator and a physical iPhone. Status and
+  Minimal retain the widget's empty Lock Screen view, which iOS can still display
+  as a card. Blank uses the original
+  location engine with Always access and the background indicator off. Recheck
+  presentation and background delivery on new iOS versions.
 - **Silent Audio (Experimental)** defaults off. It loops digital silence through
   the audio playback session and mixes with other audio. Calls can interrupt it.
-  If playback remains paused afterward, use Retry Background Helpers. It uses no
-  microphone and may increase battery use.
+  While playing, a 30-second health check detects unexpected stops. Recovery is
+  limited to three attempts with 2, 4 and 8 second delays; a minute of stable
+  playback resets that budget. Calls and audio-service loss suspend recovery.
+  If playback remains paused afterward, use Retry Background Helpers. It uses
+  no microphone and may increase battery use.
 
 The Live Activity uses the deadline of Overland's existing ten-minute location
-reminder. If that deadline passes, it shows the same request to open Overland;
-tapping it opens Tracker. Rescheduling or canceling the reminder updates the
+reminder. If that deadline passes, Status and Minimal show the same request to
+open Overland in the Dynamic Island; Blank stays empty. Tapping the activity
+opens Tracker. Rescheduling or canceling the reminder updates the
 activity's deadline. The existing notification remains enabled by its own setting.
 This is a missed-update warning, not proof that the app was killed or the server
 is offline. The reminder's current suppression rules still apply, including
@@ -79,72 +267,163 @@ hours. Open Overland or use Retry Background Helpers to request another. The
 app cannot update an ended activity after it has been killed; iOS controls when
 it renders the warning from the previously supplied deadline.
 
+Overland uses a relevance score of zero and sends no Live Activity alerts.
+[ActivityKit relevance scores](https://developer.apple.com/documentation/activitykit/activitycontent/relevancescore)
+rank activities from the same app. iOS chooses the main Island and detached
+bubble across apps, so Overland cannot reserve the main Island for Music or
+force its own activity into the smaller presentation.
+
 These helpers require tracking to be enabled with location access and an active
-tracking mode, visits, or a trip. They leave Core Location settings, stationary
-pausing, the upload queue, server payloads, and the existing background-location
-session intact. They do not guarantee continuous execution or bypass force-quit.
+tracking mode, visits, or a trip. An active Live Activity supports live location
+updates without an extra indicator session when the indicator is off. The
+original engine uses `CLLocationManager`'s indicator control. Stationary pausing,
+the upload queue and server payloads stay unchanged. These helpers do not
+guarantee continuous execution or bypass force-quit.
 Apple documents background audio for audible playback, so a silent keepalive may
 not meet App Store review requirements. See [BATTERY_AUDIT.md](BATTERY_AUDIT.md)
 for sources and the remaining device tests.
 
 ## Documentation
 
+This fork can also [import saved workout routes](docs/workout-import.md) from
+Apple Health, including routes recorded by other apps. The feature is opt-in,
+keeps a separate local route collection, and offers an explicit action to queue
+the points for your destination. It requires a HealthKit-capable signed build.
+
 ### Tracker screen
 
 Start Tracking begins location collection. Stop Tracking asks for confirmation;
 Keep Tracking dismisses the alert without stopping. The map follows your location
-until you pan it. The vertical pill at the top right contains map-style and
-recenter controls. Tap Show My Location to follow again.
+until you pan it. The native Apple Maps credit and Legal link sit at the top left.
+At the top right, the speedometer sits above the glass pill containing Map Style,
+Location, Zoom In and Zoom Out. Tap Show My Location to follow again. The tab controls sit
+just above the home indicator.
 
-The current-location dot pulses while the app is active. Reduce Motion and
-Low Power Mode disable the animation. The halo is decorative; it does not
-measure location accuracy.
+The map uses Apple’s native current-location dot and accuracy display. Its
+position follows the same display smoothing as the camera; recorded locations
+and reported accuracy remain unchanged.
 
 * `Updated` shows the time since the last accepted location point.
 * `Current location` shows its coordinates and reported horizontal accuracy.
-* `Speed` shows the most recent speed at the top left.
+* `Speed` shows the most recent speed in a glass tile above the right-side controls of both
+  map tabs.
 * `Queued` counts records waiting to be sent.
 * `Last Sent` shows the time since the last acknowledged upload.
-* `Send Now` uploads queued data immediately.
-* `Send Every` sets the automatic send interval. The slider covers 0–3600 seconds;
-  0 means Off. Tap the value to enter an exact number. Off leaves data queued for
-  manual sending or a later automatic upload. Longer intervals reduce the number
-  of network requests.
+* `Auto-send` shows the automatic send interval. Change it in
+  Settings › Sending › `Send Interval`.
+* The paper plane button beside the tracking status (`Send Now`) uploads queued
+  data immediately.
 
 The ruler at the top of the Tracker panel keeps the selected tick in the center.
 Older points lie to its left and **Live** lies to its right. Drag right to browse
 older points, or left to return to Live. A tap alone does not change modes.
 Each tick selects one recorded point; the step buttons also move one point at a
-time. Play follows the time between fixes
-at 1×, 5×, 10×, 20×, or 50× recorded time. The marker and camera move between
-fixes; this straight-line interpolation is for display only. The map shows the
-traveled route in blue and the remaining route as a dashed teal line. The details
+time. Play animates the journey at 0.25×, 0.5×, 1×, 2×, 5×, 10×, 25×, or 50× replay
+pace, with 1× as the default. These are relative playback speeds: long gaps are compressed,
+movement between fixes is interpolated, and changing speed preserves the
+current position and zoom. A display link keeps movement in step with the
+screen; an interrupted frame does not jump through a long unseen stretch.
+The straight-line interpolation is for display only. The map shows the
+traveled route in blue and the remaining route as a dashed teal line. The line
+connects every stored point in order, without sampling. Scrubbing changes the
+blue/teal boundary on the same route rather than rebuilding its geometry. The blue
+trail follows the marker continuously between recorded points during scrubbing
+and playback. A narrow blue trace shows the past; small, lighter round dots show
+the future. A short foreground tail moves with the marker in the same frame,
+while MapKit keeps the complete route cached beneath it. The blue trail ends at
+the marker's exact interpolated coordinate. Replay uses Apple's map marker.
+Its arrow steers smoothly through corners, takes the shortest turn across north,
+and stays aligned when you rotate or tilt the map. Reduce Motion shows direction
+changes immediately. A pale blue area shows the recorded horizontal accuracy
+in meters. The area stays centered on the interpolated coordinate and scales as you zoom.
+Its radius blends between neighboring accuracy values during playback; no area
+is shown when accuracy is unavailable. The live-location dot is hidden until you
+return to Live. The details
 and replay speedometer show the last logged point's values, and **View upload
 record** shows its complete GeoJSON or OwnTracks JSON. A queued record is not
 proof of delivery.
 
-Replay keeps a separate local copy of accepted location records for 24 hours,
-including points removed from the send queue after upload. Collection starts
-with this app version; previously sent points cannot be recovered. The history
-does not change tracking settings, upload timing, or server requests. Existing
-replay stores migrate in place; record IDs remain unique after old points expire.
+The pacing follows the approach in
+[Dawarich's replay player](https://github.com/Freika/dawarich/blob/dd1c268329093935286066f399470bb33f272744/app/javascript/maps_maplibre/managers/replay_panel.js#L584).
+At 1×, each recorded interval is divided by 15 and bounded to 200 milliseconds
+through 16 seconds. The speed multiplier scales that base duration, so faster
+settings also work for dense recordings. The original point times and speed
+readings are preserved. Fractional rates slow the marker, trail and replay clock
+together; changing rate never resets progress within the current segment.
 
-MapKit's Apple Maps credit and Legal link stay on the map, just above the glass
-panel as it expands or folds. [Apple's Maps guidance](https://developer.apple.com/design/human-interface-guidelines/maps)
-calls for both to remain visible with the map. MapKit reframes map content as
-that clearance changes.
+Replay point details are collapsed by default. The Details capsule reveals the
+coordinates, timestamp, accuracy, speed, altitude, battery and upload record;
+tap it again to hide them. The speed readout slides directly to each new reading,
+including during replay: higher speeds enter from above and lower speeds from
+below. Each slide finishes and briefly holds before showing the latest pending
+reading. Reduce Motion uses immediate updates. The timeline's glass background
+and compact playback controls keep most of the screen available for the map.
+
+Nearby point details are prefetched in batches and held in a bounded memory
+cache. Scrubbing has no deliberate payload-loading delay, and overlapping reads
+coalesce around the latest selection. Route lines stay fixed between logged
+points while the interpolated marker moves. The drawer holds its height during
+ruler dragging and coasting, then settles to the final content size. Opening an
+upload record pauses playback; its JSON is formatted only when inspected.
+
+Replay keeps a separate local copy of accepted location records, including points
+removed from the send queue after upload. Settings → Local History & Replay lets
+you choose 24 hours to 7 days, with common-value slider detents and exact hourly
+entry. The default remains 24 hours. The page shows the saved-point count and
+storage used by the archive. Increasing the window keeps future points longer;
+it cannot recover expired points or download earlier server history. Shortening
+the window removes older local records. Tracking settings, upload timing and
+server requests stay as configured. Existing replay stores migrate in place;
+record IDs remain unique after old points expire.
+
+During dragging or playback, incoming history updates wait until the interaction
+ends or playback pauses. Recording continues in the background. This keeps the
+route stable and avoids rebuilding a week-long trail for every incoming fix.
+Every retained point remains in the route; coordinates load separately from the
+bounded detail-payload cache.
+
+While following, the live location or selected replay coordinate stays centered
+in the visible map between the top safe area and the drawer's current top edge.
+Expanding details, collapsing the drawer and dragging it update that center
+without changing zoom or heading. Panning or pinching releases the camera anchor
+while replay continues. Use Pause to stop playback, or select another point to
+follow again. While browsing history, the
+location button toggles between the selected location and the entire trail,
+fitted into the map area above the drawer. It preserves the timeline selection
+and moves the camera smoothly. After manual panning or zooming, its first press
+chooses the view closest to the current zoom: the whole trail when zoomed out,
+or the selected point when close in. Further presses toggle between the two.
+Each transition takes about one second, including large changes in scale, with
+zoom and pan easing together all the way to the destination.
+Reduce Motion uses immediate camera changes. Tap Live on the ruler to return to your current
+location. The + and − buttons change the camera distance by a factor of two over
+about a third of a second. They keep the moving replay marker centered while
+following and preserve rotation and tilt. A detached camera stays free; zooming
+from the whole-trail view returns to following the selected point.
+MapKit's Apple Maps credit and Legal link sit at the top left. The speedometer
+and map controls sit at the top right. Legal has a larger touch target and opens Apple's Maps legal page
+when the native action is unavailable. See
+[Apple's Maps guidance](https://developer.apple.com/design/human-interface-guidelines/maps).
+
+Live location display eases between incoming fixes, moving the native Apple dot
+and map together while preserving zoom and heading. Motion slows to a stop at
+the last fix; it does not predict a future location. This smoothing affects only
+the visible map. Recorded coordinates, accuracy, timestamps and uploads keep
+their original values.
 
 Trip uses the same map and preserves its position when you switch tabs.
 Choose a travel mode and tap Start Trip to record a route. The panel shows
 distance, duration, and a timeline of the latest 1,000 points. Select a point to
 inspect it, or tap Live to return to your location. Stop Trip writes a trip record
-for upload alongside the location points. The map pill also opens Trip Settings
-on a separate page. Tap Trip to return to the map and its recenter control.
+for upload alongside the location points. The slider button beside the Trip
+title opens Trip Settings in a sheet over the map; tap Done to return. Trip
+Settings is also listed in Settings.
 
 ### Settings
 
-Open Settings from the bottom bar. Its form fills the page and scrolls above
-the tabs.
+Open Settings from the drawer tabs. The first page shows connection status,
+the tracking switch, and the Usage Preset selector, then links to Tracking &
+Precision, Stationary Pause, Sending, Trip Settings, Background, and WiFi Zones.
 The Usage Preset selector applies a set of tracking preferences. Section info
 buttons explain the controls and link to their sources.
 
@@ -166,10 +445,16 @@ These controls configure [Core Location](https://developer.apple.com/reference/c
   sources; visit tracking is separate. iOS controls when updates arrive.
 * `Visit Tracking` records iOS-detected arrivals and departures. Events can arrive
   after the visit occurred.
-* `Accuracy Preset` selects Custom, Best, or Navigation. Custom exposes
-  `Desired Accuracy` in meters. A smaller value requests more precision and can
+* `Requested Accuracy` selects Custom, Best, or Navigation. Custom exposes
+  `Target Accuracy` in meters. A smaller value requests more precision and can
   require more time and power; it does not guarantee the accuracy of a fix.
   See Apple's [desiredAccuracy](https://developer.apple.com/reference/corelocation/cllocationmanager/1423836-desiredaccuracy) reference.
+  This request is separate from `Max Saved-Point Error`, which filters returned
+  fixes in normal tracking and trips. A 10 m request can produce a valid 20 m fix;
+  automatically applying a 10 m filter would discard it. The main Usage Presets
+  set both settings and leave the saved-point accuracy filter Off.
+* `Active Engine` in Tracking and Background shows the backend actually selected,
+  including the reason for a Blank Island fallback.
 * `Activity Type` describes the expected movement to iOS and helps it decide when
   to pause. It does not label the trip or classify recorded motion.
   See [activityType](https://developer.apple.com/reference/corelocation/cllocationmanager/1620567-activitytype).
@@ -195,7 +480,7 @@ These controls configure [Core Location](https://developer.apple.com/reference/c
   to the last accepted point.
 * `Min Time Between Points` discards fixes received too soon after the last
   accepted point.
-* `Max Accuracy of Points` rejects fixes whose horizontal uncertainty exceeds
+* `Max Saved-Point Error` rejects fixes whose horizontal uncertainty exceeds
   the threshold. A 10 m limit accepts reported uncertainty of 10 m or less.
   Lower values can leave gaps when reception is poor.
 * `Stop Within Radius` and `Stop After` pause standard updates when accepted
@@ -203,9 +488,20 @@ These controls configure [Core Location](https://developer.apple.com/reference/c
   Both mode, not an active trip. Significant-change monitoring continues and can
   restart standard updates after movement. The delay may leave a gap in the route.
 * `Notifications` controls local tracking and send notifications. iOS notification
-  permission is also required.
+  permission is also required. Problems Only keeps upload errors and the existing
+  missed-update reminder while suppressing routine pause, resume and trip messages.
 * `WiFi Zones` assigns fixed coordinates to a network name. BSSID can distinguish
-  access points with the same name. Matching requires iOS to expose network identity.
+  access points with the same name. Select several networks in Add Zone to give
+  them one coordinate pair, or tap a saved network to edit its location. Saving
+  the same SSID/BSSID identity updates its existing assignment. SSID-only entries
+  match any access point; a matching BSSID takes precedence. BSSIDs are normalized
+  so capitalization and omitted leading zeroes do not create duplicates.
+  The connected network is selected automatically when iOS exposes it. The picker
+  also includes saved entries and up to 64 locally observed network identities;
+  it does not scan nearby networks or read iOS's saved-network list. Manual entries
+  remain available. Autofill and matching both require location access and an app
+  signed with Access WiFi Information. A sideloading profile without that entitlement
+  can store zone settings but cannot identify a connected network to apply them.
 
 Distance, time, and accuracy filters act on points after iOS delivers them.
 They do not set the GPS sampling rate. Set a filter to Off to disable it.
@@ -220,19 +516,27 @@ Automatic pausing can end a trip. Leave it off if you want to end trips manually
 Prevent Screen Lock keeps the display awake during a trip and increases display
 power use; it does not guarantee background execution.
 
-#### System settings
+#### App and system settings
 
-Some preferences also appear in the iOS Settings app:
+Overland's preferences live in the app. iOS Settings manages system permissions
+and Background App Refresh.
 
-* `Include tracking stats` includes diagnostic metadata about visits and the
-  app lifecycle.
-* `Consider HTTP 2XX Successful` accepts any successful 2xx response as an upload
-  acknowledgment, including an empty body. Otherwise the server must return
-  `{"result":"ok"}`. An acknowledgment removes the sent records.
-* `Include Unique ID in Logs` includes the device's vendor identifier. Device ID
+* `Sending → Include Tracking Stats` adds tracking configuration to GeoJSON points
+  and queues diagnostic events such as pause and resume. OwnTracks
+  omits these stats. This applies to new records.
+* `Server → Accept Any Successful HTTP Response` accepts any successful 2xx response
+  as an upload acknowledgment, including an empty body. Otherwise the server must
+  return `{"result":"ok"}`. An acknowledgment removes the sent records.
+* `Server → Include unique_id` includes the device's vendor identifier. Device ID
   is a separate, user-defined field.
-* `Precise Settings` belongs to the legacy interface. The SwiftUI controls always
-  provide sliders and numeric entry.
+* `Sending → Delete Pending Uploads` confirms before deleting all queued records,
+  including pending trip summaries and imported workout points. Local history,
+  saved workout routes, and the active trip are kept. The action is disabled
+  during an upload. Previously saved choices and any pending legacy purge request
+  are retained when updating.
+
+The old `Precise Settings` switch is unnecessary: the current controls always
+provide sliders and exact numeric entry.
 
 #### Configuration by custom URL
 
@@ -316,8 +620,8 @@ The first three presets adapt the usage profiles above. Balanced's 50 m / 180 s
 thresholds and the Walking / Running and Driving variants are Overland choices.
 They are not Apple-provided presets.
 
-Automatic sends are checked when location updates arrive, not on an exact
-background timer. A server acknowledgment removes only the records sent in that
+Ordinary automatic sends keep their location-driven interval. Successful sends
+drain eligible backlog, and failed sends use a persisted retry deadline. A server acknowledgment removes only the records sent in that
 request. Configured means a server URL is saved; it does not verify connectivity.
 Recent Sends keeps up to 50 outcomes and resets when the app restarts.
 
@@ -432,7 +736,9 @@ Your server must reply with a JSON response containing:
 
 This indicates to the app that the batch was received, and it will delete those points from the local cache. If the app receives any other response, it will keep the data locally and try to send it again at the next interval.
 
-If you are unable to return this JSON, you can set the "Consider HTTP 2XX Successful" in the Settings app, and then any HTTP 2xx response will be considered successful.
+If your server cannot return this JSON, enable **Accept Any Successful HTTP Response**
+under **Settings → Server** in Overland. Any successful HTTP 2xx response then
+acknowledges the batch.
 
 
 #### Configuration by Server Response
@@ -491,6 +797,28 @@ standard and significant-change updates; visits remain a separate setting.
 Include only the properties you intend to change. Repeating settings in every
 response can overwrite choices made in the app.
 
+The optional `set.advanced_tracking` dictionary accepts numeric and boolean
+policy values independently of `main` and `trip`. For example:
+
+```json
+{
+  "result": "ok",
+  "set": {
+    "advanced_tracking": {
+      "any_threshold": true,
+      "turn_degrees": 25,
+      "reject_jumps": true,
+      "maximum_speed": 100
+    }
+  }
+}
+```
+
+Omitted advanced keys retain their saved values. Unknown keys, nonnumeric values
+and nonfinite numbers are ignored; numeric values are clamped to the documented
+ranges. A response's settings are reconciled together, avoiding repeated
+acquisition restarts for each property.
+
 
 ### Current Location
 
@@ -517,8 +845,11 @@ Setting the Logging Mode to "Owntracks" will record the data in a format that ca
 
 https://www.home-assistant.io/integrations/owntracks/
 
-OwnTracks sends one queued point per request and retains the remaining points
-for later sends.
+OwnTracks sends one queued point per request, including delivered historical
+fixes, and drains remaining records after success. Any `2xx` acknowledges an
+OwnTracks message; Recorder normally returns `[]`. GeoJSON records retain their
+existing format and acknowledgment rule. Only Latest preserves events and trip
+summaries while replacing older location fixes.
 
 In the Overland Server URL setup, set the "Device ID" to the Owntracks topic you want, for example "username/device". This will be appended to the string "owntracks/" for the topic URL. Use the "Access Token" field for your Home Assistant username.
 
@@ -537,12 +868,26 @@ This assumes you have [Xcode](https://developer.apple.com/xcode/) and [Homebrew]
     * Signing → Team: *Personal Team*
 * Set the same signing team on *OverlandTrackingActivity* and give it a bundle
   identifier beneath the app identifier, such as *com.yourname.overland.TrackingActivity*.
-* Plug in your iOS device
-* Product → Destination -> select your device
-* Product → Run (⌘R)
-* On your iOS device: Settings -> General -> Device Management -> Developer App -> Trust
-* You can now launch the Overland app on your iOS device
+Personal Team builds need limited entitlements for both the app and widget
+extension. Before running, set these build settings to disable unsupported
+Health and iCloud code paths:
 
+```text
+OVERLAND_APP_ENTITLEMENTS=GPSLogger/GPSLogger.entitlements
+OVERLAND_WIDGET_ENTITLEMENTS=GPSLogger/GPSLogger.entitlements
+OVERLAND_HEALTHKIT_ENABLED=NO
+OVERLAND_ICLOUD_ENABLED=NO
+```
+
+Set `OVERLAND_BUNDLE_IDENTIFIER` and `DEVELOPMENT_TEAM` to match your fork and
+signing team. These settings do not grant WiFi or App Group access. WiFi autofill
+and automatic zone matching require a capable profile; the editor can still
+save zones. Without an App Group, widgets cannot read the app’s shared state.
+Keep the default entitlement files for a team supporting those capabilities.
+
+Plug in your device, select it under Product → Destination, and choose Product
+→ Run (⌘R). If iOS asks you to trust the developer, follow the prompt in Settings
+before launching Overland.
 
 ### Simulated route test
 
@@ -571,7 +916,7 @@ launch the app on a booted iPhone simulator, then run:
 python3 ci_scripts/load_replay_demo.py <simulator-udid>
 ```
 
-This replaces only tagged demo records in the local 24-hour history store.
+This replaces only tagged demo records in the local replay history store.
 It leaves the upload queue and other history records alone. The 46-mile Portland
 to Salem fixture follows a route from the [Project OSRM demo service](https://router.project-osrm.org/)
 based on [OpenStreetMap data](https://www.openstreetmap.org/copyright).
@@ -594,7 +939,7 @@ This fork incorporates work from Aaron Parecki and the upstream contributors:
 - [weltspion, PR #195](https://github.com/aaronpk/Overland-iOS/pull/195): Geomanic listing.
 
 These are local integrations, not claims that upstream issues or PRs are closed.
-Replay retains only 24 hours; send diagnostics retain only the current session's
+Replay retains the chosen 24-hour to 7-day window; send diagnostics retain only the current session's
 last 50 outcomes. Real-device background delivery, battery use, WiFi identity
 access, purchases, VoiceOver, iPad layout, and older iOS versions need further
 validation.

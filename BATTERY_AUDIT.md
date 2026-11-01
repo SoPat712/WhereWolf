@@ -1,204 +1,141 @@
 # Battery and behavior audit
 
-Reviewed September 29, 2026. Findings B-01 through B-06 remain proposals.
-The approved PR #180 follow-ups are included. The separately requested background
-runtime helpers are described below; they do not implement the battery repairs.
+This describes the current implementation. Battery savings and continuous background delivery have not been established by measurement.
 
-## What is known
+## Evidence and current behavior
 
-The [original report](https://github.com/aaronpk/Overland-iOS/pull/180#issuecomment-3447908515)
-describes occasional heat, a frozen app, and battery loss near a stationary
-stop on iPhone 15/iOS 18. It does not establish a cause. The author's
-[September 20 follow-up](https://github.com/aaronpk/Overland-iOS/pull/180#issuecomment-5753628738)
-explains notification and pause-setting changes and identifies a trip resume
-concern, but does not report a confirmed fix for the heat/freeze issue.
+The [original upstream report](https://github.com/aaronpk/Overland-iOS/pull/180#issuecomment-3447908515)
+described heat, freezing and battery loss near a stationary stop. It did not
+establish a cause. Repeated Core Location start calls alone do not prove a loop.
+The following repairs address identifiable work or state errors; they are not a
+claim to have reproduced that device issue.
 
-This fork also contains a newer location engine, background sessions, and
-SwiftUI polling that the original report did not test. A simulator UI pass
-cannot measure the reported device battery problem.
+| Area | Current behavior | Remaining tradeoff |
+| --- | --- | --- |
+| Acquisition transitions | Identical accuracy/activity/pause/indicator/engine configurations do not restart acquisition. Remote response changes reconcile together. | Service behavior still depends on iOS and authorization. |
+| Stationary radius | Dwell observes validated raw fixes before saved-point filters and WiFi replacement. Pause persists across relaunch. Pre-pause or old callbacks cannot resume it. Explicit Start resets it. | Significant changes are coarse; departure may be missed until a fresh event or configured exit region. |
+| Adaptive accuracy | Optional confirmed-stop policy lowers requested accuracy while retaining coarse updates and an Always-authorized exit region. Motion confirmation defaults required; GPS-only and trips are separate choices. | Lower accuracy can delay departure capture. A strict saved-point filter may reject coarse fixes. Moving acquisition uses the saved engine's accuracy/pause capabilities. |
+| Motion | Activity access has an explicit permission button; legacy trip step queries also use Motion & Fitness. Authorized metadata uses bounded timestamped history. Optional assistance respects Stop and requires a separate opt-in to resume radius pause. | Core Motion cannot wake suspension by itself. Classification is uncertain and does not improve GPS accuracy. |
+| Live engine recovery | One initial attempt plus three retries, then a latched fallback to CLLocationManager. Explicit recovery actions release the latch. | No source can guarantee fixes with revoked permission or unavailable GPS. |
+| Background sessions | CLBackgroundActivitySession exists only for live updates that request or need the indicator. Stop, radius pause, noncontinuous modes and lost authorization release it. Optional iOS 18 CLServiceSession retains already-Always authorization intent. | Sessions express eligibility and intent, not unlimited execution time. |
+| Background recovery | An optional significant-change monitor accompanies Standard tracking and trips with Always access on supported devices. Both mode already monitors significant changes. Stop and event-only settings retain their existing behavior. | It can provide an OS relaunch trigger after system termination. Events are coarse and delayed; Background App Refresh restrictions and force-quit can prevent relaunch. Energy cost is unmeasured. |
+| Presentation | Scene visibility gates bridge timers, replay reads, trip-map queries and map animation links. Settled links stop. | Foreground map rendering and replay still consume energy. |
+| Uploads | One request at a time, a yield after 20 drain requests, persisted intent/backoff, Retry-After and retained failed records. Optional system processing and connection-return retries reuse this path. | iOS chooses processing opportunities. Network traffic and short send intervals cost energy. |
+| Storage | Each accepted, committed point is copied to a separate replay archive. Retention defaults to 24 hours and can extend to seven days. Payload reads stay bounded; presentation reloads wait during dragging/playback. | Serialization and a local write per point add work. Longer retention increases disk use and initial route work; device energy cost has not been measured. |
 
-Route replay, added after this investigation, copies each accepted upload
-record into a separate 24-hour SQLite archive. That adds JSON serialization
-and a local write per accepted point. Its 60 Hz playback timer runs only while
-Play is active and stops when the app leaves the foreground or another tab opens.
-The archive does not change Core Location settings, the send queue, or HTTP
-requests. Its energy cost has not been measured on a device.
+All five Usage Presets and their defaults remain unchanged. Advanced choices are
+independent and off by default. Requested accuracy controls acquisition; Max
+Saved-Point Error filters returned fixes. Keeping only accurate saved points does
+not, by itself, reduce the GPS work used to obtain them.
 
-## Findings and proposed fixes
+## Live Activity and audio
 
-| ID | Evidence in this fork | Proposed change, pending approval | Settings and behavior impact |
-| --- | --- | --- | --- |
-| B-01 | `GLManager.processLocations:` clears `didPauseByRadius` and the dwell anchor before checking a callback's accuracy or age. In Both mode it calls `runEngineStandardUpdates` on every callback. The same delegate handles standard and significant updates. | Track explicit running/paused transitions and distinguish a legitimate resume from a delayed standard callback. Log transition reasons before choosing a resume rule. | Saved values need not change. Rejecting an accidental resume changes GPS restart timing, the dwell timer, and possibly the set of recorded points. It needs approval and device tests. |
-| B-02 | The radius-stop block stops standard/live updates but does not end the `CLBackgroundActivitySession` created by `enableTracking`. Stop All, Off mode, and Significant mode do end it. | Scope the background session to the activity that needs it, paired with a reliable restart path. | No new preference is required. Background delivery and the location indicator can change, especially with When In Use permission. Simply adding `endBackgroundSession` at the stop point is not a safe standalone fix. |
-| B-03 | The stationary anchor uses `lastLocation`, which advances only after distance, time, and accuracy filters. WiFi replacement happens before those filters. Rejected movement can leave the anchor stale. | Evaluate dwell/movement from a separately validated observation, without changing the points saved to the queue. Define WiFi-zone handling explicitly. | Settings values and payload format can stay intact. The meaning of the stop radius changes when filters reject points; pause timing and route gaps may change. This is a policy change. |
-| B-04 | `GLManagerBridge` refreshes once per second and on activity notifications. The root reads up to 1,000 trip points on every bridge tick while Trip is selected. Polling is not gated by scene activity. | Suspend presentation polling while inactive and refresh on return; update route data only when it changes. | This can be confined to UI refresh behavior. It must not change the location source, stored settings, queue, or send cadence. No bridge changes are included in this UI pass. |
-| B-05 | `scheduleLocalNotification` suppresses reminders whenever radius stopping is configured, even before an actual pause or during a trip. It also returns before canceling an existing reminder when notifications are off or radius stopping is configured. | Decide whether suppression should follow the actual paused state rather than the configured mode. Cancel obsolete reminders on the relevant transitions. | Changes which reminders appear, not location payloads. It is a notification behavior fix, not evidence of the heat/freeze cause. |
-| B-06 | UI bridge setters clear incompatible pause settings. `updateSettingsFromResponse:` writes the Objective-C properties directly, so server responses can retain a radius plus automatic pause, or a radius outside Both mode. `stopsAutomaticallyActive` prevents using the radius then. | Decide whether to preserve the inactive stored value or normalize every entry point consistently. | This would change remote settings handling and potentially what a server's configuration response means. Do not include it silently in a battery fix. |
+Status and Minimal have a widget-backed Live Activity. Blank uses app-only
+ActivityAttributes absent from the extension. It produced a short blank Island
+without an Overland Lock Screen card in the owner's device check. Its unrendered
+activity did not maintain live-update delivery in the iOS 27 background route
+check, so indicator-off tracking with Always access uses the original engine.
+This presentation is version-dependent and needs rechecking after system updates.
 
-Repeated start calls alone do not prove a feedback loop. Apple explicitly says
-repeated significant-monitoring starts do not automatically generate additional
-events. Delayed callbacks, dwell resets, and service transitions need a trace
-before attributing heat to them.
+Live Activity staleness mirrors the existing pending reminder deadline; it does
+not create a second location timeout. Activities are adopted after relaunch and
+ended on Stop, lost access or option-off. Expiry and dismissal do not cause a
+background restart loop. iOS controls presentation, priority and lifetime.
 
-The presentation timer is another candidate to measure, not a confirmed cause.
-iOS suspends timers with the app; lack of a scene-activity check does not prove
-that polling runs continuously in the background.
+Silent Audio remains optional and off by default. It loops a silent PCM buffer
+through AVAudioPlayer on a serial queue, mixes with other apps and uses no
+microphone. Playback checks run only while enabled. Unexpected stops have three
+bounded retries; calls, interruptions without resume permission and media-service
+loss block automatic recovery. Stop or lost location access stops playback.
 
-## Existing changes that already affect settings
+[StikDebug's audio manager](https://github.com/StikDebug/StikDebug/blob/main/StikDebug/Services/BackgroundAudioManager.swift)
+provided a public reference for the approach. No StikDebug code or assets were
+copied. SuperAlarm's implementation has not been verified from public source.
+Apple documents audio background mode for audible playback; a silent keepalive
+may not satisfy [App Review guideline 2.5.4](https://developer.apple.com/app-store/review/guidelines/#software-requirements).
+Its energy cost remains unmeasured.
 
-The approved PR follow-ups enforce these rules through the SwiftUI bridge:
+Notifications remain an independent, opt-in warning mechanism. Problems Only
+hides routine status while retaining existing missed-update and upload-error
+messages. A notification does not keep Overland running. A missed deadline does
+not identify whether suspension, missing fixes or termination caused the gap.
 
-- Turning on automatic pausing clears the stop radius.
-- Choosing a positive stop radius turns off automatic pausing and clears the
-  resume distance.
-- Switching away from Both clears the stop radius.
-- The radius-paused flag persists across relaunch and resets on the next
-  nonempty callback while tracking is allowed, or on an explicit stop.
+## What still needs measurement
 
-The broader fork predates this audit and includes tracking, queue, and network
-changes as well as UI changes. It would be inaccurate to describe the entire
-fork as UI-only. The original UI migration preserved the audited backend files;
-the later replay feature adds a single capture call in `GLManager.processLocations:`.
+Use the same phone, route, requested accuracy, point filters and send interval
+for comparisons. Change one advanced option at a time. Record route gaps,
+received/saved point counts, reported accuracy, departure latency, upload backlog,
+location indicator state and energy use. Include:
 
-## Dawarich, OwnTracks, and other receivers
+- A long stationary period followed by walking, driving and transit.
+- Weak GPS, tunnels, low-power mode and reduced-accuracy permission.
+- Screen locking, background relaunch, motion denied and revoked location access.
+- Airplane mode, network return, server Retry-After and invalid credentials.
+- Calls, other audio, activity dismissal and activity expiry.
 
-A pause/resume repair does not require changes to endpoint URLs, credentials,
-custom headers, HTTP requests, payload schemas, acknowledgments, or retries.
-Those paths should remain outside the proposed battery patch.
+Use a physical-device Instruments energy trace or delivered MetricKit reports;
+a simulator route or successful build cannot establish a battery percentage.
+The temporary TestFlight collector stores reports locally and uploads none.
 
-The local send path uses a GeoJSON `locations` batch for Overland records and
-a single `_type: location` object for OwnTracks records. Dawarich documents
-separate endpoints for [Overland and OwnTracks](https://dawarich.app/docs/getting-started/track-your-location/).
-The [OwnTracks HTTP contract](https://owntracks.org/booklet/tech/http/) remains
-independent of how this app decides when to collect a location.
+The original remote pause-setting normalization question is separate: the UI
+clears incompatible radius/automatic-pause choices, while remote settings retain
+inactive values. Advanced options do not silently normalize those legacy values.
 
-Server-visible behavior can still change. Fewer GPS observations mean fewer
-points, longer gaps, later position updates, and potentially different trip
-distances. `sendQueueIfTimeElapsed` runs from location-related events; the send
-interval is not a periodic upload timer. Pausing can therefore delay uploads
-even if the interval setting and all HTTP code remain unchanged. Manual sends
-still use the existing queue path. Compatibility of the format is distinct
-from freshness and completeness of the track.
+No helper bypasses force-quit, revoked access or operating-system scheduling.
+Location processing, storage, reminders and uploads remain independent of an
+active SwiftUI scene. Endpoint URLs, credentials, custom headers and GeoJSON/
+OwnTracks request contracts are unaffected by acquisition policies.
 
-Trip changes need separate review. Normal radius stopping is excluded during
-an active trip in this fork, but trip startup disables significant-change
-monitoring. Native automatic pause can end a trip and flush queued data.
-Adding a trip wake-up source would change lifecycle behavior, so it is not an
-incidental part of the proposed radius fix.
+## October 30 background-reliability review
 
-## Recommended sequence for approval
+The new `background_recovery` option closes a specific gap: trips previously
+disabled significant-change monitoring even when normal tracking used Both.
+It is independent of presets and defaults off. Settings → Background exposes
+the option, the system Background App Refresh status, and the limitations in
+its info sheet. Existing point-quality filters still apply to delivered fixes.
 
-1. Add bounded diagnostic events for source start/stop, pause reason, callback
-   age, session lifetime, and transition counts. Exclude coordinates, tokens,
-   URLs, and payloads. Capture a real-device hang sample and energy trace near
-   a radius stop before claiming a cause.
-2. Review that evidence and agree on an exact resume policy. Apply B-01 only
-   with tests for delayed/invalid callbacks, stop/start, relaunch, active trips,
-   and remote settings. Do not alter accuracy, filters, radius, or send interval
-   defaults to disguise the problem.
-3. Evaluate B-02 with both Always and When In Use permissions on a physical
-   device. Confirm background restart before changing session lifetime.
-4. Discuss B-03, B-05, and B-06 individually; they change observable behavior.
-   B-04 is a separate presentation optimization.
-5. Re-run mocked GeoJSON/OwnTracks acknowledgment and queue-preservation tests,
-   then compare physical-device route coverage and battery use under identical
-   settings. Report measured results rather than promising a battery percentage.
+Apple documents relaunch through significant-change events. Its modern location
+session guidance also requires prompt restoration after launch; Overland already
+restores its saved acquisition state during `GLManager` initialization. Neither
+route guarantees continuous process execution or a fixed recording interval.
+See [significant-change monitoring](https://developer.apple.com/documentation/corelocation/cllocationmanager/startmonitoringsignificantlocationchanges())
+and [authorization-session restoration](https://developer.apple.com/videos/play/wwdc2024/10212/).
 
-## Apple references
+The current [Traccar iOS source](https://github.com/traccar/traccar-client-sdk/blob/main/core/src/iosMain/kotlin/org/traccar/client/IosLocationSource.kt)
+starts significant-change and continuous updates together. Its maintainer also
+reports that [iOS heartbeat scheduling is unreliable](https://github.com/traccar/traccar-client/issues/96)
+in the issue discussion; adding a timer does not establish a wake guarantee.
+[OwnTracks](https://owntracks.org/booklet/features/ios/) combines movement,
+significant-change and region mechanisms rather than promising fixed wakeups.
 
-- [CLBackgroundActivitySession](https://developer.apple.com/documentation/corelocation/clbackgroundactivitysession-4nl4y)
-  explains its role in keeping a When In Use app eligible for background events.
-- [Significant-change monitoring](https://developer.apple.com/documentation/corelocation/cllocationmanager/startmonitoringsignificantlocationchanges())
-  documents cached initial events, relaunch, and the coarse delivery conditions.
-  Those conditions do not provide Find My-like continuous freshness while
-  standard updates are paused.
+[LocoKit2](https://github.com/sobri909/LocoKit2/blob/main/Sources/LocoKit2/Managers/LocomotionManager.swift)
+currently uses a second, low-accuracy manager alongside its recording manager
+in one operating mode. Overland's classic manager already requests unrestricted
+distance delivery, background updates and the user's accuracy. With accuracy
+better than 1 km, that matches [Apple DTS's documented conditions](https://developer.apple.com/forums/thread/726945)
+for indicator-off continuous tracking. A second manager has no measured benefit
+for our classic path and would add another service to reconcile. It remains a
+candidate for a controlled modern-engine experiment, not a default helper.
 
-## Background execution and Live Activities
+`BGContinuedProcessingTask` is designed for finite, user-started jobs and displays
+progress in a Live Activity. It may help a future large export, but does not
+provide an indefinite location session. A Location Push Service Extension is
+intended for approved person-to-person location sharing or emergency response;
+it needs its capability and a server, and does not sustain continuous logging.
+See [continued processing](https://developer.apple.com/documentation/backgroundtasks/bgcontinuedprocessingtask)
+and [location push extensions](https://developer.apple.com/documentation/corelocation/creating-a-location-push-service-extension).
 
-The owner authorized the following additions after this audit. Existing location
-sessions remain unchanged. `OverlandBackgroundRuntime` observes tracking,
-settings, authorization, send completion, and reminder changes. It controls an
-ActivityKit extension and an optional audio session. Neither helper rewrites
-tracking preferences, restarts a paused location engine, or participates in HTTP.
+Recovery tests cover Standard and trip monitoring, permission and device gates,
+Stop, event-only modes, disabling recovery without restarting GPS, and preset
+recognition. These checks establish state transitions, not successful OS
+relaunch or battery savings. Recovery remains off by default.
 
-### Live Activity
+## References
 
-Tracking Live Activity defaults on with a compact location icon. Status adds the
-last successful send time to the expanded Dynamic Island; Blank supplies
-zero-sized content. Normal Lock Screen content is empty and transparent. iOS
-still controls the surface and may reserve space. No documented API restricts an
-activity to the Dynamic Island.
-
-The activity's `staleDate` comes from the pending notification whose identifier
-is `reminder`. When that deadline passes, the widget uses `context.isStale` to
-show the existing message: "Location updates were stopped. Launch the app to
-resume." Tapping the activity opens Tracker. Successful reminder scheduling and
-cancellation publish an observation event; the runtime reads the actual pending
-request rather than maintaining a second ten-minute timer. The original
-notification and its settings, throttling, and suppression rules remain intact.
-In particular, the suppression issue in B-05 is not repaired by this feature.
-
-A missed reminder deadline cannot distinguish a killed app from suspension,
-missing fixes, or another collection problem. It does not detect network loss.
-The stale presentation can be rendered by iOS without executing the app, but
-rendering time is not an exact alarm. No visible warning is possible once the
-activity has ended or been dismissed.
-
-Creation is restricted to the foreground. Existing activities are adopted on
-relaunch; stopping tracking, losing location access, or disabling the option ends
-them. Expiry and dismissal do not trigger a background restart loop. Reopening
-Overland or pressing Retry requests another activity. Send-time updates are
-limited to one per thirty seconds; appearance, trip, and reminder-deadline
-changes apply immediately. There is no activity polling timer or APNs dependency.
-
-### Silent audio
-
-Silent Audio is an experimental, default-off option. `SilentAudioSession` creates
-a one-second PCM buffer of zeros and loops it with `AVAudioPlayer`, using the
-playback category and mixing with other apps. A serial background queue owns
-audio-session and player calls so they do not block the main thread. It uses no microphone. Stopping
-tracking or losing location access stops playback and releases the audio session.
-Interruption handling honors the system's resume indication; explicit Retry can
-recover from a missing interruption-ended event. There is no periodic retry loop.
-
-[StikDebug uses silent audio](https://github.com/StikDebug/StikDebug/blob/main/StikDebug/Services/BackgroundAudioManager.swift)
-with a different audio-engine implementation. Its source is AGPL-3.0; no code or
-assets were copied into Overland. Overland's implementation uses Apple's public
-audio APIs. SuperAlarm's claimed zero-content implementation was not verified
-from public source.
-
-Apple's [background-mode reference](https://developer.apple.com/documentation/xcode/configuring-background-execution-modes)
-describes audio mode for audible playback, and [App Review guideline 2.5.4](https://developer.apple.com/app-store/review/guidelines/#software-requirements)
-limits background services to their intended purposes. Silent keepalive may not
-meet App Store review requirements. Its battery cost has not been measured.
-
-### Platform limits and validation
-
-Apple describes a Live Activity or `CLBackgroundActivitySession` as support for
-background location in [Discover streamlined location updates](https://developer.apple.com/videos/play/wwdc2023/10180/).
-Overland already retains the latter. Its [background-location guidance](https://developer.apple.com/documentation/corelocation/handling-location-updates-in-the-background)
-still allows suspension and system termination. Adding helpers alongside that
-session is not evidence of improved reliability.
-
-[ActivityKit documentation](https://developer.apple.com/documentation/activitykit/displaying-live-data-with-live-activities)
-limits an activity to eight active hours. People can dismiss or disable it, and
-its extension cannot fetch location or make network requests. None of these
-helpers bypass force-quit or permissions.
-
-Physical-device validation remains necessary for locked-screen routes, calls,
-other audio playback, process termination, activity expiry/dismissal, and energy
-use. Compare route coverage and battery use with identical tracking settings and
-helpers individually enabled. Simulator lifecycle tests cannot establish battery
-savings or continuous background delivery.
-
-Simulator checks passed for audio start/stop, interruption resume, explicit retry,
-and Live Activity creation, appearance changes, and cleanup when tracking stops.
-The 25 existing queue, HTTP, settings, and location regressions also passed.
-Accessibility-driven app checks verified the appearance selector, audio gating,
-start/stop cleanup, stop confirmation, and the Tracker deep link without screenshots.
-The system-reminder integration check remains unverified: on this iOS 27
-simulator, notification calls stalled inside `usernotificationsd` while it waited
-for its notification-settings service. Restarting the disposable simulator did
-not clear that wait. The opt-in test remains in `BackgroundRuntimeTests.swift`
-for an environment with a responding notification service. No screenshot or
-simulator result establishes the real-device appearance or battery benefit.
+- [Apple: Background location](https://developer.apple.com/documentation/corelocation/handling-location-updates-in-the-background)
+- [Apple: Streamlined location updates](https://developer.apple.com/videos/play/wwdc2023/10180/)
+- [Apple: Modern authorization sessions](https://developer.apple.com/videos/play/wwdc2024/10212/)
+- [Apple DTS: Background execution limits](https://developer.apple.com/forums/thread/685525)
+- [Apple: Core Motion activity](https://developer.apple.com/documentation/coremotion/cmmotionactivitymanager)
+- [Apple: Significant-change monitoring](https://developer.apple.com/documentation/corelocation/cllocationmanager/startmonitoringsignificantlocationchanges())
+- [Implementation, options and research](docs/tracking-improvements.md)

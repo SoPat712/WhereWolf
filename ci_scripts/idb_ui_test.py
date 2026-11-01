@@ -9,7 +9,7 @@ import time
 from ui_accessibility import read_state
 
 root = Path(__file__).resolve().parent.parent
-sim = os.environ.get("SIM", "iPhone 17 Pro")
+sim = os.environ.get("SIM", "Overland Regression")
 devices = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devices", "available", "-j"]))
 requested_udid = os.environ.get("SIM_UDID")
 matches = [d for group in devices["devices"].values() for d in group
@@ -31,6 +31,16 @@ def run(*args):
 
 def state():
     return read_state(lambda *parts: run("ui", *parts))
+
+
+
+def wait_for_app():
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline:
+        buttons = {e.get("AXLabel") for e in state() if e.get("type") == "Button"}
+        if {"Tracker", "Trip", "Settings"} <= buttons:
+            return
+    raise AssertionError("Overland did not finish presenting its drawer tabs")
 
 
 def element(label, kind=None):
@@ -56,8 +66,9 @@ def shot(name):
 
 subprocess.run(["xcrun", "simctl", "terminate", udid, "com.aaronpk.overland"], capture_output=True)
 subprocess.check_call(["xcrun", "simctl", "launch", udid, "com.aaronpk.overland"])
-time.sleep(3)
-run("focus")
+wait_for_app()
+if os.environ.get("IDB_FOCUS_SIMULATOR") == "1":
+    run("focus")
 controls = element("Send Now", "Button")["frame"]
 tab = element("Tracker", "Button")["frame"]
 assert controls["y"] + controls["height"] < tab["y"], "Send Now overlaps the tabs"
@@ -68,6 +79,8 @@ element("Start Trip", "Button")
 tap("Trip Settings")
 element("Trip Settings", "Heading")
 shot("verified_trip_settings.png")
+tap("Done")
+element("Start Trip", "Button")
 tap("Settings")
 assert not any(e.get("subrole") == "AXMapArea" for e in state()), "Settings exposes a map"
 for _ in range(5):
@@ -81,8 +94,15 @@ shot("verified_server.png")
 # Reset navigation without touching preferences or recording state.
 subprocess.check_call(["xcrun", "simctl", "terminate", udid, "com.aaronpk.overland"])
 subprocess.check_call(["xcrun", "simctl", "launch", udid, "com.aaronpk.overland"])
-time.sleep(2)
+wait_for_app()
 tap("Settings")
+for _ in range(8):
+    row = element("Tracking & Precision", "Button")["frame"]
+    tab_top = element("Settings", "Button")["frame"]["y"]
+    if 120 < row["y"] and row["y"] + row["height"] < tab_top - 8:
+        break
+    run("ui", "swipe", "70", "650", "70", "400", "--duration", "0.5")
+tap("Tracking & Precision")
 # Desired Accuracy is conditional on the preset, so use the always-present distance row.
 for _ in range(5):
     if any(e.get("AXLabel") == "Edit Min Distance Between Points" and 120 < e["frame"]["y"] < 650 for e in state()):
@@ -113,4 +133,4 @@ finally:
         tap("Save")
 assert element(value_label, "Button")["AXValue"] == original
 tap("Tracker")
-print("PASS: controls clear tab bar; Trip Settings and Server navigation; exact slider entry and restoration")
+print("PASS: controls clear drawer tabs; Trip Settings sheet and Server navigation; exact slider entry and restoration")

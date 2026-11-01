@@ -1,13 +1,26 @@
 """Read visible content and native navigation omitted by IDB's default reader."""
 import json
+import subprocess
+import time
 
 
 TAB_LABELS = ("Tracker", "Trip", "Settings")
 
 
+def snapshot(ui, *parts):
+    deadline = time.monotonic() + 20
+    while True:
+        try:
+            return json.loads(ui("describe-all", *parts))
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            # CPU guarding can suspend the app across an AX transport deadline.
+            if time.monotonic() >= deadline:
+                raise
+
+
 def read_state(ui):
-    elements = json.loads(ui("describe-all"))
-    bridge = json.loads(ui("describe-all", "--api", "axbridge"))
+    elements = snapshot(ui)
+    bridge = snapshot(ui, "--api", "axbridge")
     app_pid = elements[0].get("pid") if elements else None
     bars = [e["frame"] for e in bridge
             if e.get("type") == "NavigationBar" and e.get("pid") == app_pid
@@ -31,3 +44,10 @@ def read_state(ui):
             elements.append(element)
             present.add((kind, label))
     return elements
+
+
+def user_location(elements):
+    """Find MapKit's system annotation without depending on its localized label or AX type."""
+    return next((e for e in elements
+                 if e.get("AXUniqueId") == "overland.map.user-location"
+                 or e.get("AXIdentifier") == "overland.map.user-location"), None)

@@ -33,7 +33,8 @@ def main():
     devices = json.loads(simctl("list", "devices", "-j"))["devices"]
     device = next((item for group in devices.values() for item in group
                    if item["udid"] == args.udid), None)
-    if not device or device["state"] != "Booted" or not device["name"].startswith("iPhone"):
+    if (not device or device["state"] != "Booted"
+            or not device.get("deviceTypeIdentifier", "").startswith("com.apple.CoreSimulator.SimDeviceType.iPhone-")):
         parser.error("Supply the UDID of a booted iPhone simulator")
 
     route = json.loads(ROUTE.read_text())

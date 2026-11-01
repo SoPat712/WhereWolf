@@ -5,46 +5,19 @@
 	};
 	objectVersion = 54;
 	objects = {
-        A01100000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Tests/OverlandTests.m; sourceTree = SOURCE_ROOT; };
-        A01100000000000000000002 = {isa = PBXBuildFile; fileRef = A01100000000000000000001; };
-        A01100000000000000000003 = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = OverlandTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-        A01100000000000000000004 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A01100000000000000000002,B08800000000000000000041,); runOnlyForDeploymentPostprocessing = 0; };
-        A01100000000000000000005 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
-        A01100000000000000000006 = {isa = PBXNativeTarget; buildConfigurationList = A01100000000000000000007; buildPhases = (A01100000000000000000004,A01100000000000000000005,); buildRules = (); dependencies = (A0110000000000000000000B,); name = OverlandTests; productName = OverlandTests; productReference = A01100000000000000000003; productType = "com.apple.product-type.bundle.unit-test"; };
-        A01100000000000000000007 = {isa = XCConfigurationList; buildConfigurations = (A01100000000000000000008,A01100000000000000000009,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
-        A01100000000000000000008 = {isa = XCBuildConfiguration; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; SWIFT_VERSION = 5.0; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; HEADER_SEARCH_PATHS = ("$(SRCROOT)/GPSLogger","$(SRCROOT)/Pods/FMDB/src/fmdb",); FRAMEWORK_SEARCH_PATHS = ("$(inherited)","$(PLATFORM_DIR)/Developer/Library/Frameworks",); OTHER_LDFLAGS = ("-framework",XCTest,); IPHONEOS_DEPLOYMENT_TARGET = 17.0; PRODUCT_BUNDLE_IDENTIFIER = com.aaronpk.overland.tests; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; TARGETED_DEVICE_FAMILY = "1,2"; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Overland.app/Overland"; }; name = Debug; };
-        A01100000000000000000009 = {isa = XCBuildConfiguration; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; SWIFT_VERSION = 5.0; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; HEADER_SEARCH_PATHS = ("$(SRCROOT)/GPSLogger","$(SRCROOT)/Pods/FMDB/src/fmdb",); FRAMEWORK_SEARCH_PATHS = ("$(inherited)","$(PLATFORM_DIR)/Developer/Library/Frameworks",); OTHER_LDFLAGS = ("-framework",XCTest,); IPHONEOS_DEPLOYMENT_TARGET = 17.0; PRODUCT_BUNDLE_IDENTIFIER = com.aaronpk.overland.tests; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; TARGETED_DEVICE_FAMILY = "1,2"; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Overland.app/Overland"; }; name = Release; };
-        A0110000000000000000000A = {isa = PBXContainerItemProxy; containerPortal = 0FFD314A1BAB7A34009B3A03; proxyType = 1; remoteGlobalIDString = 0FFD31511BAB7A34009B3A03; remoteInfo = Overland; };
-        A0110000000000000000000B = {isa = PBXTargetDependency; target = 0FFD31511BAB7A34009B3A03; targetProxy = A0110000000000000000000A; };
-
-
-/* Begin PBXCopyFilesBuildPhase section */
-		B08800000000000000000018 /* Embed App Extensions */ = { isa = PBXCopyFilesBuildPhase; buildActionMask = 2147483647; dstPath = ""; dstSubfolderSpec = 13; files = (B08800000000000000000010,); name = "Embed App Extensions"; runOnlyForDeploymentPostprocessing = 0; };
-/* End PBXCopyFilesBuildPhase section */
-
-/* Begin PBXContainerItemProxy section */
-		B08800000000000000000019 /* PBXContainerItemProxy */ = { isa = PBXContainerItemProxy; containerPortal = 0FFD314A1BAB7A34009B3A03; proxyType = 1; remoteGlobalIDString = B0880000000000000000001B; remoteInfo = OverlandTrackingActivity; };
-/* End PBXContainerItemProxy section */
-
-/* Begin PBXTargetDependency section */
-		B0880000000000000000001A /* PBXTargetDependency */ = { isa = PBXTargetDependency; target = B0880000000000000000001B; targetProxy = B08800000000000000000019; };
-/* End PBXTargetDependency section */
 
 /* Begin PBXBuildFile section */
-		A05500000000000000000002 /* NativeTabController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A05500000000000000000001 /* NativeTabController.swift */; };
-		A04400000000000000000002 /* MapControlPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A04400000000000000000001 /* MapControlPanel.swift */; };
-        A03300000000000000000002 = {isa = PBXBuildFile; fileRef = A03300000000000000000001; };
-		A06600000000000000000002 /* RecentLocationHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = A06600000000000000000001 /* RecentLocationHistory.swift */; };
-		A07700000000000000000002 /* HistoryPlaybackView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A07700000000000000000001 /* HistoryPlaybackView.swift */; };
-        A02200000000000000000002 = {isa = PBXBuildFile; fileRef = A02200000000000000000001; };
+		04F242940BB39DD7583C928B /* StatusWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 243C8AE0F0527309356468D1 /* StatusWidget.swift */; };
+		06E1F7368FAE37CA1EFFE6A5 /* HealthTripRecorderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62560F97D22E55B44438F518 /* HealthTripRecorderTests.swift */; };
+		08C34AC23324E07D64EC8F07 /* OverlandAppIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14683DD0D7DD1163A33289AE /* OverlandAppIntents.swift */; };
 		0F3E5210201E543200DCFAA4 /* OpenSansCondensed-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 0F3E520E201E543200DCFAA4 /* OpenSansCondensed-Bold.ttf */; };
 		0F3E5211201E543200DCFAA4 /* OpenSansCondensed-Light.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 0F3E520F201E543200DCFAA4 /* OpenSansCondensed-Light.ttf */; };
 		0F3E5213201E551000DCFAA4 /* OpenSans-Light.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 0F3E5212201E54FB00DCFAA4 /* OpenSans-Light.ttf */; };
-		0F444F0C1BD04A7E00106C2E /* TripModeViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 0F444F0B1BD04A7E00106C2E /* TripModeViewController.m */; };
 		0F70ECDA1FA663F2006F43C2 /* SystemConfiguration.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0F70ECD91FA663F2006F43C2 /* SystemConfiguration.framework */; };
 		0FABDE372B329422003ACD20 /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0FABDE362B329422003ACD20 /* StoreKit.framework */; };
-		0FABDE3A2B329448003ACD20 /* TipJarViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 0FABDE392B329448003ACD20 /* TipJarViewController.m */; };
 		0FAC1FEB2B255CA60007F3B1 /* NSArray+map.m in Sources */ = {isa = PBXBuildFile; fileRef = 0FAC1FEA2B255CA60007F3B1 /* NSArray+map.m */; };
+		0FAC1FEE2B25FBB50007F3B1 /* SceneDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 0FAC1FED2B25FBB50007F3B1 /* SceneDelegate.m */; };
+		0FB85AC01BE0151800F25126 /* ExternalAccessory.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0FB85ABF1BE0151800F25126 /* ExternalAccessory.framework */; };
 		0FCAFE00F00D0000000000B1 /* WifiZoneListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D0000000000A1 /* WifiZoneListView.swift */; };
 		0FCAFE00F00D0000000000D1 /* OverlandLocationEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D0000000000C1 /* OverlandLocationEngine.swift */; };
 		0FCAFE00F00D0000000000F1 /* GLManagerBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D0000000000E1 /* GLManagerBridge.swift */; };
@@ -53,19 +26,12 @@
 		0FCAFE00F00D0000000000F4 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D0000000000E4 /* SettingsView.swift */; };
 		0FCAFE00F00D0000000000F5 /* EndpointView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D0000000000E5 /* EndpointView.swift */; };
 		0FCAFE00F00D0000000000F6 /* TripView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D0000000000E6 /* TripView.swift */; };
-		0FCAFE00F00D0000000000F8 /* SteppedSlider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D0000000000E8 /* SteppedSlider.swift */; };
 		0FCAFE00F00D0000000000F7 /* TripSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D0000000000E7 /* TripSettingsView.swift */; };
-		0FAC1FEE2B25FBB50007F3B1 /* SceneDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 0FAC1FED2B25FBB50007F3B1 /* SceneDelegate.m */; };
-		0FB85AC01BE0151800F25126 /* ExternalAccessory.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0FB85ABF1BE0151800F25126 /* ExternalAccessory.framework */; };
+		0FCAFE00F00D0000000000F8 /* SteppedSlider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D0000000000E8 /* SteppedSlider.swift */; };
+		0FCAFE00F00D0000000000F9 /* GlassStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D0000000000E9 /* GlassStyle.swift */; };
 		0FCF53251F81AB0800577A0F /* UserNotifications.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0FCF53241F81AB0800577A0F /* UserNotifications.framework */; };
-		0FCF532E1F83FDBC00577A0F /* EndpointViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 0FCF532D1F83FDBC00577A0F /* EndpointViewController.m */; };
-		0FE280B12B0180620062936E /* Settings.bundle in Resources */ = {isa = PBXBuildFile; fileRef = 0FE280B02B0180620062936E /* Settings.bundle */; };
-		0FF590302B1FA1D500E3AAA3 /* TripSettingsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 0FF5902F2B1FA1D500E3AAA3 /* TripSettingsViewController.m */; };
 		0FFD31571BAB7A34009B3A03 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 0FFD31561BAB7A34009B3A03 /* main.m */; };
 		0FFD315A1BAB7A34009B3A03 /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 0FFD31591BAB7A34009B3A03 /* AppDelegate.m */; };
-		0FFD315D1BAB7A34009B3A03 /* TrackingViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 0FFD315C1BAB7A34009B3A03 /* TrackingViewController.m */; };
-		0FFD31601BAB7A34009B3A03 /* SettingsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 0FFD315F1BAB7A34009B3A03 /* SettingsViewController.m */; };
-		0FFD31631BAB7A34009B3A03 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 0FFD31611BAB7A34009B3A03 /* Main.storyboard */; };
 		0FFD31651BAB7A34009B3A03 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 0FFD31641BAB7A34009B3A03 /* Assets.xcassets */; };
 		0FFD31681BAB7A34009B3A03 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 0FFD31661BAB7A34009B3A03 /* LaunchScreen.storyboard */; };
 		0FFD31731BAB7BEA009B3A03 /* GLManager.m in Sources */ = {isa = PBXBuildFile; fileRef = 0FFD31721BAB7BEA009B3A03 /* GLManager.m */; };
@@ -74,36 +40,122 @@
 		0FFD317A1BAB7C7F009B3A03 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 0FFD31761BAB7C7F009B3A03 /* libsqlite3.tbd */; };
 		0FFD317B1BAB7C7F009B3A03 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0FFD31771BAB7C7F009B3A03 /* UIKit.framework */; };
 		0FFD317F1BAB7CC7009B3A03 /* LOLDatabase.m in Sources */ = {isa = PBXBuildFile; fileRef = 0FFD317E1BAB7CC7009B3A03 /* LOLDatabase.m */; };
-		6D2858D1222B133400F525E1 /* WifiZoneViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 6D2858D0222B133400F525E1 /* WifiZoneViewController.m */; };
+		1A56581BB05354349FAD0DC4 /* TripLiveActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C6721F8E565CC51192716BC /* TripLiveActivityWidget.swift */; };
+		207D56F6C41685842EAECAD9 /* SharedTripState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5CC3037773D353A885327FA /* SharedTripState.swift */; };
+		2B53F8ACA6002B982BF8855A /* WorkoutImportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 888651E8875EC46EFEDD3417 /* WorkoutImportTests.swift */; };
+		33F38E25406E8CD8616FA6D9 /* WorkoutImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D7CF59CCFE98FB74F472E24 /* WorkoutImportView.swift */; };
+		4DCAFFAB3E2B1B18EAB3D470 /* TripModes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5114B6E23CBCB270BB8375EC /* TripModes.swift */; };
+		4F04FB995B6FEC63BBAD2D53 /* UpstreamIntegrationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13B6E06D1F014687E75390A3 /* UpstreamIntegrationsView.swift */; };
+		58969E383049C44ED5F83EA1 /* TripModes.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C25B528FB613DCB4FBF7D384 /* TripModes.xcassets */; };
+		5B0A8C122B2744B820E0C1AC /* HistorySettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D57439666CE09C401BE55DDB /* HistorySettingsView.swift */; };
+		5BB8EF3C5CA85922D301E133 /* SharedStateObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E3B58A80A63E1DB5824D0A8 /* SharedStateObserver.swift */; };
+		5BCCF5411243A9657CF7A3D8 /* TripIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 295482F7E6DD4724A74C675E /* TripIntents.swift */; };
+		6274D5A2AACD43BBB319630D /* TripActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8F54F73CE518F85F9D383BF /* TripActivityAttributes.swift */; };
+		6DF9B422ECD5F9A3CFCBECCB /* TripViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C77E117660C6B9CD7E2F223 /* TripViews.swift */; };
+		788FDA6C23567608ADD200DD /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 4B4C34C503F74BA4B4862F77 /* PrivacyInfo.xcprivacy */; };
+		7F1C3DEE5DAA991A0D1F7C95 /* TripModeIcons.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36D2A80EB7610335ABC4A8B1 /* TripModeIcons.swift */; };
+		80437EB826C8A904ACDF70BB /* TripLiveActivityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CA9E95D988A1EFBA8532E4D /* TripLiveActivityController.swift */; };
+		8906128EBAE97CD9E2B23394 /* UpstreamIntegrationTests.m in Sources */ = {isa = PBXBuildFile; fileRef = A535D757A5D6F60B81BFCA5E /* UpstreamIntegrationTests.m */; };
+		956A11CCD2A4977C19C16C7E /* TripModeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83ED4065498A6D4B6567B48C /* TripModeTests.swift */; };
+		9BFF4920951E59B5E4E7EF9B /* TripModeIcons.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36D2A80EB7610335ABC4A8B1 /* TripModeIcons.swift */; };
+		A01100000000000000000002 /* OverlandTests.m in Sources */ = {isa = PBXBuildFile; fileRef = A01100000000000000000001 /* OverlandTests.m */; };
+		A02200000000000000000002 /* SettingsHelpView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A02200000000000000000001 /* SettingsHelpView.swift */; };
+		A04400000000000000000002 /* MapControlPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A04400000000000000000001 /* MapControlPanel.swift */; };
+		A05500000000000000000002 /* OverlandShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = A05500000000000000000001 /* OverlandShell.swift */; };
+		A06600000000000000000002 /* RecentLocationHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = A06600000000000000000001 /* RecentLocationHistory.swift */; };
+		A07700000000000000000002 /* HistoryPlaybackView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A07700000000000000000001 /* HistoryPlaybackView.swift */; };
+		A0990000000000000000000B /* TipJarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A09900000000000000000001 /* TipJarView.swift */; };
+		A0990000000000000000000C /* TipStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A09900000000000000000002 /* TipStore.swift */; };
+		A0990000000000000000000D /* TipDonation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A09900000000000000000003 /* TipDonation.swift */; };
+		A09900000000000000000020 /* TipDonationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A09900000000000000000021 /* TipDonationTests.swift */; };
+		A0BB00000000000000000002 /* NativeMapSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0BB00000000000000000001 /* NativeMapSurface.swift */; };
+		A0BC00000000000000000002 /* ReplayRouteRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0BC00000000000000000001 /* ReplayRouteRenderer.swift */; };
+		A0BC00000000000000000012 /* ReplayRouteRendererTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0BC00000000000000000011 /* ReplayRouteRendererTests.swift */; };
+		A0CC00000000000000000002 /* HistoryPlaybackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0CC00000000000000000001 /* HistoryPlaybackTests.swift */; };
+		A0DD00000000000000000002 /* SettingsReliabilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0DD00000000000000000001 /* SettingsReliabilityTests.swift */; };
+		A0EE00000000000000000002 /* DrawerLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0EE00000000000000000001 /* DrawerLayoutTests.swift */; };
+		AF7619AB633D818AD53D1C15 /* TripActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8F54F73CE518F85F9D383BF /* TripActivityAttributes.swift */; };
+		B030BC96F749619DECB8DE60 /* TripModes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5114B6E23CBCB270BB8375EC /* TripModes.swift */; };
+		B0880000000000000000000B /* BackgroundRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = B08800000000000000000001 /* BackgroundRuntime.swift */; };
+		B0880000000000000000000C /* SilentAudioSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = B08800000000000000000002 /* SilentAudioSession.swift */; };
+		B0880000000000000000000D /* TrackingActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = B08800000000000000000003 /* TrackingActivityAttributes.swift */; };
+		B0880000000000000000000E /* TrackingActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = B08800000000000000000004 /* TrackingActivityWidget.swift */; };
+		B0880000000000000000000F /* TrackingActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = B08800000000000000000003 /* TrackingActivityAttributes.swift */; };
+		B08800000000000000000010 /* OverlandTrackingActivity.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = B08800000000000000000005 /* OverlandTrackingActivity.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		B08800000000000000000041 /* BackgroundRuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B08800000000000000000040 /* BackgroundRuntimeTests.swift */; };
+		BAEDDD70BD822527C8684813 /* HealthTripRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 156F17CEE92C6ACFC40D1261 /* HealthTripRecorder.swift */; };
+		C02700000000000000000001 /* TestFlightDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = C02700000000000000000002 /* TestFlightDiagnostics.swift */; };
+		C02700000000000000000003 /* DiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C02700000000000000000004 /* DiagnosticsView.swift */; };
+		C0A100000000000000000003 /* GLTrackingPolicy.m in Sources */ = {isa = PBXBuildFile; fileRef = C0A100000000000000000002 /* GLTrackingPolicy.m */; };
+		D0F100000000000000000003 /* GLLocationHealth.m in Sources */ = {isa = PBXBuildFile; fileRef = D0F100000000000000000002 /* GLLocationHealth.m */; };
+		D0F100000000000000000005 /* LocationHealthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0F100000000000000000004 /* LocationHealthView.swift */; };
+		D0F100000000000000000007 /* LocationHealthTests.m in Sources */ = {isa = PBXBuildFile; fileRef = D0F100000000000000000006 /* LocationHealthTests.m */; };
+		D0F200000000000000000002 /* MapChromeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0F200000000000000000001 /* MapChromeTests.swift */; };
+		C0A100000000000000000005 /* OverlandUploadScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A100000000000000000004 /* OverlandUploadScheduler.swift */; };
+		C0A100000000000000000007 /* TrackingPolicyTests.m in Sources */ = {isa = PBXBuildFile; fileRef = C0A100000000000000000006 /* TrackingPolicyTests.m */; };
+		C0A100000000000000000009 /* LocationEngineRecoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A100000000000000000008 /* LocationEngineRecoveryTests.swift */; };
+		C0A10000000000000000000B /* UploadSchedulerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A10000000000000000000A /* UploadSchedulerTests.swift */; };
+		C246F22FA7DFF125127B0BE2 /* TripModes.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C25B528FB613DCB4FBF7D384 /* TripModes.xcassets */; };
+		D1DD2EEF17FE44F979CA2C48 /* TripModesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 007A0E62CFBBFA8FE9DEADC3 /* TripModesView.swift */; };
+		D7E7DABBA0D8363EABE4833D /* GLCloudFileWriter.m in Sources */ = {isa = PBXBuildFile; fileRef = 07DEEF5A710246B9B0582158 /* GLCloudFileWriter.m */; };
+		E23F46BF79C789B08211F303 /* SharedTripState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5CC3037773D353A885327FA /* SharedTripState.swift */; };
+		E7C650B0826A973D9430D5CA /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 4B4C34C503F74BA4B4862F77 /* PrivacyInfo.xcprivacy */; };
+		E8AD7EB7542A54DC56C21BA0 /* WorkoutRouteImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C7313CC971BF235A25F4BF0 /* WorkoutRouteImport.swift */; };
 		F87824B3678FD75F13286822 /* libPods-Overland.a in Frameworks */ = {isa = PBXBuildFile; fileRef = E0A408349E469AC6E6DA46BA /* libPods-Overland.a */; };
-		B0880000000000000000000B /* BackgroundRuntime.swift in Sources */ = { isa = PBXBuildFile; fileRef = B08800000000000000000001; };
-		B0880000000000000000000C /* SilentAudioSession.swift in Sources */ = { isa = PBXBuildFile; fileRef = B08800000000000000000002; };
-		B0880000000000000000000D /* TrackingActivityAttributes.swift in Sources */ = { isa = PBXBuildFile; fileRef = B08800000000000000000003; };
-		B0880000000000000000000E /* TrackingActivityWidget.swift in Sources */ = { isa = PBXBuildFile; fileRef = B08800000000000000000004; };
-		B0880000000000000000000F /* TrackingActivityAttributes.swift in Sources */ = { isa = PBXBuildFile; fileRef = B08800000000000000000003; };
-		B08800000000000000000010 /* OverlandTrackingActivity.appex in Embed App Extensions */ = { isa = PBXBuildFile; fileRef = B08800000000000000000005; settings = {ATTRIBUTES = (RemoveHeadersOnCopy,); }; };
-		B08800000000000000000041 /* BackgroundRuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B08800000000000000000040; };
+		FAC841E01F195F27EE270BD0 /* TripIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 295482F7E6DD4724A74C675E /* TripIntents.swift */; };
+		FD8716D075FB5292BFD3C574 /* HistoryRetentionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BEB326A17A6C66C642C0A6B /* HistoryRetentionTests.swift */; };
+		FE9D896276FE76C0B7D6DDF6 /* GLTripActions.m in Sources */ = {isa = PBXBuildFile; fileRef = 21602F0B954DE517514264C4 /* GLTripActions.m */; };
+		FFFD07EC57EDFD9A3BF5CB30 /* TripControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = C215F1FD102A461140930DC1 /* TripControls.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		A0110000000000000000000A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 0FFD314A1BAB7A34009B3A03 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0FFD31511BAB7A34009B3A03;
+			remoteInfo = Overland;
+		};
+		B08800000000000000000019 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 0FFD314A1BAB7A34009B3A03 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B0880000000000000000001B;
+			remoteInfo = OverlandTrackingActivity;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		B08800000000000000000018 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				B08800000000000000000010 /* OverlandTrackingActivity.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
-		A05500000000000000000001 /* NativeTabController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTabController.swift; sourceTree = "<group>"; };
-		A04400000000000000000001 /* MapControlPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapControlPanel.swift; sourceTree = "<group>"; };
-		A06600000000000000000001 /* RecentLocationHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentLocationHistory.swift; sourceTree = "<group>"; };
-		A07700000000000000000001 /* HistoryPlaybackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryPlaybackView.swift; sourceTree = "<group>"; };
-        A03300000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CurrentLocationMarker.swift; sourceTree = "<group>"; };
-        A02200000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsHelpView.swift; sourceTree = "<group>"; };
+		007A0E62CFBBFA8FE9DEADC3 /* TripModesView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripModesView.swift; path = GPSLogger/TripModesView.swift; sourceTree = "<group>"; };
+		045D71F7333BFAF7A4F6289F /* GLTripActions.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = GLTripActions.h; path = GPSLogger/GLTripActions.h; sourceTree = "<group>"; };
+		07DEEF5A710246B9B0582158 /* GLCloudFileWriter.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = GLCloudFileWriter.m; path = GPSLogger/GLCloudFileWriter.m; sourceTree = "<group>"; };
 		0F3E520E201E543200DCFAA4 /* OpenSansCondensed-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; name = "OpenSansCondensed-Bold.ttf"; path = "Fonts/OpenSansCondensed-Bold.ttf"; sourceTree = SOURCE_ROOT; };
 		0F3E520F201E543200DCFAA4 /* OpenSansCondensed-Light.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; name = "OpenSansCondensed-Light.ttf"; path = "Fonts/OpenSansCondensed-Light.ttf"; sourceTree = SOURCE_ROOT; };
 		0F3E5212201E54FB00DCFAA4 /* OpenSans-Light.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; name = "OpenSans-Light.ttf"; path = "Fonts/OpenSans-Light.ttf"; sourceTree = SOURCE_ROOT; };
-		0F444F0A1BD04A7E00106C2E /* TripModeViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TripModeViewController.h; sourceTree = "<group>"; };
-		0F444F0B1BD04A7E00106C2E /* TripModeViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TripModeViewController.m; sourceTree = "<group>"; };
 		0F702B012B2E1F670076E6B9 /* Overland-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Overland-Bridging-Header.h"; sourceTree = "<group>"; };
 		0F70ECD91FA663F2006F43C2 /* SystemConfiguration.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SystemConfiguration.framework; path = System/Library/Frameworks/SystemConfiguration.framework; sourceTree = SDKROOT; };
 		0FABDE362B329422003ACD20 /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
-		0FABDE382B329448003ACD20 /* TipJarViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TipJarViewController.h; sourceTree = "<group>"; };
-		0FABDE392B329448003ACD20 /* TipJarViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = TipJarViewController.m; sourceTree = "<group>"; };
 		0FABDE3B2B34F642003ACD20 /* Tips.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = Tips.storekit; sourceTree = "<group>"; };
 		0FAC1FEA2B255CA60007F3B1 /* NSArray+map.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "NSArray+map.m"; sourceTree = "<group>"; };
+		0FAC1FEC2B255D460007F3B1 /* NSArray+map.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "NSArray+map.h"; sourceTree = "<group>"; };
+		0FAC1FED2B25FBB50007F3B1 /* SceneDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SceneDelegate.m; sourceTree = "<group>"; };
+		0FAC1FEF2B25FBC10007F3B1 /* SceneDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SceneDelegate.h; sourceTree = "<group>"; };
+		0FB85ABD1BE0151300F25126 /* CoreBluetooth.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreBluetooth.framework; path = System/Library/Frameworks/CoreBluetooth.framework; sourceTree = SDKROOT; };
+		0FB85ABF1BE0151800F25126 /* ExternalAccessory.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ExternalAccessory.framework; path = System/Library/Frameworks/ExternalAccessory.framework; sourceTree = SDKROOT; };
 		0FCAFE00F00D0000000000A1 /* WifiZoneListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WifiZoneListView.swift; sourceTree = "<group>"; };
 		0FCAFE00F00D0000000000C1 /* OverlandLocationEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlandLocationEngine.swift; sourceTree = "<group>"; };
 		0FCAFE00F00D0000000000E1 /* GLManagerBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GLManagerBridge.swift; sourceTree = "<group>"; };
@@ -112,29 +164,15 @@
 		0FCAFE00F00D0000000000E4 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		0FCAFE00F00D0000000000E5 /* EndpointView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndpointView.swift; sourceTree = "<group>"; };
 		0FCAFE00F00D0000000000E6 /* TripView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripView.swift; sourceTree = "<group>"; };
-		0FCAFE00F00D0000000000E8 /* SteppedSlider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SteppedSlider.swift; sourceTree = "<group>"; };
 		0FCAFE00F00D0000000000E7 /* TripSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripSettingsView.swift; sourceTree = "<group>"; };
-		0FAC1FEC2B255D460007F3B1 /* NSArray+map.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "NSArray+map.h"; sourceTree = "<group>"; };
-		0FAC1FED2B25FBB50007F3B1 /* SceneDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SceneDelegate.m; sourceTree = "<group>"; };
-		0FAC1FEF2B25FBC10007F3B1 /* SceneDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SceneDelegate.h; sourceTree = "<group>"; };
-		0FB85ABD1BE0151300F25126 /* CoreBluetooth.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreBluetooth.framework; path = System/Library/Frameworks/CoreBluetooth.framework; sourceTree = SDKROOT; };
-		0FB85ABF1BE0151800F25126 /* ExternalAccessory.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ExternalAccessory.framework; path = System/Library/Frameworks/ExternalAccessory.framework; sourceTree = SDKROOT; };
+		0FCAFE00F00D0000000000E8 /* SteppedSlider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SteppedSlider.swift; sourceTree = "<group>"; };
+		0FCAFE00F00D0000000000E9 /* GlassStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassStyle.swift; sourceTree = "<group>"; };
 		0FCF53231F81AAAC00577A0F /* GPSLogger.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = GPSLogger.entitlements; sourceTree = "<group>"; };
 		0FCF53241F81AB0800577A0F /* UserNotifications.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UserNotifications.framework; path = System/Library/Frameworks/UserNotifications.framework; sourceTree = SDKROOT; };
-		0FCF532C1F83FDBC00577A0F /* EndpointViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = EndpointViewController.h; sourceTree = "<group>"; };
-		0FCF532D1F83FDBC00577A0F /* EndpointViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = EndpointViewController.m; sourceTree = "<group>"; };
-		0FE280B02B0180620062936E /* Settings.bundle */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.plug-in"; path = Settings.bundle; sourceTree = "<group>"; };
-		0FF5902F2B1FA1D500E3AAA3 /* TripSettingsViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = TripSettingsViewController.m; sourceTree = "<group>"; };
-		0FF590312B1FA22E00E3AAA3 /* TripSettingsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TripSettingsViewController.h; sourceTree = "<group>"; };
 		0FFD31521BAB7A34009B3A03 /* Overland.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Overland.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		0FFD31561BAB7A34009B3A03 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
 		0FFD31581BAB7A34009B3A03 /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
 		0FFD31591BAB7A34009B3A03 /* AppDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppDelegate.m; sourceTree = "<group>"; };
-		0FFD315B1BAB7A34009B3A03 /* TrackingViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TrackingViewController.h; sourceTree = "<group>"; };
-		0FFD315C1BAB7A34009B3A03 /* TrackingViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = TrackingViewController.m; sourceTree = "<group>"; };
-		0FFD315E1BAB7A34009B3A03 /* SettingsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SettingsViewController.h; sourceTree = "<group>"; };
-		0FFD315F1BAB7A34009B3A03 /* SettingsViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SettingsViewController.m; sourceTree = "<group>"; };
-		0FFD31621BAB7A34009B3A03 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
 		0FFD31641BAB7A34009B3A03 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		0FFD31671BAB7A34009B3A03 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		0FFD31691BAB7A34009B3A03 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -146,22 +184,74 @@
 		0FFD31771BAB7C7F009B3A03 /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
 		0FFD317D1BAB7CC7009B3A03 /* LOLDatabase.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LOLDatabase.h; sourceTree = "<group>"; };
 		0FFD317E1BAB7CC7009B3A03 /* LOLDatabase.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = LOLDatabase.m; sourceTree = "<group>"; };
+		13B6E06D1F014687E75390A3 /* UpstreamIntegrationsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = UpstreamIntegrationsView.swift; path = GPSLogger/UpstreamIntegrationsView.swift; sourceTree = "<group>"; };
+		14683DD0D7DD1163A33289AE /* OverlandAppIntents.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = OverlandAppIntents.swift; path = GPSLogger/Integrations/OverlandAppIntents.swift; sourceTree = "<group>"; };
+		156F17CEE92C6ACFC40D1261 /* HealthTripRecorder.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = HealthTripRecorder.swift; path = GPSLogger/Integrations/HealthTripRecorder.swift; sourceTree = "<group>"; };
+		21602F0B954DE517514264C4 /* GLTripActions.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = GLTripActions.m; path = GPSLogger/GLTripActions.m; sourceTree = "<group>"; };
+		243C8AE0F0527309356468D1 /* StatusWidget.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = StatusWidget.swift; path = OverlandLiveActivity/StatusWidget.swift; sourceTree = "<group>"; };
 		251EBCB0197B8F3891607241 /* Pods-Overland.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Overland.release.xcconfig"; path = "Pods/Target Support Files/Pods-Overland/Pods-Overland.release.xcconfig"; sourceTree = "<group>"; };
-		378F9BC146097DEF5A9CCBF9 /* Pods-GPSLogger.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-GPSLogger.release.xcconfig"; path = "Pods/Target Support Files/Pods-GPSLogger/Pods-GPSLogger.release.xcconfig"; sourceTree = "<group>"; };
-		3CCE0D26F93B3FCD5A4A1D16 /* libPods-GPSLogger.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-GPSLogger.a"; sourceTree = BUILT_PRODUCTS_DIR; };
-		4321137E3D59A45E6CD72293 /* Pods-GPSLogger.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-GPSLogger.debug.xcconfig"; path = "Pods/Target Support Files/Pods-GPSLogger/Pods-GPSLogger.debug.xcconfig"; sourceTree = "<group>"; };
-		6D2858CF222B133400F525E1 /* WifiZoneViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = WifiZoneViewController.h; sourceTree = "<group>"; };
-		6D2858D0222B133400F525E1 /* WifiZoneViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = WifiZoneViewController.m; sourceTree = "<group>"; };
+		295482F7E6DD4724A74C675E /* TripIntents.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripIntents.swift; path = GPSLogger/Shared/TripIntents.swift; sourceTree = "<group>"; };
+		2C7313CC971BF235A25F4BF0 /* WorkoutRouteImport.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WorkoutRouteImport.swift; path = GPSLogger/Integrations/WorkoutRouteImport.swift; sourceTree = "<group>"; };
+		36D2A80EB7610335ABC4A8B1 /* TripModeIcons.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripModeIcons.swift; path = GPSLogger/TripModeIcons.swift; sourceTree = "<group>"; };
+		3E3B58A80A63E1DB5824D0A8 /* SharedStateObserver.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SharedStateObserver.swift; path = GPSLogger/Integrations/SharedStateObserver.swift; sourceTree = "<group>"; };
+		4B4C34C503F74BA4B4862F77 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; name = PrivacyInfo.xcprivacy; path = GPSLogger/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		4C77E117660C6B9CD7E2F223 /* TripViews.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripViews.swift; path = OverlandLiveActivity/TripViews.swift; sourceTree = "<group>"; };
+		4CA9E95D988A1EFBA8532E4D /* TripLiveActivityController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripLiveActivityController.swift; path = GPSLogger/LiveActivity/TripLiveActivityController.swift; sourceTree = "<group>"; };
+		5114B6E23CBCB270BB8375EC /* TripModes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripModes.swift; path = GPSLogger/Shared/TripModes.swift; sourceTree = "<group>"; };
+		62560F97D22E55B44438F518 /* HealthTripRecorderTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = HealthTripRecorderTests.swift; path = Tests/HealthTripRecorderTests.swift; sourceTree = "<group>"; };
 		6DEC9B3621F3F88500D9E8C4 /* Overland.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Overland.entitlements; sourceTree = "<group>"; };
+		83ED4065498A6D4B6567B48C /* TripModeTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripModeTests.swift; path = Tests/TripModeTests.swift; sourceTree = "<group>"; };
+		888651E8875EC46EFEDD3417 /* WorkoutImportTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WorkoutImportTests.swift; path = Tests/WorkoutImportTests.swift; sourceTree = "<group>"; };
+		8BEB326A17A6C66C642C0A6B /* HistoryRetentionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = HistoryRetentionTests.swift; path = Tests/HistoryRetentionTests.swift; sourceTree = "<group>"; };
+		9C6721F8E565CC51192716BC /* TripLiveActivityWidget.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripLiveActivityWidget.swift; path = OverlandLiveActivity/TripLiveActivityWidget.swift; sourceTree = "<group>"; };
+		9D7CF59CCFE98FB74F472E24 /* WorkoutImportView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WorkoutImportView.swift; path = GPSLogger/WorkoutImportView.swift; sourceTree = "<group>"; };
+		A01100000000000000000001 /* OverlandTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Tests/OverlandTests.m; sourceTree = SOURCE_ROOT; };
+		A01100000000000000000003 /* OverlandTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = OverlandTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A02200000000000000000001 /* SettingsHelpView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsHelpView.swift; sourceTree = "<group>"; };
+		A04400000000000000000001 /* MapControlPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapControlPanel.swift; sourceTree = "<group>"; };
+		A05500000000000000000001 /* OverlandShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlandShell.swift; sourceTree = "<group>"; };
+		A06600000000000000000001 /* RecentLocationHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentLocationHistory.swift; sourceTree = "<group>"; };
+		A07700000000000000000001 /* HistoryPlaybackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryPlaybackView.swift; sourceTree = "<group>"; };
+		A09900000000000000000001 /* TipJarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TipJarView.swift; sourceTree = "<group>"; };
+		A09900000000000000000002 /* TipStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TipStore.swift; sourceTree = "<group>"; };
+		A09900000000000000000003 /* TipDonation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TipDonation.swift; sourceTree = "<group>"; };
+		A09900000000000000000021 /* TipDonationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/TipDonationTests.swift; sourceTree = SOURCE_ROOT; };
+		A0BB00000000000000000001 /* NativeMapSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMapSurface.swift; sourceTree = "<group>"; };
+		A0BC00000000000000000001 /* ReplayRouteRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplayRouteRenderer.swift; sourceTree = "<group>"; };
+		A0BC00000000000000000011 /* ReplayRouteRendererTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/ReplayRouteRendererTests.swift; sourceTree = SOURCE_ROOT; };
+		A0CC00000000000000000001 /* HistoryPlaybackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/HistoryPlaybackTests.swift; sourceTree = SOURCE_ROOT; };
+		A0DD00000000000000000001 /* SettingsReliabilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/SettingsReliabilityTests.swift; sourceTree = SOURCE_ROOT; };
+		A0EE00000000000000000001 /* DrawerLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/DrawerLayoutTests.swift; sourceTree = SOURCE_ROOT; };
+		A535D757A5D6F60B81BFCA5E /* UpstreamIntegrationTests.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = UpstreamIntegrationTests.m; path = Tests/UpstreamIntegrationTests.m; sourceTree = "<group>"; };
+		B08800000000000000000001 /* BackgroundRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/BackgroundRuntime.swift; sourceTree = SOURCE_ROOT; };
+		B08800000000000000000002 /* SilentAudioSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/SilentAudioSession.swift; sourceTree = SOURCE_ROOT; };
+		B08800000000000000000003 /* TrackingActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/TrackingActivityAttributes.swift; sourceTree = SOURCE_ROOT; };
+		B08800000000000000000004 /* TrackingActivityWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackingActivity/TrackingActivityWidget.swift; sourceTree = SOURCE_ROOT; };
+		B08800000000000000000005 /* OverlandTrackingActivity.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; path = OverlandTrackingActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		B08800000000000000000006 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = TrackingActivity/Info.plist; sourceTree = SOURCE_ROOT; };
+		B08800000000000000000040 /* BackgroundRuntimeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/BackgroundRuntimeTests.swift; sourceTree = SOURCE_ROOT; };
+		B43520312801460797C456DA /* TrackingActivity.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; name = TrackingActivity.entitlements; path = TrackingActivity/TrackingActivity.entitlements; sourceTree = "<group>"; };
+		C02700000000000000000002 /* TestFlightDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/TestFlightDiagnostics.swift; sourceTree = SOURCE_ROOT; };
+		C02700000000000000000004 /* DiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/DiagnosticsView.swift; sourceTree = SOURCE_ROOT; };
+		C0A100000000000000000001 /* GLTrackingPolicy.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GLTrackingPolicy.h; sourceTree = "<group>"; };
+		D0F100000000000000000001 /* GLLocationHealth.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GLLocationHealth.h; sourceTree = "<group>"; };
+		D0F100000000000000000002 /* GLLocationHealth.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = GLLocationHealth.m; sourceTree = "<group>"; };
+		D0F100000000000000000004 /* LocationHealthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationHealthView.swift; sourceTree = "<group>"; };
+		D0F100000000000000000006 /* LocationHealthTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Tests/LocationHealthTests.m; sourceTree = SOURCE_ROOT; };
+		D0F200000000000000000001 /* MapChromeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/MapChromeTests.swift; sourceTree = SOURCE_ROOT; };
+		C0A100000000000000000002 /* GLTrackingPolicy.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = GLTrackingPolicy.m; sourceTree = "<group>"; };
+		C0A100000000000000000004 /* OverlandUploadScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlandUploadScheduler.swift; sourceTree = "<group>"; };
+		C0A100000000000000000006 /* TrackingPolicyTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Tests/TrackingPolicyTests.m; sourceTree = SOURCE_ROOT; };
+		C0A100000000000000000008 /* LocationEngineRecoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/LocationEngineRecoveryTests.swift; sourceTree = SOURCE_ROOT; };
+		C0A10000000000000000000A /* UploadSchedulerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/UploadSchedulerTests.swift; sourceTree = SOURCE_ROOT; };
+		C215F1FD102A461140930DC1 /* TripControls.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripControls.swift; path = OverlandLiveActivity/TripControls.swift; sourceTree = "<group>"; };
+		C25B528FB613DCB4FBF7D384 /* TripModes.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; name = TripModes.xcassets; path = GPSLogger/TripModes.xcassets; sourceTree = "<group>"; };
+		CE0D0CC91D28B0CF79E330F3 /* GLCloudFileWriter.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = GLCloudFileWriter.h; path = GPSLogger/GLCloudFileWriter.h; sourceTree = "<group>"; };
+		D57439666CE09C401BE55DDB /* HistorySettingsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = HistorySettingsView.swift; path = GPSLogger/HistorySettingsView.swift; sourceTree = "<group>"; };
+		D5CC3037773D353A885327FA /* SharedTripState.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SharedTripState.swift; path = GPSLogger/Shared/SharedTripState.swift; sourceTree = "<group>"; };
+		D8F54F73CE518F85F9D383BF /* TripActivityAttributes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripActivityAttributes.swift; path = GPSLogger/LiveActivity/TripActivityAttributes.swift; sourceTree = "<group>"; };
 		E0A408349E469AC6E6DA46BA /* libPods-Overland.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-Overland.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		F4DFFAB32440A8511E1D869A /* Pods-Overland.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Overland.debug.xcconfig"; path = "Pods/Target Support Files/Pods-Overland/Pods-Overland.debug.xcconfig"; sourceTree = "<group>"; };
-		B08800000000000000000001 /* BackgroundRuntime.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/BackgroundRuntime.swift; sourceTree = SOURCE_ROOT; };
-		B08800000000000000000002 /* SilentAudioSession.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/SilentAudioSession.swift; sourceTree = SOURCE_ROOT; };
-		B08800000000000000000003 /* TrackingActivityAttributes.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/TrackingActivityAttributes.swift; sourceTree = SOURCE_ROOT; };
-		B08800000000000000000004 /* TrackingActivityWidget.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackingActivity/TrackingActivityWidget.swift; sourceTree = SOURCE_ROOT; };
-		B08800000000000000000005 /* OverlandTrackingActivity.appex */ = { isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; path = OverlandTrackingActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		B08800000000000000000006 /* Info.plist */ = { isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = TrackingActivity/Info.plist; sourceTree = SOURCE_ROOT; };
-		B08800000000000000000040 /* BackgroundRuntimeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/BackgroundRuntimeTests.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -181,7 +271,20 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		B08800000000000000000016 /* Frameworks */ = { isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		A01100000000000000000005 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B08800000000000000000016 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -197,7 +300,6 @@
 				0FFD31751BAB7C7F009B3A03 /* CoreMotion.framework */,
 				0FFD31761BAB7C7F009B3A03 /* libsqlite3.tbd */,
 				0FFD31771BAB7C7F009B3A03 /* UIKit.framework */,
-				3CCE0D26F93B3FCD5A4A1D16 /* libPods-GPSLogger.a */,
 				E0A408349E469AC6E6DA46BA /* libPods-Overland.a */,
 			);
 			name = Frameworks;
@@ -217,8 +319,18 @@
 		0FFD31491BAB7A34009B3A03 = {
 			isa = PBXGroup;
 			children = (
-                A01100000000000000000001,
+				A01100000000000000000001 /* OverlandTests.m */,
+				A0CC00000000000000000001 /* HistoryPlaybackTests.swift */,
+				C0A100000000000000000006 /* TrackingPolicyTests.m */,
+				D0F100000000000000000006 /* LocationHealthTests.m */,
+				D0F200000000000000000001 /* MapChromeTests.swift */,
+				C0A100000000000000000008 /* LocationEngineRecoveryTests.swift */,
+				C0A10000000000000000000A /* UploadSchedulerTests.swift */,
+				A0BC00000000000000000011 /* ReplayRouteRendererTests.swift */,
+				A0DD00000000000000000001 /* SettingsReliabilityTests.swift */,
+				A0EE00000000000000000001 /* DrawerLayoutTests.swift */,
 				B08800000000000000000040 /* BackgroundRuntimeTests.swift */,
+				A09900000000000000000021 /* TipDonationTests.swift */,
 				B08800000000000000000014 /* TrackingActivity */,
 				6DEC9B3621F3F88500D9E8C4 /* Overland.entitlements */,
 				0FFD31541BAB7A34009B3A03 /* GPSLogger */,
@@ -226,6 +338,36 @@
 				0FFD31531BAB7A34009B3A03 /* Products */,
 				0BE775F16162CE9DF6AE0775 /* Frameworks */,
 				1CD5358810FD08AFC4E02284 /* Pods */,
+				07DEEF5A710246B9B0582158 /* GLCloudFileWriter.m */,
+				21602F0B954DE517514264C4 /* GLTripActions.m */,
+				156F17CEE92C6ACFC40D1261 /* HealthTripRecorder.swift */,
+				14683DD0D7DD1163A33289AE /* OverlandAppIntents.swift */,
+				3E3B58A80A63E1DB5824D0A8 /* SharedStateObserver.swift */,
+				4CA9E95D988A1EFBA8532E4D /* TripLiveActivityController.swift */,
+				007A0E62CFBBFA8FE9DEADC3 /* TripModesView.swift */,
+				13B6E06D1F014687E75390A3 /* UpstreamIntegrationsView.swift */,
+				5114B6E23CBCB270BB8375EC /* TripModes.swift */,
+				36D2A80EB7610335ABC4A8B1 /* TripModeIcons.swift */,
+				D5CC3037773D353A885327FA /* SharedTripState.swift */,
+				295482F7E6DD4724A74C675E /* TripIntents.swift */,
+				D8F54F73CE518F85F9D383BF /* TripActivityAttributes.swift */,
+				243C8AE0F0527309356468D1 /* StatusWidget.swift */,
+				C215F1FD102A461140930DC1 /* TripControls.swift */,
+				9C6721F8E565CC51192716BC /* TripLiveActivityWidget.swift */,
+				4C77E117660C6B9CD7E2F223 /* TripViews.swift */,
+				C25B528FB613DCB4FBF7D384 /* TripModes.xcassets */,
+				4B4C34C503F74BA4B4862F77 /* PrivacyInfo.xcprivacy */,
+				83ED4065498A6D4B6567B48C /* TripModeTests.swift */,
+				62560F97D22E55B44438F518 /* HealthTripRecorderTests.swift */,
+				A535D757A5D6F60B81BFCA5E /* UpstreamIntegrationTests.m */,
+				CE0D0CC91D28B0CF79E330F3 /* GLCloudFileWriter.h */,
+				045D71F7333BFAF7A4F6289F /* GLTripActions.h */,
+				B43520312801460797C456DA /* TrackingActivity.entitlements */,
+				D57439666CE09C401BE55DDB /* HistorySettingsView.swift */,
+				8BEB326A17A6C66C642C0A6B /* HistoryRetentionTests.swift */,
+				2C7313CC971BF235A25F4BF0 /* WorkoutRouteImport.swift */,
+				9D7CF59CCFE98FB74F472E24 /* WorkoutImportView.swift */,
+				888651E8875EC46EFEDD3417 /* WorkoutImportTests.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -241,6 +383,8 @@
 		0FFD31541BAB7A34009B3A03 /* GPSLogger */ = {
 			isa = PBXGroup;
 			children = (
+				C02700000000000000000002 /* TestFlightDiagnostics.swift */,
+				C02700000000000000000004 /* DiagnosticsView.swift */,
 				B08800000000000000000001 /* BackgroundRuntime.swift */,
 				B08800000000000000000002 /* SilentAudioSession.swift */,
 				0FCF53231F81AAAC00577A0F /* GPSLogger.entitlements */,
@@ -248,20 +392,6 @@
 				0FFD31591BAB7A34009B3A03 /* AppDelegate.m */,
 				0FAC1FEF2B25FBC10007F3B1 /* SceneDelegate.h */,
 				0FAC1FED2B25FBB50007F3B1 /* SceneDelegate.m */,
-				0FFD315B1BAB7A34009B3A03 /* TrackingViewController.h */,
-				0FFD315C1BAB7A34009B3A03 /* TrackingViewController.m */,
-				0F444F0A1BD04A7E00106C2E /* TripModeViewController.h */,
-				0F444F0B1BD04A7E00106C2E /* TripModeViewController.m */,
-				0FFD315E1BAB7A34009B3A03 /* SettingsViewController.h */,
-				0FFD315F1BAB7A34009B3A03 /* SettingsViewController.m */,
-				0FF590312B1FA22E00E3AAA3 /* TripSettingsViewController.h */,
-				0FF5902F2B1FA1D500E3AAA3 /* TripSettingsViewController.m */,
-				0FCF532C1F83FDBC00577A0F /* EndpointViewController.h */,
-				0FCF532D1F83FDBC00577A0F /* EndpointViewController.m */,
-				6D2858CF222B133400F525E1 /* WifiZoneViewController.h */,
-				6D2858D0222B133400F525E1 /* WifiZoneViewController.m */,
-				0FABDE382B329448003ACD20 /* TipJarViewController.h */,
-				0FABDE392B329448003ACD20 /* TipJarViewController.m */,
 				0FFD31711BAB7BEA009B3A03 /* GLManager.h */,
 				0FFD31721BAB7BEA009B3A03 /* GLManager.m */,
 				0FCAFE00F00D0000000000A1 /* WifiZoneListView.swift */,
@@ -270,26 +400,35 @@
 				0FCAFE00F00D0000000000E2 /* OverlandRootView.swift */,
 				0FCAFE00F00D0000000000E3 /* TrackerView.swift */,
 				0FCAFE00F00D0000000000E4 /* SettingsView.swift */,
-                A02200000000000000000001,
-                A03300000000000000000001,
+				A02200000000000000000001 /* SettingsHelpView.swift */,
+				A0BB00000000000000000001 /* NativeMapSurface.swift */,
+				C0A100000000000000000001 /* GLTrackingPolicy.h */,
+				D0F100000000000000000001 /* GLLocationHealth.h */,
+				D0F100000000000000000002 /* GLLocationHealth.m */,
+				D0F100000000000000000004 /* LocationHealthView.swift */,
+				C0A100000000000000000002 /* GLTrackingPolicy.m */,
+				C0A100000000000000000004 /* OverlandUploadScheduler.swift */,
+				A0BC00000000000000000001 /* ReplayRouteRenderer.swift */,
 				A04400000000000000000001 /* MapControlPanel.swift */,
 				A06600000000000000000001 /* RecentLocationHistory.swift */,
 				A07700000000000000000001 /* HistoryPlaybackView.swift */,
-				A05500000000000000000001 /* NativeTabController.swift */,
+				A05500000000000000000001 /* OverlandShell.swift */,
 				0FCAFE00F00D0000000000E5 /* EndpointView.swift */,
 				0FCAFE00F00D0000000000E6 /* TripView.swift */,
 				0FCAFE00F00D0000000000E8 /* SteppedSlider.swift */,
 				0FCAFE00F00D0000000000E7 /* TripSettingsView.swift */,
+				0FCAFE00F00D0000000000E9 /* GlassStyle.swift */,
+				A09900000000000000000003 /* TipDonation.swift */,
+				A09900000000000000000002 /* TipStore.swift */,
+				A09900000000000000000001 /* TipJarView.swift */,
 				0FAC1FEC2B255D460007F3B1 /* NSArray+map.h */,
 				0FAC1FEA2B255CA60007F3B1 /* NSArray+map.m */,
-				0FFD31611BAB7A34009B3A03 /* Main.storyboard */,
 				0FFD31641BAB7A34009B3A03 /* Assets.xcassets */,
 				0FFD31661BAB7A34009B3A03 /* LaunchScreen.storyboard */,
 				0FABDE3B2B34F642003ACD20 /* Tips.storekit */,
 				0FFD31691BAB7A34009B3A03 /* Info.plist */,
 				0FFD317C1BAB7CB3009B3A03 /* LOLDB */,
 				0FFD31551BAB7A34009B3A03 /* Supporting Files */,
-				0FE280B02B0180620062936E /* Settings.bundle */,
 				0F702B012B2E1F670076E6B9 /* Overland-Bridging-Header.h */,
 			);
 			path = GPSLogger;
@@ -315,15 +454,22 @@
 		1CD5358810FD08AFC4E02284 /* Pods */ = {
 			isa = PBXGroup;
 			children = (
-				4321137E3D59A45E6CD72293 /* Pods-GPSLogger.debug.xcconfig */,
-				378F9BC146097DEF5A9CCBF9 /* Pods-GPSLogger.release.xcconfig */,
 				F4DFFAB32440A8511E1D869A /* Pods-Overland.debug.xcconfig */,
 				251EBCB0197B8F3891607241 /* Pods-Overland.release.xcconfig */,
 			);
 			name = Pods;
 			sourceTree = "<group>";
 		};
-		B08800000000000000000014 /* TrackingActivity */ = { isa = PBXGroup; children = (B08800000000000000000003,B08800000000000000000004,B08800000000000000000006,); name = TrackingActivity; sourceTree = "<group>"; };
+		B08800000000000000000014 /* TrackingActivity */ = {
+			isa = PBXGroup;
+			children = (
+				B08800000000000000000003 /* TrackingActivityAttributes.swift */,
+				B08800000000000000000004 /* TrackingActivityWidget.swift */,
+				B08800000000000000000006 /* Info.plist */,
+			);
+			name = TrackingActivity;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -336,6 +482,7 @@
 				0FFD314F1BAB7A34009B3A03 /* Frameworks */,
 				0FFD31501BAB7A34009B3A03 /* Resources */,
 				B08800000000000000000018 /* Embed App Extensions */,
+				A30BF5BD134AA640DE5AB501 /* [CP] Copy Pods Resources */,
 			);
 			buildRules = (
 			);
@@ -347,7 +494,40 @@
 			productReference = 0FFD31521BAB7A34009B3A03 /* Overland.app */;
 			productType = "com.apple.product-type.application";
 		};
-		B0880000000000000000001B /* OverlandTrackingActivity */ = { isa = PBXNativeTarget; buildConfigurationList = B0880000000000000000001C; buildPhases = (B08800000000000000000015,B08800000000000000000016,B08800000000000000000017,); buildRules = (); dependencies = (); name = OverlandTrackingActivity; productName = OverlandTrackingActivity; productReference = B08800000000000000000005; productType = "com.apple.product-type.app-extension"; };
+		A01100000000000000000006 /* OverlandTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A01100000000000000000007 /* Build configuration list for PBXNativeTarget "OverlandTests" */;
+			buildPhases = (
+				A01100000000000000000004 /* Sources */,
+				A01100000000000000000005 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A0110000000000000000000B /* PBXTargetDependency */,
+			);
+			name = OverlandTests;
+			productName = OverlandTests;
+			productReference = A01100000000000000000003 /* OverlandTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		B0880000000000000000001B /* OverlandTrackingActivity */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B0880000000000000000001C /* Build configuration list for PBXNativeTarget "OverlandTrackingActivity" */;
+			buildPhases = (
+				B08800000000000000000015 /* Sources */,
+				B08800000000000000000016 /* Frameworks */,
+				B08800000000000000000017 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = OverlandTrackingActivity;
+			productName = OverlandTrackingActivity;
+			productReference = B08800000000000000000005 /* OverlandTrackingActivity.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -389,7 +569,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-                A01100000000000000000006,
+				A01100000000000000000006 /* OverlandTests */,
 				B0880000000000000000001B /* OverlandTrackingActivity */,
 				0FFD31511BAB7A34009B3A03 /* Overland */,
 			);
@@ -406,12 +586,20 @@
 				0FFD31681BAB7A34009B3A03 /* LaunchScreen.storyboard in Resources */,
 				0F3E5210201E543200DCFAA4 /* OpenSansCondensed-Bold.ttf in Resources */,
 				0FFD31651BAB7A34009B3A03 /* Assets.xcassets in Resources */,
-				0FFD31631BAB7A34009B3A03 /* Main.storyboard in Resources */,
-				0FE280B12B0180620062936E /* Settings.bundle in Resources */,
+				58969E383049C44ED5F83EA1 /* TripModes.xcassets in Resources */,
+				788FDA6C23567608ADD200DD /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		B08800000000000000000017 /* Resources */ = { isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		B08800000000000000000017 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C246F22FA7DFF125127B0BE2 /* TripModes.xcassets in Resources */,
+				E7C650B0826A973D9430D5CA /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
@@ -433,6 +621,27 @@
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
 		};
+		A30BF5BD134AA640DE5AB501 /* [CP] Copy Pods Resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-Overland/Pods-Overland-resources.sh",
+				"${PODS_CONFIGURATION_BUILD_DIR}/FMDB/FMDB_Privacy.bundle",
+			);
+			name = "[CP] Copy Pods Resources";
+			outputPaths = (
+				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/FMDB_Privacy.bundle",
+				"$(DERIVED_FILE_DIR)/Pods-Overland-resources-to-copy.txt",
+				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/FMDB_Privacy.bundle/Info.plist",
+				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/FMDB_Privacy.bundle/PrivacyInfo.xcprivacy",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Overland/Pods-Overland-resources.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -440,53 +649,119 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C02700000000000000000001 /* TestFlightDiagnostics.swift in Sources */,
+				C02700000000000000000003 /* DiagnosticsView.swift in Sources */,
 				B0880000000000000000000B /* BackgroundRuntime.swift in Sources */,
 				B0880000000000000000000C /* SilentAudioSession.swift in Sources */,
 				B0880000000000000000000D /* TrackingActivityAttributes.swift in Sources */,
-				0FFD31601BAB7A34009B3A03 /* SettingsViewController.m in Sources */,
 				0FFD315A1BAB7A34009B3A03 /* AppDelegate.m in Sources */,
-				6D2858D1222B133400F525E1 /* WifiZoneViewController.m in Sources */,
-				0FABDE3A2B329448003ACD20 /* TipJarViewController.m in Sources */,
 				0FAC1FEB2B255CA60007F3B1 /* NSArray+map.m in Sources */,
 				0FFD31731BAB7BEA009B3A03 /* GLManager.m in Sources */,
 				0FCAFE00F00D0000000000B1 /* WifiZoneListView.swift in Sources */,
 				0FCAFE00F00D0000000000D1 /* OverlandLocationEngine.swift in Sources */,
 				0FCAFE00F00D0000000000F1 /* GLManagerBridge.swift in Sources */,
 				0FCAFE00F00D0000000000F2 /* OverlandRootView.swift in Sources */,
+				A0BB00000000000000000002 /* NativeMapSurface.swift in Sources */,
+				C0A100000000000000000003 /* GLTrackingPolicy.m in Sources */,
+				D0F100000000000000000003 /* GLLocationHealth.m in Sources */,
+				D0F100000000000000000005 /* LocationHealthView.swift in Sources */,
+				C0A100000000000000000005 /* OverlandUploadScheduler.swift in Sources */,
+				A0BC00000000000000000002 /* ReplayRouteRenderer.swift in Sources */,
 				0FCAFE00F00D0000000000F3 /* TrackerView.swift in Sources */,
 				0FCAFE00F00D0000000000F4 /* SettingsView.swift in Sources */,
-                A02200000000000000000002,
-                A03300000000000000000002,
+				A02200000000000000000002 /* SettingsHelpView.swift in Sources */,
 				A04400000000000000000002 /* MapControlPanel.swift in Sources */,
 				A06600000000000000000002 /* RecentLocationHistory.swift in Sources */,
 				A07700000000000000000002 /* HistoryPlaybackView.swift in Sources */,
-				A05500000000000000000002 /* NativeTabController.swift in Sources */,
+				A05500000000000000000002 /* OverlandShell.swift in Sources */,
 				0FCAFE00F00D0000000000F5 /* EndpointView.swift in Sources */,
 				0FCAFE00F00D0000000000F6 /* TripView.swift in Sources */,
 				0FCAFE00F00D0000000000F8 /* SteppedSlider.swift in Sources */,
 				0FCAFE00F00D0000000000F7 /* TripSettingsView.swift in Sources */,
-				0FCF532E1F83FDBC00577A0F /* EndpointViewController.m in Sources */,
-				0F444F0C1BD04A7E00106C2E /* TripModeViewController.m in Sources */,
+				0FCAFE00F00D0000000000F9 /* GlassStyle.swift in Sources */,
+				A0990000000000000000000D /* TipDonation.swift in Sources */,
+				A0990000000000000000000C /* TipStore.swift in Sources */,
+				A0990000000000000000000B /* TipJarView.swift in Sources */,
 				0FAC1FEE2B25FBB50007F3B1 /* SceneDelegate.m in Sources */,
-				0FFD315D1BAB7A34009B3A03 /* TrackingViewController.m in Sources */,
 				0FFD317F1BAB7CC7009B3A03 /* LOLDatabase.m in Sources */,
-				0FF590302B1FA1D500E3AAA3 /* TripSettingsViewController.m in Sources */,
 				0FFD31571BAB7A34009B3A03 /* main.m in Sources */,
+				D7E7DABBA0D8363EABE4833D /* GLCloudFileWriter.m in Sources */,
+				FE9D896276FE76C0B7D6DDF6 /* GLTripActions.m in Sources */,
+				BAEDDD70BD822527C8684813 /* HealthTripRecorder.swift in Sources */,
+				08C34AC23324E07D64EC8F07 /* OverlandAppIntents.swift in Sources */,
+				5BB8EF3C5CA85922D301E133 /* SharedStateObserver.swift in Sources */,
+				80437EB826C8A904ACDF70BB /* TripLiveActivityController.swift in Sources */,
+				D1DD2EEF17FE44F979CA2C48 /* TripModesView.swift in Sources */,
+				4F04FB995B6FEC63BBAD2D53 /* UpstreamIntegrationsView.swift in Sources */,
+				B030BC96F749619DECB8DE60 /* TripModes.swift in Sources */,
+				7F1C3DEE5DAA991A0D1F7C95 /* TripModeIcons.swift in Sources */,
+				207D56F6C41685842EAECAD9 /* SharedTripState.swift in Sources */,
+				5BCCF5411243A9657CF7A3D8 /* TripIntents.swift in Sources */,
+				6274D5A2AACD43BBB319630D /* TripActivityAttributes.swift in Sources */,
+				5B0A8C122B2744B820E0C1AC /* HistorySettingsView.swift in Sources */,
+				E8AD7EB7542A54DC56C21BA0 /* WorkoutRouteImport.swift in Sources */,
+				33F38E25406E8CD8616FA6D9 /* WorkoutImportView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		B08800000000000000000015 /* Sources */ = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B0880000000000000000000E,B0880000000000000000000F,); runOnlyForDeploymentPostprocessing = 0; };
+		A01100000000000000000004 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A01100000000000000000002 /* OverlandTests.m in Sources */,
+				C0A100000000000000000007 /* TrackingPolicyTests.m in Sources */,
+				D0F100000000000000000007 /* LocationHealthTests.m in Sources */,
+				D0F200000000000000000002 /* MapChromeTests.swift in Sources */,
+				C0A100000000000000000009 /* LocationEngineRecoveryTests.swift in Sources */,
+				C0A10000000000000000000B /* UploadSchedulerTests.swift in Sources */,
+				A09900000000000000000020 /* TipDonationTests.swift in Sources */,
+				B08800000000000000000041 /* BackgroundRuntimeTests.swift in Sources */,
+				A0CC00000000000000000002 /* HistoryPlaybackTests.swift in Sources */,
+				A0DD00000000000000000002 /* SettingsReliabilityTests.swift in Sources */,
+				A0EE00000000000000000002 /* DrawerLayoutTests.swift in Sources */,
+				A0BC00000000000000000012 /* ReplayRouteRendererTests.swift in Sources */,
+				956A11CCD2A4977C19C16C7E /* TripModeTests.swift in Sources */,
+				06E1F7368FAE37CA1EFFE6A5 /* HealthTripRecorderTests.swift in Sources */,
+				8906128EBAE97CD9E2B23394 /* UpstreamIntegrationTests.m in Sources */,
+				FD8716D075FB5292BFD3C574 /* HistoryRetentionTests.swift in Sources */,
+				2B53F8ACA6002B982BF8855A /* WorkoutImportTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B08800000000000000000015 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B0880000000000000000000E /* TrackingActivityWidget.swift in Sources */,
+				B0880000000000000000000F /* TrackingActivityAttributes.swift in Sources */,
+				4DCAFFAB3E2B1B18EAB3D470 /* TripModes.swift in Sources */,
+				9BFF4920951E59B5E4E7EF9B /* TripModeIcons.swift in Sources */,
+				E23F46BF79C789B08211F303 /* SharedTripState.swift in Sources */,
+				FAC841E01F195F27EE270BD0 /* TripIntents.swift in Sources */,
+				AF7619AB633D818AD53D1C15 /* TripActivityAttributes.swift in Sources */,
+				04F242940BB39DD7583C928B /* StatusWidget.swift in Sources */,
+				FFFD07EC57EDFD9A3BF5CB30 /* TripControls.swift in Sources */,
+				1A56581BB05354349FAD0DC4 /* TripLiveActivityWidget.swift in Sources */,
+				6DF9B422ECD5F9A3CFCBECCB /* TripViews.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
-/* Begin PBXVariantGroup section */
-		0FFD31611BAB7A34009B3A03 /* Main.storyboard */ = {
-			isa = PBXVariantGroup;
-			children = (
-				0FFD31621BAB7A34009B3A03 /* Base */,
-			);
-			name = Main.storyboard;
-			sourceTree = "<group>";
+/* Begin PBXTargetDependency section */
+		A0110000000000000000000B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 0FFD31511BAB7A34009B3A03 /* Overland */;
+			targetProxy = A0110000000000000000000A /* PBXContainerItemProxy */;
 		};
+		B0880000000000000000001A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B0880000000000000000001B /* OverlandTrackingActivity */;
+			targetProxy = B08800000000000000000019 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin PBXVariantGroup section */
 		0FFD31661BAB7A34009B3A03 /* LaunchScreen.storyboard */ = {
 			isa = PBXVariantGroup;
 			children = (
@@ -608,7 +883,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
-				CODE_SIGN_ENTITLEMENTS = Overland.entitlements;
+				CODE_SIGN_ENTITLEMENTS = "$(OVERLAND_APP_ENTITLEMENTS)";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				DEVELOPMENT_TEAM = 7MC6UZR2UV;
 				INFOPLIST_FILE = GPSLogger/Info.plist;
@@ -620,9 +895,14 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.3;
-				PRODUCT_BUNDLE_IDENTIFIER = com.aaronpk.overland;
+				OVERLAND_APP_ENTITLEMENTS = Overland.entitlements;
+				OVERLAND_BUNDLE_IDENTIFIER = com.aaronpk.overland;
+				OVERLAND_HEALTHKIT_ENABLED = YES;
+				OVERLAND_ICLOUD_ENABLED = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(OVERLAND_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE = "";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) OVERLAND_APP";
 				SWIFT_OBJC_BRIDGING_HEADER = "GPSLogger/Overland-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
@@ -636,9 +916,13 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
-				CODE_SIGN_ENTITLEMENTS = Overland.entitlements;
+				CODE_SIGN_ENTITLEMENTS = "$(OVERLAND_APP_ENTITLEMENTS)";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				DEVELOPMENT_TEAM = 7MC6UZR2UV;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"OVERLAND_TESTFLIGHT_DIAGNOSTICS=1",
+				);
 				INFOPLIST_FILE = GPSLogger/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Overland GPS Tracker";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
@@ -648,17 +932,133 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.3;
-				PRODUCT_BUNDLE_IDENTIFIER = com.aaronpk.overland;
+				OVERLAND_APP_ENTITLEMENTS = Overland.entitlements;
+				OVERLAND_BUNDLE_IDENTIFIER = com.aaronpk.overland;
+				OVERLAND_HEALTHKIT_ENABLED = YES;
+				OVERLAND_ICLOUD_ENABLED = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(OVERLAND_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE = "";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) OVERLAND_TESTFLIGHT_DIAGNOSTICS OVERLAND_APP";
 				SWIFT_OBJC_BRIDGING_HEADER = "GPSLogger/Overland-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};
-		B0880000000000000000001D /* Debug */ = { isa = XCBuildConfiguration; buildSettings = {APPLICATION_EXTENSION_API_ONLY = YES; CLANG_ENABLE_MODULES = YES; CODE_SIGN_STYLE = Automatic; DEVELOPMENT_TEAM = 7MC6UZR2UV; INFOPLIST_FILE = TrackingActivity/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 17.0; LD_RUNPATH_SEARCH_PATHS = ("$(inherited)","@executable_path/Frameworks","@executable_path/../../Frameworks",); PRODUCT_BUNDLE_IDENTIFIER = com.aaronpk.overland.TrackingActivity; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SKIP_INSTALL = YES; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; }; name = Debug; };
-		B0880000000000000000001E /* Release */ = { isa = XCBuildConfiguration; buildSettings = {APPLICATION_EXTENSION_API_ONLY = YES; CLANG_ENABLE_MODULES = YES; CODE_SIGN_STYLE = Automatic; DEVELOPMENT_TEAM = 7MC6UZR2UV; INFOPLIST_FILE = TrackingActivity/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 17.0; LD_RUNPATH_SEARCH_PATHS = ("$(inherited)","@executable_path/Frameworks","@executable_path/../../Frameworks",); PRODUCT_BUNDLE_IDENTIFIER = com.aaronpk.overland.TrackingActivity; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SKIP_INSTALL = YES; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Release; };
+		A01100000000000000000008 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CODE_SIGN_STYLE = Automatic;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PLATFORM_DIR)/Developer/Library/Frameworks",
+				);
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/GPSLogger",
+					"$(SRCROOT)/Pods/FMDB/src/fmdb",
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					XCTest,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.aaronpk.overland.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Overland.app/Overland";
+			};
+			name = Debug;
+		};
+		A01100000000000000000009 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CODE_SIGN_STYLE = Automatic;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PLATFORM_DIR)/Developer/Library/Frameworks",
+				);
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/GPSLogger",
+					"$(SRCROOT)/Pods/FMDB/src/fmdb",
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					XCTest,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.aaronpk.overland.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Overland.app/Overland";
+			};
+			name = Release;
+		};
+		B0880000000000000000001D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = "$(OVERLAND_WIDGET_ENTITLEMENTS)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 7MC6UZR2UV;
+				INFOPLIST_FILE = TrackingActivity/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				OVERLAND_BUNDLE_IDENTIFIER = com.aaronpk.overland;
+				OVERLAND_WIDGET_ENTITLEMENTS = TrackingActivity/TrackingActivity.entitlements;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(OVERLAND_BUNDLE_IDENTIFIER).TrackingActivity";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		B0880000000000000000001E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = "$(OVERLAND_WIDGET_ENTITLEMENTS)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 7MC6UZR2UV;
+				INFOPLIST_FILE = TrackingActivity/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				OVERLAND_BUNDLE_IDENTIFIER = com.aaronpk.overland;
+				OVERLAND_WIDGET_ENTITLEMENTS = TrackingActivity/TrackingActivity.entitlements;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(OVERLAND_BUNDLE_IDENTIFIER).TrackingActivity";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -680,7 +1080,24 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		B0880000000000000000001C /* Build configuration list for OverlandTrackingActivity */ = { isa = XCConfigurationList; buildConfigurations = (B0880000000000000000001D,B0880000000000000000001E,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		A01100000000000000000007 /* Build configuration list for PBXNativeTarget "OverlandTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A01100000000000000000008 /* Debug */,
+				A01100000000000000000009 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B0880000000000000000001C /* Build configuration list for PBXNativeTarget "OverlandTrackingActivity" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B0880000000000000000001D /* Debug */,
+				B0880000000000000000001E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 	};
 	rootObject = 0FFD314A1BAB7A34009B3A03 /* Project object */;

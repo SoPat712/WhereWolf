@@ -6,3 +6,11 @@ Screenshots/
 Prototypes/
 __pycache__/
 *.pyc
+.local-device/
+LocalDevice/
+DerivedData/
+build/
+*.xcresult/
+*.xcarchive/
+*.dSYM/
+*.ipa
