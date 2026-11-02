@@ -1,0 +1,8 @@
+title: Where
+theme: jekyll-theme-minimal
+url: https://sopat712.github.io
+baseurl: /Where
+exclude:
+  - tracking-improvements.md
+  - upstream-integration.md
+  - workout-import.md

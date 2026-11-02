@@ -245,7 +245,7 @@ struct TipJarView: View {
     private var legalLinks: some View {
         Group {
             Link("Terms of Use", destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!)
-            Link("Privacy Policy", destination: URL(string: "https://overland.p3k.app/privacy")!)
+            Link("Privacy Policy", destination: URL(string: "https://sopat712.github.io/Where/privacy/")!)
         }
     }
 

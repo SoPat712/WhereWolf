@@ -10,6 +10,9 @@ Where is made by [SoPat712](https://github.com/SoPat712). It started from
 [Overland](https://github.com/aaronpk/Overland-iOS) by Aaron Parecki and keeps
 Overland's API, so services built for Overland work with it.
 
+[Support](https://sopat712.github.io/Where/) ·
+[Privacy policy](https://sopat712.github.io/Where/privacy/)
+
 You can use an existing backend or build an HTTP receiver. Supported services
 and integrations include:
 
@@ -116,8 +119,10 @@ app’s existing screens and glass styling. Health, iCloud, WiFi identity and
 widget sharing require the corresponding signing capabilities. See the
 [integration notes](docs/upstream-integration.md) for behavior and build options.
 Siri phrases work with or without the word "trip", such as "Start a walk in Where",
-and Siri learns from the trips and tracking changes you make in the app. The Home
-Screen quick actions show Stop Trip during a trip and your trip modes otherwise,
+and Siri learns from the trips and tracking changes you make in the app.
+Siri also accepts the app names "Where Tracker" and "Where App", such as
+"Start a walk in Where Tracker" or "Send Where App data now".
+The Home Screen quick actions show Stop Trip during a trip and your trip modes otherwise,
 and update whenever a trip starts or ends.
 Trip icons include Google’s [Material Symbols](https://github.com/google/material-design-icons),
 licensed under Apache License 2.0.

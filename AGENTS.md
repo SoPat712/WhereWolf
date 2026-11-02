@@ -12,6 +12,9 @@ links from those servers keep working. The `Overland` coordination name and simu
 belong to tooling shared with Light.
 README screenshots live in `docs/screenshots` and are linked through
 raw.githubusercontent.com on `main`.
+GitHub Pages serves support at `https://sopat712.github.io/Where/` and privacy
+at `/Where/privacy/` from `docs`. Keep internal Markdown docs excluded in
+`docs/_config.yml`; preserve screenshots at their existing paths.
 
 ## Build
 
@@ -134,6 +137,9 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   `AppShortcutParameters` gives Siri the modes at launch and when they change.
   `IntentDonations` donates trip and tracking changes made with Where's own controls;
   intents run by the system are not donated again.
+  `INAlternativeAppNames` in the phone's Info.plist supplies "Where Tracker" and
+  "Where App" for the App Shortcuts' application-name token. Keep the display
+  name Where and the token in every phrase.
 - **Workout import**: `WorkoutRouteImporter` reads other apps' saved Health routes
   after explicit read-access setup. Manual imports and optional foreground checks
   use a separate protected SQLite collection; keep every valid point, source and

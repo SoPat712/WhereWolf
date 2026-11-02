@@ -147,7 +147,11 @@ struct SettingsView: View {
                     SettingsRowLabel(title: "Tip Jar", symbol: "heart.fill", color: .pink)
                 }
                 .foregroundStyle(.primary)
-                Link(destination: URL(string: "https://overland.p3k.app/privacy")!) {
+                Link(destination: URL(string: "https://sopat712.github.io/Where/")!) {
+                    SettingsRowLabel(title: "Support", symbol: "questionmark.circle.fill", color: .blue)
+                }
+                .foregroundStyle(.primary)
+                Link(destination: URL(string: "https://sopat712.github.io/Where/privacy/")!) {
                     SettingsRowLabel(title: "Privacy Policy", symbol: "hand.raised.fill", color: .gray)
                 }
                 .foregroundStyle(.primary)
