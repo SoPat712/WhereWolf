@@ -297,6 +297,7 @@ struct NativeMapSurface: UIViewRepresentable {
     var replayFollowing = true
     var replayFollowDistance: CLLocationDistance? = nil
     var replayOverview = false
+    var replayStatusHeight: CGFloat = 0
     // SwiftUI animation transactions do not cross the shell's separate map hosting controller.
     var replayCameraAction = 0
     // A live recenter must also reach the map when its cached request is already follow.
@@ -360,19 +361,13 @@ struct NativeMapSurface: UIViewRepresentable {
     }
 
     @MainActor static func replayOverviewDistance(on map: MKMapView) -> CLLocationDistance? {
-        guard let line = (map.delegate as? Coordinator)?.replayPolyline ?? map.overlays.compactMap({ $0 as? MKPolyline }).first,
-              map.visibleMapRect.width > 0 else { return nil }
-        let fitted = map.mapRectThatFits(line.boundingMapRect, edgePadding: replayEdgePadding(on: map))
-        return map.camera.centerCoordinateDistance * fitted.width / map.visibleMapRect.width
+        (map.delegate as? Coordinator)?.replayOverviewCamera(on: map)?.distance
     }
 
-    @MainActor private static func replayEdgePadding(on map: MKMapView) -> UIEdgeInsets {
-        let visible = MapViewport.visibleRect(in: map.bounds,
-            safeTop: map.bounds.minY + map.safeAreaInsets.top,
-            drawerTop: (map as? AttributionMapView)?.drawerTop)
-        let padding = min(24, max(0, visible.height / 4))
-        return UIEdgeInsets(top: visible.minY - map.bounds.minY + padding, left: 24,
-                           bottom: map.bounds.maxY - visible.maxY + padding, right: 24)
+    @MainActor static func replayClearRect(on map: MKMapView) -> CGRect {
+        MapChrome.replayClearRect(in: map.bounds, safeArea: map.safeAreaInsets,
+                                 drawerTop: (map as? AttributionMapView)?.drawerTop,
+                                 statusHeight: (map.delegate as? Coordinator)?.parent.replayStatusHeight ?? 0)
     }
 
     func makeCoordinator() -> Coordinator {
@@ -457,12 +452,31 @@ struct NativeMapSurface: UIViewRepresentable {
         private let replayTrailLayer = ReplayTrailLayer()
         private let replayFutureLayer = ReplayTrailLayer(future: true)
         private let replayAccuracyLayer = ReplayAccuracyLayer()
-        var replayPolyline: MKPolyline? { replayPresentation?.fullRoute }
+        private var overviewFit: (route: ObjectIdentifier, bounds: CGRect, clear: CGRect,
+                                  heading: CLLocationDirection, pitch: CGFloat, type: MKMapType, camera: MapCamera)?
+        private var overviewViewport: (bounds: CGRect, safeArea: UIEdgeInsets)?
 #if targetEnvironment(simulator)
         var displayedTrailCoordinate: CLLocationCoordinate2D? { replayTrailLayer.coordinate }
         var replayAuditValues: [String: Double] {
             var values = replayPresentation?.auditValues ?? [:]
             values["nativePosePosition"] = parent.replayPosition
+            if parent.replayOverview, let map, let route = replayRoute,
+               let bounds = ReplayOverviewFit.projectedBounds(route.coordinates.map { map.convert($0, toPointTo: nil) }) {
+                let clear = map.convert(NativeMapSurface.replayClearRect(on: map), to: nil)
+                values["overviewMinX"] = bounds.minX
+                values["overviewMaxX"] = bounds.maxX
+                values["overviewMinY"] = bounds.minY
+                values["overviewMaxY"] = bounds.maxY
+                values["overviewProjectedCount"] = Double(route.coordinates.count)
+                values["overviewClearMinX"] = clear.minX
+                values["overviewClearMaxX"] = clear.maxX
+                values["overviewClearMinY"] = clear.minY
+                values["overviewClearMaxY"] = clear.maxY
+            }
+            if let map {
+                values["mapHeading"] = map.camera.heading
+                values["mapPitch"] = Double(map.camera.pitch)
+            }
             // The sheet's presentation frame can lag the viewport supplied to the map during a spring.
             if let map, let top = (map as? AttributionMapView)?.drawerTop {
                 values["targetDrawerTop"] = map.convert(CGPoint(x: 0, y: top), to: nil).y
@@ -552,6 +566,7 @@ struct NativeMapSurface: UIViewRepresentable {
 
         private func updateOverlays(_ map: MKMapView) {
             if replayRoute !== parent.replayRoute {
+                overviewFit = nil
                 if let replayPresentation { map.removeOverlays(replayPresentation.overlays) }
                 replayRoute = parent.replayRoute
                 replayPresentation = nil
@@ -841,10 +856,11 @@ struct NativeMapSurface: UIViewRepresentable {
             correctionsRemaining = 0
             hasInitialCamera = true
             cameraDestination = destination
+            if parent.replayOverview { overviewViewport = (map.bounds, map.safeAreaInsets) }
             cameraZooming = zoom
             cameraFlight = flight
             zoomKeepsCentering = keepsCentering
-            let anchored = zoom ? zoomAnchor(on: map) != nil : !replayDetached
+            let anchored = zoom ? zoomAnchor(on: map) != nil : !replayDetached && !parent.replayOverview
             let start = CACurrentMediaTime()
             let from = MapCamera(map.camera)
             let to = anchored ? MapCamera(anchoredCamera(destination, on: map)) : destination
@@ -883,7 +899,7 @@ struct NativeMapSurface: UIViewRepresentable {
                 destination.centerCoordinate = coordinate
             }
             if let heading = followedHeading { destination.heading = heading }
-            let anchored = cameraZooming ? focusCoordinate != nil : !replayDetached
+            let anchored = cameraZooming ? focusCoordinate != nil : !replayDetached && !parent.replayOverview
             transition.to = anchored ? MapCamera(anchoredCamera(destination, on: map)) : destination
             cameraTransition = transition
             let end = UIAccessibility.isReduceMotionEnabled ? transition.start + transition.length : time
@@ -911,19 +927,15 @@ struct NativeMapSurface: UIViewRepresentable {
             }
         }
 
-        private func replayOverviewCamera(on map: MKMapView) -> MapCamera? {
-            guard let route = replayPresentation?.fullRoute, map.bounds.width > 0, map.bounds.height > 0 else { return nil }
-            let rect = route.boundingMapRect
-            let center = MKMapPoint(x: rect.midX, y: rect.midY).coordinate
-            let minimum = MKMapPointsPerMeterAtLatitude(center.latitude) * 150
-            let visible = MapViewport.visibleRect(in: map.bounds,
-                safeTop: map.bounds.minY + map.safeAreaInsets.top,
-                drawerTop: (map as? AttributionMapView)?.drawerTop).insetBy(dx: 24, dy: 24)
-            guard visible.width > 0, visible.height > 0, let scale = mapScale(on: map) else { return nil }
-            let required = max(max(minimum, rect.width) / visible.width, max(minimum, rect.height) / visible.height)
-            let distance = map.camera.centerCoordinateDistance * required / scale.pointsPerPoint
-                * MKMapPointsPerMeterAtLatitude(scale.center.latitude) / MKMapPointsPerMeterAtLatitude(center.latitude)
-            return MapCamera(centerCoordinate: center, distance: distance)
+        fileprivate func replayOverviewCamera(on map: MKMapView) -> MapCamera? {
+            guard let route = replayRoute else { return nil }
+            let clear = NativeMapSurface.replayClearRect(on: map)
+            if let fit = overviewFit, fit.route == ObjectIdentifier(route), fit.bounds == map.bounds,
+               fit.clear == clear, fit.heading == map.camera.heading, fit.pitch == map.camera.pitch,
+               fit.type == map.mapType { return fit.camera }
+            guard let camera = ReplayOverviewFit.camera(for: route.coordinates, on: map, clearRect: clear) else { return nil }
+            overviewFit = (ObjectIdentifier(route), map.bounds, clear, map.camera.heading, map.camera.pitch, map.mapType, camera)
+            return camera
         }
 
         // Map points per screen point in the middle of the map, and the coordinate there.
@@ -939,14 +951,9 @@ struct NativeMapSurface: UIViewRepresentable {
         }
 
         private func fitReplayRoute(on map: MKMapView, animated: Bool) {
-            guard let first = replayRoute?.coordinates.first, map.bounds.width > 0, map.bounds.height > 0 else { return }
-            let point = MKMapPoint(first)
-            let rect = replayPresentation?.fullRoute.boundingMapRect ?? MKMapRect(x: point.x, y: point.y, width: 0, height: 0)
-            let minimum = MKMapPointsPerMeterAtLatitude(first.latitude) * 150
-            let fitted = MKMapRect(x: rect.midX - max(minimum, rect.width) / 2,
-                                   y: rect.midY - max(minimum, rect.height) / 2,
-                                   width: max(minimum, rect.width), height: max(minimum, rect.height))
-            map.setVisibleMapRect(fitted, edgePadding: NativeMapSurface.replayEdgePadding(on: map), animated: animated)
+            guard let camera = replayOverviewCamera(on: map) else { return }
+            map.setCamera(MKMapCamera(camera), animated: animated)
+            overviewViewport = (map.bounds, map.safeAreaInsets)
         }
 
         private func setCamera(_ camera: MapCamera, on map: MKMapView, animated: Bool) {
@@ -990,8 +997,10 @@ struct NativeMapSurface: UIViewRepresentable {
         func viewportChanged(on map: MKMapView) {
             guard parent.sceneVisible, parent.pageActive, !interacting, !cameraActionAnimating, !hasMapContact else { return }
             if parent.replayOverview {
-                revision += 1
-                fitReplayRoute(on: map, animated: false)
+                if overviewViewport?.bounds != map.bounds || overviewViewport?.safeArea != map.safeAreaInsets {
+                    revision += 1
+                    fitReplayRoute(on: map, animated: false)
+                }
                 return
             }
             guard anchorCoordinate != nil else { return }
@@ -1385,13 +1394,6 @@ struct NativeMapSurface: UIViewRepresentable {
             view.canShowCallout = false
             return view
         }
-    }
-}
-
-private extension MKMapCamera {
-    convenience init(_ camera: MapCamera) {
-        self.init(lookingAtCenter: camera.centerCoordinate, fromDistance: camera.distance,
-                  pitch: CGFloat(camera.pitch), heading: camera.heading)
     }
 }
 

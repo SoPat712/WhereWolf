@@ -1,6 +1,13 @@
 import MapKit
 import SwiftUI
 
+extension MKMapCamera {
+    convenience init(_ camera: MapCamera) {
+        self.init(lookingAtCenter: camera.centerCoordinate, fromDistance: camera.distance,
+                  pitch: CGFloat(camera.pitch), heading: camera.heading)
+    }
+}
+
 enum MapViewport {
     static func visibleRect(in bounds: CGRect, safeTop: CGFloat, drawerTop: CGFloat?) -> CGRect {
         let top = min(bounds.maxY, max(bounds.minY, safeTop))
@@ -42,6 +49,86 @@ enum MapViewport {
         if x < 0 { x += width }
         let y = min(MKMapRect.world.maxY, max(0, origin.y + (dx * sin(rotation) + dy * cos(rotation)) * scale))
         return MKMapPoint(x: x, y: y).coordinate
+    }
+}
+
+enum ReplayOverviewFit {
+    // Preserve a useful neighborhood for a single fix or a trail only a few meters long.
+    static let minimumSpan: CLLocationDistance = 150
+
+    @MainActor static func camera(for coordinates: [CLLocationCoordinate2D], on map: MKMapView,
+                                  clearRect: CGRect) -> MapCamera? {
+        guard !coordinates.isEmpty, clearRect.width > 1, clearRect.height > 1,
+              map.bounds.width > 0, map.bounds.height > 0 else { return nil }
+        let points = coordinates.map(MKMapPoint.init)
+        guard points.allSatisfy({ $0.x.isFinite && $0.y.isFinite }) else { return nil }
+        let minX = points.map(\.x).min()!, maxX = points.map(\.x).max()!
+        let minY = points.map(\.y).min()!, maxY = points.map(\.y).max()!
+        let center = MKMapPoint(x: (minX + maxX) / 2, y: (minY + maxY) / 2)
+        let span = minimumSpan * MKMapPointsPerMeterAtLatitude(center.coordinate.latitude)
+        let rect = MKMapRect(x: center.x - max(span, maxX - minX) / 2,
+                             y: center.y - max(span, maxY - minY) / 2,
+                             width: max(span, maxX - minX), height: max(span, maxY - minY))
+        // An unattached map supplies MapKit's perspective projection without changing the displayed
+        // camera. A north-up rectangle is only the initial scale; the fit uses the actual vertices.
+        let projection = MKMapView(frame: CGRect(origin: .zero, size: map.bounds.size))
+        projection.insetsLayoutMarginsFromSafeArea = false
+        projection.layoutMargins = .zero
+        projection.mapType = map.mapType
+        projection.layoutIfNeeded()
+        let target = clearRect.offsetBy(dx: -map.bounds.minX, dy: -map.bounds.minY).insetBy(dx: 0.5, dy: 0.5)
+        let padding = UIEdgeInsets(top: target.minY, left: target.minX,
+                                  bottom: projection.bounds.maxY - target.maxY,
+                                  right: projection.bounds.maxX - target.maxX)
+        projection.setVisibleMapRect(MKMapRect(x: center.x - span / 2, y: center.y - span / 2,
+                                              width: span, height: span), edgePadding: padding, animated: false)
+        let minimumDistance = max(MapZoom.minimumDistance, projection.camera.centerCoordinateDistance)
+        projection.setVisibleMapRect(rect, edgePadding: padding, animated: false)
+        let requestedPitch = Double(map.camera.pitch)
+        var camera = MapCamera(centerCoordinate: center.coordinate,
+                               distance: projection.camera.centerCoordinateDistance,
+                               heading: map.camera.heading, pitch: requestedPitch)
+        var fitted: MapCamera?
+        for _ in 0..<24 {
+            // MapKit limits pitch by scale. Retry the original pitch at each scale, then fit and
+            // return the applied camera, including any clamp.
+            camera.pitch = requestedPitch
+            projection.setCamera(MKMapCamera(camera), animated: false)
+            camera = MapCamera(projection.camera)
+            guard let bounds = projectedBounds(coordinates.map { projection.convert($0, toPointTo: projection) }) else { return nil }
+            let ratio = max(bounds.width / target.width, bounds.height / target.height)
+            let offset = hypot(bounds.midX - target.midX, bounds.midY - target.midY)
+            if bounds.minX >= target.minX - 0.25, bounds.maxX <= target.maxX + 0.25,
+               bounds.minY >= target.minY - 0.25, bounds.maxY <= target.maxY + 0.25 {
+                fitted = camera
+                if offset < 0.25, ratio > 0.995 || camera.distance <= minimumDistance * 1.000001 { return camera }
+            }
+            let scale = min(MapZoom.maximumDistance / camera.distance,
+                            max(minimumDistance / camera.distance, min(4, max(0.25, ratio))))
+            let anchor = projection.convert(CGPoint(x: bounds.midX, y: bounds.midY), toCoordinateFrom: projection)
+            let middle = projection.convert(CGPoint(x: projection.bounds.midX, y: projection.bounds.midY),
+                                            toCoordinateFrom: projection)
+            let destination = projection.convert(CGPoint(x: target.midX, y: target.midY), toCoordinateFrom: projection)
+            let nextCenter = MapViewport.anchoredCenter(anchor, projectionCenter: middle,
+                                                       projectionTarget: destination, scale: scale)
+            let distance = camera.distance * scale
+                * MKMapPointsPerMeterAtLatitude(camera.centerCoordinate.latitude)
+                / MKMapPointsPerMeterAtLatitude(nextCenter.latitude)
+            guard CLLocationCoordinate2DIsValid(nextCenter), distance.isFinite, distance > 0 else { return fitted }
+            camera.centerCoordinate = nextCenter
+            camera.distance = min(MapZoom.maximumDistance, max(minimumDistance, distance))
+        }
+        return fitted
+    }
+
+    static func projectedBounds(_ points: [CGPoint]) -> CGRect? {
+        guard let first = points.first, points.allSatisfy({ $0.x.isFinite && $0.y.isFinite }) else { return nil }
+        var minX = first.x, maxX = first.x, minY = first.y, maxY = first.y
+        for point in points.dropFirst() {
+            minX = min(minX, point.x); maxX = max(maxX, point.x)
+            minY = min(minY, point.y); maxY = max(maxY, point.y)
+        }
+        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
     }
 }
 

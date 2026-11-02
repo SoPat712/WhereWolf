@@ -278,6 +278,19 @@ enum MapChrome {
     }
     static let buttonHeight: CGFloat = 48
     static let controlsHeight = buttonHeight * 4 + 8
+
+    static func replayClearRect(in bounds: CGRect, safeArea: UIEdgeInsets, drawerTop: CGFloat?,
+                                statusHeight: CGFloat = 0) -> CGRect {
+        let safe = bounds.inset(by: safeArea)
+        let top = max(safe.minY + topInset + statusHeight,
+                      bounds.minY + attributionTop(safeTop: safeArea.top) + attributionHeight)
+        let bottom = min(safe.maxY, drawerTop ?? safe.maxY)
+        let right = safe.maxX - edge - width
+        let rect = CGRect(x: safe.minX + edge, y: top,
+                          width: max(0, right - safe.minX - edge), height: max(0, bottom - top))
+        return rect.insetBy(dx: min(attributionGap, rect.width / 4),
+                            dy: min(attributionGap, rect.height / 4))
+    }
 }
 
 struct SettingsIcon: View {

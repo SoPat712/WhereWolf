@@ -150,7 +150,7 @@ final class MapChromeTests: XCTestCase {
         }
     }
 
-    func testOverviewFitsEveryPointWhenTheDrawerResizes() async throws {
+    func testOverviewKeepsItsCameraWhenTheDrawerMovesOrPlaybackAdvances() async throws {
         try await withMap { surface, coordinator, map in
             var surface = surface
             let records = (0..<3).map { index in
@@ -160,20 +160,141 @@ final class MapChromeTests: XCTestCase {
             surface.replayRoute = ReplayRouteGeometry(points: records)
             surface.replayOverview = true
             surface.replayFollowing = false
+            NativeMapSurface.setDrawerTop(map.bounds.height - 360, on: map)
             coordinator.update(surface, animated: false)
-            for bottom in [240.0, 360] {
+            let camera = MapCamera(map.camera)
+            self.assertTrail(surface.replayRoute!.coordinates, inside: NativeMapSurface.replayClearRect(on: map), on: map)
+            for bottom in [240.0, 400, 360] {
                 NativeMapSurface.setDrawerTop(map.bounds.height - bottom, on: map)
                 map.layoutIfNeeded()
                 coordinator.viewportChanged(on: map)
                 try await Task.sleep(for: .milliseconds(150))
-                let visible = MapViewport.visibleRect(in: map.bounds, safeTop: map.safeAreaInsets.top,
-                    drawerTop: map.bounds.height - bottom).insetBy(dx: 16, dy: 16)
-                for coordinate in surface.replayRoute!.coordinates {
-                    let point = map.convert(coordinate, toPointTo: map)
-                    XCTAssertTrue(visible.contains(point), "Route point \(point) is outside \(visible)")
+                XCTAssertEqual(MapCamera(map.camera), camera)
+                surface.replayPosition = 1.5
+                surface.selected = records[1].coordinate
+                coordinator.update(surface, animated: false)
+                XCTAssertEqual(MapCamera(map.camera), camera)
+            }
+            map.frame.size.width *= 0.75
+            map.layoutIfNeeded()
+            coordinator.viewportChanged(on: map)
+            self.assertTrail(surface.replayRoute!.coordinates, inside: NativeMapSurface.replayClearRect(on: map), on: map)
+        }
+    }
+
+    func testOverviewKeepsTheEastEndOfAThinTrailClearOfTheControlColumn() async throws {
+        try await withMap { surface, coordinator, map in
+            var surface = surface
+            let coordinates = self.overviewTrails[0]
+            surface.replayRoute = ReplayRouteGeometry(points: self.records(coordinates))
+            surface.replayFollowing = false
+            surface.replayOverview = true
+            coordinator.update(surface, animated: false)
+            let clear = NativeMapSurface.replayClearRect(on: map)
+            self.assertTrail(coordinates, inside: clear, on: map)
+            let east = map.convert(coordinates.last!, toPointTo: map)
+            XCTAssertLessThan(east.x, map.bounds.maxX - MapChrome.edge - MapChrome.width)
+            XCTAssertEqual((map.convert(coordinates[0], toPointTo: map).x + east.x) / 2,
+                           clear.midX, accuracy: 1)
+        }
+    }
+
+    func testProjectedOverviewFitsTrailShapesAtSeveralHeadingsAndPitches() async throws {
+        try await withMap { _, _, map in
+            let clear = MapChrome.replayClearRect(in: map.bounds, safeArea: map.safeAreaInsets,
+                                                 drawerTop: map.bounds.height - 300)
+            let reference = self.overviewReference(on: map)
+            for heading in [0.0, 37, 90, 161, 270] {
+                for pitch in [0.0, 35, 60] {
+                    for trail in self.overviewTrails {
+                        map.setCamera(MKMapCamera(lookingAtCenter: trail[0], fromDistance: 2_000,
+                                                  pitch: pitch, heading: heading), animated: false)
+                        let requested = MapCamera(map.camera)
+                        let fit = try XCTUnwrap(ReplayOverviewFit.camera(for: trail, on: map, clearRect: clear),
+                                               "heading \(heading), pitch \(pitch), count \(trail.count)")
+                        map.setCamera(MKMapCamera(fit), animated: false)
+                        self.assertTrail(trail, inside: clear, on: map)
+                        self.assertOverviewCamera(on: map, requested: requested, reference: reference)
+                        XCTAssertEqual(Double(map.camera.pitch), fit.pitch, accuracy: 0.01)
+                        let bounds = try XCTUnwrap(ReplayOverviewFit.projectedBounds(trail.map { map.convert($0, toPointTo: map) }))
+                        XCTAssertEqual(bounds.midX, clear.midX, accuracy: 1)
+                        XCTAssertEqual(bounds.midY, clear.midY, accuracy: 1)
+                    }
                 }
             }
         }
+    }
+
+    func testProjectedOverviewSupportsTabletAndLandscapeViewports() throws {
+        for size in [CGSize(width: 874, height: 402), CGSize(width: 768, height: 1024),
+                     CGSize(width: 1024, height: 768)] {
+            let map = MKMapView(frame: CGRect(origin: .zero, size: size))
+            map.insetsLayoutMarginsFromSafeArea = false
+            map.layoutMargins = .zero
+            let safe = UIEdgeInsets(top: 24, left: 44, bottom: 34, right: 44)
+            let clear = MapChrome.replayClearRect(in: map.bounds, safeArea: safe,
+                                                 drawerTop: map.bounds.height - 150)
+            for heading in [0.0, 73, 180] {
+                for trail in self.overviewTrails {
+                    map.setCamera(MKMapCamera(lookingAtCenter: trail[0], fromDistance: 2_000,
+                                              pitch: 55, heading: heading), animated: false)
+                    let fit = try XCTUnwrap(ReplayOverviewFit.camera(for: trail, on: map, clearRect: clear))
+                    map.setCamera(MKMapCamera(fit), animated: false)
+                    self.assertTrail(trail, inside: clear, on: map)
+                }
+            }
+        }
+    }
+
+    func testOverviewTransitionPreservesRotationAndRestoresTheFollowingZoom() async throws {
+        try await withMap { surface, coordinator, map in
+            var surface = surface
+            let coordinates = self.overviewTrails[0]
+            surface.replayRoute = ReplayRouteGeometry(points: self.records(coordinates))
+            surface.selected = coordinates[0]
+            surface.replayFollowDistance = 1_300
+            map.setCamera(MKMapCamera(lookingAtCenter: coordinates[0], fromDistance: 1_300,
+                                      pitch: 40, heading: 53), animated: false)
+            coordinator.update(surface, animated: false)
+            let requested = MapCamera(map.camera)
+            let reference = self.overviewReference(on: map)
+            surface.replayOverview = true
+            surface.replayFollowing = false
+            surface.replayCameraAction += 1
+            coordinator.update(surface, animated: true)
+            coordinator.advanceCameraTransition(at: CACurrentMediaTime() + 2)
+            self.assertTrail(coordinates, inside: NativeMapSurface.replayClearRect(on: map), on: map)
+            self.assertOverviewCamera(on: map, requested: requested, reference: reference)
+            surface.replayOverview = false
+            surface.replayFollowing = true
+            surface.replayCameraAction += 1
+            surface.selected = coordinates[1]
+            coordinator.update(surface, animated: true)
+            coordinator.advanceCameraTransition(at: CACurrentMediaTime() + 2)
+            XCTAssertEqual(map.camera.centerCoordinateDistance, 1_300, accuracy: 1)
+            self.assertCentered(coordinates[1], on: map, tolerance: 2)
+        }
+    }
+
+    func testReplayClearRectFollowsChromeSafeAreasCreditAndDrawer() {
+        let bounds = CGRect(x: 0, y: 0, width: 1024, height: 768)
+        let safe = UIEdgeInsets(top: 24, left: 44, bottom: 34, right: 44)
+        let clear = MapChrome.replayClearRect(in: bounds, safeArea: safe, drawerTop: 500, statusHeight: 80)
+        XCTAssertEqual(clear.minX, safe.left + MapChrome.edge + MapChrome.attributionGap)
+        XCTAssertEqual(clear.maxX, bounds.maxX - safe.right - MapChrome.edge - MapChrome.width - MapChrome.attributionGap)
+        XCTAssertEqual(clear.minY, safe.top + MapChrome.topInset + 80 + MapChrome.attributionGap)
+        XCTAssertEqual(clear.maxY, 500 - MapChrome.attributionGap)
+        let credit = MapChrome.replayClearRect(in: bounds, safeArea: safe, drawerTop: nil)
+        XCTAssertEqual(credit.minY, MapChrome.attributionTop(safeTop: safe.top)
+                       + MapChrome.attributionHeight + MapChrome.attributionGap)
+        XCTAssertEqual(credit.maxY, bounds.maxY - safe.bottom - MapChrome.attributionGap)
+    }
+
+    func testOverviewRejectsAnUnavailableViewport() {
+        let map = MKMapView(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        XCTAssertNil(ReplayOverviewFit.camera(for: [], on: map, clearRect: map.bounds))
+        XCTAssertNil(ReplayOverviewFit.camera(for: overviewTrails[0], on: map, clearRect: .zero))
+        XCTAssertNil(ReplayOverviewFit.projectedBounds([CGPoint(x: CGFloat.infinity, y: 0)]))
     }
 
     func testAHiddenMapDoesNotStartZooming() async throws {
@@ -545,6 +666,57 @@ final class MapChromeTests: XCTestCase {
             XCTAssertEqual(tail.path!.currentPoint.x + tail.frame.minX, projected.x, accuracy: 0.01)
             XCTAssertEqual(tail.path!.currentPoint.y + tail.frame.minY, projected.y, accuracy: 0.01)
         }
+    }
+
+    private var overviewTrails: [[CLLocationCoordinate2D]] {
+        let center = CLLocationCoordinate2D(latitude: 45, longitude: -122)
+        return [
+            (-4...4).map { CLLocationCoordinate2D(latitude: 45, longitude: -122 + Double($0) * 0.04) },
+            (-4...4).map { CLLocationCoordinate2D(latitude: 45 + Double($0) * 0.04, longitude: -122) },
+            [CLLocationCoordinate2D(latitude: 44.9, longitude: -122.1),
+             CLLocationCoordinate2D(latitude: 45.07, longitude: -122.03),
+             CLLocationCoordinate2D(latitude: 45.02, longitude: -121.85),
+             CLLocationCoordinate2D(latitude: 44.92, longitude: -121.95)],
+            [center],
+            [center, CLLocationCoordinate2D(latitude: 45.00001, longitude: -121.99999)]
+        ]
+    }
+
+    private func records(_ coordinates: [CLLocationCoordinate2D]) -> [RecordedLocation] {
+        coordinates.enumerated().map {
+            RecordedLocation(id: Int64($0.offset), timestamp: Date(timeIntervalSince1970: Double($0.offset)),
+                             latitude: $0.element.latitude, longitude: $0.element.longitude)
+        }
+    }
+
+    private func assertTrail(_ coordinates: [CLLocationCoordinate2D], inside clear: CGRect, on map: MKMapView,
+                             file: StaticString = #filePath, line: UInt = #line) {
+        for coordinate in coordinates {
+            let point = map.convert(coordinate, toPointTo: map)
+            XCTAssertTrue(clear.contains(point), "Route point \(point) is outside \(clear), camera \(map.camera)",
+                          file: file, line: line)
+        }
+    }
+
+    private func overviewReference(on map: MKMapView) -> MKMapView {
+        let reference = MKMapView(frame: CGRect(origin: .zero, size: map.bounds.size))
+        reference.insetsLayoutMarginsFromSafeArea = false
+        reference.layoutMargins = .zero
+        reference.mapType = map.mapType
+        reference.layoutIfNeeded()
+        return reference
+    }
+
+    private func assertOverviewCamera(on map: MKMapView, requested: MapCamera, reference: MKMapView,
+                                      file: StaticString = #filePath, line: UInt = #line) {
+        var expected = MapCamera(map.camera)
+        expected.heading = requested.heading
+        expected.pitch = requested.pitch
+        // Ask MapKit independently at the final center and distance; its pitch limit varies with zoom.
+        reference.setCamera(MKMapCamera(expected), animated: false)
+        XCTAssertEqual(remainder(map.camera.heading - requested.heading, 360), 0, accuracy: 0.01,
+                       file: file, line: line)
+        XCTAssertEqual(map.camera.pitch, reference.camera.pitch, accuracy: 0.01, file: file, line: line)
     }
 
     private func assertCentered(_ coordinate: CLLocationCoordinate2D, on map: MKMapView,

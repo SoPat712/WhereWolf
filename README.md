@@ -421,7 +421,15 @@ changes immediately. A pale blue area shows the recorded horizontal accuracy
 in meters. The area stays centered on the interpolated coordinate and scales as you zoom.
 Its radius blends between neighboring accuracy values during playback; no area
 is shown when accuracy is unavailable. The live-location dot is hidden until you
-return to Live. The details
+return to Live.
+
+The location button toggles between the selected point and the
+whole trail, framed below the credit and status panel, left of the map controls
+and above the drawer. Overview keeps the map's rotation; MapKit may reduce tilt when
+zooming out. It stays fixed while the drawer moves or replay advances. Toggling back
+restores the following zoom.
+
+The details
 and replay speedometer show the last logged point's values, and **View upload
 record** shows its complete GeoJSON or OwnTracks JSON. A queued record is not
 proof of delivery.

@@ -281,8 +281,10 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   Keep pruning and storage-summary work on the archive's serial queue;
   only the history settings page requests aggregate storage statistics.
   During replay the location button toggles between following the selected
-  coordinate and fitting the entire trail above the drawer. Only the ruler's
-  Live action exits replay. Overview persists during scrubbing and playback;
+  coordinate and fitting the projected trail below the credit and replay status,
+  left of the map controls and above the current drawer, preserving heading and requesting
+  the current pitch within MapKit's zoom limits. Fit and return the camera MapKit applies.
+  Only the ruler's Live action exits replay. Overview persists during scrubbing and playback;
   preserve the point-following zoom when toggling back.
   After manual map gestures, the location button first chooses the closer point
   or trail zoom; once anchored it toggles between them. Send explicit camera
@@ -295,7 +297,8 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   Find My, opening, closing or dragging the drawer must not move the map. The target
   shifts only when an open drawer would otherwise cover the coordinate, stopping 48
   points above the drawer, preserving zoom and heading. Replay overview fits the trail
-  when requested and does not refit as the drawer moves. Manual map gestures release the camera anchor while replay
+  when requested or the map viewport resizes, and does not refit as the drawer moves.
+  Manual map gestures release the camera anchor while replay
   continues, including after gesture deceleration and at the final frame.
   A map gesture stops live following as it begins, so the location button empties at once.
   MapKit can report the last region while the finger is still down and nothing afterward,

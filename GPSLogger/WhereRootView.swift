@@ -17,6 +17,7 @@ struct WhereRootView: View {
     @State private var tabActivation = 0
     @State private var mapTab = 0
     @State private var speedometerHeight: CGFloat = 0
+    @State private var replayStatusHeight: CGFloat = 0
     @State private var settingsPath: [SettingsDestination] = []
     @State private var mapAppearance = MapAppearance.standard
     @State private var camera = MapCameraPosition.userLocation(fallback: .automatic)
@@ -119,6 +120,7 @@ struct WhereRootView: View {
                 HStack(alignment: .top, spacing: 8) {
                     ReplayStatusOverlay(history: history, active: mapTab == 0, height: speedometerHeight)
                         .allowsHitTesting(false)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { replayStatusHeight = $0 }
                     VStack(alignment: .center, spacing: 8) {
                         TrackerSpeedometer(replaySpeed: history.payload?.speed,
                                            isReplaying: mapTab == 0 && history.isBrowsing)
@@ -213,6 +215,8 @@ struct WhereRootView: View {
                                 replayFollowing: !replayCameraFree,
                                 replayFollowDistance: replayCameraDistance ?? 2_000,
                                 replayOverview: mapTab == 0 && replayOverview,
+                                replayStatusHeight: mapTab == 0 && history.isBrowsing
+                                    ? max(speedometerHeight, replayStatusHeight) : 0,
                                 replayCameraAction: replayCameraAction, recenterAction: recenterRequest,
                                 selected: selected,
                                 selectedTitle: mapTab == 1 ? "Trip point" : "Recorded point",
