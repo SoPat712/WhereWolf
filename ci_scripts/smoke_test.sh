@@ -29,7 +29,7 @@ fi
 xcrun simctl bootstatus "$UDID" -b
 
 if [ -z "$APP_PATH" ]; then
-    python3 "$DIR/ci_scripts/resource_guard.py" --work-root "$DERIVED_DATA" --target 50 --resume 35 -- \
+    python3 "$DIR/ci_scripts/resource_guard.py" --work-root "$DERIVED_DATA" --target 70 --resume 55 -- \
         nice -n 10 xcodebuild -jobs "$BUILD_JOBS" -workspace "$DIR/Where.xcworkspace" -scheme Where \
         -destination "platform=iOS Simulator,id=$UDID" -derivedDataPath "$DERIVED_DATA" build
     APP_PATH="$DERIVED_DATA/Build/Products/Debug-iphonesimulator/Where.app"

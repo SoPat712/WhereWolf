@@ -58,9 +58,11 @@ nice -n 10 xcodebuild -jobs 1 -workspace Where.xcworkspace -scheme Where \
   the simulator service. Under an exclusive check claim, also use
   `--simulator-pid PID` from `simctl spawn UDID launchctl managerpid` to include
   that device's system processes in pause/resume feedback. These processes are
-  never terminated by the guard. Use `--target 50 --resume 35` to leave headroom beneath
-  the owner's 75–80% ceiling. The guard samples total Mac CPU every 100 ms; unrelated apps and subsecond spikes
-  remain outside its control. Keep checks focused. Keep the shared phone booted
+  never terminated by the guard. Stop a guard only with SIGTERM or SIGINT so it
+  resumes what it paused; SIGKILL leaves the shared phone's system processes
+  stopped. Use `--target 70 --resume 55` to leave headroom beneath the owner's
+  75–80% ceiling. The guard samples total Mac CPU every 100 ms; unrelated apps and
+  subsecond spikes remain outside its control. Keep checks focused. Keep the shared phone booted
   between adjacent checks only while its idle CPU load is healthy; coordinate
   shutdown if the runtime consumes sustained CPU with the app closed. Do not use `/tmp` for
   authoritative coordination files.
