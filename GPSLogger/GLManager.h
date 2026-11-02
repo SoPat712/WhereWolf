@@ -220,6 +220,8 @@ typedef void (^CaseBlock)(void);
 @property (strong, nonatomic, readonly) NSString *lastLocationName;
 
 - (void)startAllUpdates;
+- (UNMutableNotificationContent *)reminderContent;
+- (BOOL)resumeTrackingFromReminder;
 - (void)stopAllUpdates;
 - (void)refreshLocation;
 - (BOOL)deleteAllData;

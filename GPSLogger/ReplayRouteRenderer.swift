@@ -4,6 +4,7 @@ enum ReplayRouteStyle {
     static let pastWidth: CGFloat = 2.5
     static let futureWidth: CGFloat = 1.25
     static let cacheStride = 64
+    static let futureColor = UIColor.systemTeal.withAlphaComponent(0.55)
 }
 
 @MainActor
@@ -18,21 +19,47 @@ final class ReplayRoutePresentation {
     struct OverlayChange {
         var added: [MKOverlay] = []
         var removed: [MKOverlay] = []
+        var addedDots: [MKOverlay] = []
+        var removedDots: [MKOverlay] = []
+
+        // Dots always sit beneath the route, including ones restored by scrubbing back.
+        func apply(to map: MKMapView) {
+            for line in addedDots { map.insertOverlay(line, at: 0, level: .aboveRoads) }
+            if !added.isEmpty { map.addOverlays(added, level: .aboveRoads) }
+            let gone = removed + removedDots
+            if !gone.isEmpty { map.removeOverlays(gone) }
+        }
     }
 
-    let future: MKPolyline
-    let futureRenderer: MKPolylineRenderer
+    // The complete route, for geometry. It is not drawn: the dots and blue sections are.
+    let fullRoute: MKPolyline
     let sections: [Section]
+    let futureSections: [MKPolyline]
+    private let futureSectionIDs: Set<ObjectIdentifier>
     private var trails: Set<ObjectIdentifier>
+    private var futureLines: Set<ObjectIdentifier> = []
     private(set) var activeIndex = 0
     private(set) var activeTrail: MKPolyline?
     private var retiredTrail: MKPolyline?
     private var anchor = -1
+    private var futureIndex = 0
+    // The first logged point the map's dotted line reaches, always ahead of the marker.
+    private(set) var futureCut = -1
+    private(set) var activeFuture: MKPolyline?
     private static let maximumSegments = 1_024
     private static let maximumLength = 100_000.0
+    private static let shortestFutureStep = 4
+    private static let mostFutureSteps = 32
 
     var overlays: [MKOverlay] {
-        [future] + sections[..<min(activeIndex, sections.count)].map(\.polyline) + [retiredTrail, activeTrail].compactMap { $0 }
+        let ahead = futureSections.isEmpty ? [] : Array(futureSections[min(futureIndex + 1, futureSections.count)...])
+        return ahead + [activeFuture].compactMap { $0 }
+            + sections[..<min(activeIndex, sections.count)].map(\.polyline) + [retiredTrail, activeTrail].compactMap { $0 }
+    }
+
+    func isDots(_ overlay: MKOverlay) -> Bool {
+        let id = ObjectIdentifier(overlay)
+        return futureSectionIDs.contains(id) || futureLines.contains(id)
     }
 
     init(coordinates: [CLLocationCoordinate2D]) {
@@ -46,12 +73,8 @@ final class ReplayRoutePresentation {
             }
             points.append(point)
         }
-        future = MKPolyline(points: points, count: points.count)
-        futureRenderer = MKPolylineRenderer(polyline: future)
-        Self.configure(futureRenderer, width: ReplayRouteStyle.futureWidth)
-        futureRenderer.strokeColor = UIColor.systemTeal.withAlphaComponent(0.55)
-        futureRenderer.lineDashPattern = [1, 5]
-        futureRenderer.lineCap = .round
+        let fullRoute = MKPolyline(points: points, count: points.count)
+        self.fullRoute = fullRoute
 
         var sections: [Section] = []
         var start = 0
@@ -84,6 +107,19 @@ final class ReplayRoutePresentation {
         }
         self.sections = sections
         trails = Set(sections.map { ObjectIdentifier($0.polyline) })
+        futureSections = sections.map { Self.futureLine(along: fullRoute, from: $0.start, to: $0.end) }
+        futureSectionIDs = Set(futureSections.map { ObjectIdentifier($0) })
+        if !sections.isEmpty {
+            var initial = OverlayChange()
+            updateFuture(fix: 0, change: &initial)
+        }
+    }
+
+    // Drawn backward: a dash pattern starts at a line's first point, so anchoring it at the far
+    // end keeps every dot in place as the near end shortens.
+    private static func futureLine(along route: MKPolyline, from start: Int, to end: Int) -> MKPolyline {
+        let values = Array(UnsafeBufferPointer(start: route.points() + start, count: end - start + 1).reversed())
+        return MKPolyline(points: values, count: values.count)
     }
 
     private static func configure(_ renderer: MKOverlayPathRenderer, width: CGFloat) {
@@ -96,20 +132,15 @@ final class ReplayRoutePresentation {
     // screen width. Path renderer subclasses become tiles that stretch between zoom levels.
     func updateCachedTrail(position: Double) -> OverlayChange {
         guard position.isFinite, !sections.isEmpty else { return OverlayChange() }
-        let value = min(Double(future.pointCount - 1), max(0, position))
+        let value = min(Double(fullRoute.pointCount - 1), max(0, position))
+        var change = OverlayChange()
+        updateFuture(fix: Int(value), change: &change)
         let next = Int(value) / ReplayRouteStyle.cacheStride * ReplayRouteStyle.cacheStride
-        guard next != anchor else { return OverlayChange() }
+        guard next != anchor else { return change }
         let forward = next > anchor
         anchor = next
-        var lower = 0, upper = sections.count
-        while lower < upper {
-            let middle = (lower + upper) / 2
-            if sections[middle].start <= next { lower = middle + 1 }
-            else { upper = middle }
-        }
-        let nextIndex = max(0, lower - 1)
+        let nextIndex = sectionIndex(containing: next)
 
-        var change = OverlayChange()
         // A live strokeColor change can take over a second to appear; adding a line does not.
         if nextIndex > activeIndex {
             change.added += sections[activeIndex..<nextIndex].map(\.polyline)
@@ -139,9 +170,55 @@ final class ReplayRoutePresentation {
         return change
     }
 
+    private func sectionIndex(containing fix: Int) -> Int {
+        var lower = 0, upper = sections.count
+        while lower < upper {
+            let middle = (lower + upper) / 2
+            if sections[middle].start <= fix { lower = middle + 1 }
+            else { upper = middle }
+        }
+        return max(0, lower - 1)
+    }
+
+    // Nothing dotted may exist behind the marker: logged points can be far apart, and the blue tail
+    // floats above the map, so anything beneath it shows when the two briefly disagree. The map's
+    // line therefore starts at the next step ahead, and ReplayTrailLayer draws the stretch up to it.
+    private func updateFuture(fix: Int, change: inout OverlayChange) {
+        let index = sectionIndex(containing: fix)
+        let section = sections[index]
+        let step = max(Self.shortestFutureStep, (section.end - section.start) / Self.mostFutureSteps)
+        let cut = fix >= section.end ? section.end
+            : min(section.end, section.start + ((fix - section.start) / step + 1) * step)
+        guard index != futureIndex || cut != futureCut else { return }
+
+        if let activeFuture {
+            change.removedDots.append(activeFuture)
+            futureLines.remove(ObjectIdentifier(activeFuture))
+        }
+        if index > futureIndex { change.removedDots += futureSections[(futureIndex + 1)...index].map { $0 as MKOverlay } }
+        if index < futureIndex { change.addedDots += futureSections[(index + 1)...futureIndex].map { $0 as MKOverlay } }
+        activeFuture = nil
+        if cut < section.end {
+            let line = Self.futureLine(along: fullRoute, from: cut, to: section.end)
+            futureLines.insert(ObjectIdentifier(line))
+            activeFuture = line
+            change.addedDots.append(line)
+        }
+        futureIndex = index
+        futureCut = cut
+    }
+
     func renderer(for overlay: MKOverlay) -> MKOverlayPathRenderer? {
-        if overlay === future { return futureRenderer }
-        guard trails.contains(ObjectIdentifier(overlay)), let line = overlay as? MKPolyline else { return nil }
+        let id = ObjectIdentifier(overlay)
+        if futureSectionIDs.contains(id) || futureLines.contains(id), let line = overlay as? MKPolyline {
+            let renderer = MKPolylineRenderer(polyline: line)
+            Self.configure(renderer, width: ReplayRouteStyle.futureWidth)
+            renderer.strokeColor = ReplayRouteStyle.futureColor
+            renderer.lineDashPattern = [1, 5]
+            renderer.lineCap = .round
+            return renderer
+        }
+        guard trails.contains(id), let line = overlay as? MKPolyline else { return nil }
         let renderer = MKPolylineRenderer(polyline: line)
         Self.configure(renderer, width: ReplayRouteStyle.pastWidth)
         renderer.strokeColor = .systemBlue
@@ -160,9 +237,11 @@ final class ReplayRoutePresentation {
 final class ReplayTrailLayer: CAShapeLayer {
     private static let maximumSegments = ReplayRouteStyle.cacheStride * 2
     private(set) var coordinate: CLLocationCoordinate2D?
+    private var showsFuture = false
     private struct Projection: Equatable {
         let route: ObjectIdentifier
         let position: Double
+        let ahead: Int?
         let coordinate: ReplayCoordinate
         let center: CGPoint
         let east: CGPoint
@@ -183,6 +262,16 @@ final class ReplayTrailLayer: CAShapeLayer {
                    "strokeColor": NSNull(), "contentsScale": NSNull()]
     }
 
+    // Draws the dots from the marker to where the map's own dotted line begins.
+    convenience init(future: Bool) {
+        self.init()
+        guard future else { return }
+        showsFuture = true
+        lineWidth = ReplayRouteStyle.futureWidth
+        lineCap = .round
+        lineDashPattern = [1, 5]
+    }
+
     override init(layer: Any) { super.init(layer: layer) }
     required init?(coder: NSCoder) { super.init(coder: coder) }
 
@@ -194,7 +283,7 @@ final class ReplayTrailLayer: CAShapeLayer {
     }
 
     func update(route: MKPolyline, position: Double, coordinate: CLLocationCoordinate2D,
-                on map: MKMapView, below marker: MKAnnotationView) {
+                on map: MKMapView, below marker: MKAnnotationView, ahead: Int? = nil) {
         guard position.isFinite, route.pointCount > 0, CLLocationCoordinate2DIsValid(coordinate),
               let container = marker.superview else { hide(); return }
         let end = Int(min(Double(route.pointCount - 1), max(0, position)))
@@ -210,7 +299,7 @@ final class ReplayTrailLayer: CAShapeLayer {
         }
         let origin = MKMapPoint(coordinate)
         let endpoint = project(coordinate)
-        let next = Projection(route: ObjectIdentifier(route), position: position,
+        let next = Projection(route: ObjectIdentifier(route), position: position, ahead: ahead,
             coordinate: ReplayCoordinate(coordinate), center: endpoint,
             east: project(MKMapPoint(x: origin.x + 1_000, y: origin.y)),
             north: project(MKMapPoint(x: origin.x, y: max(0, origin.y - 1_000))),
@@ -218,20 +307,28 @@ final class ReplayTrailLayer: CAShapeLayer {
             appearance: map.traitCollection.userInterfaceStyle)
         guard projection != next || superlayer !== container.layer else { return }
         let path = CGMutablePath()
-        for index in start...end {
+        // Dots run from the far end to the marker, so the dash pattern holds still as it moves.
+        let indices: [Int]
+        if let ahead {
+            indices = ahead > end ? Array(stride(from: min(ahead, route.pointCount - 1), to: end, by: -1)) : []
+        } else {
+            indices = Array(start...end)
+        }
+        for index in indices {
             let projected = project(route.points()[index])
             guard projected.x.isFinite, projected.y.isFinite else { hide(); return }
-            if index == start { path.move(to: projected) }
+            if path.isEmpty { path.move(to: projected) }
             else { path.addLine(to: projected) }
         }
         guard endpoint.x.isFinite, endpoint.y.isFinite else { hide(); return }
-        path.addLine(to: endpoint)
+        if !path.isEmpty { path.addLine(to: endpoint) }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         if superlayer !== container.layer { container.layer.insertSublayer(self, below: marker.layer) }
         frame = container.bounds
         contentsScale = map.traitCollection.displayScale
-        strokeColor = UIColor.systemBlue.resolvedColor(with: map.traitCollection).cgColor
+        strokeColor = (showsFuture ? ReplayRouteStyle.futureColor : UIColor.systemBlue)
+            .resolvedColor(with: map.traitCollection).cgColor
         // This short tail shares the marker's transaction while MapKit redraws the cached route.
         self.path = path
         self.coordinate = coordinate

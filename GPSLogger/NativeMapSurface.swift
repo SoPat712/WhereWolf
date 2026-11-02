@@ -14,6 +14,18 @@ enum MapViewport {
         return CGPoint(x: rect.midX, y: rect.midY)
     }
 
+    // Like Find My, moving the drawer leaves the map where it is. The target stays centered above the
+    // closed drawer, and shifts only when an open drawer would otherwise cover it.
+    static let drawerClearance: CGFloat = 48
+
+    static func restingCenter(in bounds: CGRect, safeTop: CGFloat, closedDrawerTop: CGFloat?, drawerTop: CGFloat?) -> CGPoint {
+        guard let closedDrawerTop else { return center(in: bounds, safeTop: safeTop, drawerTop: drawerTop) }
+        let resting = center(in: bounds, safeTop: safeTop, drawerTop: closedDrawerTop)
+        guard let drawerTop else { return resting }
+        let visible = visibleRect(in: bounds, safeTop: safeTop, drawerTop: drawerTop)
+        return CGPoint(x: resting.x, y: min(resting.y, max(visible.midY, drawerTop - drawerClearance)))
+    }
+
     static func anchoredCenter(_ anchor: CLLocationCoordinate2D, projectionCenter: CLLocationCoordinate2D,
                                projectionTarget: CLLocationCoordinate2D, scale: Double = 1) -> CLLocationCoordinate2D {
         let origin = MKMapPoint(anchor)
@@ -325,6 +337,12 @@ private final class AttributionMapView: MKMapView {
         didSet {
             guard drawerTop != oldValue else { return }
             setNeedsLayout()
+            if center(forDrawerTop: oldValue) != visibleCenter { onViewportChange?() }
+        }
+    }
+    var closedDrawerTop: CGFloat? {
+        didSet {
+            guard closedDrawerTop != oldValue else { return }
             onViewportChange?()
         }
     }
@@ -334,8 +352,11 @@ private final class AttributionMapView: MKMapView {
     private weak var legalLabel: UIView?
     private let legalButton = UIButton(type: .custom)
 
-    var visibleCenter: CGPoint {
-        MapViewport.center(in: bounds, safeTop: bounds.minY + safeAreaInsets.top, drawerTop: drawerTop)
+    var visibleCenter: CGPoint { center(forDrawerTop: drawerTop) }
+
+    private func center(forDrawerTop top: CGFloat?) -> CGPoint {
+        MapViewport.restingCenter(in: bounds, safeTop: bounds.minY + safeAreaInsets.top,
+                                  closedDrawerTop: closedDrawerTop, drawerTop: top)
     }
 
     override func safeAreaInsetsDidChange() {
@@ -481,7 +502,9 @@ struct NativeMapSurface: UIViewRepresentable {
     var recenterAction = 0
     var selected: CLLocationCoordinate2D?
     var selectedTitle: String
-    var sceneActive: Bool
+    // An inactive scene is still on screen, as when sliding up to the app switcher.
+    var scenePhase: ScenePhase
+    var sceneVisible: Bool { scenePhase != .background }
     var pageActive: Bool
     var onCameraChange: (MapCamera, Bool) -> Void
     var onInteraction: () -> Void
@@ -490,6 +513,12 @@ struct NativeMapSurface: UIViewRepresentable {
         guard let map = map as? AttributionMapView else { return }
         let top = min(map.bounds.maxY, max(map.bounds.minY, value))
         if abs((map.drawerTop ?? -.greatestFiniteMagnitude) - top) > 0.1 { map.drawerTop = top }
+    }
+
+    @MainActor static func setClosedDrawerTop(_ value: CGFloat, on map: MKMapView) {
+        guard let map = map as? AttributionMapView else { return }
+        let top = min(map.bounds.maxY, max(map.bounds.minY, value))
+        if abs((map.closedDrawerTop ?? -.greatestFiniteMagnitude) - top) > 0.1 { map.closedDrawerTop = top }
     }
 
     @MainActor static func visibleCenter(on map: MKMapView) -> CGPoint {
@@ -546,7 +575,7 @@ struct NativeMapSurface: UIViewRepresentable {
     @MainActor func makeMap(coordinator: Coordinator) -> MKMapView {
         let map = AttributionMapView(frame: .zero)
         map.delegate = coordinator
-        map.showsUserLocation = sceneActive && pageActive && !replayActive && replayRoute == nil
+        map.showsUserLocation = sceneVisible && pageActive && !replayActive && replayRoute == nil
         map.showsCompass = false
         // Native follow mode changes the chosen zoom; presentation follows fixes here.
         map.userTrackingMode = .none
@@ -614,8 +643,9 @@ struct NativeMapSurface: UIViewRepresentable {
         private var replayRoute: ReplayRouteGeometry?
         private var replayPresentation: ReplayRoutePresentation?
         private let replayTrailLayer = ReplayTrailLayer()
+        private let replayFutureLayer = ReplayTrailLayer(future: true)
         private let replayAccuracyLayer = ReplayAccuracyLayer()
-        var replayPolyline: MKPolyline? { replayPresentation?.future }
+        var replayPolyline: MKPolyline? { replayPresentation?.fullRoute }
 #if targetEnvironment(simulator)
         var displayedTrailCoordinate: CLLocationCoordinate2D? { replayTrailLayer.coordinate }
         var replayAuditValues: [String: Double] {
@@ -624,6 +654,9 @@ struct NativeMapSurface: UIViewRepresentable {
             // The sheet's presentation frame can lag the viewport supplied to the map during a spring.
             if let map, let top = (map as? AttributionMapView)?.drawerTop {
                 values["targetDrawerTop"] = map.convert(CGPoint(x: 0, y: top), to: nil).y
+                if let closed = (map as? AttributionMapView)?.closedDrawerTop {
+                    values["targetClosedDrawerTop"] = map.convert(CGPoint(x: 0, y: closed), to: nil).y
+                }
                 values["targetSafeTop"] = map.convert(CGPoint(x: 0, y: map.bounds.minY + map.safeAreaInsets.top), to: nil).y
             }
             return values
@@ -650,7 +683,7 @@ struct NativeMapSurface: UIViewRepresentable {
         }
 
         func update(_ parent: NativeMapSurface, animated: Bool) {
-            let wasVisible = self.parent.sceneActive && self.parent.pageActive
+            let wasVisible = self.parent.sceneVisible && self.parent.pageActive
             let wasDetached = replayDetached
             let replayModeChanged = parent.replayActive != self.parent.replayActive
             let cameraAction = parent.replayCameraAction != self.parent.replayCameraAction
@@ -666,7 +699,7 @@ struct NativeMapSurface: UIViewRepresentable {
                 correctionsRemaining = 0
             }
             if map.mapType != parent.mapType { map.mapType = parent.mapType }
-            let visible = parent.sceneActive && parent.pageActive
+            let visible = parent.sceneVisible && parent.pageActive
             let showLocation = visible && !parent.replayActive && parent.replayRoute == nil
             if map.showsUserLocation != showLocation { map.showsUserLocation = showLocation }
             if !showLocation { stopLiveMotion() }
@@ -707,10 +740,7 @@ struct NativeMapSurface: UIViewRepresentable {
                     map.addOverlays(presentation.overlays, level: .aboveRoads)
                 }
             }
-            if let change = replayPresentation?.updateCachedTrail(position: parent.replayPosition) {
-                if !change.added.isEmpty { map.addOverlays(change.added, level: .aboveRoads) }
-                if !change.removed.isEmpty { map.removeOverlays(change.removed) }
-            }
+            replayPresentation?.updateCachedTrail(position: parent.replayPosition).apply(to: map)
             if !sameCoordinates(tripCoordinates, parent.coordinates) {
                 if let tripLine { map.removeOverlay(tripLine) }
                 tripCoordinates = parent.coordinates
@@ -748,8 +778,9 @@ struct NativeMapSurface: UIViewRepresentable {
         }
 
         func alignMarkers(on map: MKMapView) {
-            guard parent.sceneActive, parent.pageActive else {
+            guard parent.sceneVisible, parent.pageActive else {
                 replayTrailLayer.hide()
+                replayFutureLayer.hide()
                 replayAccuracyLayer.hide()
                 return
             }
@@ -763,15 +794,19 @@ struct NativeMapSurface: UIViewRepresentable {
             if parent.replayRoute != nil, let selectedPoint, let view = map.view(for: selectedPoint) {
                 align(view, to: selectedPoint.coordinate, on: map)
                 replayAccuracyLayer.update(coordinate: selectedPoint.coordinate, accuracy: parent.replayAccuracy, on: map, below: view)
-                if let route = replayPresentation?.future {
-                    replayTrailLayer.update(route: route, position: parent.replayPosition,
+                if let presentation = replayPresentation {
+                    replayTrailLayer.update(route: presentation.fullRoute, position: parent.replayPosition,
                         coordinate: selectedPoint.coordinate, on: map, below: view)
+                    replayFutureLayer.update(route: presentation.fullRoute, position: parent.replayPosition,
+                        coordinate: selectedPoint.coordinate, on: map, below: view, ahead: presentation.futureCut)
                 } else {
                     replayTrailLayer.hide()
+                    replayFutureLayer.hide()
                 }
                 updateReplayDirection(view, coordinate: selectedPoint.coordinate, on: map)
             } else {
                 replayTrailLayer.hide()
+                replayFutureLayer.hide()
                 replayAccuracyLayer.hide()
                 if map.showsUserLocation, let displayedLiveCoordinate, let view = map.view(for: map.userLocation) {
                     align(view, to: displayedLiveCoordinate, on: map)
@@ -800,7 +835,7 @@ struct NativeMapSurface: UIViewRepresentable {
                 return
             }
             replayHeading.receive(atan2(Double(direction.dx), -Double(direction.dy)), at: CACurrentMediaTime())
-            if !parent.sceneActive || !parent.pageActive || view.window == nil
+            if !parent.sceneVisible || !parent.pageActive || view.window == nil
                 || UIAccessibility.isReduceMotionEnabled || replayHeading.settled {
                 stopReplayHeading()
             } else if replayHeadingDisplayLink == nil {
@@ -821,7 +856,7 @@ struct NativeMapSurface: UIViewRepresentable {
         }
 
         fileprivate func advanceReplayHeading(at time: TimeInterval) {
-            guard let map, parent.sceneActive, parent.pageActive, parent.replayRoute != nil,
+            guard let map, parent.sceneVisible, parent.pageActive, parent.replayRoute != nil,
                   let selectedPoint, let view = map.view(for: selectedPoint) as? ReplayMarkerView else {
                 stopReplayHeading()
                 return
@@ -929,7 +964,7 @@ struct NativeMapSurface: UIViewRepresentable {
         }
 
         func zoom(inward: Bool, on map: MKMapView) -> MapZoomResult? {
-            guard parent.sceneActive, parent.pageActive else { return nil }
+            guard parent.sceneVisible, parent.pageActive else { return nil }
             let wasInteracting = interacting
             let previousGoal = cameraZooming ? cameraDestination?.distance : nil
             let distance = MapZoom.distance(from: previousGoal ?? map.camera.centerCoordinateDistance, inward: inward)
@@ -991,7 +1026,7 @@ struct NativeMapSurface: UIViewRepresentable {
 
         func advanceCameraTransition(at time: TimeInterval) {
             guard let map, var transition = cameraTransition, var destination = cameraDestination,
-                  parent.sceneActive, parent.pageActive, !interacting else {
+                  parent.sceneVisible, parent.pageActive, !interacting else {
                 stopCameraTransition()
                 return
             }
@@ -1030,7 +1065,7 @@ struct NativeMapSurface: UIViewRepresentable {
         }
 
         private func replayOverviewCamera(on map: MKMapView) -> MapCamera? {
-            guard let route = replayPresentation?.future, map.bounds.width > 0, map.bounds.height > 0 else { return nil }
+            guard let route = replayPresentation?.fullRoute, map.bounds.width > 0, map.bounds.height > 0 else { return nil }
             let rect = route.boundingMapRect
             let center = MKMapPoint(x: rect.midX, y: rect.midY).coordinate
             let minimum = MKMapPointsPerMeterAtLatitude(center.latitude) * 150
@@ -1054,7 +1089,7 @@ struct NativeMapSurface: UIViewRepresentable {
         private func fitReplayRoute(on map: MKMapView, animated: Bool) {
             guard let first = replayRoute?.coordinates.first, map.bounds.width > 0, map.bounds.height > 0 else { return }
             let point = MKMapPoint(first)
-            let rect = replayPresentation?.future.boundingMapRect ?? MKMapRect(x: point.x, y: point.y, width: 0, height: 0)
+            let rect = replayPresentation?.fullRoute.boundingMapRect ?? MKMapRect(x: point.x, y: point.y, width: 0, height: 0)
             let minimum = MKMapPointsPerMeterAtLatitude(first.latitude) * 150
             let fitted = MKMapRect(x: rect.midX - max(minimum, rect.width) / 2,
                                    y: rect.midY - max(minimum, rect.height) / 2,
@@ -1101,7 +1136,7 @@ struct NativeMapSurface: UIViewRepresentable {
         }
 
         func viewportChanged(on map: MKMapView) {
-            guard parent.sceneActive, parent.pageActive, !interacting, !cameraActionAnimating, !hasMapContact else { return }
+            guard parent.sceneVisible, parent.pageActive, !interacting, !cameraActionAnimating, !hasMapContact else { return }
             if parent.replayOverview {
                 revision += 1
                 fitReplayRoute(on: map, animated: false)
@@ -1115,7 +1150,7 @@ struct NativeMapSurface: UIViewRepresentable {
 
         private func alignAnchor(on map: MKMapView) {
             guard !aligning, !interacting, !hasMapContact, correctionsRemaining > 0,
-                  parent.sceneActive, parent.pageActive, let anchorCoordinate,
+                  parent.sceneVisible, parent.pageActive, let anchorCoordinate,
                   let map = map as? AttributionMapView, map.bounds.width > 0, map.bounds.height > 0 else { return }
             let target = map.visibleCenter
             let point = map.convert(anchorCoordinate, toPointTo: map)
@@ -1139,7 +1174,7 @@ struct NativeMapSurface: UIViewRepresentable {
         }
 
         private func followUser(on map: MKMapView, animated: Bool) {
-            guard parent.sceneActive, parent.pageActive, !parent.replayOverview, !cameraActionAnimating,
+            guard parent.sceneVisible, parent.pageActive, !parent.replayOverview, !cameraActionAnimating,
                   parent.position.followsUserLocation, !interacting, !hasMapContact,
                   let coordinate = displayedLiveCoordinate ?? map.userLocation.location?.coordinate,
                   CLLocationCoordinate2DIsValid(coordinate) else { return }
@@ -1169,7 +1204,7 @@ struct NativeMapSurface: UIViewRepresentable {
         }
 
         private func receiveLiveLocation(_ location: CLLocation, on map: MKMapView) {
-            guard parent.sceneActive, parent.pageActive, map.showsUserLocation else { return }
+            guard parent.sceneVisible, parent.pageActive, map.showsUserLocation else { return }
             if let latestLiveTimestamp, location.timestamp < latestLiveTimestamp { return }
             latestLiveTimestamp = location.timestamp
             if UIAccessibility.isReduceMotionEnabled {
@@ -1199,7 +1234,7 @@ struct NativeMapSurface: UIViewRepresentable {
         }
 
         fileprivate func advanceLiveLocation(at time: TimeInterval) {
-            guard let map, parent.sceneActive, parent.pageActive, map.showsUserLocation else {
+            guard let map, parent.sceneVisible, parent.pageActive, map.showsUserLocation else {
                 stopLiveMotion()
                 return
             }
@@ -1227,7 +1262,7 @@ struct NativeMapSurface: UIViewRepresentable {
             }
             if !active { cameraContactTime = nil }
             // A tap resumes following; a recognized pan retains its own camera and deferred delegate commit.
-            guard !active, !interacting, !cameraActionAnimating, parent.sceneActive, parent.pageActive,
+            guard !active, !interacting, !cameraActionAnimating, parent.sceneVisible, parent.pageActive,
                   let map else { return }
             if parent.position.followsUserLocation { followUser(on: map, animated: false) }
             else { viewportChanged(on: map) }

@@ -15,20 +15,24 @@ final class ReplayRouteRendererTests: XCTestCase {
             XCTAssertEqual(renderer.lineWidth, 2.5)
             XCTAssertEqual(renderer.strokeColor, .systemBlue)
         }
-        XCTAssertTrue(type(of: route.futureRenderer) == MKPolylineRenderer.self)
-        XCTAssertFalse(route.futureRenderer.shouldRasterize)
-        XCTAssertEqual(route.futureRenderer.lineWidth, 1.25)
-        XCTAssertEqual(route.futureRenderer.lineDashPattern, [1, 5])
-        XCTAssertEqual(route.futureRenderer.lineCap, .round)
+        let ahead = try XCTUnwrap(route.activeFuture)
+        for line in route.futureSections + [ahead] {
+            let renderer = try XCTUnwrap(route.renderer(for: line))
+            XCTAssertTrue(type(of: renderer) == MKPolylineRenderer.self)
+            XCTAssertFalse(renderer.shouldRasterize)
+            XCTAssertEqual(renderer.lineWidth, 1.25)
+            XCTAssertEqual(renderer.lineDashPattern, [1, 5])
+            XCTAssertEqual(renderer.lineCap, .round)
+        }
     }
 
     func testEveryVertexSurvivesAndSectionsStayStableAcrossLargeScrubs() throws {
         let values = coordinates(count: 10_000)
         let route = ReplayRoutePresentation(coordinates: values)
         let lines = route.sections.map { ObjectIdentifier($0.polyline) }
-        XCTAssertEqual(route.future.pointCount, values.count)
+        XCTAssertEqual(route.fullRoute.pointCount, values.count)
         for index in values.indices {
-            let point = route.future.points()[index].coordinate
+            let point = route.fullRoute.points()[index].coordinate
             XCTAssertEqual(point.latitude, values[index].latitude, accuracy: 0.0000001)
             XCTAssertEqual(point.longitude, values[index].longitude, accuracy: 0.0000001)
         }
@@ -61,7 +65,8 @@ final class ReplayRouteRendererTests: XCTestCase {
         let values = [-10_000.0, 0, 10_000].map { MKMapPoint(x: origin.x + $0, y: origin.y).coordinate }
         let route = ReplayRoutePresentation(coordinates: values)
         for scale in [0.02, 1, 4] {
-            let pixels = paint(route.futureRenderer, centeredAt: origin.coordinate, scale: scale)
+            let renderer = route.renderer(for: route.futureSections[0]) as! MKPolylineRenderer
+            let pixels = paint(renderer, centeredAt: origin.coordinate, scale: scale)
             let ink = pixels.filter { $0.a > 40 }
             XCTAssertFalse(ink.isEmpty)
             if let lower = ink.map(\.y).min(), let upper = ink.map(\.y).max() {
@@ -102,7 +107,7 @@ final class ReplayRouteRendererTests: XCTestCase {
         XCTAssertEqual(Set(change.removed.map { ObjectIdentifier($0) }),
             Set([older, newer].map { ObjectIdentifier($0) }))
         XCTAssertEqual(route.activeTrail?.pointCount, 129)
-        XCTAssertEqual(route.overlays.count, 2)
+        XCTAssertEqual(route.overlays.filter { !route.isDots($0) }.count, 1)
     }
 
     func testCrossingSectionsShowsOnlyCompletedSections() throws {
@@ -118,7 +123,120 @@ final class ReplayRouteRendererTests: XCTestCase {
         XCTAssertTrue(back.removed.contains { $0 === route.sections[0].polyline })
         XCTAssertTrue(back.removed.contains { $0 === route.sections[1].polyline })
         XCTAssertNil(route.activeTrail)
-        XCTAssertEqual(route.overlays.count, 1)
+        XCTAssertTrue(route.overlays.allSatisfy { route.isDots($0) })
+    }
+
+    func testDotsBehindTheMarkerAreRemovedNotCovered() {
+        let values = coordinates(count: 3_000)
+        let route = ReplayRoutePresentation(coordinates: values)
+        XCTAssertGreaterThan(route.sections.count, 2)
+        var fixAt: [Double: Int] = [:]
+        for index in values.indices { fixAt[route.fullRoute.points()[index].x] = index }
+        func covered() -> Set<Int> {
+            var fixes = Set<Int>()
+            for dot in route.overlays.filter({ route.isDots($0) }).compactMap({ $0 as? MKPolyline }) {
+                for offset in 0..<dot.pointCount {
+                    if let fix = fixAt[dot.points()[offset].x] { fixes.insert(fix) }
+                }
+            }
+            return fixes
+        }
+        func check(_ position: Double, line: UInt = #line) {
+            _ = route.updateCachedTrail(position: position)
+            let shown = covered(), fix = Int(position)
+            XCTAssertGreaterThan(route.futureCut, fix, "The map's dots must start ahead of \(position)", line: line)
+            XCTAssertLessThanOrEqual(route.futureCut - fix, 33, line: line)
+            // Past the last step, the foreground layer draws everything that remains.
+            guard route.futureCut < values.count - 1 else {
+                XCTAssertTrue(shown.isEmpty, "Dots left near the end at \(position)", line: line)
+                return
+            }
+            // Not one dotted point at or behind the marker, whatever the spacing between points.
+            XCTAssertEqual(shown.min(), route.futureCut, "Dots behind \(position)", line: line)
+            let missing = (route.futureCut..<values.count).filter { !shown.contains($0) }
+            XCTAssertEqual(missing, [], "Dots missing ahead of \(position)", line: line)
+        }
+        // Single steps, then jumps, then scrubbing back, which restores what was removed.
+        for position in stride(from: 0.0, through: 200, by: 7.5) { check(position) }
+        for position in [1_024.0, 1_500.5, 2_100, 2_990, 1_200, 30] { check(position) }
+    }
+
+    func testForegroundDotsCoverOnlyTheStretchFromTheMarkerToTheMapsDots() throws {
+        let values = coordinates(count: 400)
+        let route = ReplayRoutePresentation(coordinates: values)
+        let map = MKMapView(frame: CGRect(x: 0, y: 0, width: 400, height: 800))
+        map.region = MKCoordinateRegion(center: values[110], latitudinalMeters: 300, longitudinalMeters: 300)
+        let marker = MKAnnotationView()
+        map.addSubview(marker)
+        let layer = ReplayTrailLayer(future: true)
+        _ = route.updateCachedTrail(position: 100.5)
+        let cut = route.futureCut
+        XCTAssertGreaterThan(cut, 100)
+        let here = values[100]
+        layer.update(route: route.fullRoute, position: 100.5, coordinate: here, on: map, below: marker, ahead: cut)
+        let box = try XCTUnwrap(layer.path).boundingBox
+        let start = map.convert(here, toPointTo: map), end = map.convert(values[cut], toPointTo: map)
+        XCTAssertEqual(box.minX, min(start.x, end.x), accuracy: 0.5)
+        XCTAssertEqual(box.maxX, max(start.x, end.x), accuracy: 0.5)
+        XCTAssertEqual(layer.lineDashPattern, [1, 5])
+        XCTAssertEqual(layer.lineCap, .round)
+        // At the end of the route there is nothing left to draw.
+        layer.update(route: route.fullRoute, position: 399, coordinate: values[399], on: map, below: marker, ahead: 399)
+        XCTAssertTrue(layer.path?.isEmpty ?? true)
+    }
+
+    func testFinishingLeavesNoDots() {
+        let route = ReplayRoutePresentation(coordinates: coordinates(count: 500))
+        XCTAssertTrue(route.overlays.contains { route.isDots($0) })
+        _ = route.updateCachedTrail(position: 250)
+        _ = route.updateCachedTrail(position: 499)
+        XCTAssertFalse(route.overlays.contains { route.isDots($0) })
+        _ = route.updateCachedTrail(position: 100)
+        XCTAssertTrue(route.overlays.contains { route.isDots($0) })
+    }
+
+    func testDotsStayInPlaceAsTheLineShortens() throws {
+        let route = ReplayRoutePresentation(coordinates: coordinates(count: 800))
+        let section = route.sections[0]
+        let end = route.fullRoute.points()[section.end]
+        for position in stride(from: 0.0, to: Double(section.end - 1), by: 37.5) {
+            _ = route.updateCachedTrail(position: position)
+            guard let line = route.activeFuture else { continue }
+            // The dash pattern starts at a line's first point, which must never move.
+            XCTAssertEqual(line.points()[0].x, end.x)
+            XCTAssertEqual(line.points()[0].y, end.y)
+        }
+    }
+
+    func testShortenedLinesReplaceEachOtherWithoutLeaks() throws {
+        let route = ReplayRoutePresentation(coordinates: coordinates(count: 3_000))
+        var shown = Set(route.overlays.map { ObjectIdentifier($0) })
+        func step(_ position: Double, line: UInt = #line) {
+            let change = route.updateCachedTrail(position: position)
+            for overlay in change.added + change.addedDots {
+                XCTAssertTrue(shown.insert(ObjectIdentifier(overlay)).inserted, "Added twice at \(position)", line: line)
+            }
+            for overlay in change.removed + change.removedDots {
+                XCTAssertNotNil(shown.remove(ObjectIdentifier(overlay)), "Removed but not shown at \(position)", line: line)
+            }
+            XCTAssertEqual(shown, Set(route.overlays.map { ObjectIdentifier($0) }), "At \(position)", line: line)
+        }
+        for position in stride(from: 0.0, through: 2_999, by: 3.7) { step(position) }
+        for position in [2_999.0, 2_990, 1_500, 1_501, 1_024, 1_023, 0, 2_100, 0, 5, 1_030, 1_024, 2_999, 0] { step(position) }
+    }
+
+    func testRealMapKeepsDotsBeneathTheRoute() throws {
+        let route = ReplayRoutePresentation(coordinates: coordinates(count: 3_000))
+        let map = MKMapView(frame: CGRect(x: 0, y: 0, width: 400, height: 400))
+        map.addOverlays(route.overlays, level: .aboveRoads)
+        for position in [300.0, 1_500, 2_500, 900, 2_000, 10] {
+            route.updateCachedTrail(position: position).apply(to: map)
+            let drawn = map.overlays(in: .aboveRoads)
+            XCTAssertEqual(Set(drawn.map { ObjectIdentifier($0) }), Set(route.overlays.map { ObjectIdentifier($0) }), "At \(position)")
+            let lastDots = drawn.lastIndex { route.isDots($0) } ?? -1
+            let firstRoute = drawn.firstIndex { !route.isDots($0) } ?? .max
+            XCTAssertLessThan(lastDots, firstRoute, "At \(position)")
+        }
     }
 
     func testInvalidAndOutOfRangePositionsKeepTheTrailValid() throws {
@@ -158,7 +276,7 @@ final class ReplayRouteRendererTests: XCTestCase {
         let route = ReplayRoutePresentation(coordinates: [179.9, -179.9, -179.8].map {
             CLLocationCoordinate2D(latitude: 0, longitude: $0)
         })
-        XCTAssertLessThan(route.future.boundingMapRect.width, MKMapRect.world.width / 100)
+        XCTAssertLessThan(route.fullRoute.boundingMapRect.width, MKMapRect.world.width / 100)
         XCTAssertLessThan(route.sections[0].polyline.boundingMapRect.width, MKMapRect.world.width / 100)
         let point = CLLocationCoordinate2D(latitude: 45, longitude: -122)
         for count in [0, 1, 10] {

@@ -112,6 +112,8 @@
 static NSString *const GLUploadRetryStateDefaultsName = @"GLUploadRetryState";
 static NSString *const GLLocationQueueName = @"GLLocationQueue";
 static NSString *const GLNotificationCategoryTripName = @"TRIP";
+static NSString *const GLNotificationCategoryReminderName = @"REMINDER";
+static NSString *const GLNotificationActionResumeTracking = @"RESUME_TRACKING";
 static NSString *const GLCustomHTTPHeadersDefaultsName = @"GLCustomHTTPHeadersDefaults";
 static NSString *const GLProblemNotificationsOnlyDefaultsName = @"GLProblemNotificationsOnly";
 static NSString *const GLAdvancedTrackingDefaultsName = @"GLAdvancedTrackingOptions";
@@ -2248,6 +2250,23 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
         && !self.stopsAutomaticallyActive;
 }
 
+- (UNMutableNotificationContent *)reminderContent {
+    UNMutableNotificationContent *content = [[UNMutableNotificationContent alloc] init];
+    content.title = [NSString localizedUserNotificationStringForKey:@"Overland" arguments:nil];
+    content.body = [NSString localizedUserNotificationStringForKey:@"Location updates were stopped. Resume tracking or open the app." arguments:nil];
+    content.sound = [UNNotificationSound defaultSound];
+    content.categoryIdentifier = GLNotificationCategoryReminderName;
+    return content;
+}
+
+// A delivered reminder can be answered long after it fired, so it never overrides Stop or a pause.
+- (BOOL)resumeTrackingFromReminder {
+    if(!self.reminderEligible) return NO;
+    [self refreshLocation];
+    [self scheduleLocalNotification];
+    return YES;
+}
+
 - (void)scheduleLocalNotification {
     if(!self.reminderEligible) {
         [self cancelLocalNotification];
@@ -2258,12 +2277,8 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     NSUInteger revision = ++self.reminderRevision;
     self.reminderCancellationSent = NO;
     self.lastScheduledNotificationDate = NSDate.date;
-    UNMutableNotificationContent *content = [[UNMutableNotificationContent alloc] init];
-    content.title = [NSString localizedUserNotificationStringForKey:@"Overland" arguments:nil];
-    content.body = [NSString localizedUserNotificationStringForKey:@"Location updates were stopped. Launch the app to resume." arguments:nil];
-    content.sound = [UNNotificationSound defaultSound];
     UNTimeIntervalNotificationTrigger *trigger = [UNTimeIntervalNotificationTrigger triggerWithTimeInterval:600 repeats:NO];
-    UNNotificationRequest *request = [UNNotificationRequest requestWithIdentifier:@"reminder" content:content trigger:trigger];
+    UNNotificationRequest *request = [UNNotificationRequest requestWithIdentifier:@"reminder" content:self.reminderContent trigger:trigger];
     UNUserNotificationCenter *center = UNUserNotificationCenter.currentNotificationCenter;
     dispatch_async(GLNotificationQueue(), ^{
         // Reusing the identifier replaces the deadline without publishing a cancellation.
@@ -3760,7 +3775,13 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
                                                                                     actions:@[endTripAction]
                                                                           intentIdentifiers:@[]
                                                                                     options:UNNotificationCategoryOptionNone];
-    [notificationCenter setNotificationCategories:[NSSet setWithArray:@[actionCategory]]];
+    // Background actions run on the iPhone, including when tapped on a notification mirrored to a watch.
+    UNNotificationAction *resumeAction = [UNNotificationAction actionWithIdentifier:GLNotificationActionResumeTracking title:@"Resume Tracking" options:UNNotificationActionOptionNone];
+    UNNotificationCategory *reminderCategory = [UNNotificationCategory categoryWithIdentifier:GLNotificationCategoryReminderName
+                                                                                      actions:@[resumeAction]
+                                                                            intentIdentifiers:@[]
+                                                                                      options:UNNotificationCategoryOptionNone];
+    [notificationCenter setNotificationCategories:[NSSet setWithArray:@[actionCategory, reminderCategory]]];
 }
 
 - (void)requestNotificationPermission {
@@ -3847,6 +3868,11 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
 {
     dispatch_async(dispatch_get_main_queue(), ^{
         if([@"END_TRIP" isEqualToString:response.actionIdentifier]) [self endTrip];
+        if([GLNotificationActionResumeTracking isEqualToString:response.actionIdentifier] && [self resumeTrackingFromReminder]) {
+            // refreshLocation restarts updates a second later, so stay awake past that.
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC), dispatch_get_main_queue(), completionHandler);
+            return;
+        }
         completionHandler();
     });
 }

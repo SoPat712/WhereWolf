@@ -106,6 +106,15 @@
 		FD8716D075FB5292BFD3C574 /* HistoryRetentionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BEB326A17A6C66C642C0A6B /* HistoryRetentionTests.swift */; };
 		FE9D896276FE76C0B7D6DDF6 /* GLTripActions.m in Sources */ = {isa = PBXBuildFile; fileRef = 21602F0B954DE517514264C4 /* GLTripActions.m */; };
 		FFFD07EC57EDFD9A3BF5CB30 /* TripControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = C215F1FD102A461140930DC1 /* TripControls.swift */; };
+		C0A7C4000000000000000011 /* OverlandWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A7C4000000000000000002 /* OverlandWatchApp.swift */; };
+		C0A7C4000000000000000012 /* WatchModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A7C4000000000000000003 /* WatchModel.swift */; };
+		C0A7C4000000000000000013 /* WatchControlsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A7C4000000000000000004 /* WatchControlsView.swift */; };
+		C0A7C4000000000000000014 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C0A7C4000000000000000005 /* Assets.xcassets */; };
+		C0A7C4000000000000000015 /* WatchLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A7C4000000000000000006 /* WatchLink.swift */; };
+		C0A7C4000000000000000016 /* WatchLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A7C4000000000000000006 /* WatchLink.swift */; };
+		C0A7C4000000000000000017 /* OverlandWatchLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A7C4000000000000000007 /* OverlandWatchLink.swift */; };
+		C0A7C4000000000000000018 /* WatchLinkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A7C4000000000000000008 /* WatchLinkTests.swift */; };
+		C0A7C4000000000000000019 /* OverlandWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = C0A7C4000000000000000001 /* OverlandWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -123,6 +132,13 @@
 			remoteGlobalIDString = B0880000000000000000001B;
 			remoteInfo = OverlandTrackingActivity;
 		};
+		C0A7C4000000000000000027 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 0FFD314A1BAB7A34009B3A03 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C0A7C4000000000000000021;
+			remoteInfo = OverlandWatch;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -135,6 +151,17 @@
 				B08800000000000000000010 /* OverlandTrackingActivity.appex in Embed App Extensions */,
 			);
 			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C0A7C4000000000000000026 /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				C0A7C4000000000000000019 /* OverlandWatch.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXCopyFilesBuildPhase section */
@@ -252,6 +279,14 @@
 		D8F54F73CE518F85F9D383BF /* TripActivityAttributes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripActivityAttributes.swift; path = GPSLogger/LiveActivity/TripActivityAttributes.swift; sourceTree = "<group>"; };
 		E0A408349E469AC6E6DA46BA /* libPods-Overland.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-Overland.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		F4DFFAB32440A8511E1D869A /* Pods-Overland.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Overland.debug.xcconfig"; path = "Pods/Target Support Files/Pods-Overland/Pods-Overland.debug.xcconfig"; sourceTree = "<group>"; };
+		C0A7C4000000000000000001 /* OverlandWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OverlandWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C0A7C4000000000000000002 /* OverlandWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlandWatchApp.swift; sourceTree = "<group>"; };
+		C0A7C4000000000000000003 /* WatchModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchModel.swift; sourceTree = "<group>"; };
+		C0A7C4000000000000000004 /* WatchControlsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchControlsView.swift; sourceTree = "<group>"; };
+		C0A7C4000000000000000005 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		C0A7C4000000000000000006 /* WatchLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WatchLink.swift; path = GPSLogger/Shared/WatchLink.swift; sourceTree = "<group>"; };
+		C0A7C4000000000000000007 /* OverlandWatchLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlandWatchLink.swift; sourceTree = "<group>"; };
+		C0A7C4000000000000000008 /* WatchLinkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/WatchLinkTests.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -279,6 +314,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		B08800000000000000000016 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C0A7C4000000000000000024 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -319,8 +361,10 @@
 		0FFD31491BAB7A34009B3A03 = {
 			isa = PBXGroup;
 			children = (
+				C0A7C4000000000000000022 /* OverlandWatch */,
 				A01100000000000000000001 /* OverlandTests.m */,
 				A0CC00000000000000000001 /* HistoryPlaybackTests.swift */,
+				C0A7C4000000000000000008 /* WatchLinkTests.swift */,
 				C0A100000000000000000006 /* TrackingPolicyTests.m */,
 				D0F100000000000000000006 /* LocationHealthTests.m */,
 				D0F200000000000000000001 /* MapChromeTests.swift */,
@@ -347,6 +391,7 @@
 				007A0E62CFBBFA8FE9DEADC3 /* TripModesView.swift */,
 				13B6E06D1F014687E75390A3 /* UpstreamIntegrationsView.swift */,
 				5114B6E23CBCB270BB8375EC /* TripModes.swift */,
+				C0A7C4000000000000000006 /* WatchLink.swift */,
 				36D2A80EB7610335ABC4A8B1 /* TripModeIcons.swift */,
 				D5CC3037773D353A885327FA /* SharedTripState.swift */,
 				295482F7E6DD4724A74C675E /* TripIntents.swift */,
@@ -374,6 +419,7 @@
 		0FFD31531BAB7A34009B3A03 /* Products */ = {
 			isa = PBXGroup;
 			children = (
+				C0A7C4000000000000000001 /* OverlandWatch.app */,
 				0FFD31521BAB7A34009B3A03 /* Overland.app */,
 				B08800000000000000000005 /* OverlandTrackingActivity.appex */,
 			);
@@ -397,6 +443,7 @@
 				0FCAFE00F00D0000000000A1 /* WifiZoneListView.swift */,
 				0FCAFE00F00D0000000000C1 /* OverlandLocationEngine.swift */,
 				0FCAFE00F00D0000000000E1 /* GLManagerBridge.swift */,
+				C0A7C4000000000000000007 /* OverlandWatchLink.swift */,
 				0FCAFE00F00D0000000000E2 /* OverlandRootView.swift */,
 				0FCAFE00F00D0000000000E3 /* TrackerView.swift */,
 				0FCAFE00F00D0000000000E4 /* SettingsView.swift */,
@@ -470,6 +517,17 @@
 			name = TrackingActivity;
 			sourceTree = "<group>";
 		};
+		C0A7C4000000000000000022 /* OverlandWatch */ = {
+			isa = PBXGroup;
+			children = (
+				C0A7C4000000000000000002 /* OverlandWatchApp.swift */,
+				C0A7C4000000000000000003 /* WatchModel.swift */,
+				C0A7C4000000000000000004 /* WatchControlsView.swift */,
+				C0A7C4000000000000000005 /* Assets.xcassets */,
+			);
+			path = OverlandWatch;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -482,12 +540,14 @@
 				0FFD314F1BAB7A34009B3A03 /* Frameworks */,
 				0FFD31501BAB7A34009B3A03 /* Resources */,
 				B08800000000000000000018 /* Embed App Extensions */,
+				C0A7C4000000000000000026 /* Embed Watch Content */,
 				A30BF5BD134AA640DE5AB501 /* [CP] Copy Pods Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 				B0880000000000000000001A /* PBXTargetDependency */,
+				C0A7C4000000000000000028 /* PBXTargetDependency */,
 			);
 			name = Overland;
 			productName = GPSLogger;
@@ -528,6 +588,23 @@
 			productReference = B08800000000000000000005 /* OverlandTrackingActivity.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		C0A7C4000000000000000021 /* OverlandWatch */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C0A7C4000000000000000029 /* Build configuration list for PBXNativeTarget "OverlandWatch" */;
+			buildPhases = (
+				C0A7C4000000000000000023 /* Sources */,
+				C0A7C4000000000000000024 /* Frameworks */,
+				C0A7C4000000000000000025 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = OverlandWatch;
+			productName = OverlandWatch;
+			productReference = C0A7C4000000000000000001 /* OverlandWatch.app */;
+			productType = "com.apple.product-type.application";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -538,6 +615,9 @@
 				LastUpgradeCheck = 1500;
 				ORGANIZATIONNAME = "Aaron Parecki";
 				TargetAttributes = {
+					C0A7C4000000000000000021 = {
+						CreatedOnToolsVersion = 27.0;
+					};
 					0FFD31511BAB7A34009B3A03 = {
 						CreatedOnToolsVersion = 7.0;
 						DevelopmentTeam = 7MC6UZR2UV;
@@ -572,6 +652,7 @@
 				A01100000000000000000006 /* OverlandTests */,
 				B0880000000000000000001B /* OverlandTrackingActivity */,
 				0FFD31511BAB7A34009B3A03 /* Overland */,
+				C0A7C4000000000000000021 /* OverlandWatch */,
 			);
 		};
 /* End PBXProject section */
@@ -597,6 +678,14 @@
 			files = (
 				C246F22FA7DFF125127B0BE2 /* TripModes.xcassets in Resources */,
 				E7C650B0826A973D9430D5CA /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C0A7C4000000000000000025 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C0A7C4000000000000000014 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -660,6 +749,8 @@
 				0FCAFE00F00D0000000000B1 /* WifiZoneListView.swift in Sources */,
 				0FCAFE00F00D0000000000D1 /* OverlandLocationEngine.swift in Sources */,
 				0FCAFE00F00D0000000000F1 /* GLManagerBridge.swift in Sources */,
+				C0A7C4000000000000000017 /* OverlandWatchLink.swift in Sources */,
+				C0A7C4000000000000000016 /* WatchLink.swift in Sources */,
 				0FCAFE00F00D0000000000F2 /* OverlandRootView.swift in Sources */,
 				A0BB00000000000000000002 /* NativeMapSurface.swift in Sources */,
 				C0A100000000000000000003 /* GLTrackingPolicy.m in Sources */,
@@ -717,6 +808,7 @@
 				A09900000000000000000020 /* TipDonationTests.swift in Sources */,
 				B08800000000000000000041 /* BackgroundRuntimeTests.swift in Sources */,
 				A0CC00000000000000000002 /* HistoryPlaybackTests.swift in Sources */,
+				C0A7C4000000000000000018 /* WatchLinkTests.swift in Sources */,
 				A0DD00000000000000000002 /* SettingsReliabilityTests.swift in Sources */,
 				A0EE00000000000000000002 /* DrawerLayoutTests.swift in Sources */,
 				A0BC00000000000000000012 /* ReplayRouteRendererTests.swift in Sources */,
@@ -746,6 +838,17 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C0A7C4000000000000000023 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C0A7C4000000000000000011 /* OverlandWatchApp.swift in Sources */,
+				C0A7C4000000000000000012 /* WatchModel.swift in Sources */,
+				C0A7C4000000000000000013 /* WatchControlsView.swift in Sources */,
+				C0A7C4000000000000000015 /* WatchLink.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -758,6 +861,11 @@
 			isa = PBXTargetDependency;
 			target = B0880000000000000000001B /* OverlandTrackingActivity */;
 			targetProxy = B08800000000000000000019 /* PBXContainerItemProxy */;
+		};
+		C0A7C4000000000000000028 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C0A7C4000000000000000021 /* OverlandWatch */;
+			targetProxy = C0A7C4000000000000000027 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -1059,6 +1167,68 @@
 			};
 			name = Release;
 		};
+		C0A7C400000000000000002A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGNING_ALLOWED = "$(OVERLAND_WATCH_SIGNING)";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 202610310040;
+				DEVELOPMENT_TEAM = 7MC6UZR2UV;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Overland;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "$(OVERLAND_BUNDLE_IDENTIFIER)";
+				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = NO;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.4;
+				OVERLAND_BUNDLE_IDENTIFIER = com.aaronpk.overland;
+				OVERLAND_WATCH_SIGNING = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(OVERLAND_BUNDLE_IDENTIFIER).watchkitapp";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Debug;
+		};
+		C0A7C400000000000000002B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGNING_ALLOWED = "$(OVERLAND_WATCH_SIGNING)";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 202610310040;
+				DEVELOPMENT_TEAM = 7MC6UZR2UV;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Overland;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "$(OVERLAND_BUNDLE_IDENTIFIER)";
+				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = NO;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.4;
+				OVERLAND_BUNDLE_IDENTIFIER = com.aaronpk.overland;
+				OVERLAND_WATCH_SIGNING = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(OVERLAND_BUNDLE_IDENTIFIER).watchkitapp";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -1094,6 +1264,15 @@
 			buildConfigurations = (
 				B0880000000000000000001D /* Debug */,
 				B0880000000000000000001E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C0A7C4000000000000000029 /* Build configuration list for PBXNativeTarget "OverlandWatch" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C0A7C400000000000000002A /* Debug */,
+				C0A7C400000000000000002B /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

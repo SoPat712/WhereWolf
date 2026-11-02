@@ -47,6 +47,7 @@
     [[WorkoutRouteImporter shared] start];
     [[GLManager sharedManager] syncTripLiveActivity];
     [[OverlandUploadScheduler shared] start];
+    [[OverlandWatchLink shared] start];
 #if OVERLAND_TESTFLIGHT_DIAGNOSTICS
     // TESTFLIGHT ONLY — REMOVE BEFORE APP STORE RELEASE
     [TestFlightDiagnostics start];

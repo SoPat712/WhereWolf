@@ -269,6 +269,9 @@ enum MapChrome {
     static let topInset: CGFloat = 6
     static let attributionHeight: CGFloat = 44
     static let attributionGap: CGFloat = 8
+    // The replay panel shares the speedometer's row, stopping short of the top-left credit and Legal link.
+    static let replayStatusClearance: CGFloat = 112
+    static let replayStatusWidth: CGFloat = 280
     // Tall status areas leave free space between the clock and the safe area.
     static func attributionTop(safeTop: CGFloat) -> CGFloat {
         safeTop >= 44 ? safeTop - 14 : safeTop + topInset

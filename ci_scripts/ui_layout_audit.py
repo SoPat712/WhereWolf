@@ -331,7 +331,7 @@ asyncio.run(main())
             assert any(s["height"] >= expanded - 1 and s["offset"] > 40 for s in trace), "Upward gesture did not expand then scroll without lifting"
             assert all(s["offset"] <= 1 for s in trace if s["height"] < expanded - 1), "Content scrolled while drawer was moving"
             screen = next(e["frame"] for e in state() if e.get("type") == "Application")
-            narrow, wide = min(620, round(screen["width"] * 0.85)), min(620, round(screen["width"] * 0.95))
+            narrow, wide = min(620, round(screen["width"] * 0.86)), min(620, round(screen["width"] * 0.95))
             for sample in trace:
                 fraction = (sample["height"] - values["collapsedHeight"]) / (expanded - values["collapsedHeight"])
                 assert abs(sample["width"] - (narrow + (wide - narrow) * fraction)) <= 1, "Width stopped following drawer drag"
@@ -404,14 +404,22 @@ asyncio.run(main())
                     time.sleep(0.2)
             raise AssertionError(f"Drawer did not settle {value}: {values}")
 
+        # The dot rests centered above the closed drawer, and moves only if an open drawer would cover it.
+        def resting_target(elements):
+            values = geometry(elements)
+            screen = next(e["frame"] for e in elements if e.get("type") == "Application")
+            sheet = drawer_geometry(elements)["sheetY"]
+            resting = (values["targetSafeTop"] + values["targetClosedDrawerTop"]) / 2
+            visible = (values["targetSafeTop"] + sheet) / 2
+            return screen["x"] + screen["width"] / 2, min(resting, max(visible, sheet - 48))
+
         def recenter():
             tap("Show My Location")
             time.sleep(0.6)
             elements = state()
             dot, panel, screen = map_state(elements)
             values = geometry(elements)
-            target_y = (values["targetSafeTop"] + drawer_geometry(elements)["sheetY"]) / 2
-            target = screen["x"] + screen["width"] / 2, target_y
+            target = resting_target(elements)
             assert math.dist(dot, target) <= 10, f"Recenter misses {panel.get('AXValue')} target: {dot} vs {target}"
             assert math.dist((values["targetX"], values["targetY"]), target) <= 1, "Stored camera target differs from visible geometry"
             return target
@@ -421,7 +429,7 @@ asyncio.run(main())
                 recenter()
                 before, panel, screen = map_state()
                 f = panel["frame"]
-                ratio = 0.85 if panel.get("AXValue") == "Collapsed" else 0.95
+                ratio = 0.86 if panel.get("AXValue") == "Collapsed" else 0.95
                 assert abs(f["width"] - min(620, round(screen["width"] * ratio))) <= 1, "Drawer has the wrong settled width"
                 start, end = edge_swipe(edge, f, screen)
                 swipe(start, end, drawer=False)
@@ -455,7 +463,7 @@ asyncio.run(main())
             set_panel("Expanded")
             expanded = drawer_geometry()["sheetY"]
             set_panel("Collapsed")
-            recenter()
+            still = recenter()
             compact = drawer_geometry()["sheetY"]
             start = center("Controls panel")
             end = start[0], round(start[1] - (compact - expanded))
@@ -471,9 +479,9 @@ asyncio.run(main())
                     progress = (compact - panel["frame"]["y"]) / max(1, compact - expanded)
                     if 0.25 < progress < 0.75:
                         midpoint = True
-                    target = (screen["x"] + screen["width"] / 2,
-                              (geometry(elements)["targetSafeTop"] + drawer_geometry(elements)["sheetY"]) / 2)
-                    assert math.dist(dot, target) <= 10, f"Drawer motion misses the visible center ({context}): {dot} vs {target}"
+                    assert math.dist(dot, resting_target(elements)) <= 10, f"Drawer motion moved the map ({context}): {dot} vs {still}"
+                    if drawer_geometry(elements)["sheetY"] - 48 >= still[1]:
+                        assert math.dist(resting_target(elements), still) <= 1, f"Map target moved with the drawer ({context})"
                     time.sleep(0.15)
                 output, _ = process.communicate(timeout=3)
                 assert process.returncode == 0, f"Drawer drag failed: {output}"
@@ -485,11 +493,9 @@ asyncio.run(main())
             time.sleep(3 if slow_drawer else 0.8)
             elements = state()
             dot, _, screen = map_state(elements)
-            target = (screen["x"] + screen["width"] / 2,
-                      (geometry(elements)["targetSafeTop"] + drawer_geometry(elements)["sheetY"]) / 2)
-            assert math.dist(dot, target) <= 10, f"Settling drawer misses the visible center ({context})"
-            record(f"Drawer drag and settling center the dot in the visible map, including mid-drag: {context}")
-            follow_moves(f"{context}, after drawer movement", target)
+            assert math.dist(dot, resting_target(elements)) <= 10, f"Settling drawer moved the map ({context})"
+            record(f"Dragging and settling the drawer leave the map still, including mid-drag: {context}")
+            follow_moves(f"{context}, after drawer movement", resting_target(elements))
 
         def mid_transition(context):
             if not slow_drawer:
@@ -517,22 +523,19 @@ asyncio.run(main())
                 if edge == "recenter":
                     ui("tap", *map(str, locate_point))
                     chosen = geometry(snapshot(ui))
-                    chosen_top = chosen["targetDrawerTop"]
-                    assert open_top < chosen_top < closed_top, "Recenter missed the intermediate drawer position"
-                    target = chosen["targetX"], (chosen["targetSafeTop"] + chosen_top) / 2
-                    assert abs(chosen["targetY"] - target[1]) <= 1, "Intermediate recenter chose the wrong vertical target"
+                    resting_y = (chosen["targetSafeTop"] + chosen["targetClosedDrawerTop"]) / 2
+                    assert chosen["targetY"] <= resting_y + 1, "Intermediate recenter chose the wrong vertical target"
                     time.sleep(3)
                     elements = state()
                     dot, _, screen = map_state(elements)
-                    final_target = (screen["x"] + screen["width"] / 2,
-                                    (geometry(elements)["targetSafeTop"] + drawer_geometry(elements)["sheetY"]) / 2)
-                    assert math.dist(dot, final_target) <= 10, f"Drawer completion misses the visible center ({context}): {dot} vs {final_target}"
+                    final_target = resting_target(elements)
+                    assert math.dist(dot, final_target) <= 10, f"Drawer completion misses the resting position ({context}): {dot} vs {final_target}"
                     follow_moves(f"{context}, after intermediate recenter", final_target)
                 else:
                     top = values["sheetY"]
                     sheet = {"x": values["sheetX"], "y": values["sheetY"],
                              "width": values["sheetWidth"], "height": values["sheetHeight"]}
-                    compact_width = min(620, round(screen["width"] * 0.85))
+                    compact_width = min(620, round(screen["width"] * 0.86))
                     open_width = min(620, round(screen["width"] * 0.95))
                     if open_width > compact_width:
                         assert compact_width < sheet["width"] < open_width, "Moving drawer did not expose an intermediate width"
@@ -547,9 +550,7 @@ asyncio.run(main())
                     continuous_drag([(*start, 0), (*end, 0.65)])
                     elements = state()
                     dot, _, screen = map_state(elements)
-                    # Drawer collapse moves the follow target too; measure detachment from its final position.
-                    target = (screen["x"] + screen["width"] / 2,
-                              (geometry(elements)["targetSafeTop"] + drawer_geometry(elements)["sheetY"]) / 2)
+                    target = resting_target(elements)
                     gesture_samples[f"moving-{context}-{edge}"] = {
                         "start": start, "end": end, "drawerBefore": values,
                         "dotAfter": dot, "targetAfter": target,
@@ -684,11 +685,14 @@ asyncio.run(main())
             compact = frame("Controls panel")
             assert compact["height"] >= 44, "Grabber hit area is too small"
             screen = next(e["frame"] for e in state() if e.get("type") == "Application")
-            assert abs(compact["width"] - min(620, round(screen["width"] * 0.85))) <= 1, "Folded drawer width is not 85%"
+            assert abs(compact["width"] - min(620, round(screen["width"] * 0.86))) <= 1, "Folded drawer width is not 86%"
             tab_frames = [frame(label, "Button") for label in ("Tracker", "Trip", "Settings")]
-            spacing = (compact["width"] - 32) / 3
+            # A closed strip sits 17 points in and scales evenly, including its 4-point content inset.
+            scale = (compact["width"] - 34) / (min(620, round(screen["width"] * 0.95)) - 30)
+            side = 17 + 4 * scale
+            spacing = (compact["width"] - side * 2) / 3
             for index, tab_frame in enumerate(tab_frames):
-                expected = compact["x"] + 16 + spacing * (index + 0.5)
+                expected = compact["x"] + side + spacing * (index + 0.5)
                 assert abs(tab_frame["x"] + tab_frame["width"] / 2 - expected) < 1, "Tab is not centered in its drawer slot"
             tab_top = min(f["y"] for f in tab_frames)
             assert compact["y"] + compact["height"] <= tab_top + 1, "Grabber overlaps the tabs"

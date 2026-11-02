@@ -69,6 +69,7 @@ final class OverlandShellController: UIViewController {
         panel.onCollapsedTopChange = { [weak self] top in
             self?.collapsedTop = top
             self?.updateSettingsInset()
+            self?.updateMapClosedTop()
         }
         panel.onPresentedTopChange = { [weak self] top in
             self?.updateMapClearance(top)
@@ -132,8 +133,14 @@ final class OverlandShellController: UIViewController {
         panel.currentGeometry()
     }
 
+    private func updateMapClosedTop() {
+        guard isViewLoaded, let collapsedTop else { return }
+        mapHost.setClosedDrawerTop(mapHost.view.convert(CGPoint(x: 0, y: collapsedTop), from: panel.view).y)
+    }
+
     private func updateMapClearance(_ top: CGFloat) {
         guard isViewLoaded, top.isFinite, top > 0 else { return }
+        updateMapClosedTop()
         let point = mapHost.view.convert(CGPoint(x: 0, y: top), from: panel.view)
         mapHost.setDrawerTop(point.y)
     }
@@ -242,6 +249,7 @@ private final class FullScreenMapHost: UIViewController {
     private weak var observedMap: MKMapView?
     private var locationObservation: NSKeyValueObservation?
     private var drawerTop: CGFloat?
+    private var closedDrawerTop: CGFloat?
 
     var rootView: AnyView {
         get { host.rootView }
@@ -291,10 +299,19 @@ private final class FullScreenMapHost: UIViewController {
         updateMapClearance()
     }
 
+    func setClosedDrawerTop(_ top: CGFloat) {
+        closedDrawerTop = top
+        updateMapClearance()
+    }
+
     private func updateMapClearance() {
-        guard let drawerTop, let map = currentMap() else { return }
-        let top = map.convert(CGPoint(x: 0, y: drawerTop), from: view).y
-        NativeMapSurface.setDrawerTop(top, on: map)
+        guard let map = currentMap() else { return }
+        if let closedDrawerTop {
+            NativeMapSurface.setClosedDrawerTop(map.convert(CGPoint(x: 0, y: closedDrawerTop), from: view).y, on: map)
+        }
+        if let drawerTop {
+            NativeMapSurface.setDrawerTop(map.convert(CGPoint(x: 0, y: drawerTop), from: view).y, on: map)
+        }
     }
 
     private func observeLocation(on map: MKMapView) {

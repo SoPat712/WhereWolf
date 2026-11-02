@@ -230,8 +230,13 @@ Simulator-only network and motion fixtures are absent from the signed phone app.
 ## Replay pacing
 
 Replay defaults to 1× and offers 0.25×, 0.5×, 1×, 2×, 5×, 10×, 25× and 50×.
-At 1×, recorded intervals are divided by 15 and bounded to 0.2–16 seconds
-before the selected rate is applied. Invalid intervals use two seconds.
+At 1×, pacing follows movement: a moving segment lasts
+`sqrt(distance × interval) / 18` seconds, never slower than 20 m/s on the map and
+bounded to 16 seconds, and a stay of at least 5 minutes inside a box 60 m across
+holds for 1.25–3 seconds at 1× and at least 1 second at any rate. A silent gap between fixes waits at most 2 seconds. The
+marker does not follow the route inside a stay, so anything larger plays along its
+recorded route, including a short trip that returns. The selected rate scales that
+duration. Invalid intervals use 0.2 seconds.
 The marker, trail and clock share the same fractional progress; rate changes
 preserve the selected position. Recorded timestamps and speed readings remain
 unchanged.

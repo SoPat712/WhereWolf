@@ -6,7 +6,7 @@ import XCTest
 
 @MainActor
 final class DrawerLayoutTests: XCTestCase {
-    func testTabControlsSitJustAboveTheHomeIndicatorInMapAndSettings() async throws {
+    func testTabControlsMatchFindMyOpenAndClosed() async throws {
         try await withDrawer { panel, _ in
             func findTabs(_ view: UIView) -> UIView? {
                 if view.accessibilityIdentifier == "overland.panel.tabs" { return view }
@@ -20,7 +20,14 @@ final class DrawerLayoutTests: XCTestCase {
                 let safe = panel.view.bounds.maxY - panel.view.safeAreaInsets.bottom
                 XCTAssertLessThanOrEqual(bottom, panel.view.bounds.maxY - 14)
                 if panel.view.safeAreaInsets.bottom >= 28 {
-                    XCTAssertEqual(bottom, safe + 18, accuracy: 1)
+                    // Closed, the capsule clears the home indicator. Open, the strip sits lower.
+                    XCTAssertEqual(bottom, enabled ? safe + 13.5 : safe - 2, accuracy: 1)
+                    if !enabled {
+                        let sheet = tabs.superview!.convert(tabs.superview!.bounds, to: panel.view)
+                        XCTAssertEqual(panel.view.bounds.maxY - sheet.maxY, 28, accuracy: 1)
+                        XCTAssertEqual(sheet.height, 76, accuracy: 1)
+                        XCTAssertEqual(sheet.width, (panel.view.bounds.width * 0.86).rounded(), accuracy: 1)
+                    }
                 }
             }
         }

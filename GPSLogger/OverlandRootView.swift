@@ -16,6 +16,7 @@ struct OverlandRootView: View {
     @State private var selection = 0
     @State private var tabActivation = 0
     @State private var mapTab = 0
+    @State private var speedometerHeight: CGFloat = 0
     @State private var settingsPath: [SettingsDestination] = []
     @State private var mapAppearance = MapAppearance.standard
     @State private var camera = MapCameraPosition.userLocation(fallback: .automatic)
@@ -114,11 +115,16 @@ struct OverlandRootView: View {
                     .ignoresSafeArea()
             }
             .overlay(alignment: .topTrailing) {
-                VStack(alignment: .center, spacing: 8) {
-                    TrackerSpeedometer(replaySpeed: history.payload?.speed,
-                                       isReplaying: mapTab == 0 && history.isBrowsing)
+                HStack(alignment: .top, spacing: 8) {
+                    ReplayStatusOverlay(history: history, active: mapTab == 0, height: speedometerHeight)
                         .allowsHitTesting(false)
-                    mapControls(auditValue: cameraAuditValue(safeTop: viewport.minY + safeTop))
+                    VStack(alignment: .center, spacing: 8) {
+                        TrackerSpeedometer(replaySpeed: history.payload?.speed,
+                                           isReplaying: mapTab == 0 && history.isBrowsing)
+                            .allowsHitTesting(false)
+                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { speedometerHeight = $0 }
+                        mapControls(auditValue: cameraAuditValue(safeTop: viewport.minY + safeTop))
+                    }
                 }
                 .padding(.trailing, MapChrome.edge)
                 .padding(.top, MapChrome.topInset)
@@ -206,7 +212,7 @@ struct OverlandRootView: View {
                                 replayCameraAction: replayCameraAction, recenterAction: recenterRequest,
                                 selected: selected,
                                 selectedTitle: mapTab == 1 ? "Trip point" : "Recorded point",
-                                sceneActive: scenePhase == .active, pageActive: selection < 2,
+                                scenePhase: scenePhase, pageActive: selection < 2,
                                 onCameraChange: cameraChanged, onInteraction: stopFollowing)
     }
 

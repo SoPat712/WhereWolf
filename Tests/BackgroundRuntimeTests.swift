@@ -267,6 +267,32 @@ final class BackgroundRuntimeTests: XCTestCase {
         try await waitUntil { runtime.audioStatus == "Off" }
     }
 
+    @MainActor func testReminderOffersAResumeActionThatRunsInTheBackground() async throws {
+        let manager = GLManager.shared()!
+        XCTAssertEqual(manager.reminderContent().categoryIdentifier, "REMINDER")
+        let categories = await UNUserNotificationCenter.current().notificationCategories()
+        let category = try XCTUnwrap(categories.first { $0.identifier == "REMINDER" })
+        let action = try XCTUnwrap(category.actions.first { $0.identifier == "RESUME_TRACKING" })
+        XCTAssertFalse(action.options.contains(.foreground), "A foreground action would not run from a watch")
+        XCTAssertTrue(categories.contains { $0.identifier == "TRIP" }, "End Trip must keep working")
+    }
+
+    @MainActor func testResumeFromReminderNeverOverridesStop() {
+        let defaults = UserDefaults.standard
+        let domain = Bundle.main.bundleIdentifier!
+        let saved = defaults.persistentDomain(forName: domain) ?? [:]
+        let manager = GLManager.shared()!
+        defer {
+            manager.stopAllUpdates()
+            defaults.setPersistentDomain(saved, forName: domain)
+        }
+        defaults.set(true, forKey: "GLNotificationsEnabledDefaults")
+        manager.stopAllUpdates()
+        XCTAssertFalse(manager.resumeTrackingFromReminder())
+        XCTAssertFalse(manager.trackingEnabled)
+        XCTAssertFalse(defaults.bool(forKey: GLTrackingStateDefaultsName))
+    }
+
     @MainActor private func waitUntil(_ predicate: () -> Bool) async throws {
         for _ in 0..<100 {
             if predicate() { return }

@@ -30,6 +30,8 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
     private var tabsHeightConstraint: NSLayoutConstraint!
     private var tabsTopConstraint: NSLayoutConstraint!
     private var tabsBottomConstraint: NSLayoutConstraint!
+    private var tabsLeadingConstraint: NSLayoutConstraint!
+    private var tabsTrailingConstraint: NSLayoutConstraint!
     private var drawerPan: UIPanGestureRecognizer!
     private struct Settle {
         let start: CFTimeInterval
@@ -71,10 +73,15 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
     private let grabberHeight: CGFloat = 12
     private let minimumTopClearance: CGFloat = 24
     private let maximumWidth: CGFloat = 620
-    private let collapsedWidthRatio: CGFloat = 0.85
+    private let collapsedWidthRatio: CGFloat = 0.86
     private let expandedWidthRatio: CGFloat = 0.95
-    private let tabsInset: CGFloat = 12
-    private let tabsBottomInset: CGFloat = 6
+    // Measured from Find My on a 402-point iPhone. The tab strip keeps its open layout and scales
+    // evenly as the drawer closes, so nothing stretches sideways.
+    private let closedTabsInset: CGFloat = 17
+    private let openTabsInset: CGFloat = 15
+    private let closedTabsMargin: CGFloat = 11.3
+    private let openTabsBottomInset: CGFloat = 12.5
+    private let grabberMarkInset: CGFloat = 4.6
     private let expandedCornerRadius: CGFloat = 46
     private let contentTopPadding: CGFloat = 4
     private let contentBottomPadding: CGFloat = 6
@@ -239,7 +246,7 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
 
         grabberMark.translatesAutoresizingMaskIntoConstraints = false
         grabberMark.backgroundColor = .tertiaryLabel
-        grabberMark.layer.cornerRadius = 3
+        grabberMark.layer.cornerRadius = 2.5
         grabberMark.isUserInteractionEnabled = false
         grabberMark.accessibilityIdentifier = "overland.panel.grabber-mark"
         grabber.addSubview(grabberMark)
@@ -262,7 +269,9 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
         tabsHeightConstraint = tabsContainer.heightAnchor.constraint(equalToConstant: measuredTabsHeight)
         tabsTopConstraint = tabsContainer.topAnchor.constraint(equalTo: scrollView.bottomAnchor)
         tabsBottomConstraint = tabsContainer.bottomAnchor.constraint(equalTo: content.bottomAnchor,
-                                                                    constant: -tabsBottomInset)
+                                                                    constant: -closedTabsMargin)
+        tabsLeadingConstraint = tabsContainer.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: closedTabsInset)
+        tabsTrailingConstraint = tabsContainer.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -closedTabsInset)
         NSLayoutConstraint.activate([
             grabber.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             grabber.trailingAnchor.constraint(equalTo: content.trailingAnchor),
@@ -270,17 +279,17 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
             grabberHeightConstraint,
 
             grabberMark.centerXAnchor.constraint(equalTo: grabber.centerXAnchor),
-            grabberMark.centerYAnchor.constraint(equalTo: grabber.centerYAnchor),
-            grabberMark.widthAnchor.constraint(equalToConstant: 48),
-            grabberMark.heightAnchor.constraint(equalToConstant: 6),
+            grabberMark.topAnchor.constraint(equalTo: grabber.topAnchor, constant: grabberMarkInset),
+            grabberMark.widthAnchor.constraint(equalToConstant: 52),
+            grabberMark.heightAnchor.constraint(equalToConstant: 5),
 
             scrollView.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: content.trailingAnchor),
             scrollView.topAnchor.constraint(equalTo: grabber.bottomAnchor),
             controlsHeightConstraint,
 
-            tabsContainer.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: tabsInset),
-            tabsContainer.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -tabsInset),
+            tabsLeadingConstraint,
+            tabsTrailingConstraint,
             tabsTopConstraint,
             tabsBottomConstraint,
             tabsHeightConstraint,
@@ -377,12 +386,12 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
         measuredWidth = view.bounds.width
         let width = expandedWidth()
         controlsWidthConstraint.constant = width
-        tabsWidthConstraint.constant = max(1, collapsedWidth() - tabsInset * 2)
+        tabsWidthConstraint.constant = max(1, expandedWidth() - openTabsInset * 2)
         hostContentHeightConstraint.constant = max(1, controlsContentHeight)
         let height = controlsContentHeight + contentTopPadding + contentBottomPadding
         if height.isFinite, abs(height - measuredContentHeight) > 0.5 { measuredContentHeight = height }
 
-        let tabs = tabsHost.sizeThatFits(in: CGSize(width: collapsedWidth() - tabsInset * 2,
+        let tabs = tabsHost.sizeThatFits(in: CGSize(width: tabsWidthConstraint.constant,
                                                     height: .greatestFiniteMagnitude))
         let tabsHeight = ceil(tabs.height)
         if tabsHeight.isFinite, tabsHeight > 0, abs(tabsHeight - measuredTabsHeight) > 0.5 {
@@ -392,9 +401,20 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
         tabsBackground.layer.cornerRadius = measuredTabsHeight / 2
     }
 
-    private func panelBottomInset() -> CGFloat {
+    // With a 34-point safe area, the closed capsule clears the home indicator at 28 points and the
+    // open sheet reaches down to 8.
+    private func closedBottomInset() -> CGFloat {
         let safeBottom = view.window?.safeAreaInsets.bottom ?? view.safeAreaInsets.bottom
-        return safeBottom > 0 ? max(10, safeBottom - 24) : 8
+        return safeBottom > 0 ? max(12, safeBottom - 6) : 8
+    }
+
+    private func openBottomInset() -> CGFloat {
+        let safeBottom = view.window?.safeAreaInsets.bottom ?? view.safeAreaInsets.bottom
+        return safeBottom > 0 ? max(8, safeBottom - 26) : 8
+    }
+
+    private func closedTabsScale() -> CGFloat {
+        min(1, max(0.5, (collapsedWidth() - closedTabsInset * 2) / max(1, expandedWidth() - openTabsInset * 2)))
     }
 
     private func expandedWidth() -> CGFloat {
@@ -413,13 +433,14 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
     }
 
     private func detents() -> (collapsed: CGFloat, expanded: CGFloat, content: CGFloat) {
-        let collapsed = (contentEnabled ? grabberHeight : 0) + measuredTabsHeight + tabsBottomInset
+        let collapsed = measuredTabsHeight * closedTabsScale() + closedTabsMargin * 2
+        let openChrome = grabberHeight + measuredTabsHeight + openTabsBottomInset
         let capacity = max(
             0,
-            view.bounds.height - panelBottomInset() - view.safeAreaInsets.top - minimumTopClearance - collapsed
+            view.bounds.height - openBottomInset() - view.safeAreaInsets.top - minimumTopClearance - openChrome
         )
         let content = contentEnabled ? min(measuredContentHeight, capacity) : 0
-        return (collapsed, collapsed + content, content)
+        return (collapsed, content > 0 ? openChrome + content : collapsed, content)
     }
 
     private func progress(for height: CGFloat,
@@ -438,7 +459,6 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
     private func updatePanelMetrics(preservePresentedHeight: Bool) {
         guard view.bounds.width > 0, panelHeightConstraint != nil else { return }
         let values = detents()
-        panelBottomConstraint.constant = -panelBottomInset()
         updateContentSpacing()
         let overflows = measuredContentHeight > values.content + 0.5
         scrollView.isScrollEnabled = contentEnabled && position == .expanded && overflows
@@ -462,13 +482,25 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
         let alpha = resizesContent ? 1 : min(1, max(0, fraction))
         panelHeightConstraint.constant = height
         panelWidthConstraint.constant = resizesContent ? expandedWidth() : width(for: height, detents: detents)
-        controlsHeightConstraint.constant = max(0, height - detents.collapsed)
-        tabsTopConstraint.constant = min(0, height - detents.collapsed)
+        // Each state has its own spacing, as in Find My, so the drawer blends between them as it moves.
+        func blend(_ closed: CGFloat, _ open: CGFloat) -> CGFloat { closed + (open - closed) * alpha }
+        let closedMargin = (detents.collapsed - measuredTabsHeight) / 2
+        let top = blend(closedMargin, grabberHeight)
+        let bottom = blend(closedMargin, openTabsBottomInset)
+        let room = height - top - measuredTabsHeight - bottom
+        grabberHeightConstraint.constant = top
+        tabsBottomConstraint.constant = -bottom
+        controlsHeightConstraint.constant = max(0, room)
+        tabsTopConstraint.constant = min(0, room)
+        panelBottomConstraint.constant = -blend(closedBottomInset(), openBottomInset())
+        let inset = blend(closedTabsInset, openTabsInset)
+        tabsLeadingConstraint.constant = inset
+        tabsTrailingConstraint.constant = -inset
         effectView.layer.cornerRadius = resizesContent ? expandedCornerRadius : cornerRadius(for: height, detents: detents)
         tabsBackground.alpha = alpha
         scrollView.alpha = alpha
-        let scale = (panelWidthConstraint.constant - tabsInset * 2) / max(1, tabsWidthConstraint.constant)
-        tabsHost.view.transform = CGAffineTransform(scaleX: scale, y: 1)
+        let scale = (panelWidthConstraint.constant - inset * 2) / max(1, tabsWidthConstraint.constant)
+        tabsHost.view.transform = CGAffineTransform(scaleX: scale, y: scale)
     }
 
     // MARK: - Dragging
@@ -573,9 +605,6 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
     }
 
     private func updateContentSpacing() {
-        grabberHeightConstraint.constant = contentEnabled ? grabberHeight : 0
-        tabsTopConstraint.constant = 0
-        tabsBottomConstraint.constant = -tabsBottomInset
         grabber.alpha = contentEnabled ? 1 : 0
     }
 
@@ -695,7 +724,7 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
     func currentGeometry() -> (top: CGFloat, collapsedTop: CGFloat) {
         let sheet = effectView.layer.presentation() ?? effectView.layer
         let frame = sheet.convert(sheet.bounds, to: view.layer.presentation() ?? view.layer)
-        return (frame.minY, view.bounds.height - panelBottomInset() - detents().collapsed)
+        return (frame.minY, view.bounds.height - closedBottomInset() - detents().collapsed)
     }
 
     var isLayoutSettled: Bool {
@@ -713,7 +742,7 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
 
     private func reportCollapsedTop() {
         guard view.bounds.height > 0, panelHeightConstraint != nil else { return }
-        let top = view.bounds.height - panelBottomInset() - detents().collapsed
+        let top = view.bounds.height - closedBottomInset() - detents().collapsed
         guard top.isFinite, top > 0, abs(top - lastReportedTop) > 0.5 else { return }
         lastReportedTop = top
         onCollapsedTopChange?(top)

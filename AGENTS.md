@@ -181,12 +181,28 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   defaults to 24 hours. `GLManager` calls it only after a successful queue commit;
   the archive never participates in queue deletion or HTTP. `HistoryPlaybackModel`
   owns only presentation state and stops its display link off the Tracker tab.
-  Replay speeds are relative to bounded segment pacing, not recorded-time
+  Replay speeds are relative to `ReplayTimeline`'s movement pacing, not recorded-time
   multipliers. Default to 1× and offer 0.25×, 0.5×, 1×, 2×, 5×, 10×, 25× and 50×.
-  At 1×, divide recorded intervals by 15, bounded to 0.2–16 seconds before rate
-  scaling; invalid intervals use 2 seconds. Compress long gaps, retain fractional progress across speed
-  changes and pause/resume, and keep the chosen zoom. Original timestamps and
-  recorded speed values remain unchanged. Nearby
+  At 1×, a moving segment lasts `sqrt(distance × interval) / 18`, never slower than
+  20 m/s on the map, bounded to 16 seconds. Time keeps a share of 1/300 of the interval,
+  at most 2 seconds, because a phone that logs only when it moves leaves long silent gaps.
+  Invalid intervals use 0.2 seconds. Map speed grows with the square root of real speed.
+  A stay is at least 5 minutes of fixes that all fit in one box 60 m across. It holds for
+  1.25–3 seconds at 1×, longer for a longer stay, and at least 1 second at any rate, so
+  time in one place stays visible. Playback does not follow the route inside a stay: the pose glides between
+  its end points and its route directions hold, so wandering fixes do not shake the pin or
+  camera. Do not widen this until it can hide real movement. The box must not drift, and
+  any fix outside it ends the stay, since nothing distinguishes a stray fix from a trip
+  that turned around. Trim a stay to end before movement begins, stopping at a silence of
+  over 60 seconds. Outside stays the marker visits every fix; segments of at most 25 m with
+  a net speed under 0.5 m/s over ±30 seconds pace as stationary. Scrubbing still shows
+  exact points. Retain every point, and retain fractional progress across speed changes
+  and pause/resume. Keep the chosen zoom. Original timestamps and recorded speed values remain unchanged.
+  `ReplayStatusOverlay` shares the speedometer's row during replay, with the same top,
+  height and corner radius, stops short of the Legal link and never takes touches. It shows the activity, time,
+  altitude and distance since the last stop, updating per point rather than per frame.
+  Keep its width steady, and stack readings that do not fit instead of truncating them. Recorded motion outranks speed inference,
+  except that flying speeds win. Hide altitude when vertical accuracy is negative. Nearby
   payloads use a bounded prefetch cache and coalesced reads; format JSON only for
   inspection. Cache the complete route through every stored point, without
   sampling. Publish replay position and coordinate together in one `ReplayPose`.
@@ -194,7 +210,12 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   plain `MKPolylineRenderer`, the only renderer MapKit draws as vector geometry at
   a constant screen width. Path renderer subclasses become bitmap tiles that stretch
   between zoom levels, so do not use them for routes.
-  The static dashed route sits beneath completed blue sections,
+  Dots show only the route ahead, and none may exist at or behind the marker: logged points
+  can be over 100 m apart, and the blue tail floats above the map, so anything beneath it
+  shows when the two briefly disagree. Each section has its own dotted line, drawn backward
+  so the dash pattern stays put. The map's line starts at the next step ahead of the marker,
+  and a foreground `ReplayTrailLayer` draws the dots up to it in the marker's transaction.
+  They sit beneath the blue sections, which are
   bounded to 1,024 segments and 100,000 map points of length; isolate long jumps.
   A short shared tail preserves joins. The active section's blue line is an exact
   vertex prefix, replaced at 64-point boundaries while retaining every intervening vertex.
@@ -244,9 +265,11 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   move with a one-second display link, logarithmic zoom and coordinated panning.
   Complete the curve instead of cutting off MapKit's animation with a timeout.
 - **Visible map center**: `NativeMapSurface` keeps the live or selected replay
-  coordinate centered between the top safe area and the drawer's current top.
-  Apply projection corrections in UIKit as the drawer moves, preserving zoom
-  and heading. Manual map gestures release the camera anchor while replay
+  coordinate centered between the top safe area and the closed drawer's top. As in
+  Find My, opening, closing or dragging the drawer must not move the map. The target
+  shifts only when an open drawer would otherwise cover the coordinate, stopping 48
+  points above the drawer, preserving zoom and heading. Replay overview fits the trail
+  when requested and does not refit as the drawer moves. Manual map gestures release the camera anchor while replay
   continues, including after gesture deceleration and at the final frame.
   Selecting another point or Show My Location resumes anchoring.
   While a finger is on the map, pause automatic camera corrections and camera
@@ -260,13 +283,19 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   native Apple location view and camera from that same displayed coordinate.
   `PresentedUserLocationView` retains Apple's drawing while constraining native
   position assignments to the current presentation. Keep the chosen zoom
-  and heading. Stop presentation links when settled, hidden or offscreen. Raw
+  and heading. Stop presentation links when settled, hidden or offscreen. An inactive
+  scene is still on screen, as when sliding up to the app switcher, so the map keeps its
+  location dot, route and markers until the scene enters the background. Raw
   locations, recorded history and tracking settings do not use these display values.
   Keep MapKit's native credit and working Legal link at the top left, just under
   the clock on phones with a tall status area. Keep the
   speedometer above Map Style, Location, Zoom In and Zoom Out glass controls
   in one column at the top right. Place tab controls just above the home indicator;
-  on a phone with a 34-point safe area, their bottom inset is 16 points. Zoom buttons
+  their geometry is measured from Find My screenshots on a 402-point phone. Closed, the
+  capsule is 346 wide and about 76 tall with its bottom 28 points up, clear of the home
+  indicator. Open, the sheet is 382 wide with its bottom 8 points up, and the 352-wide tab
+  strip sits 20.5 points up. Blend between them as the drawer moves. Lay the strip out at its
+  open size and scale it evenly when closed; do not stretch it sideways. Zoom buttons
   preserve replay following and rotation; manual map gestures remain free.
   Move the native attribution views in UIKit without changing map margins or
   the camera projection. Give Legal a 44-point touch target, try its native
@@ -288,6 +317,23 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   Delegate paths also handle significant-change, region, and visit events.
   Live updates feed `-[GLManager processEngineLocation:]`. Its dedicated info
   explains benefits, accuracy/pause tradeoffs, trip behavior and background fallback.
+- **Watch app**: `OverlandWatch` is a small companion for managing tracking from the
+  wrist: tracking on/off, retry updates, start/end trip, send now and Usage Preset. It
+  holds no location or queue data. `OverlandWatchLink` activates `WCSession` at launch
+  and sends each command through the same calls as the phone's controls, with the same
+  limits and Stop confirmation. `GPSLogger/Shared/WatchLink.swift` defines the messages
+  and belongs to both targets. Commands use live `sendMessage` only and are never queued,
+  because a Stop or End Trip delivered later would do the wrong thing. Status reaches the
+  watch through `updateApplicationContext`, at most once a minute for location updates
+  and only with the watch app installed. Tracking must never depend on the link. Keep the
+  watch version and build number equal to `GPSLogger/Info.plist`.
+  A signing profile without the watch bundle identifier can build the phone app alone with
+  `OVERLAND_WATCH_SIGNING=NO EXCLUDED_SOURCE_FILE_NAMES=OverlandWatch.app`.
+- **Reminder action**: the missed-update reminder offers a background Resume Tracking
+  action, which also appears when iOS mirrors the notification to a watch and runs on
+  the iPhone without a watch app. A background launch restores tracking through
+  `restoreTrackingState`; the action then calls `refreshLocation`. It must not override
+  Stop or a pause. iOS generally does not relaunch force-quit apps.
 - **Optional tracking policies** live in `GLTrackingPolicy` and are configured
   through the validated `GLAdvancedTrackingOptions` dictionary in `GLManager`.
   They default off and are independent of all five Usage Presets. Keep acquisition,

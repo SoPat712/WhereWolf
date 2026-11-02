@@ -240,6 +240,123 @@ struct TrackerSpeedometer: View {
     }
 }
 
+struct ReplayStatusOverlay: View {
+    var history: HistoryPlaybackModel
+    var active: Bool
+    var height: CGFloat
+    @State private var bridge = GLManagerBridge.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var status: ReplayStatus? { active ? history.replayStatus : nil }
+    private var metric: Bool { bridge.speedUnit == "KM/H" }
+
+    var body: some View {
+        ZStack {
+            if let status {
+                panel(status)
+                    .padding(.leading, MapChrome.replayStatusClearance)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .transition(.opacity)
+            }
+        }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: status == nil)
+    }
+
+    // A steady size keeps the panel from shifting as values change. Readings that do not fit stack
+    // instead of truncating, and the panel then grows past the speedometer's height.
+    private func panel(_ status: ReplayStatus) -> some View {
+        ViewThatFits(in: .horizontal) {
+            VStack(alignment: .leading, spacing: 2) {
+                title(status)
+                time(status)
+                HStack(spacing: 10) {
+                    altitude(status)
+                    distance(status)
+                }
+            }
+            .lineLimit(1)
+            VStack(alignment: .leading, spacing: 2) {
+                title(status)
+                time(status)
+                altitude(status)
+                distance(status)
+            }
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(maxWidth: MapChrome.replayStatusWidth, minHeight: height)
+        .glassPanel(cornerRadius: 20)
+        .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityText(status))
+        .accessibilityIdentifier("overland.map.replay-status")
+    }
+
+    private func title(_ status: ReplayStatus) -> some View {
+        Label {
+            Text(status.activity.title).font(.callout.weight(.semibold))
+        } icon: {
+            Image(systemName: status.activity.symbol).font(.subheadline.weight(.semibold)).foregroundStyle(.tint)
+        }
+    }
+
+    private func time(_ status: ReplayStatus) -> some View {
+        Text(timeText(status.time)).metricStyle()
+    }
+
+    @ViewBuilder
+    private func altitude(_ status: ReplayStatus) -> some View {
+        if let altitude = status.altitude {
+            HStack(spacing: 3) {
+                Image(systemName: trendSymbol(status.altitudeTrend))
+                Text(ReplayStatus.altitudeText(altitude, metric: metric))
+            }
+            .metricStyle()
+        }
+    }
+
+    @ViewBuilder
+    private func distance(_ status: ReplayStatus) -> some View {
+        if let distance = status.legDistance, distance >= 100 {
+            HStack(spacing: 3) {
+                Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
+                Text(ReplayStatus.distanceText(distance, metric: metric))
+            }
+            .metricStyle()
+        }
+    }
+
+    private func trendSymbol(_ trend: Int) -> String {
+        trend > 0 ? "arrow.up.right" : trend < 0 ? "arrow.down.right" : "mountain.2"
+    }
+
+    private func timeText(_ date: Date) -> String {
+        Calendar.current.isDateInToday(date)
+            ? date.formatted(date: .omitted, time: .shortened)
+            : date.formatted(.dateTime.weekday(.abbreviated).hour().minute())
+    }
+
+    private func accessibilityText(_ status: ReplayStatus) -> String {
+        var parts = [status.activity.title, timeText(status.time)]
+        if let altitude = status.altitude {
+            let trend = status.altitudeTrend > 0 ? ", rising" : status.altitudeTrend < 0 ? ", falling" : ""
+            parts.append("Altitude \(ReplayStatus.altitudeText(altitude, metric: metric))\(trend)")
+        }
+        if let distance = status.legDistance, distance >= 100 {
+            parts.append("\(ReplayStatus.distanceText(distance, metric: metric)) since last stop")
+        }
+        return parts.joined(separator: ", ")
+    }
+}
+
+private extension View {
+    func metricStyle() -> some View {
+        font(.footnote.monospacedDigit().weight(.medium)).foregroundStyle(.secondary)
+    }
+}
+
 private struct SlidingSpeedReadout: UIViewRepresentable {
     let value: Int?
     let animated: Bool

@@ -21,6 +21,7 @@ struct RecordedPayload: Equatable {
     let device: String?
     let battery: String?
     let rawJSON: Data
+    var motion: [String] = []
 
     var json: String {
         guard let value = try? JSONSerialization.jsonObject(with: rawJSON),
@@ -423,7 +424,13 @@ final class RecentLocationHistory: NSObject {
         return result
     }
 
-    private func decodePayload(_ data: Data, format: Int32) -> RecordedPayload? {
+    // A negative vertical accuracy means CoreLocation has no valid altitude for the fix.
+    private static func altitude(_ properties: [String: Any]) -> Double? {
+        if let accuracy = (properties["vertical_accuracy"] as? NSNumber)?.doubleValue, accuracy < 0 { return nil }
+        return (properties["altitude"] as? NSNumber)?.doubleValue
+    }
+
+    func decodePayload(_ data: Data, format: Int32) -> RecordedPayload? {
         guard let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
         if format == 1 {
             let battery = (value["batt"] as? NSNumber)?.intValue
@@ -443,10 +450,11 @@ final class RecentLocationHistory: NSObject {
             format: "GeoJSON",
             speed: Self.nonnegative(properties["speed"]),
             accuracy: Self.nonnegative(properties["horizontal_accuracy"]),
-            altitude: (properties["altitude"] as? NSNumber)?.doubleValue,
+            altitude: Self.altitude(properties),
             device: (properties["device_id"] as? String).flatMap { $0.isEmpty ? nil : $0 },
             battery: battery.map { "\(Int(($0 * 100).rounded()))%" },
-            rawJSON: data
+            rawJSON: data,
+            motion: properties["motion"] as? [String] ?? []
         )
     }
 

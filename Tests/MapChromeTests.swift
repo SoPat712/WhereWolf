@@ -329,10 +329,42 @@ final class MapChromeTests: XCTestCase {
             coordinator.update(surface, animated: false)
             XCTAssertNil(halo.superlayer)
             let tail = try XCTUnwrap(marker.superview?.layer.sublayers?.compactMap { $0 as? ReplayTrailLayer }.first)
-            surface.sceneActive = false
+            surface.scenePhase = .background
             coordinator.update(surface, animated: false)
             XCTAssertNil(tail.superlayer)
             XCTAssertNil(tail.path)
+        }
+    }
+
+    func testInactiveSceneKeepsMapMarkersUntilBackground() async throws {
+        try await withMap { surface, coordinator, map in
+            var surface = surface
+            surface.replayPosition = 1.5
+            let coordinates = surface.replayRoute!.coordinates
+            surface.selected = ReplayCoordinate(coordinates[1]).interpolated(to: ReplayCoordinate(coordinates[2]), fraction: 0.5).coordinate
+            coordinator.update(surface, animated: false)
+            let marker = try XCTUnwrap(map.annotations.compactMap { map.view(for: $0) }.first)
+            let tail = try XCTUnwrap(marker.superview?.layer.sublayers?.compactMap { $0 as? ReplayTrailLayer }.first)
+            surface.scenePhase = .inactive
+            coordinator.update(surface, animated: false)
+            XCTAssertNotNil(tail.superlayer)
+            XCTAssertNotNil(tail.path)
+
+            surface.replayRoute = nil
+            surface.replayActive = false
+            surface.selected = nil
+            surface.scenePhase = .active
+            coordinator.update(surface, animated: false)
+            XCTAssertTrue(map.showsUserLocation)
+            surface.scenePhase = .inactive
+            coordinator.update(surface, animated: false)
+            XCTAssertTrue(map.showsUserLocation)
+            surface.scenePhase = .background
+            coordinator.update(surface, animated: false)
+            XCTAssertFalse(map.showsUserLocation)
+            surface.scenePhase = .inactive
+            coordinator.update(surface, animated: false)
+            XCTAssertTrue(map.showsUserLocation)
         }
     }
 
@@ -381,7 +413,7 @@ final class MapChromeTests: XCTestCase {
             position: .camera(MapCamera(centerCoordinate: coordinates[0], distance: 2_000)),
             mapType: .standard, coordinates: [], replayRoute: ReplayRouteGeometry(points: points),
             replayPosition: 0, replayActive: true, replayFollowing: true, replayFollowDistance: 2_000,
-            selected: coordinates[0], selectedTitle: "Recorded point", sceneActive: true, pageActive: true,
+            selected: coordinates[0], selectedTitle: "Recorded point", scenePhase: .active, pageActive: true,
             onCameraChange: { _, _ in }, onInteraction: {})
         let coordinator = surface.makeCoordinator()
         let map = surface.makeMap(coordinator: coordinator)

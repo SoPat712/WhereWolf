@@ -262,6 +262,11 @@ This is a missed-update warning, not proof that the app was killed or the server
 is offline. The reminder's current suppression rules still apply, including
 suppression when stationary stopping is configured.
 
+The notification also offers **Resume Tracking**, on the iPhone and when iOS
+forwards it to an Apple Watch. The action runs on the iPhone in the background,
+restarts location updates and needs no watch app. It respects Stop and pauses.
+iOS generally does not relaunch an app that was force-quit.
+
 Activities can be dismissed or disabled, and expire after at most eight active
 hours. Open Overland or use Retry Background Helpers to request another. The
 app cannot update an ended activity after it has been killed; iOS controls when
@@ -282,6 +287,15 @@ guarantee continuous execution or bypass force-quit.
 Apple documents background audio for audible playback, so a silent keepalive may
 not meet App Store review requirements. See [BATTERY_AUDIT.md](BATTERY_AUDIT.md)
 for sources and the remaining device tests.
+
+## Apple Watch
+
+The optional watch app (watchOS 10 or later) manages Overland from your wrist:
+turn tracking on or off, retry location updates, start or end a trip, send queued
+locations and choose a Usage Preset. It controls the iPhone app and needs the iPhone
+in range. It does not record locations, and commands are not queued for later.
+Opening it can wake the iPhone app in the background, but iOS decides whether that
+happens and tracking does not depend on it.
 
 ## Documentation
 
@@ -325,8 +339,8 @@ current position and zoom. A display link keeps movement in step with the
 screen; an interrupted frame does not jump through a long unseen stretch.
 The straight-line interpolation is for display only. The map shows the
 traveled route in blue and the remaining route as a dashed teal line. The line
-connects every stored point in order, without sampling. Scrubbing changes the
-blue/teal boundary on the same route rather than rebuilding its geometry. The blue
+connects every stored point in order, without sampling. Scrubbing moves the
+blue/teal boundary, and dots are removed as the marker passes them. The blue
 trail follows the marker continuously between recorded points during scrubbing
 and playback. A narrow blue trace shows the past; small, lighter round dots show
 the future. A short foreground tail moves with the marker in the same frame,
@@ -343,13 +357,22 @@ and replay speedometer show the last logged point's values, and **View upload
 record** shows its complete GeoJSON or OwnTracks JSON. A queued record is not
 proof of delivery.
 
-The pacing follows the approach in
-[Dawarich's replay player](https://github.com/Freika/dawarich/blob/dd1c268329093935286066f399470bb33f272744/app/javascript/maps_maplibre/managers/replay_panel.js#L584).
-At 1×, each recorded interval is divided by 15 and bounded to 200 milliseconds
-through 16 seconds. The speed multiplier scales that base duration, so faster
-settings also work for dense recordings. The original point times and speed
-readings are preserved. Fractional rates slow the marker, trail and replay clock
-together; changing rate never resets progress within the current segment.
+Replay pacing follows movement instead of the clock. Time spent in one place
+(at least 5 minutes within about 60 meters) holds for 1 to 3 seconds at 1×, and for
+at least a second at any speed.
+Everything else plays along its recorded route, including short trips near home.
+Moving sections play at a map speed that grows with the square root of real speed,
+so walking plays at about 21 m/s and a 30 m/s highway at about 99 m/s. The speed
+multiplier scales that pace. Every point stays on the timeline for scrubbing, and
+the original point times and speed readings are preserved. Fractional rates slow
+the marker, trail and replay clock together; changing rate never resets progress
+within the current segment.
+
+During replay, a panel beside the speedometer shows the activity, the time of the
+point, its altitude with a rising or falling arrow, and the distance since the last
+stop. The activity comes from recorded Motion & Fitness data when available and is
+otherwise inferred from movement, so it is an estimate. OwnTracks records do not
+include altitude.
 
 Replay point details are collapsed by default. The Details capsule reveals the
 coordinates, timestamp, accuracy, speed, altitude, battery and upload record;
@@ -383,9 +406,10 @@ Every retained point remains in the route; coordinates load separately from the
 bounded detail-payload cache.
 
 While following, the live location or selected replay coordinate stays centered
-in the visible map between the top safe area and the drawer's current top edge.
-Expanding details, collapsing the drawer and dragging it update that center
-without changing zoom or heading. Panning or pinching releases the camera anchor
+in the map above the closed drawer. Opening, closing or dragging the drawer leaves
+the map where it is, as in Find My, unless a tall drawer would cover the coordinate.
+Then the map shifts only enough to keep it visible, without changing zoom or
+heading. Panning or pinching releases the camera anchor
 while replay continues. Use Pause to stop playback, or select another point to
 follow again. While browsing history, the
 location button toggles between the selected location and the entire trail,
