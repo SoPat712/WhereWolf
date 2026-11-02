@@ -33,6 +33,13 @@ struct TripSettingsView: View {
             .listRowBackground(Color.settingsRow)
 
             Section {
+                Toggle("Ask to End Trip When Stopped", isOn: $bridge.tripAskToEndWhenStopped)
+            } footer: {
+                Text("After you stay within 75 m for 5 minutes, a notification asks whether to end the trip, and End Trip ends it when you stopped. Motion & Fitness, if allowed, keeps traffic and red lights from counting; without it the wait is 10 minutes. This needs notification permission but not the Notifications setting.")
+            }
+            .listRowBackground(Color.settingsRow)
+
+            Section {
                 Picker("Requested Accuracy", selection: $bridge.tripAccuracyPreset) {
                     Text("Custom").tag(0)
                     Text("Best").tag(1)

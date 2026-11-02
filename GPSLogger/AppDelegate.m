@@ -8,6 +8,7 @@
 
 #import "AppDelegate.h"
 #import "GLManager.h"
+#import "GLTripActions.h"
 #import "Overland-Swift.h"
 #import "NSArray+map.h"
 
@@ -48,6 +49,9 @@
     [[GLManager sharedManager] syncTripLiveActivity];
     [[OverlandUploadScheduler shared] start];
     [[OverlandWatchLink shared] start];
+    [[GLTripEndPrompt shared] start];
+    [AppShortcutParameters update];
+    [GLTripActions startUpdatingQuickActions];
 #if OVERLAND_TESTFLIGHT_DIAGNOSTICS
     // TESTFLIGHT ONLY — REMOVE BEFORE APP STORE RELEASE
     [TestFlightDiagnostics start];

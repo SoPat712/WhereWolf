@@ -30,6 +30,7 @@ struct OverlandRootView: View {
     @State private var replayOverview = false
     @State private var replayCameraFree = false
     @State private var replayCameraAction = 0
+    @State private var mapRotated = false
     @Environment(\.scenePhase) private var scenePhase
 
     private enum MapAppearance: String, CaseIterable {
@@ -124,7 +125,13 @@ struct OverlandRootView: View {
                             .allowsHitTesting(false)
                             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { speedometerHeight = $0 }
                         mapControls(auditValue: cameraAuditValue(safeTop: viewport.minY + safeTop))
+                        if mapRotated {
+                            MapCompassControl(readMap: drawerGeometry.readMap, action: faceNorth)
+                                .frame(width: MapChrome.width, height: MapChrome.width)
+                                .transition(.opacity)
+                        }
                     }
+                    .animation(.easeOut(duration: 0.2), value: mapRotated)
                 }
                 .padding(.trailing, MapChrome.edge)
                 .padding(.top, MapChrome.topInset)
@@ -213,7 +220,8 @@ struct OverlandRootView: View {
                                 selected: selected,
                                 selectedTitle: mapTab == 1 ? "Trip point" : "Recorded point",
                                 scenePhase: scenePhase, pageActive: selection < 2,
-                                onCameraChange: cameraChanged, onInteraction: stopFollowing)
+                                onCameraChange: cameraChanged, onInteraction: stopFollowing,
+                                onRotationChange: { mapRotated = $0 })
     }
 
     private func stopFollowing() {
@@ -291,6 +299,15 @@ struct OverlandRootView: View {
 
     private func zoomMap(inward: Bool) {
         guard let map = drawerGeometry.readMap?(), let result = NativeMapSurface.zoom(inward: inward, on: map) else { return }
+        applyCameraResult(result)
+    }
+
+    private func faceNorth() {
+        guard let map = drawerGeometry.readMap?(), let result = NativeMapSurface.faceNorth(on: map) else { return }
+        applyCameraResult(result)
+    }
+
+    private func applyCameraResult(_ result: MapZoomResult) {
         if mapTab == 0, history.isBrowsing {
             replayCameraDistance = result.camera.distance
             replayCameraFree = !result.replayFollowing
@@ -472,6 +489,46 @@ private final class OverlandHostingController: UIHostingController<AnyView> {
 
     private func setPhase(_ phase: ScenePhase) {
         rootView = AnyView(OverlandRootView().environment(\.scenePhase, phase))
+    }
+}
+
+// MapKit's compass draws the live heading. A tap goes through the same camera transition as the zoom
+// buttons, so following and replay keep their state while the map turns north.
+private struct MapCompassControl: UIViewRepresentable {
+    let readMap: (() -> MKMapView?)?
+    let action: () -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(action: action) }
+
+    func makeUIView(context: Context) -> UIControl {
+        let control = UIControl()
+        let compass = MKCompassButton(mapView: readMap?())
+        compass.compassVisibility = .visible
+        compass.isUserInteractionEnabled = false
+        compass.translatesAutoresizingMaskIntoConstraints = false
+        control.addSubview(compass)
+        NSLayoutConstraint.activate([
+            compass.centerXAnchor.constraint(equalTo: control.centerXAnchor),
+            compass.centerYAnchor.constraint(equalTo: control.centerYAnchor),
+        ])
+        control.addAction(UIAction { [coordinator = context.coordinator] _ in coordinator.action() }, for: .touchUpInside)
+        control.isAccessibilityElement = true
+        control.accessibilityLabel = "Compass"
+        control.accessibilityHint = "Turns the map to face north."
+        control.accessibilityTraits = .button
+        control.accessibilityIdentifier = "overland.map.compass"
+        return control
+    }
+
+    func updateUIView(_ control: UIControl, context: Context) {
+        context.coordinator.action = action
+        guard let compass = control.subviews.first as? MKCompassButton, let map = readMap?(), compass.mapView !== map else { return }
+        compass.mapView = map
+    }
+
+    final class Coordinator {
+        var action: () -> Void
+        init(action: @escaping () -> Void) { self.action = action }
     }
 }
 

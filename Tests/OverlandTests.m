@@ -3,6 +3,7 @@
 #import <objc/runtime.h>
 #import <sqlite3.h>
 #import "GLManager.h"
+#import "GLTripActions.h"
 #import "GLTrackingPolicy.h"
 #import "GLLocationHealth.h"
 #import "LOLDatabase.h"
@@ -10,6 +11,7 @@
 
 @interface GLManager (Testing)
 + (NSTimeInterval)retryAfter:(NSString *)value now:(NSDate *)now;
++ (NSString *)iso8601DateStringFromDate:(NSDate *)date;
 + (NSTimeInterval)uploadBackoffForFailure:(NSUInteger)failure jitter:(double)jitter;
 - (BOOL)reminderEligible;
 - (void)scheduleLocalNotification;
@@ -19,11 +21,15 @@
 - (void)setupHTTPClient;
 - (NSArray<CLLocation *> *)locationsByApplyingWifiZone:(NSArray<CLLocation *> *)locations networkInfo:(NSDictionary *)info;
 - (void)sendQueueIfTimeElapsed;
+- (void)sendQueueIfNotInProgress;
 - (void)sendTimeExpired;
 - (void)processLocations:(NSArray *)locations;
 - (void)updateSettingsFromResponse:(id)response;
 - (NSDictionary *)owntracksDictionaryFromLocation:(CLLocation *)location;
 - (void)writeTripToDB:(BOOL)autopause steps:(NSInteger)steps;
+- (void)writeTripToDB:(BOOL)autopause steps:(NSInteger)steps endDate:(NSDate *)endDate location:(CLLocation *)location;
+- (NSDate *)stopDateForPrompt:(NSDictionary *)info;
+- (void)wifiOnlySendingChanged;
 - (void)applyTrackingConfiguration;
 - (void)restoreTrackingState;
 - (void)rememberMotion:(CMMotionActivity *)activity;
@@ -34,6 +40,11 @@
 - (void)rememberWifiNetworkInfo:(NSDictionary *)info;
 - (void)evaluateLocationHealth;
 - (BOOL)processLocationBatch:(NSArray *)locations;
+@end
+
+@protocol GLWifiOnlySendingTesting <NSObject>
++ (id<GLWifiOnlySendingTesting>)shared;
+- (void)setForTestingWithEnabled:(BOOL)enabled expensive:(NSNumber *)expensive;
 @end
 
 @interface TestUploadManager : GLManager
@@ -548,6 +559,57 @@ static int denyCommit(void *context, int action, const char *first, const char *
     [self.manager writeTripToDB:NO steps:0];
     XCTAssertFalse(self.manager.tripInProgress);
     XCTAssertEqual(self.count, 3);
+}
+- (void)startFixtureTrip {
+    FMDatabase *trip = [FMDatabase databaseWithPath:@":memory:"];
+    [trip open];
+    [trip executeUpdate:@"CREATE TABLE trips (id INTEGER PRIMARY KEY, timestamp REAL, latitude REAL, longitude REAL)"];
+    [self.manager setValue:trip forKey:@"tripdb"];
+    [NSUserDefaults.standardUserDefaults setObject:[NSDate dateWithTimeIntervalSince1970:900] forKey:GLTripStartTimeDefaultsName];
+    [self.manager setValue:@YES forKey:@"trackingEnabled"];
+    [self.manager processLocations:@[[self location:45.5 time:1000], [self location:45.501 time:1010], [self location:45.505 time:1500]]];
+}
+- (NSDictionary *)tripSummary {
+    __block NSDictionary *summary;
+    [self.db accessCollection:@"GLLocationQueue" withBlock:^(id<LOLDatabaseAccessor> accessor) {
+        [accessor enumerateKeysAndObjectsUsingBlock:^BOOL(NSString *key, NSDictionary *object) {
+            if([object[@"properties"][@"type"] isEqual:@"trip"]) summary = object[@"properties"];
+            return summary != nil;
+        }];
+    }];
+    return summary;
+}
+- (void)testTripEndedEarlierStopsTimeDistanceAndLocationThere {
+    [self startFixtureTrip];
+    CLLocation *stop = [self location:45.501 time:1010];
+    [self.manager writeTripToDB:NO steps:0 endDate:[NSDate dateWithTimeIntervalSince1970:1100] location:stop];
+    XCTAssertFalse(self.manager.tripInProgress);
+    NSDictionary *summary = [self tripSummary];
+    XCTAssertEqualObjects(summary[@"end"], [GLManager iso8601DateStringFromDate:[NSDate dateWithTimeIntervalSince1970:1100]]);
+    XCTAssertEqualWithAccuracy([summary[@"duration"] doubleValue], 200, 0.5);
+    XCTAssertEqualWithAccuracy([summary[@"distance"] doubleValue], 111.2, 1);
+    XCTAssertEqualWithAccuracy([summary[@"end_location"][@"geometry"][@"coordinates"][1] doubleValue], 45.501, 0.00001);
+    XCTAssertEqualObjects([NSUserDefaults.standardUserDefaults objectForKey:GLLastTripEndDefaultsName], [NSDate dateWithTimeIntervalSince1970:1100]);
+}
+- (void)testStopPromptEndsOnlyItsOwnTripAtTheStop {
+    [NSUserDefaults.standardUserDefaults setObject:[NSDate dateWithTimeIntervalSince1970:900] forKey:GLTripStartTimeDefaultsName];
+    NSDate *(^stop)(NSDictionary *) = ^NSDate *(NSDictionary *info) { return [self.manager stopDateForPrompt:info]; };
+    XCTAssertEqualObjects(stop(@{GLEndTripPromptTripStartKey: @900, GLEndTripPromptStoppedAtKey: @1100}),
+                          [NSDate dateWithTimeIntervalSince1970:1100]);
+    XCTAssertNil(stop(@{GLEndTripPromptTripStartKey: @500, GLEndTripPromptStoppedAtKey: @1100}));
+    XCTAssertNil(stop(@{GLEndTripPromptTripStartKey: @900, GLEndTripPromptStoppedAtKey: @800}));
+    XCTAssertNil(stop(@{}));
+    NSDate *future = stop(@{GLEndTripPromptTripStartKey: @900, GLEndTripPromptStoppedAtKey: @(NSDate.date.timeIntervalSince1970 + 3600)});
+    XCTAssertLessThan(future.timeIntervalSinceNow, 1);
+}
+- (void)testQuickActionsOfferModesOrStopTrip {
+    NSArray *idle = [[GLTripActions quickActionItems] valueForKey:@"type"];
+    XCTAssertGreaterThan(idle.count, 0);
+    XCTAssertLessThanOrEqual(idle.count, 4);
+    XCTAssertFalse([idle containsObject:@"stop"]);
+    [NSUserDefaults.standardUserDefaults setObject:NSDate.date forKey:GLTripStartTimeDefaultsName];
+    XCTAssertEqualObjects([[GLTripActions quickActionItems] valueForKey:@"type"], @[@"stop"]);
+    [NSUserDefaults.standardUserDefaults removeObjectForKey:GLTripStartTimeDefaultsName];
 }
 - (void)testTripDistanceRestoresOnceAndAddsOnlyCommittedPoints {
     FMDatabase *trip = [FMDatabase databaseWithPath:@":memory:"];
@@ -1080,6 +1142,55 @@ static int denyCommit(void *context, int action, const char *first, const char *
         return self.count == 0 && !self.manager.sendInProgress;
     }] evaluatedWithObject:self.manager handler:nil];
     [self waitForExpectationsWithTimeout:5 handler:nil];
+}
+- (id<GLWifiOnlySendingTesting>)wifiOnlyOnCellular {
+    id<GLWifiOnlySendingTesting> wifi = [NSClassFromString(@"GLWifiOnlySending") performSelector:@selector(shared)];
+    [wifi setForTestingWithEnabled:YES expensive:@YES];
+    [self addTeardownBlock:^{ [wifi setForTestingWithEnabled:NO expensive:nil]; }];
+    return wifi;
+}
+- (void)testWifiOnlyHoldsAutomaticSendsAndFlushesOnWifi {
+    id<GLWifiOnlySendingTesting> wifi = [self wifiOnlyOnCellular];
+    for(int i = 0; i < 5; i++) [self queue:@{@"properties": @{}} key:[NSString stringWithFormat:@"%d", i]];
+    self.manager.pointsPerBatch = 2;
+    [self.manager saveNewAPIEndpoint:@"https://overland.test/" andAccessToken:nil];
+    self.manager.sendingInterval = @60;
+    __block int requests = 0;
+    requestHandler = ^(OverlandTestProtocol *request) {
+        requests++;
+        [request respond:@"{\"result\":\"ok\"}" status:200];
+    };
+    XCTAssertTrue(self.manager.waitingForWifi);
+    [self.manager sendQueueIfTimeElapsed];
+    [self.manager sendQueueIfNotInProgress];
+    XCTAssertFalse(self.manager.sendInProgress);
+    XCTAssertTrue(self.manager.pendingUploads);
+    [wifi setForTestingWithEnabled:YES expensive:@NO];
+    XCTAssertFalse(self.manager.waitingForWifi);
+    [self.manager wifiOnlySendingChanged];
+    [self expectationForPredicate:[NSPredicate predicateWithBlock:^BOOL(id object, NSDictionary *bindings) {
+        return self.count == 0 && !self.manager.sendInProgress;
+    }] evaluatedWithObject:self.manager handler:nil];
+    [self waitForExpectationsWithTimeout:5 handler:nil];
+    XCTAssertEqual(requests, 3);
+}
+- (void)testSendNowDrainsWhileWaitingForWifi {
+    [self wifiOnlyOnCellular];
+    for(int i = 0; i < 5; i++) [self queue:@{@"properties": @{}} key:[NSString stringWithFormat:@"%d", i]];
+    self.manager.pointsPerBatch = 2;
+    [self.manager saveNewAPIEndpoint:@"https://overland.test/" andAccessToken:nil];
+    __block int requests = 0;
+    requestHandler = ^(OverlandTestProtocol *request) {
+        requests++;
+        [request respond:@"{\"result\":\"ok\"}" status:200];
+    };
+    [self.manager sendQueueNow];
+    [self expectationForPredicate:[NSPredicate predicateWithBlock:^BOOL(id object, NSDictionary *bindings) {
+        return self.count == 0 && !self.manager.sendInProgress;
+    }] evaluatedWithObject:self.manager handler:nil];
+    [self waitForExpectationsWithTimeout:5 handler:nil];
+    XCTAssertEqual(requests, 3);
+    XCTAssertFalse(self.manager.pendingUploads);
 }
 - (void)testReminderEligibilityRespectsCoarseAndPausedModesButNotNormalTripSettings {
     [NSUserDefaults.standardUserDefaults setBool:YES forKey:GLNotificationsEnabledDefaultsName];

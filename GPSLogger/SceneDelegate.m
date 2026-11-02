@@ -78,37 +78,7 @@
 - (void)sceneWillResignActive:(UIScene *)scene {
     
     [[GLManager sharedManager] applicationWillResignActive];
-
-    UIApplication *app = UIApplication.sharedApplication;
-
-    // Offer frequent travel modes when idle and Stop Trip while recording a trip.
-    if(![GLManager sharedManager].tripInProgress) {
-        NSArray *frequent = [[GLManager sharedManager] tripModesByFrequency];
-        NSMutableArray *tripModes = [NSMutableArray array];
-        for(NSString *mode in frequent) if([GLTripModeStore containsModeID:mode]) [tripModes addObject:mode];
-        for(NSString *mode in GLTripModeStore.allModeIDs) if(![tripModes containsObject:mode]) [tripModes addObject:mode];
-        if(tripModes.count > 4) [tripModes removeObjectsInRange:NSMakeRange(4, tripModes.count - 4)];
-        app.shortcutItems = [tripModes mapObjectsUsingBlock:^id(id obj, NSUInteger idx) {
-            NSString *symbol = [GLTripModeStore symbolForModeID:obj];
-            UIApplicationShortcutIcon *icon = [GLTripModeStore isCustomSymbol:symbol]
-                ? [UIApplicationShortcutIcon iconWithTemplateImageName:symbol]
-                : [UIApplicationShortcutIcon iconWithSystemImageName:symbol];
-            return [[UIApplicationShortcutItem alloc] initWithType:obj
-                                                    localizedTitle:[GLTripModeStore nameForModeID:obj]
-                                                 localizedSubtitle:nil
-                                                              icon:icon
-                                                          userInfo:nil];
-        }];
-    } else {
-        
-        UIApplicationShortcutIcon *icon = [UIApplicationShortcutIcon iconWithSystemImageName:@"stop.circle.fill"];
-        UIApplicationShortcutItem *item = [[UIApplicationShortcutItem alloc] initWithType:@"stop"
-                                                                           localizedTitle:@"Stop Trip"
-                                                                        localizedSubtitle:nil
-                                                                                     icon:icon
-                                                                                 userInfo:nil];
-        app.shortcutItems = @[item];
-    }
+    [GLTripActions updateQuickActions];
 }
 
 
@@ -137,8 +107,10 @@
 - (void)handleLaunchFromShortcutItem:(UIApplicationShortcutItem *)shortcutItem {
     if([shortcutItem.type isEqualToString:@"stop"]) {
         [GLTripActions endTripRestoringTracking];
-    } else if([[GLManager GLTripModes] containsObject:shortcutItem.type]) {
+        [IntentDonations tripEnded];
+    } else if([GLTripModeStore containsModeID:shortcutItem.type]) {
         [GLTripActions startTripWithMode:shortcutItem.type];
+        [IntentDonations tripStartedWithMode:shortcutItem.type];
     }
 }
 

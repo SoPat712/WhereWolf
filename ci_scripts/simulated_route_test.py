@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Exercise real simulator location delivery against a disposable local server.
 
-Creates and removes its own simulator. Never targets the owner's trial simulator.
+Creates and removes its own simulator, or reuses the shared Overland Regression phone so a
+first boot does not compete with the test. Never targets the owner's trial simulator.
 No screenshots, production endpoints, or persisted credentials are used.
 """
 import argparse
@@ -73,7 +74,7 @@ def check_history_migration(udid):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("app", type=Path)
-    parser.add_argument("--simulator-id", help="Reuse a disposable Overland Fake Route or Overland UI Audit simulator; app data is reset")
+    parser.add_argument("--simulator-id", help="Reuse Overland Regression or a disposable Overland Fake Route / Overland UI Audit simulator; app data is reset")
     parser.add_argument("--keep-on-failure", action="store_true", help="Keep the stopped disposable simulator for diagnosis if a check fails")
     parser.add_argument("--output", type=Path, default=Path("/tmp/overland-fake-route-results.json"))
     args = parser.parse_args()
@@ -82,8 +83,8 @@ def main():
 
     devices = json.loads(run("xcrun", "simctl", "list", "devices", "-j"))["devices"]
     existing = next((d for group in devices.values() for d in group if d["udid"] == args.simulator_id), None)
-    if args.simulator_id and (not existing or existing["name"] not in ("Overland Fake Route", "Overland UI Audit")):
-        parser.error("Only Overland Fake Route or Overland UI Audit can be reused")
+    if args.simulator_id and (not existing or existing["name"] not in ("Overland Regression", "Overland Fake Route", "Overland UI Audit")):
+        parser.error("Only Overland Regression, Overland Fake Route or Overland UI Audit can be reused")
     booted = [d["name"] for group in devices.values() for d in group
               if d["state"] == "Booted" and d["udid"] != args.simulator_id]
     if booted:
@@ -221,8 +222,8 @@ def main():
         def check_map_clearance():
             legal = find("Legal")["frame"]
             panel_top = json.loads(find("Drawer geometry")["AXValue"])["sheetY"]
-            gap = panel_top - legal["y"] - legal["height"]
-            assert 0 <= gap <= 16, f"MapKit attribution does not clear drawer: {gap}"
+            # The credit and Legal link sit at the top left, under the clock.
+            assert legal["y"] < 160 and legal["y"] + legal["height"] < panel_top, f"Legal link is not at the top: {legal}"
             current = find("Current location", "GenericElement")["frame"]
             assert all(abs(a - b) <= 1 for a, b in zip(marker_center(current), marker_center(location_frame))), "Current location moved with drawer"
 
@@ -235,7 +236,8 @@ def main():
         check_map_clearance()
         drag_panel(-700)
         expanded = find("Controls panel")
-        assert expanded["frame"]["y"] < collapsed["frame"]["y"] - 150, "Panel did not open"
+        # The compact Tracker drawer opens about 145 points above its closed tab strip.
+        assert expanded["frame"]["y"] < collapsed["frame"]["y"] - 100, "Panel did not open"
         assert 250 < expanded["frame"]["y"] < 650, "Panel does not fit its controls"
         check_map_clearance()
         action = find("Stop Tracking", "Button")["frame"]
@@ -329,20 +331,30 @@ def main():
             run("xcrun", "simctl", "location", udid, "set", f"{latitude},{longitude}")
 
         def check_historical_camera(marker_label):
-            labels = ("Current location", marker_label)
-            before = {label: find(label, "GenericElement" if label == "Current location" else None)["frame"]
-                      for label in labels}
-            drag_panel(700)
-            for label in labels:
-                after = find(label, "GenericElement" if label == "Current location" else None)["frame"]
-                assert all(abs(a - b) <= 1 for a, b in zip(marker_geometry(label, before[label]), marker_geometry(label, after))), f"{label} moved on historical collapse"
-            tap("Controls panel")
-            for label in labels:
-                after = find(label, "GenericElement" if label == "Current location" else None)["frame"]
-                assert all(abs(a - b) <= 1 for a, b in zip(marker_geometry(label, before[label]), marker_geometry(label, after))), f"{label} moved on historical expansion"
+            # The camera rises only enough to keep a selected point clear of an open drawer, so
+            # markers move together, vertically and by a bounded amount, at the same scale.
+            # Replay hides the live dot, so only markers on screen are compared.
+            labels = tuple(label for label in ("Current location", marker_label)
+                           if find(label, "GenericElement" if label == "Current location" else None))
+            assert marker_label in labels, f"{marker_label} missing before the drawer moved"
+
+            def centers():
+                return {label: marker_center(find(label, "GenericElement" if label == "Current location" else None)["frame"])
+                        for label in labels}
+
+            before = centers()
+            for step, action in (("collapse", lambda: drag_panel(700)), ("expansion", lambda: tap("Controls panel"))):
+                action()
+                after = centers()
+                deltas = [(after[label][0] - before[label][0], after[label][1] - before[label][1]) for label in labels]
+                assert all(abs(dx) <= 1 and abs(dy) <= 60 for dx, dy in deltas) and abs(deltas[0][1] - deltas[-1][1]) <= 1, \
+                    f"Markers moved apart, sideways or too far on historical {step}: {deltas}"
 
         freeze_route()
-        time.sleep(2)
+        # The live dot glides to the frozen fix, so wait until it holds still.
+        last_frame = None
+        stable_since = time.monotonic()
+        wait_for(map_settled, "Current location did not settle after the route froze")
         check_historical_camera("Trip point")
         checks.append("Trip scrub camera holds position and scale while the drawer resizes")
         tap("Tracker")
@@ -363,6 +375,9 @@ def main():
                                   "45.5182,-122.6724", "45.5183,-122.6724"],
                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         tap("Tracker")
+        # Location details start collapsed.
+        if find("Show location details", "Button"):
+            tap("Show location details")
         wait_for(lambda: find("45.5182, -122.6724"), "Tracker did not display the injected location")
         checks.append("Tracker displays the updated simulator coordinates")
         freeze_route()
@@ -374,7 +389,8 @@ def main():
         time.sleep(2)
         check_historical_camera("Recorded point")
         checks.append("Replay camera holds position and scale while the drawer resizes")
-        tap("Show My Location")
+        # Only the ruler's Live action leaves replay.
+        tap("Return to Live")
         tap("Trip")
         tap("Show My Location")
         ui("swipe", "180", "260", "260", "260", "--duration", "0.6")

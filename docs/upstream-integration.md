@@ -2,8 +2,12 @@
 
 Integrated functional updates from upstream `main` through
 [`247eaa25e0aa12b7ae8af59a4f719d93ea2abde3`](https://github.com/aaronpk/Overland-iOS/commit/247eaa25e0aa12b7ae8af59a4f719d93ea2abde3)
-(October 28, 2026). The comparison starts at `d9125c5`, the common ancestor,
-and covers 83 commits, including merges. This is an adaptation into the fork's
+(October 28, 2026), and selected changes through `0200b6a` (November 1, 2026).
+The comparison starts at `d9125c5`, the common ancestor. After `247eaa2`, the
+fork skips upstream's auto-stop, accuracy, slider, full-screen map, compass
+position, today's-path and documentation changes: it already has radius pause,
+Max Saved-Point Error with `max_accuracy`, slider settings and a full-screen map
+with replay, and it adds its own compass instead. This is an adaptation into the fork's
 existing working tree; it does not create an upstream merge commit or publish
 changes.
 
@@ -19,6 +23,10 @@ changes.
 | Boat activity type | Available on iOS 27 in settings, remote configuration, Shortcuts and both acquisition engines. |
 | WiFi-zone map editing | Added a map picker to the existing multi-network editor. Connected-network autofill, manual entry, atomic batch validation and one coordinate pair per SSID/BSSID identity remain. |
 | Nonfinite JSON and send diagnostics | Nonfinite metadata becomes JSON null. Send errors remain visible when notifications are disabled. |
+| Send only on Wi-Fi (`f06f88d`, `e7271a5`) | A Sending switch and remote `send_wifi_only`. It also holds the upload scheduler's retries and background task, keeps the flush intent for the first Wi-Fi path, and lets a Send Now drain every batch. |
+| Ask to End Trip When Stopped (`5f5555a`, `f82a55f`, `5b227af`) | A Trip Settings switch with the same stop rule. It uses Motion & Fitness only when already allowed, and the trip summary, Health workout and route end at the stop. |
+| Siri phrases and modes at launch (`04a6eba`, `3f3984a`), donations (`5e88ddb`) | Phrases without "trip", modes given to Siri at launch, and donations from the drawer, Settings, the tracking toggle and quick actions. |
+| Quick actions follow trips (`d8c17a6`) | `GLTripActions` updates them on every trip start or end, without depending on the App Group. Custom modes now start from a quick action too. |
 | Privacy manifest and dependency resources | Added the manifest for app and shared preferences. CocoaPods declares the exact manifest/privacy-resource outputs; script sandboxing stays enabled. |
 
 The glass styling, drawer, shared native map, replay renderer and app icon are

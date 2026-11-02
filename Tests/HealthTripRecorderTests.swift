@@ -6,6 +6,9 @@ import XCTest
 final class HealthTripRecorderTests: XCTestCase {
     private final class FakeHealthClient: HealthTripHealthClient {
         var workoutCreates = 0
+        var workoutEnd: Date?
+        var workoutDistance: CLLocationDistance?
+        var workoutLocations = 0
         var routeCreates = 0
         var existing: HealthWorkoutReference?
         var routeCreated: (() -> Void)?
@@ -26,6 +29,9 @@ final class HealthTripRecorderTests: XCTestCase {
         func createWorkout(_ workout: HealthWorkout, tripID: String, start: Date, end: Date,
                            distance: CLLocationDistance, locations: [CLLocation]) async throws -> HealthWorkoutReference {
             workoutCreates += 1
+            workoutEnd = end
+            workoutDistance = distance
+            workoutLocations = locations.count
             return HealthWorkoutReference(uuid: UUID())
         }
 
@@ -120,7 +126,8 @@ final class HealthTripRecorderTests: XCTestCase {
         XCTAssertFalse(decoded.routeSaved)
     }
 
-    @MainActor private func exerciseCompletedExport(existing: HealthWorkoutReference?) async throws -> (Int, Int) {
+    @MainActor private func exerciseCompletedExport(existing: HealthWorkoutReference?,
+                                                    endedAfter: TimeInterval? = nil) async throws -> FakeHealthClient {
         let main = UserDefaults.standard
         let domain = Bundle.main.bundleIdentifier!
         let original = main.persistentDomain(forName: domain) ?? [:]
@@ -132,7 +139,7 @@ final class HealthTripRecorderTests: XCTestCase {
             defaults.removePersistentDomain(forName: suite)
             try? FileManager.default.removeItem(at: directory)
         }
-        let start = Date().addingTimeInterval(-60)
+        let start = Date().addingTimeInterval(-600)
         main.set(start, forKey: GLTripStartTimeDefaultsName)
         main.set("walk", forKey: GLTripModeDefaultsName)
         let fake = FakeHealthClient()
@@ -144,6 +151,8 @@ final class HealthTripRecorderTests: XCTestCase {
         recorder.isEnabled = true
         recorder.recordAcceptedLocation(location(latitude: 45, longitude: -122, seconds: start.timeIntervalSince1970 + 10))
         recorder.recordAcceptedLocation(location(latitude: 45.001, longitude: -122, seconds: start.timeIntervalSince1970 + 20))
+        recorder.recordAcceptedLocation(location(latitude: 45.002, longitude: -122, seconds: start.timeIntervalSince1970 + 300))
+        if let endedAfter { defaults.set(start.addingTimeInterval(endedAfter), forKey: GLLastTripEndDefaultsName) }
         main.removeObject(forKey: GLTripStartTimeDefaultsName)
         recorder.syncWithTrip()
         await fulfillment(of: [route], timeout: 5)
@@ -152,18 +161,27 @@ final class HealthTripRecorderTests: XCTestCase {
         }, object: nil)
         await fulfillment(of: [cleaned], timeout: 5)
         recorder.isEnabled = false
-        return (fake.workoutCreates, fake.routeCreates)
+        return fake
     }
 
     @MainActor func testAcceptedRouteAndCommittedTripEndExportOneWorkoutAndRoute() async throws {
-        let counts = try await exerciseCompletedExport(existing: nil)
-        XCTAssertEqual(counts.0, 1)
-        XCTAssertEqual(counts.1, 1)
+        let fake = try await exerciseCompletedExport(existing: nil)
+        XCTAssertEqual(fake.workoutCreates, 1)
+        XCTAssertEqual(fake.routeCreates, 1)
+        XCTAssertEqual(fake.workoutLocations, 3)
+    }
+
+    @MainActor func testTripEndedAtTheStopEndsTheWorkoutAndRouteThere() async throws {
+        let fake = try await exerciseCompletedExport(existing: nil, endedAfter: 30)
+        let start = try XCTUnwrap(fake.workoutEnd).addingTimeInterval(-30)
+        XCTAssertLessThan(abs(start.timeIntervalSinceNow + 600), 5)
+        XCTAssertEqual(fake.workoutLocations, 2)
+        XCTAssertEqual(fake.workoutDistance ?? 0, 111, accuracy: 2)
     }
 
     @MainActor func testRecoveryAttachesTheRouteToAnExistingWorkoutWithoutCreatingAnother() async throws {
-        let counts = try await exerciseCompletedExport(existing: HealthWorkoutReference(uuid: UUID()))
-        XCTAssertEqual(counts.0, 0)
-        XCTAssertEqual(counts.1, 1)
+        let fake = try await exerciseCompletedExport(existing: HealthWorkoutReference(uuid: UUID()))
+        XCTAssertEqual(fake.workoutCreates, 0)
+        XCTAssertEqual(fake.routeCreates, 1)
     }
 }

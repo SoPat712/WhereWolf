@@ -170,6 +170,16 @@ its behavior and limits.
   nearby fix at least one second later can confirm a relocation. It preserves
   original coordinates and timestamps; flight users can raise the limit or
   leave it off.
+- **Trip Settings → Ask to End Trip When Stopped** sends one notification per
+  stop during a trip: 75 m for 5 minutes, or 10 minutes without Motion & Fitness
+  access. Its End Trip action ends the trip, and its Health workout, at the time
+  you stopped. Turning it on asks for notification permission; it does not need
+  the Notifications setting.
+- **Sending → Send Only on Wi-Fi** holds the sends Overland starts itself while
+  the phone is on cellular or a personal hotspot, and sends them once it is on
+  Wi-Fi. Wi-Fi in Low Data Mode still sends, and iCloud Drive saves are not
+  held. Send Now, widgets, Shortcuts, Control Center, the Live Activity and the
+  watch always send. Tracker shows "Waiting for Wi-Fi to send" while points wait.
 - **Sending → Background Uploads** asks iOS for network-connected processing
   time when an eligible queue remains. iOS decides when it runs. **Retry
   Connectivity Failures** separately retries a network failure when an observed
@@ -776,6 +786,7 @@ The example lists accepted alternatives; choose one value for each property.
   "result": "ok",
   "set": {
     "send_interval": "1s|5s|10s|15s|30s|1m|2m|5m|10m|30m|off",
+    "send_wifi_only": true|false,
     "trip_mode": "walk|run|bicycle|car|taxi|bus|tram|train|metro|gondola|monorail|sleigh|plane|boat|scooter",
     "main": {
       "tracking_mode": "off|standard|significant|both",
@@ -794,6 +805,7 @@ The example lists accepted alternatives; choose one value for each property.
       "stop_time": "1m|2m|5m|10m|20m",
     },
     "trip": {
+      "ask_to_end_when_stopped": true|false,
       "desired_accuracy": "nav|best|10m|100m|1km|3km",
       "activity_type": "other|car|fitness|nav|air",
       "background_indicator": true|false,

@@ -676,6 +676,32 @@ final class HistoryPlaybackTests: XCTestCase {
         XCTAssertEqual(last, 2_100, accuracy: 20)
     }
 
+    func testLegDistanceSkipsGPSJumpsAndStillWandering() throws {
+        let start = Date().addingTimeInterval(-20_000)
+        var walk = route(startID: 1, start: start, fromLatitude: 45, speed: 1.4, every: 5, count: 40)
+        let spike = walk[20]
+        walk[20] = RecordedLocation(id: spike.id, timestamp: spike.timestamp,
+                                    latitude: spike.latitude + 400 / 111_195, longitude: spike.longitude)
+        let timeline = ReplayTimeline(points: walk)
+        XCTAssertEqual(try XCTUnwrap(timeline.legDistance(at: 20)), 19 * 7, accuracy: 1)
+        XCTAssertEqual(try XCTUnwrap(timeline.legDistance(at: walk.count - 1)), 39 * 7, accuracy: 1)
+
+        // Driving out and back at the same speed is a real U-turn.
+        let out = route(startID: 1, start: start, fromLatitude: 45, speed: 25, every: 5, count: 10)
+        let back = (1..<10).map { index in
+            RecordedLocation(id: Int64(100 + index), timestamp: out.last!.timestamp.addingTimeInterval(Double(index) * 5),
+                             latitude: out.last!.latitude - Double(index) * 125 / 111_195, longitude: -122)
+        }
+        XCTAssertEqual(try XCTUnwrap(ReplayTimeline(points: out + back).legDistance(at: 18)), 18 * 125, accuracy: 2)
+
+        // Fixes wandering for a few minutes in one spot add nothing.
+        let wander = (0..<36).map { index in
+            RecordedLocation(id: Int64(index + 1), timestamp: start.addingTimeInterval(Double(index) * 5),
+                             latitude: 45 + (index.isMultiple(of: 2) ? 0 : 15 / 111_195), longitude: -122)
+        }
+        XCTAssertEqual(try XCTUnwrap(ReplayTimeline(points: wander).legDistance(at: 35)), 0, accuracy: 0.1)
+    }
+
     func testActivityInfersSpeedAndPrefersRecordedMotion() {
         XCTAssertEqual(ReplayActivity.inferred(speed: 0.1), .stopped)
         XCTAssertEqual(ReplayActivity.inferred(speed: 1.4), .walking)

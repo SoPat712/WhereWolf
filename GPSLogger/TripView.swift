@@ -151,7 +151,13 @@ struct TripView: View {
             .drawerCard()
 
             Button {
-                bridge.tripInProgress ? GLTripActions.endTripRestoringTracking() : GLTripActions.startTrip(withMode: nil)
+                if bridge.tripInProgress {
+                    GLTripActions.endTripRestoringTracking()
+                    IntentDonations.tripEnded()
+                } else {
+                    GLTripActions.startTrip(withMode: nil)
+                    IntentDonations.tripStarted(mode: GLManager.shared().currentTripMode)
+                }
                 trip = TripMapState()
                 camera = .userLocation(fallback: .automatic)
                 bridge.refresh()

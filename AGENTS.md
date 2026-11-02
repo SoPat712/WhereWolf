@@ -117,7 +117,12 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   locations into a separate protected route store and recovers unfinished
   workout/route exports. It never acknowledges upload records. New trip Live
   Activities, filters, Health and cloud export default off. Keep the original
-  tracking activity and app-only Blank Island behavior.
+  tracking activity and app-only Blank Island behavior. `GLTripActions` also sets the
+  Home Screen quick actions on every trip start or end, including background ones, and
+  when the scene resigns active. Siri phrases name trip modes with or without "trip";
+  `AppShortcutParameters` gives Siri the modes at launch and when they change.
+  `IntentDonations` donates trip and tracking changes made with Overland's own controls;
+  intents run by the system are not donated again.
 - **Workout import**: `WorkoutRouteImporter` reads other apps' saved Health routes
   after explicit read-access setup. Manual imports and optional foreground checks
   use a separate protected SQLite collection; keep every valid point, source and
@@ -181,6 +186,8 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   defaults to 24 hours. `GLManager` calls it only after a successful queue commit;
   the archive never participates in queue deletion or HTTP. `HistoryPlaybackModel`
   owns only presentation state and stops its display link off the Tracker tab.
+  Pacing, stays, status values and route directions live in `ReplayTimeline.swift`;
+  camera transition, zoom, live-motion and heading math lives in `MapMotion.swift`.
   Replay speeds are relative to `ReplayTimeline`'s movement pacing, not recorded-time
   multipliers. Default to 1× and offer 0.25×, 0.5×, 1×, 2×, 5×, 10×, 25× and 50×.
   At 1×, a moving segment lasts `sqrt(distance × interval) / 18`, never slower than
@@ -200,7 +207,9 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   and pause/resume. Keep the chosen zoom. Original timestamps and recorded speed values remain unchanged.
   `ReplayStatusOverlay` shares the speedometer's row during replay, with the same top,
   height and corner radius, stops short of the Legal link and never takes touches. It shows the activity, time,
-  altitude and distance since the last stop, updating per point rather than per frame.
+  altitude and distance since the last stop, updating per point rather than per frame. That distance leaves out
+  wandering that paces as stationary, and a fix over 100 m out and straight back at over three times the
+  speed on either side, which counts as the direct distance across it.
   Keep its width steady, and stack readings that do not fit instead of truncating them. Recorded motion outranks speed inference,
   except that flying speeds win. Hide altitude when vertical accuracy is negative. Nearby
   payloads use a bounded prefetch cache and coalesced reads; format JSON only for
@@ -297,6 +306,9 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   strip sits 20.5 points up. Blend between them as the drawer moves. Lay the strip out at its
   open size and scale it evenly when closed; do not stretch it sideways. Zoom buttons
   preserve replay following and rotation; manual map gestures remain free.
+  A compass below Zoom Out appears while the heading is more than 1° from north, reported
+  only when that changes. MapKit's compass draws the live needle; a tap turns north through
+  the zoom buttons' camera transition, keeping center, distance, pitch and replay state.
   Move the native attribution views in UIKit without changing map margins or
   the camera projection. Give Legal a 44-point touch target, try its native
   accessibility action, and fall back to Apple's Maps legal page if unavailable.
@@ -334,6 +346,16 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   the iPhone without a watch app. A background launch restores tracking through
   `restoreTrackingState`; the action then calls `refreshLocation`. It must not override
   Stop or a pause. iOS generally does not relaunch force-quit apps.
+- **Trip end prompt**: `TripEndPrompt` (Ask to End Trip When Stopped, default off, remote
+  `trip.ask_to_end_when_stopped`) sends one notification per stop: 75 m for 5 minutes with
+  motion reporting stationary at least once and no driving or cycling, or 10 minutes without
+  authorized motion data. It never requests Motion & Fitness and runs from location callbacks
+  without a scene. Only the in-app switch requests notification permission; it does not need
+  the Notifications setting. Moving on or the trip ending another way withdraws the prompt.
+  Its End Trip action ends a matching trip at the stop through `endTripAtDate:location:`, so
+  the summary's end, duration, distance and location stop there; other End Trip prompts end it
+  now. `GLLastTripEndDefaults` is written before the trip start is cleared, so the Health
+  workout and route end then too. The visit prompt is skipped while this is on.
 - **Optional tracking policies** live in `GLTrackingPolicy` and are configured
   through the validated `GLAdvancedTrackingOptions` dictionary in `GLManager`.
   They default off and are independent of all five Usage Presets. Keep acquisition,
@@ -380,6 +402,12 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   equivalent schedules, complete expired tasks once, and preserve pending intent.
   `NWPathMonitor` runs only when enabled, and only a false-to-true transition can
   clear eligible transport backoff. iOS schedules processing opportunistically.
+  Send Only on Wi-Fi (`WifiOnlySending`, default off, remote `send_wifi_only`) holds every
+  send the app starts itself while the path is expensive and the destination is HTTP:
+  interval sends, pause and trip flushes, retries and background tasks, which count as
+  blocked. It keeps the flush intent and resumes on the first Wi-Fi path. An unknown path
+  waits. Send Now, intents, widgets, controls, the Live Activity and the watch always send,
+  and a user's drain continues through every batch. Its monitor runs only while it is on.
   Optional iOS 18 `CLServiceSession` retains already-Always authorization intent;
   invalidate it on Stop, option-off or lost authorization.
 - **Background helpers**: `OverlandBackgroundRuntime` controls the ActivityKit

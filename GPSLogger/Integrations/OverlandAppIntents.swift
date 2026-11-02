@@ -208,8 +208,21 @@ struct OverlandShortcuts: AppShortcutsProvider {
             intent: StartTripIntent(),
             phrases: [
                 "Start a trip in \(.applicationName)",
+                "Start a trip on \(.applicationName)",
                 "Start a \(\.$mode) trip in \(.applicationName)",
+                "Start a \(\.$mode) trip on \(.applicationName)",
+                "Start \(\.$mode) trip in \(.applicationName)",
+                "Start \(\.$mode) trip on \(.applicationName)",
                 "Start tracking a \(\.$mode) trip with \(.applicationName)",
+                // Without "trip", such as "Start a walk" or "Start running"
+                "Start a \(\.$mode) in \(.applicationName)",
+                "Start a \(\.$mode) on \(.applicationName)",
+                "Start a \(\.$mode) with \(.applicationName)",
+                "Start \(\.$mode) in \(.applicationName)",
+                "Start \(\.$mode) with \(.applicationName)",
+                "Go for a \(\.$mode) with \(.applicationName)",
+                "Track a \(\.$mode) with \(.applicationName)",
+                "Track my \(\.$mode) with \(.applicationName)",
             ],
             shortTitle: "Start Trip",
             systemImageName: "play.circle"
@@ -246,4 +259,29 @@ struct OverlandShortcuts: AppShortcutsProvider {
 
     // Matches the app icon
     static var shortcutTileColor: ShortcutTileColor = .orange
+}
+
+// Tells iOS when trips start or end, or tracking turns on or off, from Overland's own controls, so Siri
+// can learn when they usually happen. The system donates intents run from Siri, Shortcuts, widgets
+// and controls, so those paths do not call this.
+@objc final class IntentDonations: NSObject {
+    @objc static func tripStarted(mode: String?) {
+        _ = IntentDonationManager.shared.donate(intent: StartTripIntent(mode: mode.map { TripModeEntity(id: $0) }))
+    }
+
+    @objc static func tripEnded() {
+        _ = IntentDonationManager.shared.donate(intent: EndTripIntent())
+    }
+
+    @objc static func trackingChanged(enabled: Bool) {
+        _ = IntentDonationManager.shared.donate(intent: SetTrackingIntent(enabled: enabled))
+    }
+}
+
+// Siri recognizes phrases naming a trip mode only once it has the list of modes; until then it hears
+// "Start a car trip" as "Start a trip". Called at launch and whenever the modes change.
+@objc final class AppShortcutParameters: NSObject {
+    @objc static func update() {
+        OverlandShortcuts.updateAppShortcutParameters()
+    }
 }

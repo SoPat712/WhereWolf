@@ -17,6 +17,11 @@ struct TrackerView: View {
                     .foregroundStyle(.orange)
                     .lineLimit(2)
                     .accessibilityLabel("Last send failed: \(error)")
+            } else if bridge.waitingForWifi && bridge.queueCount > 0 {
+                Label("Waiting for Wi-Fi to send", systemImage: "wifi")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
             HistoryRuler(history: history, onLive: onLive)
             if history.isBrowsing {
@@ -177,6 +182,7 @@ struct TrackerView: View {
     private var uploadSummary: String {
         if bridge.sending { return "Sending" }
         if bridge.uploadsBlocked { return "Blocked" }
+        if bridge.waitingForWifi && bridge.queueCount > 0 { return "Waiting for Wi-Fi" }
         if bridge.pendingUploads { return "Pending" }
         return "Up to date"
     }

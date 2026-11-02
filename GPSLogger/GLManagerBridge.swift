@@ -75,6 +75,10 @@ final class GLManagerBridge {
         get { _ = tick; return GLManager.shared().savesToICloudDrive }
         set { GLManager.shared().savesToICloudDrive = newValue; refresh() }
     }
+    var sendOnlyOnWifi: Bool {
+        get { _ = tick; return WifiOnlySending.shared.enabled }
+        set { WifiOnlySending.shared.enabled = newValue; refresh() }
+    }
     var cloudFileMode: Int {
         get { _ = tick; return GLManager.shared().cloudFileMode.rawValue }
         set { GLManager.shared().cloudFileMode = GLCloudFileMode(rawValue: newValue) ?? .daily; refresh() }
@@ -99,6 +103,10 @@ final class GLManagerBridge {
     var tripLiveActivityEnabled: Bool {
         get { _ = tick; return GLManager.shared().tripLiveActivityEnabled }
         set { GLManager.shared().tripLiveActivityEnabled = newValue; refresh() }
+    }
+    var tripAskToEndWhenStopped: Bool {
+        get { _ = tick; return TripEndPrompt.shared.enabled }
+        set { TripEndPrompt.shared.enabled = newValue; refresh() }
     }
     var discardWithoutGPS: Bool {
         get { _ = tick; return GLManager.shared().discardPointsWithoutGPS }
@@ -175,6 +183,7 @@ final class GLManagerBridge {
     private(set) var pendingUploads = false
     private(set) var uploadsBlocked = false
     private(set) var uploadRetryDate: Date?
+    private(set) var waitingForWifi = false
 
     @ObservationIgnored private var timer: Timer?
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
@@ -241,6 +250,7 @@ final class GLManagerBridge {
         pendingUploads = gl.pendingUploads
         uploadsBlocked = gl.uploadsBlocked
         uploadRetryDate = gl.uploadRetryDate
+        waitingForWifi = gl.waitingForWifi
 
         refreshClock()
 
@@ -359,6 +369,7 @@ final class GLManagerBridge {
         }
         set {
             newValue ? GLManager.shared().startAllUpdates() : GLManager.shared().stopAllUpdates()
+            IntentDonations.trackingChanged(enabled: newValue)
             refresh()
         }
     }

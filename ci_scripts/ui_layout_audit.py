@@ -185,13 +185,19 @@ asyncio.run(main())
             low, high = values["collapsedHeight"], values["expandedHeight"]
             target = low if direction > 0 else high
             assert low + travel * 0.3 < trace[0]["height"] < low + travel * 0.7, "Release was not near the midpoint"
-            assert abs(trace[-1]["height"] - target) <= 0.1, "Spring did not reach its detent"
+            # Frames snap to pixels, a third of a point on a 3x screen.
+            assert abs(trace[-1]["height"] - target) <= 0.34, \
+                f"Spring did not reach its detent: {trace[-1]['height']:.2f} vs {target:.2f} after {len(trace)} samples, from {initial}"
             overshoot = 0.1 if values["reduceMotion"] else 3.1
             assert all(low - overshoot <= f["height"] <= high + overshoot for f in trace), "Spring exceeds its overshoot budget"
             slope = (trace[-1]["width"] - trace[0]["width"]) / (trace[-1]["height"] - trace[0]["height"])
             radius_slope = (trace[-1]["radius"] - trace[0]["radius"]) / (trace[-1]["height"] - trace[0]["height"])
+            # Sampled heights snap to pixels while the radius follows the unrounded height.
+            radius_tolerance = 0.02 + abs(radius_slope) / 3
             for a, b in zip(trace, trace[1:]):
-                assert abs((b["radius"] - a["radius"]) - radius_slope * (b["height"] - a["height"])) <= 0.02, "Corner radius uses different progress"
+                radius_error = (b["radius"] - a["radius"]) - radius_slope * (b["height"] - a["height"])
+                assert abs(radius_error) <= radius_tolerance, \
+                    f"Corner radius uses different progress: {radius_error:.3f} at {a['height']:.2f}->{b['height']:.2f}, slope {radius_slope:.3f}"
                 assert abs((b["width"] - a["width"]) - slope * (b["height"] - a["height"])) <= 0.75, "Width and height use different progress"
                 if abs(a["height"] - target) > 3.1 and abs(b["height"] - target) > 3.1:
                     assert (b["height"] - a["height"]) * direction <= 0.2, "Spring reversed before its final overshoot"
@@ -219,7 +225,8 @@ asyncio.run(main())
                                     (x, tab_y - 35, 0.15), (x, tab_y - 35, 2.0)], sample_after=1.3)
         assert captured["dragging"], "Interruption was not sampled while holding the drawer"
         previous, resumed = captured["settleSamples"][-1], captured["samples"][0]
-        assert captured["collapsedHeight"] + 3 < previous["height"] < captured["expandedHeight"] - 3, "Spring finished before the second grab"
+        assert captured["collapsedHeight"] + 3 < previous["height"] < captured["expandedHeight"] - 3, \
+            f"Spring finished before the second grab: {previous['height']:.2f} between {captured['collapsedHeight']:.2f} and {captured['expandedHeight']:.2f}, {len(captured['settleSamples'])} settle samples"
         assert abs(previous["height"] - resumed["height"]) <= 0.5, "Grabbing the spring jumps in height"
         assert abs(previous["width"] - resumed["width"]) <= 0.5, "Grabbing the spring jumps in width"
         gesture_samples["interrupted-spring"] = {"settle": captured["settleSamples"], "drag": captured["samples"]}
@@ -696,13 +703,19 @@ asyncio.run(main())
                 assert abs(tab_frame["x"] + tab_frame["width"] / 2 - expected) < 1, "Tab is not centered in its drawer slot"
             tab_top = min(f["y"] for f in tab_frames)
             assert compact["y"] + compact["height"] <= tab_top + 1, "Grabber overlaps the tabs"
-            assert tab_top - compact["y"] <= 48, "Grabber sits too far above the tabs"
+            # The 44-point touch area rises from the grabber, which ends where the tab strip begins.
+            gap = tab_top - compact["y"] - compact["height"]
+            assert gap <= 8, f"Grabber sits too far above the tabs: {gap:.1f}"
             values = drawer_geometry()
             assert values["sheetHeight"] <= values["tabHeight"] + 24, "Collapsed capsule has excess visible padding"
             assert compact["y"] < values["sheetY"], "Grabber hit extension must be invisible above the capsule"
-            for label, before in baseline.items():
-                after = frame(label, "Button")
-                assert all(abs(before[axis] - after[axis]) < 1 for axis in ("y", "height")), f"{label} moved vertically on collapse"
+            # Like Find My, the strip lowers and scales evenly as it closes (DrawerLayoutTests checks the
+            # measured geometry), so here the tabs only need to stay inside the closed capsule.
+            closed = {}
+            for label in baseline:
+                after = closed[label] = frame(label, "Button")
+                assert values["sheetY"] - 1 <= after["y"] and after["y"] + after["height"] <= values["sheetY"] + values["sheetHeight"] + 1, \
+                    f"{label} left the closed capsule"
             time.sleep(2)
             assert find("Controls panel")["AXValue"] == "Collapsed", "Status refresh reopened the panel"
             start = center("Controls panel")
@@ -745,8 +758,9 @@ asyncio.run(main())
             assert not find("Controls panel"), "Settings exposes the map panel"
             assert not any(e.get("subrole") == "AXMapArea" for e in state()), "Settings exposes a map"
             settings_tabs = {label: frame(label, "Button") for label in baseline}
-            assert abs(settings_tabs["Trip"]["y"] - baseline["Trip"]["y"]) <= 1, "Settings moves the tab strip vertically"
-            assert abs(settings_tabs["Settings"]["height"] - baseline["Tracker"]["height"]) < 1, "Settings changes the selected tab hit area"
+            # Settings keeps the drawer closed, so its strip matches the closed one.
+            assert abs(settings_tabs["Trip"]["y"] - closed["Trip"]["y"]) <= 1, "Settings moves the tab strip vertically"
+            assert abs(settings_tabs["Settings"]["height"] - closed["Tracker"]["height"]) < 1, "Settings changes the selected tab hit area"
             start = center("Settings", "Button")
             swipe(start, (start[0], start[1] - 160))
             selected("Settings")

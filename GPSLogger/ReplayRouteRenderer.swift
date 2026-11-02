@@ -23,7 +23,7 @@ final class ReplayRoutePresentation {
         var removedDots: [MKOverlay] = []
 
         // Dots always sit beneath the route, including ones restored by scrubbing back.
-        func apply(to map: MKMapView) {
+        @MainActor func apply(to map: MKMapView) {
             for line in addedDots { map.insertOverlay(line, at: 0, level: .aboveRoads) }
             if !added.isEmpty { map.addOverlays(added, level: .aboveRoads) }
             let gone = removed + removedDots

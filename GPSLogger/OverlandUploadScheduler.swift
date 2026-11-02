@@ -23,6 +23,8 @@ struct _OverlandUploadSchedulerState: Equatable {
     var uploadsBlocked = false
     var uploadRetryDate: Date?
     var sendInProgress = false
+    // Counts as blocked too, so no background task runs only to find it cannot send.
+    var waitingForWifi = false
 }
 
 struct _OverlandUploadSchedulerDependencies {
@@ -57,9 +59,10 @@ struct _OverlandUploadSchedulerDependencies {
                     backgroundUploadsEnabled: options["background_uploads"]?.boolValue ?? false,
                     connectivityRetryEnabled: options["connectivity_retry"]?.boolValue ?? false,
                     pendingUploads: gl.pendingUploads,
-                    uploadsBlocked: gl.uploadsBlocked,
+                    uploadsBlocked: gl.uploadsBlocked || gl.waitingForWifi,
                     uploadRetryDate: gl.uploadRetryDate,
-                    sendInProgress: gl.sendInProgress
+                    sendInProgress: gl.sendInProgress,
+                    waitingForWifi: gl.waitingForWifi
                 )
             },
             register: { identifier, handler in
@@ -327,6 +330,8 @@ private final class SystemUploadSchedulerPathMonitor: _OverlandUploadSchedulerPa
             statusValue = "Running"
         } else if !state.backgroundUploadsEnabled {
             statusValue = "Off"
+        } else if state.waitingForWifi {
+            statusValue = "Waiting for Wi-Fi"
         } else if state.uploadsBlocked {
             statusValue = "Blocked"
         } else if !state.pendingUploads {

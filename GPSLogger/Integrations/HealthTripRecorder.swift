@@ -543,9 +543,17 @@ struct HealthTripRecorderDependencies {
     private func apply(snapshot: TripSnapshot) {
         if let active = activeTrip, active.state.start != snapshot.start {
             var state = active.state
-            state.end = state.end ?? dependencies.now()
+            let now = dependencies.now()
+            // A trip ended from the stop prompt ends minutes before it was ended, and so does its workout.
+            let earlierEnd = state.end != nil ? nil : (dependencies.defaults.object(forKey: GLLastTripEndDefaultsName) as? Date)
+                .flatMap { $0 > state.start && $0 < now.addingTimeInterval(-60) ? $0 : nil }
+            state.end = state.end ?? earlierEnd ?? now
             if let route = readRoute(active.routeURL) {
-                state.distance = max(state.distance, distance(of: route.locations))
+                if let earlierEnd {
+                    state.distance = distance(of: route.locations.filter { $0.timestamp <= earlierEnd })
+                } else {
+                    state.distance = max(state.distance, distance(of: route.locations))
+                }
             }
             writeState(state)
             activeTrip = nil
@@ -616,7 +624,8 @@ struct HealthTripRecorderDependencies {
                 state.end = route.header.end ?? route.locations.last?.timestamp ?? dependencies.now()
             }
             state.mode = route.header.mode
-            state.distance = max(state.distance, distance(of: route.locations))
+            let end = state.end ?? dependencies.now()
+            state.distance = max(state.distance, distance(of: route.locations.filter { $0.timestamp <= end }))
             writeState(state)
             guard HealthWorkout.forMode(state.mode) != nil else { continue }
             started += 1

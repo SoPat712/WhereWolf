@@ -297,6 +297,7 @@ struct SendingSettingsView: View {
                 }
                 SliderRow(title: "Locations per Batch", value: $bridge.batchValue, range: 1...1000, format: SettingFormat.count)
                 SliderRow(title: "Send Interval", value: $bridge.sendIntervalValue, range: 0...3600, offBelow: 1, unit: "seconds", format: SettingFormat.seconds)
+                Toggle("Send Only on Wi-Fi", isOn: $bridge.sendOnlyOnWifi)
                 Toggle("Background Uploads", isOn: advancedBoolBinding(bridge, key: "background_uploads"))
                 Toggle("Retry Connectivity Failures", isOn: advancedBoolBinding(bridge, key: "connectivity_retry"))
                 LabeledContent("Upload Queue", value: bridge.queueCount > 0 ? "\(bridge.queueCount) queued" : "Empty")
@@ -315,7 +316,7 @@ struct SendingSettingsView: View {
             } header: {
                 SettingsSectionHeader(title: "Batching", topic: .batching)
             } footer: {
-                Text("Automatic sending runs as locations arrive after this interval. Background Uploads lets the operating system schedule pending-queue drains; it has no exact interval. Connectivity retry waits for eligible network failures and honors server Retry-After and authentication errors.")
+                Text("Automatic sending runs as locations arrive after this interval. Send Only on Wi-Fi holds automatic sends on cellular or a personal hotspot until the phone is on Wi-Fi; Send Now, widgets, Shortcuts and the watch still send. Background Uploads lets the operating system schedule pending-queue drains; it has no exact interval. Connectivity retry waits for eligible network failures and honors server Retry-After and authentication errors.")
             }
 
             Section {

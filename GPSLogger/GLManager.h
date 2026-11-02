@@ -76,6 +76,17 @@ static NSString *const GLScreenLockEnabledDefaultsName = @"GLScreenLockEnabledDe
 /* End */
 
 static NSString *const GLTripTrackingEnabledDefaultsName = @"GLTripTrackingEnabledDefaults";
+// Trip Settings: ask to end the trip once the phone has stopped (TripEndPrompt.swift)
+static NSString *const GLTripAskToEndWhenStoppedDefaultsName = @"GLTripAskToEndWhenStoppedDefaults";
+// When the last trip ended, which can be earlier than when it was ended
+static NSString *const GLLastTripEndDefaultsName = @"GLLastTripEndDefaults";
+// The End Trip category, and the userInfo of a prompt that ends the trip when the phone stopped
+static NSString *const GLNotificationCategoryTripName = @"TRIP";
+static NSString *const GLEndTripPromptTripStartKey = @"trip_start";
+static NSString *const GLEndTripPromptStoppedAtKey = @"stopped_at";
+static NSString *const GLEndTripPromptLatitudeKey = @"latitude";
+static NSString *const GLEndTripPromptLongitudeKey = @"longitude";
+static NSString *const GLEndTripPromptAccuracyKey = @"horizontal_accuracy";
 static NSString *const GLTripModeDefaultsName = @"GLTripModeDefaults";
 static NSString *const GLTripStartTimeDefaultsName = @"GLTripStartTimeDefaults";
 static NSString *const GLTripStartLocationDefaultsName = @"GLTripStartLocationDefaults";
@@ -146,7 +157,7 @@ typedef void (^CaseBlock)(void);
 
 + (NSString *)currentWifiHotSpotName;
 + (NSDictionary *)currentWifiNetworkInfo;
-+ (NSString * _Nullable)normalizedWifiBSSID:(NSString * _Nullable)bssid;
++ (NSString *)normalizedWifiBSSID:(NSString *)bssid;
 + (NSArray<NSDictionary<NSString *, NSString *> *> *)knownWifiNetworks;
 
 @property (strong, nonatomic, readonly) CLLocationManager *locationManager;
@@ -170,6 +181,7 @@ typedef void (^CaseBlock)(void);
 - (void)noteLocationLaunch:(BOOL)locationEvent;
 @property (nonatomic, readonly) BOOL pendingUploads;
 @property (nonatomic, readonly) BOOL uploadsBlocked;
+@property (nonatomic, readonly) BOOL waitingForWifi;
 @property (nonatomic, readonly) NSDate *uploadRetryDate;
 - (void)setAdvancedTrackingOption:(NSNumber *)value forKey:(NSString *)key;
 - (void)requestMotionPermission;
@@ -265,12 +277,12 @@ typedef NS_ENUM(NSInteger, GLSendStatus) {
 - (NSArray<NSDictionary<NSString *, NSString *> *> *)knownWifiNetworksIncludingSavedZones:(BOOL)includeSavedZones NS_SWIFT_NAME(knownWifiNetworks(includingSavedZones:));
 - (BOOL)addWifiNetworks:(NSArray<NSDictionary<NSString *, NSString *> *> *)networks latitude:(NSString *)latitude longitude:(NSString *)longitude;
 - (void)saveNewWifiZone:(NSString *)name withLatitude:(NSString *)latitude andLongitude:(NSString *)longitude;
-- (void)addWifiZoneWithName:(NSString *)name latitude:(NSString *)latitude longitude:(NSString *)longitude bssid:(NSString * _Nullable)bssid;
+- (void)addWifiZoneWithName:(NSString *)name latitude:(NSString *)latitude longitude:(NSString *)longitude bssid:(NSString *)bssid;
 - (void)removeWifiZoneAtIndex:(NSInteger)index;
 - (CLLocation *)currentLocationFromWifiName:(NSString *)wifi bssid:(NSString *)bssid;
 - (void)processEngineLocation:(CLLocation *)location;
 - (void)enqueueWorkoutImportRecords:(NSArray<NSDictionary *> *)records
-                        completion:(void (^)(NSUInteger inserted, NSString * _Nullable error))completion;
+                        completion:(void (^)(NSUInteger inserted, NSString *error))completion;
 - (void)processEngineStationary:(BOOL)stationary;
 - (void)updateLocationEngine;
 + (BOOL)isValidEndpoint:(NSString *)endpoint;
@@ -287,6 +299,9 @@ typedef NS_ENUM(NSInteger, GLSendStatus) {
 - (NSTimeInterval)currentTripDuration;
 - (void)startTrip;
 - (void)endTrip;
+// Ends the trip as if it had ended at endDate and location: its end time, duration and distance
+// stop there. nil means now, the same as endTrip.
+- (void)endTripAtDate:(NSDate *)endDate location:(CLLocation *)location;
 - (NSArray *)tripModesByFrequency;
 
 #pragma mark -

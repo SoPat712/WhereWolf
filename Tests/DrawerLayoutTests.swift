@@ -8,7 +8,7 @@ import XCTest
 final class DrawerLayoutTests: XCTestCase {
     func testTabControlsMatchFindMyOpenAndClosed() async throws {
         try await withDrawer { panel, _ in
-            func findTabs(_ view: UIView) -> UIView? {
+            @MainActor func findTabs(_ view: UIView) -> UIView? {
                 if view.accessibilityIdentifier == "overland.panel.tabs" { return view }
                 return view.subviews.lazy.compactMap(findTabs).first
             }

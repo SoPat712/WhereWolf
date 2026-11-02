@@ -85,6 +85,8 @@
 @property BOOL uploadBlocked;
 @property BOOL uploadPending;
 @property BOOL drainAll;
+// Send Now drains the queue even while automatic sends wait for Wi-Fi.
+@property BOOL userDrain;
 @property BOOL waitingForNetwork;
 @property (strong, nonatomic) CLLocation *lastReceivedLocation;
 @property (nonatomic) NSUInteger rejectedJumpCount;
@@ -111,7 +113,6 @@
 
 static NSString *const GLUploadRetryStateDefaultsName = @"GLUploadRetryState";
 static NSString *const GLLocationQueueName = @"GLLocationQueue";
-static NSString *const GLNotificationCategoryTripName = @"TRIP";
 static NSString *const GLNotificationCategoryReminderName = @"REMINDER";
 static NSString *const GLNotificationActionResumeTracking = @"RESUME_TRACKING";
 static NSString *const GLCustomHTTPHeadersDefaultsName = @"GLCustomHTTPHeadersDefaults";
@@ -328,6 +329,8 @@ static dispatch_queue_t GLNotificationQueue(void) {
         if (_instance == nil) {
             _instance = [[self alloc] init];
             _instance.sendBackgroundTask = UIBackgroundTaskInvalid;
+            [NSNotificationCenter.defaultCenter addObserver:_instance selector:@selector(wifiOnlySendingChanged)
+                name:GLWifiOnlySending.changedNotification object:nil];
             
             _instance.db = [[LOLDatabase alloc] initWithPath:[self cacheDatabasePath]];
             _instance.db.serializer = ^(id object){
@@ -1064,11 +1067,30 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
 }
 
 - (void)sendQueueNow {
+    self.userDrain = YES;
+    [self flushQueue];
+}
+
+// Trip boundaries and pauses flush the queue too. While sending waits for Wi-Fi, the flush intent
+// persists and goes out on the first Wi-Fi path.
+- (void)flushQueue {
     self.drainAll = YES;
     self.uploadPending = YES;
     self.uploadBlocked = NO;
     [self persistUploadState];
+    if(self.waitingForWifi && !self.userDrain) return;
     [self sendNextBatch];
+}
+
+- (BOOL)waitingForWifi {
+    return !self.savesToICloudDrive && [GLWifiOnlySending shared].waitsOnCurrentPath;
+}
+
+- (void)wifiOnlySendingChanged {
+    [[NSNotificationCenter defaultCenter] postNotificationName:GLUploadStateChangedNotification object:self];
+    if(self.waitingForWifi) return;
+    if(self.uploadPending) [self resumePendingUpload];
+    else [self sendQueueIfTimeElapsed];
 }
 
 - (void)sendNextBatch {
@@ -1305,7 +1327,10 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     self.uploadBlocked = NO;
     self.lastUploadErrorNotification = nil;
     self.uploadPending = _currentPointsInQueue > 0 && (self.drainAll || self.batchInProgress);
-    if(!self.uploadPending) self.drainAll = NO;
+    if(!self.uploadPending) {
+        self.drainAll = NO;
+        self.userDrain = NO;
+    }
     [self persistUploadState];
     [self sendingFinished];
     [self updateSettingsFromResponse:response];
@@ -1436,7 +1461,8 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
 }
 
 - (void)resumePendingUpload {
-    if(!self.uploadPending || self.uploadBlocked || (!self.drainAll && self.sendingInterval.integerValue < 0)) {
+    if(!self.uploadPending || self.uploadBlocked || (!self.drainAll && self.sendingInterval.integerValue < 0)
+       || (self.waitingForWifi && !self.userDrain)) {
         if(!self.sendInProgress) [self endSendBackgroundTask];
         return;
     }
@@ -1481,6 +1507,8 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     BOOL transient = !certificate && (status == 0 || status == 408 || status == 429 || status >= 500);
     self.waitingForNetwork = transient && status == 0 && [error.domain isEqual:NSURLErrorDomain];
     self.uploadBlocked = !transient;
+    // A blocked upload ends the user's drain, so later automatic sends wait for Wi-Fi again.
+    if(!transient) self.userDrain = NO;
     self.uploadFailures = MIN(self.uploadFailures + 1, 32);
     self.drainRequests = 0;
     if(transient) {
@@ -1606,6 +1634,9 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
         @"off": ^{ self.sendingInterval = @-1; },
     };
     [self runBlock:sendIntervalBlocks fromDictionary:settings forKey:@"send_interval"];
+
+    id wifiOnly = settings[@"send_wifi_only"];
+    if([wifiOnly isKindOfClass:NSNumber.class]) [GLWifiOnlySending shared].enabled = [wifiOnly boolValue];
 
     id tripMode = settings[@"trip_mode"];
     if([tripMode isKindOfClass:NSString.class]) {
@@ -1743,6 +1774,9 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
         NSNumber *stationaryOnly = [GLManager booleanSetting:trip[@"discard_stationary"]];
         if(gpsOnly) self.discardPointsWithoutGPSDuringTrip = gpsOnly.boolValue;
         if(stationaryOnly) self.discardPointsWhileStationaryDuringTrip = stationaryOnly.boolValue;
+        // Remote settings never ask for notification permission; that waits for the switch in the app.
+        NSNumber *askToEnd = [GLManager booleanSetting:trip[@"ask_to_end_when_stopped"]];
+        if(askToEnd) [[NSUserDefaults standardUserDefaults] setBool:askToEnd.boolValue forKey:GLTripAskToEndWhenStoppedDefaultsName];
 
         
         NSDictionary *desiredAccuracyDuringTripBlocks = @{
@@ -2228,6 +2262,9 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
         return;
     }
 
+    // The interval keeps running, so this sends at the first chance once the phone is on Wi-Fi.
+    if(self.waitingForWifi) return;
+
     NSDate *lastAttempt = self.lastSendAttempt ?: self.lastSentDate;
     BOOL timeElapsed = !lastAttempt || -lastAttempt.timeIntervalSinceNow >= self.sendingInterval.doubleValue;
 
@@ -2238,7 +2275,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
 }
 
 - (void)sendQueueIfNotInProgress {
-    [self sendQueueNow];
+    [self flushQueue];
 }
 
 #pragma mark - Scheduled local notifications
@@ -2454,8 +2491,8 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     if(self.tripInProgress) {
         return;
     }
-    
-    [self sendQueueNow];
+
+    [self flushQueue];
 
     if(![self.tripdb open]) return;
     [self clearTripDB];
@@ -2484,18 +2521,69 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
 }
 
 - (void)endTripFromAutopause:(BOOL)autopause {
+    [self endTripAtDate:nil location:nil autopause:autopause];
+}
+
+- (void)endTripAtDate:(NSDate *)endDate location:(CLLocation *)location {
+    [self endTripAtDate:endDate location:location autopause:NO];
+}
+
+- (void)endTripAtDate:(NSDate *)endDate location:(CLLocation *)location autopause:(BOOL)autopause {
     if(!self.tripInProgress || self.endingTrip) return;
     self.endingTrip = YES;
     _storeNextLocationAsTripStart = NO;
     if([CMPedometer isStepCountingAvailable]) {
-        [self.pedometer queryPedometerDataFromDate:self.currentTripStart toDate:NSDate.date withHandler:^(CMPedometerData *data, NSError *error) {
+        [self.pedometer queryPedometerDataFromDate:self.currentTripStart toDate:(endDate ?: NSDate.date) withHandler:^(CMPedometerData *data, NSError *error) {
             dispatch_async(dispatch_get_main_queue(), ^{
-                [self writeTripToDB:autopause steps:data.numberOfSteps.integerValue];
+                [self writeTripToDB:autopause steps:data.numberOfSteps.integerValue endDate:endDate location:location];
             });
         }];
     } else {
-        [self writeTripToDB:autopause steps:0];
+        [self writeTripToDB:autopause steps:0 endDate:endDate location:location];
     }
+}
+
+// A prompt sent after the phone stopped ends the trip when it stopped, if it is still the same
+// trip. Other End Trip prompts end it now.
+- (void)endTripFromPrompt:(NSDictionary *)info {
+    if(!self.tripInProgress) return;
+    NSDate *stopDate = [self stopDateForPrompt:info];
+    if(!stopDate) {
+        [self endTrip];
+        return;
+    }
+    NSNumber *latitude = info[GLEndTripPromptLatitudeKey];
+    NSNumber *longitude = info[GLEndTripPromptLongitudeKey];
+    CLLocation *stopLocation;
+    if([latitude isKindOfClass:NSNumber.class] && [longitude isKindOfClass:NSNumber.class]) {
+        stopLocation = [[CLLocation alloc] initWithCoordinate:CLLocationCoordinate2DMake(latitude.doubleValue, longitude.doubleValue)
+            altitude:0 horizontalAccuracy:[info[GLEndTripPromptAccuracyKey] doubleValue] verticalAccuracy:-1 timestamp:stopDate];
+    }
+    [self endTripAtDate:stopDate location:stopLocation];
+}
+
+- (NSDate *)stopDateForPrompt:(NSDictionary *)info {
+    NSNumber *tripStart = info[GLEndTripPromptTripStartKey];
+    NSNumber *stoppedAt = info[GLEndTripPromptStoppedAtKey];
+    if(![tripStart isKindOfClass:NSNumber.class] || ![stoppedAt isKindOfClass:NSNumber.class]
+       || fabs(self.currentTripStart.timeIntervalSince1970 - tripStart.doubleValue) >= 1
+       || stoppedAt.doubleValue <= tripStart.doubleValue) return nil;
+    return [NSDate dateWithTimeIntervalSince1970:MIN(stoppedAt.doubleValue, NSDate.date.timeIntervalSince1970)];
+}
+
+- (CLLocationDistance)tripDistanceUntil:(NSDate *)end {
+    FMResultSet *rows = [self.tripdb executeQuery:@"SELECT latitude, longitude FROM trips WHERE timestamp <= ? ORDER BY timestamp, id",
+        @(end.timeIntervalSince1970)];
+    if(!rows) return self.currentTripDistance;
+    CLLocationDistance distance = 0;
+    CLLocation *previous;
+    while([rows next]) {
+        CLLocation *loc = [[CLLocation alloc] initWithLatitude:[rows doubleForColumnIndex:0] longitude:[rows doubleForColumnIndex:1]];
+        if(previous) distance += [previous distanceFromLocation:loc];
+        previous = loc;
+    }
+    [rows close];
+    return distance;
 }
 
 - (void)incrementTripMode:(NSString *)tripMode {
@@ -2523,15 +2611,24 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
 }
 
 - (void)writeTripToDB:(BOOL)autopause steps:(NSInteger)numberOfSteps {
+    [self writeTripToDB:autopause steps:numberOfSteps endDate:nil location:nil];
+}
+
+- (void)writeTripToDB:(BOOL)autopause steps:(NSInteger)numberOfSteps endDate:(NSDate *)endDate location:(CLLocation *)location {
 
     if(!self.tripInProgress) { self.endingTrip = NO; return; }
+    NSDate *end = endDate ?: NSDate.date;
+    CLLocation *endLocation = location ?: self.lastLocation;
+    NSDictionary *endLocationDictionary = location ? [self currentDictionaryFromLocation:location] : self.lastLocationDictionary;
+    NSTimeInterval duration = endDate ? [endDate timeIntervalSinceDate:self.currentTripStart] : self.currentTripDuration;
+    CLLocationDistance distance = endDate ? [self tripDistanceUntil:endDate] : self.currentTripDistance;
     BOOL committed = [self.db accessCollection:GLLocationQueueName withBlock:^(id<LOLDatabaseAccessor> accessor) {
-        NSString *timestamp = [GLManager iso8601DateStringFromDate:[NSDate date]];
+        NSString *timestamp = [GLManager iso8601DateStringFromDate:end];
         NSDictionary *currentTrip = @{
                                       @"type": @"Feature",
-                                      @"geometry": self.lastLocation ? @{
+                                      @"geometry": endLocation ? @{
                                               @"type": @"Point",
-                                              @"coordinates": @[@(self.lastLocation.coordinate.longitude), @(self.lastLocation.coordinate.latitude)]
+                                              @"coordinates": @[@(endLocation.coordinate.longitude), @(endLocation.coordinate.latitude)]
                                               } : (id)[NSNull null],
                                       @"properties": [NSMutableDictionary dictionaryWithDictionary:@{
                                               @"timestamp": timestamp,
@@ -2540,9 +2637,9 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
                                               @"start": [GLManager iso8601DateStringFromDate:self.currentTripStart],
                                               @"end": timestamp,
                                               @"start_location": (self.tripStartLocationDictionary ?: [NSNull null]),
-                                              @"end_location":(self.lastLocationDictionary ?: [NSNull null]),
-                                              @"duration": [NSNumber numberWithDouble:self.currentTripDuration],
-                                              @"distance": [NSNumber numberWithDouble:self.currentTripDistance],
+                                              @"end_location":(endLocationDictionary ?: [NSNull null]),
+                                              @"duration": [NSNumber numberWithDouble:duration],
+                                              @"distance": [NSNumber numberWithDouble:distance],
                                               @"stopped_automatically": @(autopause),
                                               @"steps": [NSNumber numberWithInteger:numberOfSteps],
                                               }]
@@ -2562,6 +2659,8 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     self.lastTripLocation = nil;
     self.tripDistanceLoaded = NO;
     self.tripStartLocationDictionary = nil;
+    // Before the trip start is removed, since the Health recorder reads it then.
+    [[NSUserDefaults standardUserDefaults] setObject:end forKey:GLLastTripEndDefaultsName];
     [[NSUserDefaults standardUserDefaults] setObject:nil forKey:GLTripStartTimeDefaultsName];
     [[NSUserDefaults standardUserDefaults] setObject:nil forKey:GLTripStartLocationDefaultsName];
 
@@ -2579,7 +2678,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     }
     [self numberOfLocationsInQueue:^(long num) {}];
     [[NSNotificationCenter defaultCenter] postNotificationName:GLNewDataNotification object:self];
-    [self sendQueueNow];
+    [self flushQueue];
     NSLog(@"Ended a %@ trip", self.currentTripMode);
 }
 
@@ -3244,8 +3343,9 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
 
     }
     
-    // If a trip is active, ask if they would like to end the trip
-    if(self.tripInProgress) {
+    // If a trip is active, ask if they would like to end the trip. Ask to End Trip When Stopped
+    // sends its own prompt for the same stop.
+    if(self.tripInProgress && ![[NSUserDefaults standardUserDefaults] boolForKey:GLTripAskToEndWhenStoppedDefaultsName]) {
         [self askToEndTrip];
     }
     
@@ -3260,6 +3360,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     if(!committed) return NO;
     self.uploadPending = NO;
     self.drainAll = NO;
+    self.userDrain = NO;
     [self resetUploadRetry];
     [self endSendBackgroundTask];
     [self numberOfLocationsInQueue:^(long num) {}];
@@ -3867,7 +3968,12 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
 - (void)userNotificationCenter:(UNUserNotificationCenter *)center didReceiveNotificationResponse:(nonnull UNNotificationResponse *)response withCompletionHandler:(nonnull void (^)(void))completionHandler
 {
     dispatch_async(dispatch_get_main_queue(), ^{
-        if([@"END_TRIP" isEqualToString:response.actionIdentifier]) [self endTrip];
+        if([@"END_TRIP" isEqualToString:response.actionIdentifier]) {
+            [self endTripFromPrompt:response.notification.request.content.userInfo];
+            // The summary is written after a pedometer query, so stay awake for it.
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC), dispatch_get_main_queue(), completionHandler);
+            return;
+        }
         if([GLNotificationActionResumeTracking isEqualToString:response.actionIdentifier] && [self resumeTrackingFromReminder]) {
             // refreshLocation restarts updates a second later, so stay awake past that.
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC), dispatch_get_main_queue(), completionHandler);

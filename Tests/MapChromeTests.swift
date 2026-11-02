@@ -7,7 +7,7 @@ import XCTest
 final class MapChromeTests: XCTestCase {
     func testLegalTouchTargetStaysAboveMapControls() async throws {
         try await withMap { _, _, map in
-            func findLegalControl(in view: UIView) -> UIView? {
+            @MainActor func findLegalControl(in view: UIView) -> UIView? {
                 if view.accessibilityIdentifier == "overland.map.legal" { return view }
                 return view.subviews.lazy.compactMap { findLegalControl(in: $0) }.first
             }
@@ -333,6 +333,24 @@ final class MapChromeTests: XCTestCase {
             coordinator.update(surface, animated: false)
             XCTAssertNil(tail.superlayer)
             XCTAssertNil(tail.path)
+        }
+    }
+
+    func testCompassTurnsTheMapNorthAndKeepsTheZoom() async throws {
+        XCTAssertFalse(NativeMapSurface.isRotated(heading: 0.5))
+        XCTAssertFalse(NativeMapSurface.isRotated(heading: 359.5))
+        XCTAssertTrue(NativeMapSurface.isRotated(heading: 90))
+        XCTAssertTrue(NativeMapSurface.isRotated(heading: -30))
+        try await withMap { surface, coordinator, map in
+            map.setCamera(MKMapCamera(lookingAtCenter: surface.selected!, fromDistance: 3_000, pitch: 0, heading: 90), animated: false)
+            let distance = map.camera.centerCoordinateDistance
+            let result = try XCTUnwrap(NativeMapSurface.faceNorth(on: map))
+            XCTAssertEqual(result.camera.heading, 0)
+            XCTAssertEqual(result.camera.distance, distance, accuracy: 1)
+            XCTAssertTrue(result.replayFollowing)
+            coordinator.advanceCameraTransition(at: CACurrentMediaTime() + 1)
+            XCTAssertEqual(remainder(map.camera.heading, 360), 0, accuracy: 0.5)
+            XCTAssertEqual(map.camera.centerCoordinateDistance, distance, accuracy: distance * 0.01)
         }
     }
 

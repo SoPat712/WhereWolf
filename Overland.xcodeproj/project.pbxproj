@@ -64,6 +64,10 @@
 		A05500000000000000000002 /* OverlandShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = A05500000000000000000001 /* OverlandShell.swift */; };
 		A06600000000000000000002 /* RecentLocationHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = A06600000000000000000001 /* RecentLocationHistory.swift */; };
 		A07700000000000000000002 /* HistoryPlaybackView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A07700000000000000000001 /* HistoryPlaybackView.swift */; };
+		D1F0000000000000000000A2 /* MapMotion.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F0000000000000000000A1 /* MapMotion.swift */; };
+		D1F0000000000000000000B2 /* ReplayTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F0000000000000000000B1 /* ReplayTimeline.swift */; };
+		00D2E0000000000000000002 /* TripEndPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00D2E0000000000000000001 /* TripEndPrompt.swift */; };
+		D1F0000000000000000000C2 /* WifiOnlySending.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F0000000000000000000C1 /* WifiOnlySending.swift */; };
 		A0990000000000000000000B /* TipJarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A09900000000000000000001 /* TipJarView.swift */; };
 		A0990000000000000000000C /* TipStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A09900000000000000000002 /* TipStore.swift */; };
 		A0990000000000000000000D /* TipDonation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A09900000000000000000003 /* TipDonation.swift */; };
@@ -114,6 +118,7 @@
 		C0A7C4000000000000000016 /* WatchLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A7C4000000000000000006 /* WatchLink.swift */; };
 		C0A7C4000000000000000017 /* OverlandWatchLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A7C4000000000000000007 /* OverlandWatchLink.swift */; };
 		C0A7C4000000000000000018 /* WatchLinkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A7C4000000000000000008 /* WatchLinkTests.swift */; };
+		00D3E0000000000000000002 /* TripEndPromptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00D3E0000000000000000001 /* TripEndPromptTests.swift */; };
 		C0A7C4000000000000000019 /* OverlandWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = C0A7C4000000000000000001 /* OverlandWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
@@ -239,6 +244,10 @@
 		A05500000000000000000001 /* OverlandShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlandShell.swift; sourceTree = "<group>"; };
 		A06600000000000000000001 /* RecentLocationHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentLocationHistory.swift; sourceTree = "<group>"; };
 		A07700000000000000000001 /* HistoryPlaybackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryPlaybackView.swift; sourceTree = "<group>"; };
+		D1F0000000000000000000A1 /* MapMotion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapMotion.swift; sourceTree = "<group>"; };
+		D1F0000000000000000000B1 /* ReplayTimeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplayTimeline.swift; sourceTree = "<group>"; };
+		00D2E0000000000000000001 /* TripEndPrompt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripEndPrompt.swift; sourceTree = "<group>"; };
+		D1F0000000000000000000C1 /* WifiOnlySending.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WifiOnlySending.swift; sourceTree = "<group>"; };
 		A09900000000000000000001 /* TipJarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TipJarView.swift; sourceTree = "<group>"; };
 		A09900000000000000000002 /* TipStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TipStore.swift; sourceTree = "<group>"; };
 		A09900000000000000000003 /* TipDonation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TipDonation.swift; sourceTree = "<group>"; };
@@ -287,6 +296,7 @@
 		C0A7C4000000000000000006 /* WatchLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WatchLink.swift; path = GPSLogger/Shared/WatchLink.swift; sourceTree = "<group>"; };
 		C0A7C4000000000000000007 /* OverlandWatchLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlandWatchLink.swift; sourceTree = "<group>"; };
 		C0A7C4000000000000000008 /* WatchLinkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/WatchLinkTests.swift; sourceTree = SOURCE_ROOT; };
+		00D3E0000000000000000001 /* TripEndPromptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/TripEndPromptTests.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -365,6 +375,7 @@
 				A01100000000000000000001 /* OverlandTests.m */,
 				A0CC00000000000000000001 /* HistoryPlaybackTests.swift */,
 				C0A7C4000000000000000008 /* WatchLinkTests.swift */,
+				00D3E0000000000000000001 /* TripEndPromptTests.swift */,
 				C0A100000000000000000006 /* TrackingPolicyTests.m */,
 				D0F100000000000000000006 /* LocationHealthTests.m */,
 				D0F200000000000000000001 /* MapChromeTests.swift */,
@@ -459,6 +470,10 @@
 				A04400000000000000000001 /* MapControlPanel.swift */,
 				A06600000000000000000001 /* RecentLocationHistory.swift */,
 				A07700000000000000000001 /* HistoryPlaybackView.swift */,
+				D1F0000000000000000000A1 /* MapMotion.swift */,
+				D1F0000000000000000000B1 /* ReplayTimeline.swift */,
+				00D2E0000000000000000001 /* TripEndPrompt.swift */,
+				D1F0000000000000000000C1 /* WifiOnlySending.swift */,
 				A05500000000000000000001 /* OverlandShell.swift */,
 				0FCAFE00F00D0000000000E5 /* EndpointView.swift */,
 				0FCAFE00F00D0000000000E6 /* TripView.swift */,
@@ -764,6 +779,10 @@
 				A04400000000000000000002 /* MapControlPanel.swift in Sources */,
 				A06600000000000000000002 /* RecentLocationHistory.swift in Sources */,
 				A07700000000000000000002 /* HistoryPlaybackView.swift in Sources */,
+				D1F0000000000000000000A2 /* MapMotion.swift in Sources */,
+				D1F0000000000000000000B2 /* ReplayTimeline.swift in Sources */,
+				00D2E0000000000000000002 /* TripEndPrompt.swift in Sources */,
+				D1F0000000000000000000C2 /* WifiOnlySending.swift in Sources */,
 				A05500000000000000000002 /* OverlandShell.swift in Sources */,
 				0FCAFE00F00D0000000000F5 /* EndpointView.swift in Sources */,
 				0FCAFE00F00D0000000000F6 /* TripView.swift in Sources */,
@@ -809,6 +828,7 @@
 				B08800000000000000000041 /* BackgroundRuntimeTests.swift in Sources */,
 				A0CC00000000000000000002 /* HistoryPlaybackTests.swift in Sources */,
 				C0A7C4000000000000000018 /* WatchLinkTests.swift in Sources */,
+				00D3E0000000000000000002 /* TripEndPromptTests.swift in Sources */,
 				A0DD00000000000000000002 /* SettingsReliabilityTests.swift in Sources */,
 				A0EE00000000000000000002 /* DrawerLayoutTests.swift in Sources */,
 				A0BC00000000000000000012 /* ReplayRouteRendererTests.swift in Sources */,
