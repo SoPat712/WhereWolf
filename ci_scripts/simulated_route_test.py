@@ -20,7 +20,7 @@ import time
 
 from ui_accessibility import read_state, user_location
 
-BUNDLE = "com.sopat712.where"
+BUNDLE = "me.joshpatra.where"
 
 
 def run(*args, timeout=60):

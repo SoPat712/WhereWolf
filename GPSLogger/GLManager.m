@@ -296,7 +296,7 @@ static NSString *GLWifiCoordinateString(id value) {
 static dispatch_queue_t GLNotificationQueue(void) {
     static dispatch_queue_t queue;
     static dispatch_once_t once;
-    dispatch_once(&once, ^{ queue = dispatch_queue_create("com.sopat712.where.notifications", DISPATCH_QUEUE_SERIAL); });
+    dispatch_once(&once, ^{ queue = dispatch_queue_create("me.joshpatra.where.notifications", DISPATCH_QUEUE_SERIAL); });
     return queue;
 }
 

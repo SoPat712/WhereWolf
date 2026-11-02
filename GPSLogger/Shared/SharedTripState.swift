@@ -11,7 +11,7 @@ import Foundation
 
 struct SharedTripState: Codable, Equatable {
     static var appGroup: String {
-        Bundle.main.object(forInfoDictionaryKey: "WhereAppGroup") as? String ?? "group.com.sopat712.where"
+        Bundle.main.object(forInfoDictionaryKey: "WhereAppGroup") as? String ?? "group.me.joshpatra.where"
     }
     private static let defaultsKey = "SharedTripState"
 

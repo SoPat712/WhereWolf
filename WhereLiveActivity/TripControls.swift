@@ -33,7 +33,7 @@ struct TripControl: ControlWidget {
     }
 
     var body: some ControlWidgetConfiguration {
-        StaticControlConfiguration(kind: "com.sopat712.where.TripControl", provider: Provider()) { value in
+        StaticControlConfiguration(kind: "me.joshpatra.where.TripControl", provider: Provider()) { value in
             ControlWidgetToggle(isOn: value.tripInProgress, action: ToggleTripIntent()) {
                 Label { Text("Trip") } icon: { Image(tripMode: value.mode) }
             } valueLabel: { isOn in
@@ -49,7 +49,7 @@ struct TripControl: ControlWidget {
 @available(iOS 18.0, *)
 struct SendNowControl: ControlWidget {
     var body: some ControlWidgetConfiguration {
-        StaticControlConfiguration(kind: "com.sopat712.where.SendNowControl") {
+        StaticControlConfiguration(kind: "me.joshpatra.where.SendNowControl") {
             ControlWidgetButton(action: SendNowIntent()) {
                 Label("Send Now", systemImage: "arrow.up.circle")
             }

@@ -36,8 +36,8 @@ if [ -z "$APP_PATH" ]; then
 fi
 
 xcrun simctl install "$UDID" "$APP_PATH"
-xcrun simctl terminate "$UDID" com.sopat712.where 2>/dev/null || true
-xcrun simctl launch "$UDID" com.sopat712.where
+xcrun simctl terminate "$UDID" me.joshpatra.where 2>/dev/null || true
+xcrun simctl launch "$UDID" me.joshpatra.where
 if [ "${CAPTURE_SCREENSHOTS:-0}" = "1" ]; then
     mkdir -p "$SHOTS"
     sleep 3

@@ -7,7 +7,7 @@ import MetricKit
 @objc final class TestFlightDiagnostics: NSObject, MXMetricManagerSubscriber {
     static let shared = TestFlightDiagnostics()
     static let reportsChanged = Notification.Name("WhereDiagnosticReportsChanged")
-    private let queue = DispatchQueue(label: "com.sopat712.where.diagnostics")
+    private let queue = DispatchQueue(label: "me.joshpatra.where.diagnostics")
     private var modern: AnyObject?
     private var started = false
 

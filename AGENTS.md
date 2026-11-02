@@ -2,7 +2,7 @@
 
 Fork of [aaronpk/Overland-iOS](https://github.com/aaronpk/Overland-iOS).
 
-The app is named Where throughout: bundle identifiers (default `com.sopat712.where`),
+The app is named Where throughout: bundle identifiers (default `me.joshpatra.where`),
 `WHERE_*` build settings, defaults keys, Swift types and source files, the Xcode project,
 workspace, scheme, targets (`Where`, `WhereTests`, `WhereTrackingActivity`, `WhereWatch`)
 and Swift module (`Where-Swift.h`). Overland appears only where it means the original app:

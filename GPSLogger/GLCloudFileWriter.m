@@ -35,7 +35,7 @@
 - (instancetype)init {
     self = [super init];
     if (self) {
-        _queue = dispatch_queue_create("com.sopat712.where.cloudfiles", DISPATCH_QUEUE_SERIAL);
+        _queue = dispatch_queue_create("me.joshpatra.where.cloudfiles", DISPATCH_QUEUE_SERIAL);
 
         _dailyPathFormatter = [[NSDateFormatter alloc] init];
         _dailyPathFormatter.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
@@ -73,7 +73,7 @@
     if (_documentsURL == nil) {
         id enabled = [NSBundle.mainBundle objectForInfoDictionaryKey:@"WhereICloudEnabled"];
         if(enabled && ![enabled boolValue]) return nil;
-        NSURL *container = [[NSFileManager defaultManager] URLForUbiquityContainerIdentifier:([NSBundle.mainBundle objectForInfoDictionaryKey:@"WhereCloudContainer"] ?: @"iCloud.com.sopat712.where")];
+        NSURL *container = [[NSFileManager defaultManager] URLForUbiquityContainerIdentifier:([NSBundle.mainBundle objectForInfoDictionaryKey:@"WhereCloudContainer"] ?: @"iCloud.me.joshpatra.where")];
         if (container) {
             _documentsURL = [container URLByAppendingPathComponent:@"Documents" isDirectory:YES];
         }

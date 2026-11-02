@@ -39,7 +39,7 @@ struct StatusProvider: TimelineProvider {
 
 struct StatusWidget: Widget {
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: "com.sopat712.where.StatusWidget", provider: StatusProvider()) { entry in
+        StaticConfiguration(kind: "me.joshpatra.where.StatusWidget", provider: StatusProvider()) { entry in
             StatusWidgetView(state: entry.state)
                 .widgetBackground()
         }

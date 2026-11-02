@@ -9,7 +9,7 @@ import sqlite3
 import subprocess
 
 
-BUNDLE = "com.sopat712.where"
+BUNDLE = "me.joshpatra.where"
 DEMO_DEVICE = "Simulator demo · not sent"
 ROUTE = Path(__file__).parent / "fixtures" / "portland_salem_route.json"
 

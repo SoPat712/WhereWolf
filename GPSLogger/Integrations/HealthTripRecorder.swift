@@ -430,7 +430,7 @@ struct HealthTripRecorderDependencies {
 
     init(dependencies: HealthTripRecorderDependencies) {
         self.dependencies = dependencies
-        self.queue = DispatchQueue(label: "com.sopat712.where.healthtrips", qos: .utility)
+        self.queue = DispatchQueue(label: "me.joshpatra.where.healthtrips", qos: .utility)
         super.init()
     }
 

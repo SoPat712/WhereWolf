@@ -41,13 +41,13 @@ final class TipDonationTests: XCTestCase {
 
     func testLegacyProductIDsArePreserved() {
         XCTAssertEqual(TipFrequency.once.names.map { TipFrequency.once.productID($0) }, [
-            "com.sopat712.where.Wanderer", "com.sopat712.where.Trailblazer", "com.sopat712.where.Explorer",
-            "com.sopat712.where.Adventurer", "com.sopat712.where.Cosmonaut"
+            "me.joshpatra.where.Wanderer", "me.joshpatra.where.Trailblazer", "me.joshpatra.where.Explorer",
+            "me.joshpatra.where.Adventurer", "me.joshpatra.where.Cosmonaut"
         ])
         for frequency in [TipFrequency.monthly, .yearly] {
             XCTAssertEqual(frequency.names.map { frequency.productID($0) }, [
-                "com.sopat712.where.\(frequency.rawValue).Commuter", "com.sopat712.where.\(frequency.rawValue).Mariner",
-                "com.sopat712.where.\(frequency.rawValue).Aviator", "com.sopat712.where.\(frequency.rawValue).Globetrotter"
+                "me.joshpatra.where.\(frequency.rawValue).Commuter", "me.joshpatra.where.\(frequency.rawValue).Mariner",
+                "me.joshpatra.where.\(frequency.rawValue).Aviator", "me.joshpatra.where.\(frequency.rawValue).Globetrotter"
             ])
         }
     }

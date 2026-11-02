@@ -116,7 +116,7 @@ private final class SystemUploadSchedulerTask: _WhereUploadSchedulerTask {
 @MainActor
 private final class SystemUploadSchedulerPathMonitor: _WhereUploadSchedulerPathMonitor {
     private let monitor = NWPathMonitor()
-    private let queue = DispatchQueue(label: "com.sopat712.where.upload-connectivity")
+    private let queue = DispatchQueue(label: "me.joshpatra.where.upload-connectivity")
     var onPathUpdate: ((Bool) -> Void)?
 
     init() {
