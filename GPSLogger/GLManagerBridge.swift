@@ -521,6 +521,14 @@ final class GLManagerBridge {
         set { WhereBackgroundRuntime.shared.appearance = newValue; refresh() }
     }
 
+    @MainActor var hideLiveActivityWhileAudioPlays: Bool {
+        get {
+            _ = tick
+            return WhereBackgroundRuntime.shared.hideWhileAudioPlays
+        }
+        set { WhereBackgroundRuntime.shared.hideWhileAudioPlays = newValue; refresh() }
+    }
+
     @MainActor var silentAudioEnabled: Bool {
         get {
             _ = tick

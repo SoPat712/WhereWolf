@@ -1,112 +1,133 @@
-//
-//  TripLiveActivityController.swift
-//  Where
-//
-//  Shows the active trip as a Live Activity. GLManager calls this from Objective-C,
-//  so it's available on every iOS version and does nothing before iOS 16.2.
-//
-
 import ActivityKit
-import Foundation
+import UIKit
 
+@MainActor
 @objc final class TripLiveActivityController: NSObject {
     @objc static let shared = TripLiveActivityController()
 
-    // Location updates arrive about once a second during a trip. Throttle updates to stay
-    // within the system's Live Activity update budget. The elapsed time ticks on its own.
-    private let minimumUpdateInterval: TimeInterval = 15
-    private var lastUpdate = Date.distantPast
+    private struct Trip {
+        var start: Date
+        var mode: String
+        var distance: Double
+        var speed: Double
+    }
 
-    // Activity<TripActivityAttributes>, which can't be the declared type of a stored
-    // property while the app supports iOS versions without ActivityKit
-    private var currentActivity: Any?
+    private var trip: Trip?
+    private var currentActivity: Activity<TripActivityAttributes>?
+    private var finalContent: ActivityContent<TripActivityAttributes.ContentState>?
+    private var lastUpdate = Date.distantPast
+    private var forceUpdate = false
+    private var requestPending = false
+    private var revision = 0
+    private var updateTask: Task<Void, Never>?
 
     @objc(startTripAt:mode:distance:speed:)
     func startTrip(at start: Date, mode: String, distance: Double, speed: Double) {
-        guard #available(iOS 16.2, *) else { return }
-
-        endAllActivities(content: nil, dismissalPolicy: .immediate)
-
-        guard ActivityAuthorizationInfo().areActivitiesEnabled else {
-            NSLog("Live Activities are disabled in Settings, not showing the trip")
-            return
-        }
-
-        do {
-            currentActivity = try Activity.request(
-                attributes: TripActivityAttributes(tripStart: start),
-                content: content(mode: mode, distance: distance, speed: speed),
-                pushType: nil)
-            lastUpdate = Date()
-        } catch {
-            NSLog("Couldn't start the trip Live Activity: %@", error.localizedDescription)
-        }
+        sync(tripStart: start, mode: mode, distance: distance, speed: speed)
     }
 
     @objc(updateWithMode:distance:speed:force:)
     func update(mode: String, distance: Double, speed: Double, force: Bool) {
-        guard #available(iOS 16.2, *),
-              let activity = currentActivity as? Activity<TripActivityAttributes> else { return }
-
-        if !force && Date().timeIntervalSince(lastUpdate) < minimumUpdateInterval {
-            return
-        }
-        lastUpdate = Date()
-
-        let content = content(mode: mode, distance: distance, speed: speed)
-        Task {
-            await activity.update(content)
-        }
+        guard trip != nil else { return }
+        trip?.mode = mode
+        trip?.distance = distance
+        trip?.speed = speed
+        guard force || (currentActivity != nil && Date().timeIntervalSince(lastUpdate) >= 15) else { return }
+        refresh(force: force)
     }
 
     @objc(endTripWithMode:distance:speed:)
     func endTrip(mode: String, distance: Double, speed: Double) {
-        guard #available(iOS 16.2, *) else { return }
-        // Dismiss right away. With the default policy an ended activity stays on the Lock Screen
-        // for up to four hours, and its elapsed time keeps ticking, so the trip looks like it's still going.
-        endAllActivities(content: content(mode: mode, distance: distance, speed: speed), dismissalPolicy: .immediate)
+        trip = nil
+        finalContent = content(mode: mode, distance: distance, speed: speed)
+        refresh(force: true)
     }
 
-    // Called on launch. Reattaches to the activity for the trip in progress, starting one if
-    // it's missing, or ends leftover activities if no trip is in progress (e.g. after a crash).
-    // Pass a nil start date when there is no trip in progress.
     @objc(syncWithTripStart:mode:distance:speed:)
     func sync(tripStart: Date?, mode: String, distance: Double, speed: Double) {
-        guard #available(iOS 16.2, *) else { return }
-
-        guard let tripStart else {
-            endAllActivities(content: nil, dismissalPolicy: .immediate)
-            return
-        }
-
-        let activities = Activity<TripActivityAttributes>.activities
-        guard let existing = activities.first(where: { abs($0.attributes.tripStart.timeIntervalSince(tripStart)) < 1 }) else {
-            startTrip(at: tripStart, mode: mode, distance: distance, speed: speed)
-            return
-        }
-
-        for activity in activities where activity.id != existing.id {
-            Task {
-                await activity.end(nil, dismissalPolicy: .immediate)
-            }
-        }
-        currentActivity = existing
-        update(mode: mode, distance: distance, speed: speed, force: true)
+        if trip?.start != tripStart { WhereBackgroundRuntime.shared.restoredAfterAudio(.trip) }
+        trip = tripStart.map { Trip(start: $0, mode: mode, distance: distance, speed: speed) }
+        finalContent = nil
+        requestPending = trip != nil
+        refresh(force: true)
     }
 
-    @available(iOS 16.2, *)
+    private func refresh(force: Bool) {
+        forceUpdate = forceUpdate || force
+        revision += 1
+        guard updateTask == nil else { return }
+        updateTask = Task { [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled {
+                let current = revision
+                await updateActivity()
+                if current == revision { break }
+            }
+            updateTask = nil
+        }
+    }
+
+    private func updateActivity() async {
+        let runtime = WhereBackgroundRuntime.shared
+        let activities = Activity<TripActivityAttributes>.activities.filter { $0.activityState == .active || $0.activityState == .stale }
+        let action = runtime.audioAction(for: .trip, eligible: trip != nil, hasActivity: !activities.isEmpty)
+        guard let trip else {
+            await endActivities(content: finalContent)
+            return
+        }
+        if action == .hide {
+            if !activities.isEmpty || currentActivity != nil { await endActivities(content: nil) }
+            return
+        }
+        if action == .waitForForeground { return }
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else {
+            await endActivities(content: nil)
+            return
+        }
+        let current = revision
+        let existing = activities.first { abs($0.attributes.tripStart.timeIntervalSince(trip.start)) < 1 }
+        for old in activities where old.id != existing?.id {
+            await old.end(nil, dismissalPolicy: .immediate)
+        }
+        guard revision == current else { return }
+        currentActivity = existing
+        let nextContent = content(mode: trip.mode, distance: trip.distance, speed: trip.speed)
+        if let existing {
+            // Location callbacks can arrive every second; the elapsed-time display ticks on its own.
+            guard forceUpdate || Date().timeIntervalSince(lastUpdate) >= 15 else { return }
+            forceUpdate = false
+            lastUpdate = Date()
+            await existing.update(nextContent)
+            return
+        }
+        guard requestPending || action == .restore else { return }
+        guard UIApplication.shared.applicationState == .active || action == .restore else { return }
+        requestPending = false
+        forceUpdate = false
+        if action == .restore { runtime.willRestoreAfterAudio(.trip) }
+        do {
+            currentActivity = try Activity.request(attributes: TripActivityAttributes(tripStart: trip.start),
+                                                   content: nextContent, pushType: nil)
+            lastUpdate = Date()
+            runtime.restoredAfterAudio(.trip)
+            GLManager.shared().updateLocationEngine()
+        } catch {
+            if action != .restore { NSLog("Couldn't start the trip Live Activity: %@", error.localizedDescription) }
+        }
+    }
+
     private func content(mode: String, distance: Double, speed: Double) -> ActivityContent<TripActivityAttributes.ContentState> {
-        let state = TripActivityAttributes.ContentState(mode: mode, distance: distance.isFinite ? max(distance, 0) : 0, speed: speed.isFinite ? max(speed, 0) : 0)
+        let state = TripActivityAttributes.ContentState(mode: mode, distance: distance.isFinite ? max(distance, 0) : 0,
+                                                        speed: speed.isFinite ? max(speed, 0) : 0)
         return ActivityContent(state: state, staleDate: nil, relevanceScore: 0)
     }
 
-    @available(iOS 16.2, *)
-    private func endAllActivities(content: ActivityContent<TripActivityAttributes.ContentState>?, dismissalPolicy: ActivityUIDismissalPolicy) {
+    private func endActivities(content: ActivityContent<TripActivityAttributes.ContentState>?) async {
         currentActivity = nil
+        // An ended activity must leave immediately rather than keep a running trip timer on the Lock Screen.
         for activity in Activity<TripActivityAttributes>.activities {
-            Task {
-                await activity.end(content, dismissalPolicy: dismissalPolicy)
-            }
+            await activity.end(content, dismissalPolicy: .immediate)
         }
+        GLManager.shared().updateLocationEngine()
     }
 }

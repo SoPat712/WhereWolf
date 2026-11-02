@@ -1,4 +1,5 @@
 import ActivityKit
+import AVFoundation
 import CoreLocation
 import Observation
 import UIKit
@@ -70,7 +71,13 @@ private enum TrackingActivityHandle {
     private enum Key {
         static let liveActivity = "WhereLiveActivityEnabled"
         static let appearance = "WhereLiveActivityAppearance"
+        static let hideWhileAudioPlays = "WhereLiveActivityHideWhileAudioPlays"
         static let silentAudio = "WhereSilentAudioEnabled"
+    }
+
+    struct AudioDependencies {
+        var otherAudioPlaying: () -> Bool = { AVAudioSession.sharedInstance().isOtherAudioPlaying }
+        var uptime: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
     }
 
     private(set) var activityStatus = "Waiting for tracking"
@@ -88,11 +95,14 @@ private enum TrackingActivityHandle {
     @ObservationIgnored private var wasEligible = false
     @ObservationIgnored private var lastUpdate = Date.distantPast
     @ObservationIgnored private var lastContent: TrackingActivityAttributes.ContentState?
+    @ObservationIgnored var audioDependencies = AudioDependencies()
+    @ObservationIgnored private var audioPolicy = LiveActivityAudioPolicy()
 
     private override init() {
         super.init()
         UserDefaults.standard.register(defaults: [Key.liveActivity: true,
-                                                 Key.appearance: "minimal", Key.silentAudio: false])
+                                                 Key.appearance: "minimal", Key.silentAudio: false,
+                                                 Key.hideWhileAudioPlays: false])
     }
 
     var liveActivityEnabled: Bool {
@@ -122,6 +132,14 @@ private enum TrackingActivityHandle {
         }
     }
 
+    var hideWhileAudioPlays: Bool {
+        get { UserDefaults.standard.bool(forKey: Key.hideWhileAudioPlays) }
+        set {
+            UserDefaults.standard.set(newValue, forKey: Key.hideWhileAudioPlays)
+            refresh()
+        }
+    }
+
     var audioStatus: String { audio.status }
 
     @objc func start() {
@@ -139,12 +157,24 @@ private enum TrackingActivityHandle {
             Task { @MainActor in
                 guard let self else { return }
                 self.suppressed = false
+                self.audioPolicy.foregroundOrRetry()
                 GLManager.shared().reconcileTracking()
                 self.refresh()
+                GLManager.shared().syncTripLiveActivity()
                 self.audio.refresh()
                 self.reloadReminder()
             }
         })
+        for name in [UIApplication.willResignActiveNotification, UIApplication.didEnterBackgroundNotification,
+                     UIApplication.willEnterForegroundNotification, UIScene.didActivateNotification,
+                     UIScene.willDeactivateNotification, UIScene.didEnterBackgroundNotification,
+                     UIScene.willEnterForegroundNotification, AVAudioSession.silenceSecondaryAudioHintNotification,
+                     AVAudioSession.interruptionNotification, AVAudioSession.routeChangeNotification,
+                     AVAudioSession.mediaServicesWereLostNotification, AVAudioSession.mediaServicesWereResetNotification] {
+            observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in self?.refresh() }
+            })
+        }
         observers.append(center.addObserver(forName: Notification.Name(GLReminderChangedNotification),
                                             object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.reloadReminder() }
@@ -167,7 +197,9 @@ private enum TrackingActivityHandle {
 
     func retry() {
         suppressed = false
+        audioPolicy.foregroundOrRetry()
         refresh()
+        GLManager.shared().syncTripLiveActivity()
         audio.retry()
         reloadReminder()
     }
@@ -180,6 +212,7 @@ private enum TrackingActivityHandle {
     }
 
     private func refresh() {
+        sampleOtherAudio()
         let allowed = eligible
         if allowed && !wasEligible { suppressed = false }
         wasEligible = allowed
@@ -197,10 +230,59 @@ private enum TrackingActivityHandle {
         }
     }
 
+    @objc func checkAudioFromLocation() {
+        guard hideWhileAudioPlays,
+              audioPolicy.shouldSampleLocation(at: audioDependencies.uptime()) else { return }
+        refresh()
+    }
+
+    private func sampleOtherAudio() {
+        let wasHiding = audioPolicy.isHiding
+        let authorization = GLManager.shared().locationManager.authorizationStatus
+        audioPolicy.sample(enabled: hideWhileAudioPlays,
+                           otherAudioPlaying: hideWhileAudioPlays && authorization == .authorizedAlways
+                               && audioDependencies.otherAudioPlaying(),
+                           authorization: authorization,
+                           at: audioDependencies.uptime())
+        if wasHiding != audioPolicy.isHiding { GLManager.shared().syncTripLiveActivity() }
+    }
+
+    func audioAction(for kind: LiveActivityAudioPolicy.Kind, eligible: Bool,
+                     hasActivity: Bool) -> LiveActivityAudioPolicy.Action {
+        if audioPolicy.isHiding && (!hideWhileAudioPlays || GLManager.shared().locationManager.authorizationStatus != .authorizedAlways) {
+            sampleOtherAudio()
+        }
+        return audioPolicy.action(for: kind, eligible: eligible, hasActivity: hasActivity, scene: audioScene)
+    }
+
+    private var audioScene: LiveActivityAudioPolicy.Scene {
+        switch UIApplication.shared.applicationState {
+        case .active: return .foreground
+        case .background: return .background
+        default: return .inactive
+        }
+    }
+
+    func willRestoreAfterAudio(_ kind: LiveActivityAudioPolicy.Kind) { audioPolicy.willRequest(kind, scene: audioScene) }
+    func restoredAfterAudio(_ kind: LiveActivityAudioPolicy.Kind) { audioPolicy.restored(kind) }
+
     private func updateActivity() async {
+        let current = revision
+        let kind: LiveActivityAudioPolicy.Kind = appearance == "blank" ? .blank : appearance == "status" ? .status : .minimal
+        let audioAction = audioAction(for: kind, eligible: eligible && liveActivityEnabled,
+                                      hasActivity: Self.hasActiveTrackingActivity)
         guard eligible && liveActivityEnabled else {
             await endActivities()
             activityStatus = liveActivityEnabled ? "Waiting for tracking and location access" : "Off"
+            return
+        }
+        if audioAction == .hide {
+            if activity != nil || Self.hasActiveTrackingActivity { await endActivities() }
+            activityStatus = "Hidden while other audio plays"
+            return
+        }
+        if audioAction == .waitForForeground {
+            activityStatus = "Open Where to restore the Live Activity"
             return
         }
         guard ActivityAuthorizationInfo().areActivitiesEnabled else {
@@ -213,6 +295,7 @@ private enum TrackingActivityHandle {
         if replacingCurrent || TrackingActivityHandle.all.contains(where: { $0.isIslandOnly != islandOnly }) {
             await endActivities()
         }
+        guard revision == current, eligible, liveActivityEnabled else { return }
         if activity == nil, let existing = TrackingActivityHandle.all.first(where: { $0.isActive }) {
             observe(existing)
         }
@@ -246,14 +329,15 @@ private enum TrackingActivityHandle {
             activityStatus = "Active"
             return
         }
-        guard !suppressed else {
+        guard !suppressed || audioAction == .restore else {
             activityStatus = "Ended or dismissed · reopen the app or retry"
             return
         }
-        guard UIApplication.shared.applicationState == .active else {
+        guard UIApplication.shared.applicationState == .active || audioAction == .restore else {
             activityStatus = "Open Where to start the Live Activity"
             return
         }
+        if audioAction == .restore { willRestoreAfterAudio(kind) }
         do {
             let newActivity: TrackingActivityHandle
             if islandOnly {
@@ -267,9 +351,14 @@ private enum TrackingActivityHandle {
             lastContent = state
             lastUpdate = Date()
             activityStatus = "Active"
+            restoredAfterAudio(kind)
         } catch {
-            suppressed = true
-            activityStatus = "Could not start: \(error.localizedDescription)"
+            if audioAction == .restore {
+                activityStatus = "Open Where to restore the Live Activity"
+            } else {
+                suppressed = true
+                activityStatus = "Could not start: \(error.localizedDescription)"
+            }
         }
     }
 

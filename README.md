@@ -285,7 +285,7 @@ OwnTracks HTTP contract and validation results.
 
 ## Background runtime options
 
-Settings → Background Runtime adds two helpers that follow Start/Stop Tracking:
+Settings → Background adds helpers that follow Start/Stop Tracking:
 
 - **Tracking Live Activity** defaults to Minimal, a location icon in the Dynamic
   Island. Status also shows the last successful send in the expanded view.
@@ -296,6 +296,16 @@ Settings → Background Runtime adds two helpers that follow Start/Stop Tracking
   as a card. Blank uses the original
   location engine with Always access and the background indicator off. Recheck
   presentation and background delivery on new iOS versions.
+- **Hide While Audio Plays** defaults off and needs Always location access.
+  It ends tracking and trip Live Activities when two audio checks at least
+  15 seconds apart find another app playing audio, freeing the Island for iOS
+  to choose another app. Short sounds between checks are ignored. Checks run
+  on existing location, lifecycle and activity events and received audio
+  notifications; there is no extra timer. When audio stops, Where tries once
+  to restore each activity in the background. If iOS refuses, the activities
+  may return only when Where is next opened. Indicator-off tracking falls back
+  to the original location engine while hidden. Where's own silent audio
+  does not count and keeps its existing behavior. This setting is local-only.
 - **Silent Audio (Experimental)** defaults off. It loops digital silence through
   the audio playback session and mixes with other audio. Calls can interrupt it.
   While playing, a 30-second health check detects unexpected stops. Recovery is
@@ -328,6 +338,8 @@ Where uses a relevance score of zero and sends no Live Activity alerts.
 rank activities from the same app. iOS chooses the main Island and detached
 bubble across apps, so Where cannot reserve the main Island for Music or
 force its own activity into the smaller presentation.
+Hide While Audio Plays instead ends Where's activities while other audio is
+detected using [Apple's other-audio state](https://developer.apple.com/documentation/avfaudio/avaudiosession/isotheraudioplaying).
 
 These helpers require tracking to be enabled with location access and an active
 tracking mode, visits, or a trip. An active Live Activity supports live location

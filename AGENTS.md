@@ -349,6 +349,8 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   Best accuracy with automatic pausing. An active Status or Minimal Live Activity supports
   background updates with the indicator off. With Always access and no active
   supporting Live Activity, indicator-off tracking falls back to `CLLocationManager`.
+  Hide While Audio Plays uses the same reconciliation when ending or restoring
+  an activity; it requires Always access even when an indicator session exists.
   Blank also uses this fallback; its app-only activity did not maintain live-update
   delivery in the iOS 27 background route check.
   `CLBackgroundActivitySession` is used only for live updates that request or
@@ -453,6 +455,14 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   End and recover both activity types, and replace the type when appearance changes.
   Relevance remains zero. It ranks Where's own activities, not other apps;
   iOS controls which activity occupies the main Island or a detached bubble.
+  Hide While Audio Plays defaults off and is local-only. Two other-audio readings
+  at least 15 seconds apart hide Status, Minimal, Blank and separate trip activities,
+  only with Always location access. Sample on existing lifecycle/activity/audio
+  events and location callbacks (at most once per 15 seconds); add no timer or
+  audio-session activation. Own silent audio does not count or stop. Audio ending
+  permits one background restore attempt per activity family, then waits for
+  foreground or explicit Retry after a refusal. Hiding is not a failure. Preserve
+  Stop, pauses, trip state and the reminder deadline.
   Silent audio checks playback only while opted in. Unexpected stops get three
   bounded retries; calls and media-service loss block automatic recovery.
 - Settings sliders use common-value detents with exact numeric entry. Commit

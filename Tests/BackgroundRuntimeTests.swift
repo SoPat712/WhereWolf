@@ -213,6 +213,123 @@ final class BackgroundRuntimeTests: XCTestCase {
         }
     }
 
+    @MainActor func testAudioHidingReconcilesEngineAndRestoresEveryTrackingAppearance() async throws {
+        try await withTrackingActivity { _ in
+            let runtime = WhereBackgroundRuntime.shared
+            let saved = runtime.audioDependencies
+            var playing = false
+            var uptime: TimeInterval = 0
+            runtime.audioDependencies = .init(otherAudioPlaying: { playing }, uptime: { uptime })
+            defer { runtime.audioDependencies = saved; runtime.hideWhileAudioPlays = false }
+            let manager = GLManager.shared()!
+            let engine = WhereLocationEngine.shared
+            manager.showBackgroundLocationIndicator = false
+            manager.useNewLocationEngine = true
+            for appearance in ["status", "minimal", "blank"] {
+                runtime.appearance = appearance
+                try await waitUntil {
+                    if appearance == "blank" {
+                        return runtime.activityStatus == "Active"
+                            && Activity<IslandOnlyTrackingAttributes>.activities.contains { $0.activityState == .active }
+                            && Activity<TrackingActivityAttributes>.activities.isEmpty
+                    }
+                    return Activity<TrackingActivityAttributes>.activities.contains {
+                        $0.activityState == .active && $0.content.state.appearance.rawValue == appearance
+                    } && Activity<IslandOnlyTrackingAttributes>.activities.isEmpty
+                }
+                playing = true
+                runtime.hideWhileAudioPlays = true
+                uptime += 15
+                runtime.checkAudioFromLocation()
+                try await waitUntil { runtime.activityStatus == "Hidden while other audio plays" }
+                XCTAssertFalse(WhereBackgroundRuntime.hasActiveTrackingActivity)
+                XCTAssertFalse(engine.usingLiveUpdates)
+                XCTAssertFalse(engine.hasBackgroundSession)
+                XCTAssertTrue(manager.trackingEnabled)
+                XCTAssertFalse(manager.showBackgroundLocationIndicator)
+                playing = false
+                uptime += 15
+                runtime.checkAudioFromLocation()
+                try await waitUntil {
+                    runtime.activityStatus == "Active" && WhereBackgroundRuntime.hasActiveTrackingActivity
+                        && engine.usingLiveUpdates == (appearance != "blank")
+                }
+                XCTAssertFalse(engine.hasBackgroundSession)
+                runtime.hideWhileAudioPlays = false
+            }
+        }
+    }
+
+    @MainActor func testOwnSilentAudioDoesNotHideActivityOrStopWhenHidden() async throws {
+        try await withTrackingActivity { _ in
+            let runtime = WhereBackgroundRuntime.shared
+            runtime.silentAudioEnabled = true
+            try await waitUntil { runtime.audioStatus == "Silent audio active" }
+            XCTAssertFalse(AVAudioSession.sharedInstance().isOtherAudioPlaying)
+            let saved = runtime.audioDependencies
+            var playing = false
+            var uptime: TimeInterval = 0
+            runtime.audioDependencies = .init(otherAudioPlaying: { playing }, uptime: { uptime })
+            defer { runtime.audioDependencies = saved; runtime.hideWhileAudioPlays = false }
+            runtime.hideWhileAudioPlays = true
+            uptime = 15
+            runtime.checkAudioFromLocation()
+            try await Task.sleep(for: .milliseconds(100))
+            XCTAssertTrue(WhereBackgroundRuntime.hasActiveTrackingActivity)
+            playing = true
+            uptime = 30
+            runtime.checkAudioFromLocation()
+            uptime = 45
+            runtime.checkAudioFromLocation()
+            try await waitUntil { runtime.activityStatus == "Hidden while other audio plays" }
+            XCTAssertEqual(runtime.audioStatus, "Silent audio active")
+            runtime.hideWhileAudioPlays = false
+            try await waitUntil { WhereBackgroundRuntime.hasActiveTrackingActivity }
+            XCTAssertEqual(runtime.audioStatus, "Silent audio active")
+        }
+    }
+
+    @MainActor func testAudioHidesAndRestoresSeparateTripActivityWithoutEndingTrip() async throws {
+        try await withTrackingActivity { _ in
+            let runtime = WhereBackgroundRuntime.shared
+            let saved = runtime.audioDependencies
+            let manager = GLManager.shared()!
+            let defaults = UserDefaults.standard
+            let start = Date()
+            var playing = true
+            var uptime: TimeInterval = 0
+            runtime.audioDependencies = .init(otherAudioPlaying: { playing }, uptime: { uptime })
+            defer {
+                runtime.audioDependencies = saved
+                runtime.hideWhileAudioPlays = false
+                defaults.removeObject(forKey: GLTripStartTimeDefaultsName)
+                manager.tripLiveActivityEnabled = false
+            }
+            defaults.set(start, forKey: GLTripStartTimeDefaultsName)
+            manager.tripLiveActivityEnabled = true
+            try await waitUntil { Activity<TripActivityAttributes>.activities.contains { $0.activityState == .active } }
+            runtime.hideWhileAudioPlays = true
+            uptime = 15
+            runtime.checkAudioFromLocation()
+            try await waitUntil {
+                Activity<TripActivityAttributes>.activities.isEmpty && !WhereBackgroundRuntime.hasActiveTrackingActivity
+            }
+            XCTAssertEqual(manager.currentTripStart(), start)
+            XCTAssertTrue(manager.trackingEnabled)
+            playing = false
+            uptime = 30
+            runtime.checkAudioFromLocation()
+            try await waitUntil {
+                Activity<TripActivityAttributes>.activities.contains { $0.activityState == .active }
+                    && WhereBackgroundRuntime.hasActiveTrackingActivity
+            }
+            XCTAssertEqual(manager.currentTripStart(), start)
+            defaults.removeObject(forKey: GLTripStartTimeDefaultsName)
+            manager.syncTripLiveActivity()
+            try await waitUntil { Activity<TripActivityAttributes>.activities.isEmpty }
+        }
+    }
+
     @MainActor func testLiveActivityFollowsScheduledReminder() async throws {
         guard ProcessInfo.processInfo.environment["WHERE_NOTIFICATION_INTEGRATION"] == "1" else {
             throw XCTSkip("Enable WHERE_NOTIFICATION_INTEGRATION with notifications approved to test the system reminder service.")
@@ -254,6 +371,7 @@ final class BackgroundRuntimeTests: XCTestCase {
         defaults.set(1, forKey: "GLSignificantLocationModeDefaults")
         defaults.set(-1, forKey: "GLSendIntervalDefaults")
         runtime.silentAudioEnabled = false
+        runtime.hideWhileAudioPlays = false
         runtime.appearance = "minimal"
         runtime.liveActivityEnabled = true
         manager.startAllUpdates()

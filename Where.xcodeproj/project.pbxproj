@@ -85,6 +85,8 @@
 		B0880000000000000000000F /* TrackingActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = B08800000000000000000003 /* TrackingActivityAttributes.swift */; };
 		B08800000000000000000010 /* WhereTrackingActivity.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = B08800000000000000000005 /* WhereTrackingActivity.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B08800000000000000000041 /* BackgroundRuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B08800000000000000000040 /* BackgroundRuntimeTests.swift */; };
+		B08800000000000000000051 /* LiveActivityAudioPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = B08800000000000000000050 /* LiveActivityAudioPolicy.swift */; };
+		B08800000000000000000053 /* LiveActivityAudioPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B08800000000000000000052 /* LiveActivityAudioPolicyTests.swift */; };
 		BAEDDD70BD822527C8684813 /* HealthTripRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 156F17CEE92C6ACFC40D1261 /* HealthTripRecorder.swift */; };
 		C02700000000000000000001 /* TestFlightDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = C02700000000000000000002 /* TestFlightDiagnostics.swift */; };
 		C02700000000000000000003 /* DiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C02700000000000000000004 /* DiagnosticsView.swift */; };
@@ -264,6 +266,8 @@
 		B08800000000000000000005 /* WhereTrackingActivity.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; path = WhereTrackingActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B08800000000000000000006 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = TrackingActivity/Info.plist; sourceTree = SOURCE_ROOT; };
 		B08800000000000000000040 /* BackgroundRuntimeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/BackgroundRuntimeTests.swift; sourceTree = SOURCE_ROOT; };
+		B08800000000000000000050 /* LiveActivityAudioPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/LiveActivityAudioPolicy.swift; sourceTree = SOURCE_ROOT; };
+		B08800000000000000000052 /* LiveActivityAudioPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/LiveActivityAudioPolicyTests.swift; sourceTree = SOURCE_ROOT; };
 		B43520312801460797C456DA /* TrackingActivity.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; name = TrackingActivity.entitlements; path = TrackingActivity/TrackingActivity.entitlements; sourceTree = "<group>"; };
 		C02700000000000000000002 /* TestFlightDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/TestFlightDiagnostics.swift; sourceTree = SOURCE_ROOT; };
 		C02700000000000000000004 /* DiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/DiagnosticsView.swift; sourceTree = SOURCE_ROOT; };
@@ -385,6 +389,7 @@
 				A0DD00000000000000000001 /* SettingsReliabilityTests.swift */,
 				A0EE00000000000000000001 /* DrawerLayoutTests.swift */,
 				B08800000000000000000040 /* BackgroundRuntimeTests.swift */,
+				B08800000000000000000052 /* LiveActivityAudioPolicyTests.swift */,
 				A09900000000000000000021 /* TipDonationTests.swift */,
 				B08800000000000000000014 /* TrackingActivity */,
 				6DEC9B3621F3F88500D9E8C4 /* Where.entitlements */,
@@ -443,6 +448,7 @@
 				C02700000000000000000002 /* TestFlightDiagnostics.swift */,
 				C02700000000000000000004 /* DiagnosticsView.swift */,
 				B08800000000000000000001 /* BackgroundRuntime.swift */,
+				B08800000000000000000050 /* LiveActivityAudioPolicy.swift */,
 				B08800000000000000000002 /* SilentAudioSession.swift */,
 				0FCF53231F81AAAC00577A0F /* GPSLogger.entitlements */,
 				0FFD31581BAB7A34009B3A03 /* AppDelegate.h */,
@@ -756,6 +762,7 @@
 				C02700000000000000000001 /* TestFlightDiagnostics.swift in Sources */,
 				C02700000000000000000003 /* DiagnosticsView.swift in Sources */,
 				B0880000000000000000000B /* BackgroundRuntime.swift in Sources */,
+				B08800000000000000000051 /* LiveActivityAudioPolicy.swift in Sources */,
 				B0880000000000000000000C /* SilentAudioSession.swift in Sources */,
 				B0880000000000000000000D /* TrackingActivityAttributes.swift in Sources */,
 				0FFD315A1BAB7A34009B3A03 /* AppDelegate.m in Sources */,
@@ -826,6 +833,7 @@
 				C0A10000000000000000000B /* UploadSchedulerTests.swift in Sources */,
 				A09900000000000000000020 /* TipDonationTests.swift in Sources */,
 				B08800000000000000000041 /* BackgroundRuntimeTests.swift in Sources */,
+				B08800000000000000000053 /* LiveActivityAudioPolicyTests.swift in Sources */,
 				A0CC00000000000000000002 /* HistoryPlaybackTests.swift in Sources */,
 				C0A7C4000000000000000018 /* WatchLinkTests.swift in Sources */,
 				00D3E0000000000000000002 /* TripEndPromptTests.swift in Sources */,

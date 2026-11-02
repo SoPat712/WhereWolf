@@ -3432,6 +3432,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
 }
 
 - (void)processLocations:(NSArray *)locations {
+    [[WhereBackgroundRuntime shared] checkAudioFromLocation];
     if(!self.trackingEnabled || (!self.tripInProgress && self.trackingMode == kGLTrackingModeOff)) {
         return;
     }

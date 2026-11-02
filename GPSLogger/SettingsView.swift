@@ -378,6 +378,7 @@ struct BackgroundSettingsView: View {
 
             Section {
                 Toggle("Tracking Live Activity", isOn: $bridge.liveActivityEnabled)
+                Toggle("Hide While Audio Plays", isOn: $bridge.hideLiveActivityWhileAudioPlays)
                 LabeledContent("Active Engine", value: bridge.actualLocationEngine)
                 if !bridge.locationEngineReason.isEmpty {
                     Text(bridge.locationEngineReason).font(.footnote).foregroundStyle(.secondary)
@@ -417,7 +418,7 @@ struct BackgroundSettingsView: View {
             } header: {
                 SettingsSectionHeader(title: "Background Runtime", topic: .runtime)
             } footer: {
-                Text("Blank keeps the Island empty and omits the Lock Screen card. With Always access and the background indicator off, it uses the original location engine. Silent audio can use more battery. Explicit Service Session is an opt-in iOS 18+ authorization-session request, not a guarantee. These options run only while tracking has location access.")
+                Text("Hide While Audio Plays needs Always location access. It ends tracking and trip Live Activities after two audio checks at least 15 seconds apart. They may return only when Where is next opened. Blank keeps the Island empty and omits the Lock Screen card. With Always access and the background indicator off, it uses the original location engine. Silent audio can use more battery. Explicit Service Session requests authorization on iOS 18 and later and does not guarantee background execution. These options run only while tracking has location access.")
             }
         }
         .navigationTitle("Background")
