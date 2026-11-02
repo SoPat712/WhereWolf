@@ -25,8 +25,11 @@ enum MapViewport {
         return CGPoint(x: resting.x, y: min(resting.y, max(visible.midY, drawerTop - drawerClearance)))
     }
 
+    // `rotation` is the change in camera heading, in radians. The camera turns about its own center, so
+    // the offset to the visible center turns with it.
     static func anchoredCenter(_ anchor: CLLocationCoordinate2D, projectionCenter: CLLocationCoordinate2D,
-                               projectionTarget: CLLocationCoordinate2D, scale: Double = 1) -> CLLocationCoordinate2D {
+                               projectionTarget: CLLocationCoordinate2D, scale: Double = 1,
+                               rotation: Double = 0) -> CLLocationCoordinate2D {
         let origin = MKMapPoint(anchor)
         let center = MKMapPoint(projectionCenter)
         let target = MKMapPoint(projectionTarget)
@@ -34,9 +37,10 @@ enum MapViewport {
         var dx = center.x - target.x
         if dx > width / 2 { dx -= width }
         if dx < -width / 2 { dx += width }
-        var x = (origin.x + dx * scale).truncatingRemainder(dividingBy: width)
+        let dy = center.y - target.y
+        var x = (origin.x + (dx * cos(rotation) - dy * sin(rotation)) * scale).truncatingRemainder(dividingBy: width)
         if x < 0 { x += width }
-        let y = min(MKMapRect.world.maxY, max(0, origin.y + (center.y - target.y) * scale))
+        let y = min(MKMapRect.world.maxY, max(0, origin.y + (dx * sin(rotation) + dy * cos(rotation)) * scale))
         return MKMapPoint(x: x, y: y).coordinate
     }
 }
@@ -46,7 +50,14 @@ struct MapCameraTransition {
     var to: MapCamera
     let start: TimeInterval
     var length: TimeInterval = Self.duration
+    // The starting view's width in map points. A transition with one follows `MapFlight`.
+    var flightWidth: Double?
     static let duration: TimeInterval = 1
+
+    static func flight(from: MapCamera, to: MapCamera, start: TimeInterval, width: Double) -> Self {
+        let path = MapFlight(from: from, to: to, width: width)
+        return Self(from: from, to: to, start: start, length: MapFlight.duration(for: path.length), flightWidth: width)
+    }
 
     func progress(at time: TimeInterval) -> Double {
         let duration = max(0.001, length)
@@ -59,6 +70,9 @@ struct MapCameraTransition {
         if progress == 0 { return from }
         if progress == 1 { return to }
         let amount = progress * progress * progress * (progress * (progress * 6 - 15) + 10)
+        if let flightWidth {
+            return MapFlight(from: from, to: to, width: flightWidth).camera(at: amount, from: from, to: to)
+        }
         let distance = exp(log(max(1, from.distance))
             + (log(max(1, to.distance)) - log(max(1, from.distance))) * amount)
         // Keep the focus in view as the scale changes, including very large zooms.
@@ -72,6 +86,81 @@ struct MapCameraTransition {
                          distance: distance,
                          heading: from.heading + heading * amount,
                          pitch: from.pitch + (to.pitch - from.pitch) * amount)
+    }
+}
+
+// van Wijk and Nuij's smooth zoom and pan, the path Mapbox's flyTo also uses. A long move zooms out on
+// the way and back in, so the map never sweeps past faster than the eye can follow; a short move is
+// nearly a plain pan. Widths and travel are in map points.
+struct MapFlight {
+    private static let rho = 1.42
+    private let start: MKMapPoint
+    private let delta: (x: Double, y: Double)
+    private let travel: Double
+    private let startWidth: Double
+    private let endWidth: Double
+    private let r0: Double
+    // The path length in van Wijk's units, which grows with the logarithm of the move in screen widths.
+    let length: Double
+
+    init(from: MapCamera, to: MapCamera, width: Double) {
+        start = MKMapPoint(from.centerCoordinate)
+        let end = MKMapPoint(to.centerCoordinate)
+        let world = MKMapRect.world.width
+        var dx = end.x - start.x
+        dx -= (dx / world).rounded() * world
+        delta = (dx, end.y - start.y)
+        travel = hypot(dx, end.y - start.y)
+        startWidth = max(1e-9, width.isFinite ? width : 1)
+        let ratio = Self.scale(of: to) / Self.scale(of: from)
+        endWidth = startWidth * (ratio.isFinite && ratio > 0 ? ratio : 1)
+        let rho2 = Self.rho * Self.rho
+        if travel < startWidth * 1e-6 {
+            r0 = 0
+            length = abs(log(endWidth / startWidth)) / Self.rho
+        } else {
+            let pan = rho2 * rho2 * travel * travel
+            let b0 = (endWidth * endWidth - startWidth * startWidth + pan) / (2 * startWidth * rho2 * travel)
+            let b1 = (endWidth * endWidth - startWidth * startWidth - pan) / (2 * endWidth * rho2 * travel)
+            r0 = asinh(-b0)
+            length = (asinh(-b1) - r0) / Self.rho
+        }
+    }
+
+    // About half a second for a short hop, up to two seconds for the other side of the world.
+    static func duration(for length: Double) -> TimeInterval {
+        min(2, max(0.6, 0.55 + 0.15 * length))
+    }
+
+    // `amount` is the eased progress, 0 to 1.
+    func camera(at amount: Double, from: MapCamera, to: MapCamera) -> MapCamera {
+        let s = amount * length
+        let fraction: Double
+        let width: Double
+        if travel < startWidth * 1e-6 {
+            fraction = amount
+            width = startWidth * exp((endWidth >= startWidth ? 1 : -1) * Self.rho * s)
+        } else {
+            let rho2 = Self.rho * Self.rho
+            fraction = min(1, max(0, startWidth / rho2 * (cosh(r0) * tanh(Self.rho * s + r0) - sinh(r0)) / travel))
+            width = startWidth * cosh(r0) / cosh(Self.rho * s + r0)
+        }
+        let worldWidth = MKMapRect.world.width
+        var x = (start.x + delta.x * fraction).truncatingRemainder(dividingBy: worldWidth)
+        if x < 0 { x += worldWidth }
+        let center = MKMapPoint(x: x, y: min(MKMapRect.world.maxY, max(0, start.y + delta.y * fraction))).coordinate
+        let distance = from.distance * width / startWidth
+            * MKMapPointsPerMeterAtLatitude(from.centerCoordinate.latitude) / MKMapPointsPerMeterAtLatitude(center.latitude)
+        var heading = to.heading - from.heading
+        heading -= (heading / 360).rounded() * 360
+        return MapCamera(centerCoordinate: center,
+                         distance: min(MapZoom.maximumDistance, max(1, distance.isFinite ? distance : to.distance)),
+                         heading: from.heading + heading * amount,
+                         pitch: from.pitch + (to.pitch - from.pitch) * amount)
+    }
+
+    private static func scale(of camera: MapCamera) -> Double {
+        camera.distance * MKMapPointsPerMeterAtLatitude(camera.centerCoordinate.latitude)
     }
 }
 
@@ -156,12 +245,17 @@ struct LiveMapMotion {
     }
 }
 
-struct ReplayHeadingMotion {
+// A critically damped turn toward the latest heading, in radians, over the shortest arc.
+struct HeadingMotion {
     private(set) var angle: Double?
     private var target: Double?
     private var velocity = 0.0
     private var lastFrame: TimeInterval?
-    private static let response = 26.0
+    private let response: Double
+
+    init(response: Double = 26) {
+        self.response = response
+    }
 
     mutating func receive(_ next: Double, at time: TimeInterval) {
         guard next.isFinite else { return }
@@ -183,10 +277,10 @@ struct ReplayHeadingMotion {
         let elapsed = min(0.1, time - lastFrame)
         self.lastFrame = time
         let error = angle - target
-        let combined = velocity + Self.response * error
-        let decay = exp(-Self.response * elapsed)
+        let combined = velocity + response * error
+        let decay = exp(-response * elapsed)
         self.angle = target + (error + combined * elapsed) * decay
-        velocity = (velocity - Self.response * combined * elapsed) * decay
+        velocity = (velocity - response * combined * elapsed) * decay
     }
 
     var settled: Bool {

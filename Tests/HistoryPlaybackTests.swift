@@ -91,6 +91,66 @@ final class HistoryPlaybackTests: XCTestCase {
         }
     }
 
+    func testFlightZoomsOutOnlyAsFarAsTheMoveNeeds() {
+        let start = CLLocationCoordinate2D(latitude: 45.5, longitude: -122.6)
+        let width = MKMapPointsPerMeterAtLatitude(start.latitude) * 2_000
+        func peak(toward destination: CLLocationCoordinate2D) -> (ratio: Double, length: TimeInterval) {
+            let from = MapCamera(centerCoordinate: start, distance: 2_000, heading: 30)
+            let to = MapCamera(centerCoordinate: destination, distance: 2_000, heading: 30)
+            let transition = MapCameraTransition.flight(from: from, to: to, start: 10, width: width)
+            XCTAssertEqual(transition.camera(at: 10), from)
+            XCTAssertEqual(transition.camera(at: 10 + transition.length), to)
+            var previous = 0.0
+            var highest = 0.0
+            let path = MKMapPoint(destination).x - MKMapPoint(start).x
+            for step in 1..<100 {
+                let camera = transition.camera(at: 10 + transition.length * Double(step) / 100)
+                let travelled = (MKMapPoint(camera.centerCoordinate).x - MKMapPoint(start).x) / path
+                XCTAssertGreaterThanOrEqual(travelled, previous - 1e-9)
+                XCTAssertEqual(camera.heading, 30, accuracy: 1e-9)
+                previous = travelled
+                highest = max(highest, camera.distance)
+            }
+            return (highest / 2_000, transition.length)
+        }
+        let hop = peak(toward: CLLocationCoordinate2D(latitude: 45.5, longitude: -122.596))
+        let city = peak(toward: CLLocationCoordinate2D(latitude: 45.5, longitude: -122.4))
+        let world = peak(toward: CLLocationCoordinate2D(latitude: 45.5, longitude: 2.3))
+        XCTAssertLessThan(hop.ratio, 1.2)
+        XCTAssertGreaterThan(city.ratio, 2)
+        XCTAssertGreaterThan(world.ratio, city.ratio * 100)
+        XCTAssertEqual(hop.length, 0.6, accuracy: 0.05)
+        XCTAssertGreaterThan(city.length, hop.length)
+        XCTAssertEqual(world.length, 2)
+    }
+
+    func testFlightTakesTheShortWayAcrossTheDateline() {
+        let from = MapCamera(centerCoordinate: CLLocationCoordinate2D(latitude: 0, longitude: 179), distance: 5_000)
+        let to = MapCamera(centerCoordinate: CLLocationCoordinate2D(latitude: 0, longitude: -179), distance: 5_000)
+        let transition = MapCameraTransition.flight(from: from, to: to, start: 0,
+            width: MKMapPointsPerMeterAtLatitude(0) * 5_000)
+        for step in 1..<20 {
+            let camera = transition.camera(at: transition.length * Double(step) / 20)
+            XCTAssertGreaterThan(abs(camera.centerCoordinate.longitude), 178.9)
+        }
+    }
+
+    func testMapAnchorTurnsWithTheCamera() {
+        let anchor = MKMapPoint(CLLocationCoordinate2D(latitude: 45.5, longitude: -122.6))
+        // The camera center sits 400 map points north of the visible center.
+        let target = MKMapPoint(x: anchor.x, y: anchor.y + 400)
+        func center(turning degrees: Double) -> MKMapPoint {
+            MKMapPoint(MapViewport.anchoredCenter(anchor.coordinate, projectionCenter: anchor.coordinate,
+                projectionTarget: target.coordinate, rotation: degrees * .pi / 180))
+        }
+        XCTAssertEqual(center(turning: 0).x, anchor.x, accuracy: 0.01)
+        XCTAssertEqual(center(turning: 0).y, anchor.y - 400, accuracy: 0.01)
+        // Facing east, the top of the screen is east, so the camera center lies east of the dot.
+        XCTAssertEqual(center(turning: 90).x, anchor.x + 400, accuracy: 0.01)
+        XCTAssertEqual(center(turning: 90).y, anchor.y, accuracy: 0.01)
+        XCTAssertEqual(center(turning: 180).y, anchor.y + 400, accuracy: 0.01)
+    }
+
     func testVisibleMapCenterTracksDrawerAndSafeArea() {
         let bounds = CGRect(x: 0, y: 0, width: 400, height: 900)
         XCTAssertEqual(MapViewport.center(in: bounds, safeTop: 60, drawerTop: 760), CGPoint(x: 200, y: 410))

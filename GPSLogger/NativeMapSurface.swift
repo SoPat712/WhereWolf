@@ -421,6 +421,7 @@ struct NativeMapSurface: UIViewRepresentable {
         coordinator.stopCameraTransition()
         coordinator.stopLiveMotion()
         coordinator.stopReplayHeading()
+        coordinator.stopHeadingMode()
         coordinator.clearMapContact()
         map.showsUserLocation = false
         map.delegate = nil
@@ -482,12 +483,19 @@ struct NativeMapSurface: UIViewRepresentable {
         private var cameraTransition: MapCameraTransition?
         private var cameraDestination: MapCamera?
         private var cameraDisplayLink: CADisplayLink?
-        private var replayHeading = ReplayHeadingMotion()
+        private var replayHeading = HeadingMotion()
         private var replayHeadingDisplayLink: CADisplayLink?
         private var liveMotion = LiveMapMotion()
         private var liveDisplayLink: CADisplayLink?
         private(set) var displayedLiveCoordinate: CLLocationCoordinate2D?
         private var latestLiveTimestamp: Date?
+        private var mapHeading = HeadingMotion(response: 9)
+        private var mapHeadingDisplayLink: CADisplayLink?
+        private var headingSource: DeviceHeadingSource?
+        private var followingHeading = false
+        // Switching to following flies to the live location on its next fix instead of jumping there.
+        private var flyToUser = false
+        private var cameraFlight = false
         private var replayDetached: Bool { parent.replayActive && !parent.replayFollowing && !parent.replayOverview }
 
         init(_ parent: NativeMapSurface) {
@@ -515,12 +523,13 @@ struct NativeMapSurface: UIViewRepresentable {
             let showLocation = visible && !parent.replayActive && parent.replayRoute == nil
             if map.showsUserLocation != showLocation { map.showsUserLocation = showLocation }
             if !showLocation { stopLiveMotion() }
-            if !visible || replayModeChanged || (parent.replayRoute == nil && !cameraZooming) {
+            if !visible || replayModeChanged
+                || (parent.replayRoute == nil && !cameraZooming && !(cameraFlight && parent.position.followsUserLocation)) {
                 stopCameraTransition()
             }
             if !visible || parent.replayRoute == nil {
                 stopReplayHeading()
-                if parent.replayRoute == nil { replayHeading = ReplayHeadingMotion() }
+                if parent.replayRoute == nil { replayHeading = HeadingMotion() }
             }
             updateOverlays(map)
             updateSelection(map)
@@ -530,6 +539,7 @@ struct NativeMapSurface: UIViewRepresentable {
             } else if !cameraActionAnimating && !interacting && !hasMapContact {
                 applyPosition(map, animated: animated && !UIAccessibility.isReduceMotionEnabled)
             }
+            updateHeadingMode(on: map)
             if visible && !wasVisible { viewportChanged(on: map) }
             alignMarkers(on: map)
         }
@@ -642,7 +652,7 @@ struct NativeMapSurface: UIViewRepresentable {
             guard let view = view as? ReplayMarkerView else { return }
             guard let direction = parent.replayRoute?.direction(at: parent.replayPosition) else {
                 stopReplayHeading()
-                replayHeading = ReplayHeadingMotion()
+                replayHeading = HeadingMotion()
                 view.face(nil)
                 return
             }
@@ -725,6 +735,7 @@ struct NativeMapSurface: UIViewRepresentable {
             revision += 1
             interacting = false
             followingInitialized = false
+            flyToUser = false
             if animated, parent.replayRoute != nil {
                 let destination: MapCamera?
                 switch next {
@@ -757,6 +768,10 @@ struct NativeMapSurface: UIViewRepresentable {
                 ), animated: animated)
                 if !animated { alignAnchor(on: map) }
             case .follow:
+                // Every later switch to following flies from wherever the map is; the first camera at launch does not.
+                flyToUser = hasInitialCamera && parent.sceneVisible && parent.pageActive
+                    && !UIAccessibility.isReduceMotionEnabled
+                if flyToUser { stopCameraTransition() }
                 followUser(on: map, animated: false)
             case .automatic:
                 anchorCoordinate = nil
@@ -772,6 +787,7 @@ struct NativeMapSurface: UIViewRepresentable {
             cameraDestination = nil
             cameraActionAnimating = false
             cameraZooming = false
+            cameraFlight = false
             zoomKeepsCentering = false
         }
 
@@ -819,19 +835,25 @@ struct NativeMapSurface: UIViewRepresentable {
         }
 
         private func startCameraTransition(to destination: MapCamera, on map: MKMapView,
-                                           zoom: Bool = false, keepsCentering: Bool = false) {
+                                           zoom: Bool = false, keepsCentering: Bool = false, flight: Bool = false) {
             stopCameraTransition()
             anchorCoordinate = nil
             correctionsRemaining = 0
             hasInitialCamera = true
             cameraDestination = destination
             cameraZooming = zoom
+            cameraFlight = flight
             zoomKeepsCentering = keepsCentering
             let anchored = zoom ? zoomAnchor(on: map) != nil : !replayDetached
             let start = CACurrentMediaTime()
-            cameraTransition = MapCameraTransition(from: MapCamera(map.camera),
-                to: anchored ? MapCamera(anchoredCamera(destination, on: map)) : destination,
-                start: start, length: zoom ? MapZoom.duration : MapCameraTransition.duration)
+            let from = MapCamera(map.camera)
+            let to = anchored ? MapCamera(anchoredCamera(destination, on: map)) : destination
+            if flight, let scale = mapScale(on: map) {
+                cameraTransition = .flight(from: from, to: to, start: start, width: scale.pointsPerPoint * Double(map.bounds.width))
+            } else {
+                cameraTransition = MapCameraTransition(from: from, to: to, start: start,
+                                                       length: zoom ? MapZoom.duration : MapCameraTransition.duration)
+            }
             if hasMapContact { cameraContactTime = start }
             cameraActionAnimating = true
             if UIAccessibility.isReduceMotionEnabled, let transition = cameraTransition {
@@ -853,12 +875,14 @@ struct NativeMapSurface: UIViewRepresentable {
                 return
             }
             guard !hasMapContact || UIAccessibility.isReduceMotionEnabled else { return }
-            let focusCoordinate = cameraZooming ? zoomAnchor(on: map) : nil
+            // A flight to the live location keeps aiming at it as it moves.
+            let focusCoordinate = cameraZooming || cameraFlight ? zoomAnchor(on: map) : nil
             if let focusCoordinate {
                 destination.centerCoordinate = focusCoordinate
             } else if !cameraZooming, !replayDetached, !parent.replayOverview, let coordinate = parent.selected {
                 destination.centerCoordinate = coordinate
             }
+            if let heading = followedHeading { destination.heading = heading }
             let anchored = cameraZooming ? focusCoordinate != nil : !replayDetached
             transition.to = anchored ? MapCamera(anchoredCamera(destination, on: map)) : destination
             cameraTransition = transition
@@ -875,11 +899,12 @@ struct NativeMapSurface: UIViewRepresentable {
             alignMarkers(on: map)
             if transition.progress(at: end) == 1 {
                 let overview = parent.replayOverview
-                let wasZooming = cameraZooming
+                let wasZooming = cameraZooming || cameraFlight
                 stopCameraTransition()
                 if wasZooming {
                     anchorCoordinate = focusCoordinate
                     correctionsRemaining = focusCoordinate == nil ? 0 : 6
+                    alignAnchor(on: map)
                 } else if !overview && !replayDetached {
                     anchorCoordinate = destination.centerCoordinate
                 }
@@ -894,18 +919,23 @@ struct NativeMapSurface: UIViewRepresentable {
             let visible = MapViewport.visibleRect(in: map.bounds,
                 safeTop: map.bounds.minY + map.safeAreaInsets.top,
                 drawerTop: (map as? AttributionMapView)?.drawerTop).insetBy(dx: 24, dy: 24)
-            guard visible.width > 0, visible.height > 0 else { return nil }
+            guard visible.width > 0, visible.height > 0, let scale = mapScale(on: map) else { return nil }
+            let required = max(max(minimum, rect.width) / visible.width, max(minimum, rect.height) / visible.height)
+            let distance = map.camera.centerCoordinateDistance * required / scale.pointsPerPoint
+                * MKMapPointsPerMeterAtLatitude(scale.center.latitude) / MKMapPointsPerMeterAtLatitude(center.latitude)
+            return MapCamera(centerCoordinate: center, distance: distance)
+        }
+
+        // Map points per screen point in the middle of the map, and the coordinate there.
+        private func mapScale(on map: MKMapView) -> (center: CLLocationCoordinate2D, pointsPerPoint: Double)? {
             let mid = CGPoint(x: map.bounds.midX, y: map.bounds.midY)
             let a = MKMapPoint(map.convert(mid, toCoordinateFrom: map))
             let b = MKMapPoint(map.convert(CGPoint(x: mid.x + 1, y: mid.y), toCoordinateFrom: map))
             var dx = b.x - a.x
             dx -= (dx / MKMapRect.world.width).rounded() * MKMapRect.world.width
-            let unitsPerPoint = hypot(dx, b.y - a.y)
-            guard unitsPerPoint > 0 else { return nil }
-            let required = max(max(minimum, rect.width) / visible.width, max(minimum, rect.height) / visible.height)
-            let distance = map.camera.centerCoordinateDistance * required / unitsPerPoint
-                * MKMapPointsPerMeterAtLatitude(a.coordinate.latitude) / MKMapPointsPerMeterAtLatitude(center.latitude)
-            return MapCamera(centerCoordinate: center, distance: distance)
+            let pointsPerPoint = hypot(dx, b.y - a.y)
+            guard pointsPerPoint > 0, pointsPerPoint.isFinite else { return nil }
+            return (a.coordinate, pointsPerPoint)
         }
 
         private func fitReplayRoute(on map: MKMapView, animated: Bool) {
@@ -943,7 +973,7 @@ struct NativeMapSurface: UIViewRepresentable {
                                    pitch: CGFloat(camera.pitch), heading: camera.heading)
             let previous = MapCamera(map.camera)
             if map.bounds.width > 0, map.bounds.height > 0, previous.distance > 1,
-               abs(previous.pitch - camera.pitch) < 0.1, abs(previous.heading - camera.heading) < 0.1 {
+               abs(previous.pitch - camera.pitch) < 0.1 {
                 let middle = map.convert(NativeMapSurface.cameraCenter(on: map), toCoordinateFrom: map)
                 let target = map.convert(NativeMapSurface.visibleCenter(on: map), toCoordinateFrom: map)
                 let scale = camera.distance / previous.distance
@@ -951,7 +981,7 @@ struct NativeMapSurface: UIViewRepresentable {
                 if CLLocationCoordinate2DIsValid(middle), CLLocationCoordinate2DIsValid(target), scale.isFinite {
                     // Apply the visible-area offset before starting an animation, avoiding a second pan afterward.
                     next.centerCoordinate = MapViewport.anchoredCenter(center, projectionCenter: middle,
-                                                                       projectionTarget: target, scale: scale)
+                        projectionTarget: target, scale: scale, rotation: (camera.heading - previous.heading) * .pi / 180)
                 }
             }
             return next
@@ -996,11 +1026,22 @@ struct NativeMapSurface: UIViewRepresentable {
         }
 
         private func followUser(on map: MKMapView, animated: Bool) {
+            // MapKit can report a fix while `update` runs, before it applies the follow request; that
+            // request decides whether to fly there.
             guard parent.sceneVisible, parent.pageActive, !parent.replayOverview, !cameraActionAnimating,
-                  parent.position.followsUserLocation, !interacting, !hasMapContact,
+                  parent.position.followsUserLocation, request == .follow, !interacting, !hasMapContact,
                   let coordinate = displayedLiveCoordinate ?? map.userLocation.location?.coordinate,
                   CLLocationCoordinate2DIsValid(coordinate) else { return }
-            if followingInitialized {
+            let heading = followedHeading
+            if flyToUser {
+                flyToUser = false
+                var destination = MapCamera(map.camera)
+                destination.centerCoordinate = coordinate
+                if let heading { destination.heading = heading }
+                startCameraTransition(to: destination, on: map, flight: true)
+                return
+            }
+            if followingInitialized, heading.map({ abs(remainder($0 - map.camera.heading, 360)) < 0.01 }) ?? true {
                 let point = map.convert(coordinate, toPointTo: map)
                 let target = NativeMapSurface.visibleCenter(on: map)
                 if hypot(point.x - target.x, point.y - target.y) < 0.1 {
@@ -1011,6 +1052,7 @@ struct NativeMapSurface: UIViewRepresentable {
             }
             var camera = MapCamera(map.camera)
             camera.centerCoordinate = coordinate
+            if let heading { camera.heading = heading }
             if !hasInitialCamera { camera.distance = 2_000 }
             followingInitialized = true
             revision += 1
@@ -1025,7 +1067,7 @@ struct NativeMapSurface: UIViewRepresentable {
             latestLiveTimestamp = nil
         }
 
-        private func receiveLiveLocation(_ location: CLLocation, on map: MKMapView) {
+        func receiveLiveLocation(_ location: CLLocation, on map: MKMapView) {
             guard parent.sceneVisible, parent.pageActive, map.showsUserLocation else { return }
             if let latestLiveTimestamp, location.timestamp < latestLiveTimestamp { return }
             latestLiveTimestamp = location.timestamp
@@ -1045,7 +1087,7 @@ struct NativeMapSurface: UIViewRepresentable {
                 displayedLiveCoordinate = location.coordinate
                 followUser(on: map, animated: false)
             } else if moving, liveDisplayLink == nil {
-                let target = CameraFrameTarget(coordinator: self, live: true)
+                let target = CameraFrameTarget(coordinator: self, kind: .live)
                 let link = CADisplayLink(target: target, selector: #selector(CameraFrameTarget.frame(_:)))
                 let maximum = Float(map.window?.windowScene?.screen.maximumFramesPerSecond ?? 60)
                 link.preferredFrameRateRange = CAFrameRateRange(minimum: min(60, maximum), maximum: maximum, preferred: maximum)
@@ -1073,6 +1115,87 @@ struct NativeMapSurface: UIViewRepresentable {
             }
         }
 
+        // Heading mode, as in Find My: while following, the map turns with the direction the phone faces.
+        private var headingModeActive: Bool {
+            parent.position.followsUserLocation && parent.position.followsUserHeading && parent.sceneVisible
+                && parent.pageActive && !parent.replayActive && parent.replayRoute == nil
+        }
+
+        private var followedHeading: CLLocationDirection? {
+            guard headingModeActive, let angle = mapHeading.angle else { return nil }
+            let degrees = (angle * 180 / .pi).truncatingRemainder(dividingBy: 360)
+            return degrees < 0 ? degrees + 360 : degrees
+        }
+
+        private func updateHeadingMode(on map: MKMapView) {
+            let active = headingModeActive
+            if active, let orientation = map.window?.windowScene?.interfaceOrientation {
+                headingSource?.orientation = orientation
+            }
+            guard active != followingHeading else { return }
+            followingHeading = active
+            if active {
+                guard DeviceHeadingSource.available else { return }
+                let source = DeviceHeadingSource()
+                source.onHeading = { [weak self] in self?.receiveDeviceHeading($0) }
+                if let orientation = map.window?.windowScene?.interfaceOrientation { source.orientation = orientation }
+                source.start()
+                headingSource = source
+                return
+            }
+            stopHeadingMode()
+            // Leaving heading mode while still following turns the map back to north.
+            if parent.position.followsUserLocation, parent.sceneVisible, parent.pageActive,
+               !parent.replayActive, parent.replayRoute == nil, NativeMapSurface.isRotated(heading: map.camera.heading) {
+                _ = faceNorth(on: map)
+            }
+        }
+
+        func stopHeadingMode() {
+            headingSource?.stop()
+            headingSource = nil
+            mapHeadingDisplayLink?.invalidate()
+            mapHeadingDisplayLink = nil
+            mapHeading = HeadingMotion(response: 9)
+            followingHeading = false
+        }
+
+        func receiveDeviceHeading(_ degrees: CLLocationDirection, at time: TimeInterval = CACurrentMediaTime()) {
+            guard let map, headingModeActive, degrees.isFinite else { return }
+            // Start from the map's own heading, so entering heading mode turns smoothly.
+            if mapHeading.angle == nil { mapHeading.receive(map.camera.heading * .pi / 180, at: time) }
+            mapHeading.receive(degrees * .pi / 180, at: time)
+            if UIAccessibility.isReduceMotionEnabled {
+                mapHeading.finish()
+                if !cameraActionAnimating { followUser(on: map, animated: false) }
+                return
+            }
+            guard mapHeadingDisplayLink == nil else { return }
+            let target = CameraFrameTarget(coordinator: self, kind: .heading)
+            let link = CADisplayLink(target: target, selector: #selector(CameraFrameTarget.frame(_:)))
+            let maximum = Float(map.window?.windowScene?.screen.maximumFramesPerSecond ?? 60)
+            link.preferredFrameRateRange = CAFrameRateRange(minimum: min(60, maximum), maximum: maximum, preferred: maximum)
+            link.add(to: .main, forMode: .common)
+            mapHeadingDisplayLink = link
+        }
+
+        func advanceMapHeading(at time: TimeInterval) {
+            guard let map, headingModeActive else {
+                mapHeadingDisplayLink?.invalidate()
+                mapHeadingDisplayLink = nil
+                return
+            }
+            mapHeading.advance(at: time)
+            let settled = UIAccessibility.isReduceMotionEnabled || mapHeading.settled
+            if settled { mapHeading.finish() }
+            // A running flight or zoom applies the heading itself.
+            if !cameraActionAnimating { followUser(on: map, animated: false) }
+            if settled {
+                mapHeadingDisplayLink?.invalidate()
+                mapHeadingDisplayLink = nil
+            }
+        }
+
         func mapContactChanged(_ active: Bool, at time: TimeInterval = CACurrentMediaTime()) {
             guard hasMapContact != active else { return }
             hasMapContact = active
@@ -1080,7 +1203,8 @@ struct NativeMapSurface: UIViewRepresentable {
                 cameraContactTime = cameraTransition == nil ? nil : time
             } else if let paused = cameraContactTime, let transition = cameraTransition {
                 cameraTransition = MapCameraTransition(from: transition.from, to: transition.to,
-                    start: transition.start + max(0, time - paused), length: transition.length)
+                    start: transition.start + max(0, time - paused), length: transition.length,
+                    flightWidth: transition.flightWidth)
             }
             if !active { cameraContactTime = nil }
             // A tap resumes following; a recognized pan retains its own camera and deferred delegate commit.
@@ -1115,15 +1239,37 @@ struct NativeMapSurface: UIViewRepresentable {
             return view.subviews.contains { hasActiveGesture(in: $0) }
         }
 
-        @objc private func gestureChanged(_ gesture: UIGestureRecognizer) {
+        @objc func gestureChanged(_ gesture: UIGestureRecognizer) {
             if gesture.state == .began || gesture.state == .changed
                 || (gesture is UITapGestureRecognizer && gesture.state == .ended) {
                 beginInteraction()
             }
+            // MapKit can report the last region while the finger is still down, and nothing after a
+            // gesture that stops without decelerating.
+            if gesture.state == .ended || gesture.state == .cancelled, let map { commitWhenSettled(map) }
+        }
+
+        private func commitWhenSettled(_ map: MKMapView) {
+            let displayed = MapCamera(map.camera)
+            let currentRevision = revision
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self, weak map] in
+                // A map still decelerating reports through regionDidChange when it stops.
+                guard let self, let map, self.interacting, self.revision == currentRevision,
+                      !self.hasActiveGesture(in: map), MapCamera(map.camera) == displayed else { return }
+                self.commitUserCamera(displayed)
+            }
+        }
+
+        private func commitUserCamera(_ camera: MapCamera) {
+            interacting = false
+            request = .camera(camera)
+            parent.position = .camera(camera)
+            parent.onCameraChange(camera, true)
         }
 
         private func beginInteraction() {
             stopCameraTransition()
+            flyToUser = false
             guard !interacting else { return }
             interacting = true
             anchorCoordinate = nil
@@ -1174,12 +1320,11 @@ struct NativeMapSurface: UIViewRepresentable {
                 guard let self, let mapView, self.revision == currentRevision,
                       !self.hasActiveGesture(in: mapView), MapCamera(mapView.camera) == displayed else { return }
                 if byUser {
-                    self.interacting = false
-                    self.request = .camera(reported)
-                    self.parent.position = .camera(reported)
-                } else if self.interacting {
+                    guard self.interacting else { return }
+                    self.commitUserCamera(reported)
                     return
                 }
+                guard !self.interacting else { return }
                 self.parent.onCameraChange(reported, byUser)
             }
         }
@@ -1252,17 +1397,62 @@ private extension MKMapCamera {
 
 @MainActor
 private final class CameraFrameTarget: NSObject {
+    enum Kind { case camera, live, heading }
     private weak var coordinator: NativeMapSurface.Coordinator?
-    private let live: Bool
+    private let kind: Kind
 
-    init(coordinator: NativeMapSurface.Coordinator, live: Bool = false) {
+    init(coordinator: NativeMapSurface.Coordinator, kind: Kind = .camera) {
         self.coordinator = coordinator
-        self.live = live
+        self.kind = kind
     }
 
     @objc func frame(_ link: CADisplayLink) {
         guard let coordinator else { link.invalidate(); return }
-        if live { coordinator.advanceLiveLocation(at: link.timestamp) }
-        else { coordinator.advanceCameraTransition(at: link.timestamp) }
+        switch kind {
+        case .camera: coordinator.advanceCameraTransition(at: link.timestamp)
+        case .live: coordinator.advanceLiveLocation(at: link.timestamp)
+        case .heading: coordinator.advanceMapHeading(at: link.timestamp)
+        }
+    }
+}
+
+// Compass readings for heading mode, from a manager of its own so GLManager's tracking never changes.
+@MainActor
+final class DeviceHeadingSource: NSObject, CLLocationManagerDelegate {
+    static var available: Bool { CLLocationManager.headingAvailable() }
+    var onHeading: ((CLLocationDirection) -> Void)?
+    private let manager = CLLocationManager()
+
+    var orientation: UIInterfaceOrientation = .portrait {
+        didSet {
+            // Interface landscape left is the device turned right, and the reverse.
+            let device: CLDeviceOrientation
+            switch orientation {
+            case .portraitUpsideDown: device = .portraitUpsideDown
+            case .landscapeLeft: device = .landscapeRight
+            case .landscapeRight: device = .landscapeLeft
+            default: device = .portrait
+            }
+            if manager.headingOrientation != device { manager.headingOrientation = device }
+        }
+    }
+
+    override init() {
+        super.init()
+        manager.delegate = self
+        manager.headingFilter = 1
+    }
+
+    func start() { manager.startUpdatingHeading() }
+
+    func stop() {
+        manager.stopUpdatingHeading()
+        manager.delegate = nil
+    }
+
+    nonisolated func locationManager(_ manager: CLLocationManager, didUpdateHeading heading: CLHeading) {
+        guard heading.headingAccuracy >= 0 else { return }
+        let value = heading.trueHeading >= 0 ? heading.trueHeading : heading.magneticHeading
+        MainActor.assumeIsolated { onHeading?(value) }
     }
 }

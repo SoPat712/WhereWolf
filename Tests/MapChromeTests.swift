@@ -196,6 +196,7 @@ final class MapChromeTests: XCTestCase {
             coordinator.stopLiveMotion()
             let location = FixedUserLocation(coordinate: CLLocationCoordinate2D(latitude: 45, longitude: -122))
             coordinator.mapView(map, didUpdate: location)
+            coordinator.advanceCameraTransition(at: CACurrentMediaTime() + 5)
             self.assertCentered(location.location!.coordinate, on: map, tolerance: 2)
 
             coordinator.mapContactChanged(true)
@@ -239,6 +240,7 @@ final class MapChromeTests: XCTestCase {
             coordinator.stopLiveMotion()
             let location = FixedUserLocation(coordinate: CLLocationCoordinate2D(latitude: 45, longitude: -122))
             coordinator.mapView(map, didUpdate: location)
+            coordinator.advanceCameraTransition(at: CACurrentMediaTime() + 5)
             self.assertCentered(location.location!.coordinate, on: map, tolerance: 2)
 
             let displaced = map.camera.copy() as! MKMapCamera
@@ -250,6 +252,8 @@ final class MapChromeTests: XCTestCase {
 
             surface.recenterAction += 1
             coordinator.update(surface, animated: false)
+            XCTAssertEqual(map.convert(location.location!.coordinate, toPointTo: map).y, point.y, accuracy: 1)
+            coordinator.advanceCameraTransition(at: CACurrentMediaTime() + 5)
             self.assertCentered(location.location!.coordinate, on: map, tolerance: 2)
             XCTAssertEqual(map.camera.centerCoordinateDistance, distance, accuracy: 1)
             XCTAssertTrue(coordinator.parent.position.followsUserLocation)
@@ -351,6 +355,147 @@ final class MapChromeTests: XCTestCase {
             coordinator.advanceCameraTransition(at: CACurrentMediaTime() + 1)
             XCTAssertEqual(remainder(map.camera.heading, 360), 0, accuracy: 0.5)
             XCTAssertEqual(map.camera.centerCoordinateDistance, distance, accuracy: distance * 0.01)
+        }
+    }
+
+    func testCompassTakesItsTapInsteadOfTheMap() async throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.first as? UIWindowScene)
+        let previous = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        let map = MKMapView()
+        var taps = 0
+        let host = FullScreenMapHost(rootView: AnyView(ZStack(alignment: .topTrailing) {
+            MapViewHolder(map: map).ignoresSafeArea()
+            MapCompassControl(readMap: { map }, action: { taps += 1 })
+                .frame(width: MapChrome.width, height: MapChrome.width)
+                .padding(.top, 200)
+                .padding(.trailing, MapChrome.edge)
+        }))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer {
+            window.isHidden = true
+            previous?.makeKey()
+        }
+        host.view.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(200))
+        @MainActor func findCompass(in view: UIView) -> UIControl? {
+            if view.accessibilityIdentifier == "overland.map.compass" { return view as? UIControl }
+            return view.subviews.lazy.compactMap { findCompass(in: $0) }.first
+        }
+        let compass = try XCTUnwrap(findCompass(in: host.view))
+        let center = compass.convert(CGPoint(x: compass.bounds.midX, y: compass.bounds.midY), to: host.view)
+        let hit = try XCTUnwrap(host.view.hitTest(center, with: nil))
+        XCTAssertTrue(hit.isDescendant(of: compass), "\(hit)")
+        compass.sendActions(for: .touchUpInside)
+        XCTAssertEqual(taps, 1)
+        let elsewhere = try XCTUnwrap(host.view.hitTest(CGPoint(x: host.view.bounds.midX, y: host.view.bounds.midY), with: nil))
+        XCTAssertTrue(elsewhere.isDescendant(of: map), "\(elsewhere)")
+    }
+
+    func testShowMyLocationFliesThereInsteadOfJumping() async throws {
+        try await withMap { surface, coordinator, map in
+            var surface = surface
+            surface.replayRoute = nil
+            surface.replayActive = false
+            surface.selected = nil
+            coordinator.update(surface, animated: false)
+            let live = CLLocationCoordinate2D(latitude: 45.5152, longitude: -122.6784)
+            coordinator.receiveLiveLocation(CLLocation(latitude: live.latitude, longitude: live.longitude), on: map)
+            map.setCamera(MKMapCamera(lookingAtCenter: CLLocationCoordinate2D(latitude: 40, longitude: -100),
+                                      fromDistance: 2_000, pitch: 0, heading: 0), animated: false)
+            surface.position = .userLocation(fallback: .automatic)
+            surface.recenterAction += 1
+            coordinator.update(surface, animated: false)
+            let start = CACurrentMediaTime()
+            XCTAssertEqual(map.camera.centerCoordinate.longitude, -100, accuracy: 0.01)
+            coordinator.advanceCameraTransition(at: start + 0.9)
+            XCTAssertGreaterThan(map.camera.centerCoordinateDistance, 50_000)
+            let middle = map.camera.centerCoordinate.longitude
+            XCTAssertTrue(middle < -100.5 && middle > -122, "\(middle)")
+            coordinator.advanceCameraTransition(at: start + 5)
+            XCTAssertEqual(map.camera.centerCoordinateDistance, 2_000, accuracy: 20)
+            self.assertCentered(live, on: map, tolerance: 2)
+        }
+    }
+
+    func testADragStopsFollowingAtOnceAndCommitsWhenTheFingerLifts() async throws {
+        try await withMap { surface, coordinator, map in
+            var surface = surface
+            surface.replayRoute = nil
+            surface.replayActive = false
+            surface.selected = nil
+            surface.position = .userLocation(fallback: .automatic)
+            var interactions = 0
+            var committed: MapCamera?
+            surface.onInteraction = { interactions += 1 }
+            surface.onCameraChange = { camera, byUser in if byUser { committed = camera } }
+            coordinator.update(surface, animated: false)
+            let live = CLLocationCoordinate2D(latitude: 45.5152, longitude: -122.6784)
+            coordinator.receiveLiveLocation(CLLocation(latitude: live.latitude, longitude: live.longitude), on: map)
+            coordinator.advanceCameraTransition(at: CACurrentMediaTime() + 5)
+
+            let pan = HeldPan()
+            map.addGestureRecognizer(pan)
+            defer { map.removeGestureRecognizer(pan) }
+            pan.held = .began
+            coordinator.gestureChanged(pan)
+            try await Task.sleep(for: .milliseconds(20))
+            XCTAssertEqual(interactions, 1)
+
+            // MapKit reports this region while the finger is down, and nothing once it lifts.
+            let moved = map.camera.copy() as! MKMapCamera
+            moved.centerCoordinate.latitude += 0.01
+            map.setCamera(moved, animated: false)
+            try await Task.sleep(for: .milliseconds(50))
+            XCTAssertNil(committed)
+            pan.held = .ended
+            coordinator.gestureChanged(pan)
+            try await Task.sleep(for: .milliseconds(300))
+            let camera = try XCTUnwrap(committed)
+            XCTAssertEqual(camera.centerCoordinate.latitude, moved.centerCoordinate.latitude, accuracy: 1e-6)
+            XCTAssertFalse(coordinator.parent.position.followsUserLocation)
+        }
+    }
+
+    func testHeadingModeTurnsTheMapAroundTheDotAndReturnsNorth() async throws {
+        try await withMap { surface, coordinator, map in
+            var surface = surface
+            surface.replayRoute = nil
+            surface.replayActive = false
+            surface.selected = nil
+            surface.position = .userLocation(fallback: .automatic)
+            coordinator.update(surface, animated: false)
+            let live = CLLocationCoordinate2D(latitude: 45.5152, longitude: -122.6784)
+            coordinator.receiveLiveLocation(CLLocation(latitude: live.latitude, longitude: live.longitude), on: map)
+            coordinator.advanceCameraTransition(at: CACurrentMediaTime() + 5)
+            self.assertCentered(live, on: map, tolerance: 2)
+
+            surface.position = .userLocation(followsHeading: true, fallback: .automatic)
+            coordinator.update(surface, animated: false)
+            let start = CACurrentMediaTime()
+            coordinator.receiveDeviceHeading(90, at: start)
+            for frame in 1...120 {
+                coordinator.advanceMapHeading(at: start + Double(frame) / 60)
+                self.assertCentered(live, on: map, tolerance: 2)
+                if frame == 6 {
+                    XCTAssertTrue(map.camera.heading > 5 && map.camera.heading < 85, "\(map.camera.heading)")
+                }
+            }
+            XCTAssertEqual(map.camera.heading, 90, accuracy: 0.5)
+            XCTAssertEqual(map.camera.centerCoordinateDistance, 2_000, accuracy: 20)
+
+            surface.position = .userLocation(fallback: .automatic)
+            coordinator.update(surface, animated: false)
+            let turn = CACurrentMediaTime()
+            coordinator.advanceCameraTransition(at: turn + MapZoom.duration / 2)
+            XCTAssertTrue(map.camera.heading > 5 && map.camera.heading < 85, "\(map.camera.heading)")
+            self.assertCentered(live, on: map, tolerance: 2)
+            coordinator.advanceCameraTransition(at: turn + 1)
+            XCTAssertEqual(remainder(map.camera.heading, 360), 0, accuracy: 0.5)
+            self.assertCentered(live, on: map, tolerance: 2)
+            coordinator.receiveDeviceHeading(180)
+            XCTAssertEqual(remainder(map.camera.heading, 360), 0, accuracy: 0.5)
         }
     }
 
@@ -461,5 +606,19 @@ private final class FixedUserLocation: MKUserLocation {
     init(coordinate: CLLocationCoordinate2D) {
         fix = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
         super.init()
+    }
+}
+
+private struct MapViewHolder: UIViewRepresentable {
+    let map: MKMapView
+    func makeUIView(context: Context) -> MKMapView { map }
+    func updateUIView(_ map: MKMapView, context: Context) {}
+}
+
+private final class HeldPan: UIPanGestureRecognizer {
+    var held: UIGestureRecognizer.State = .possible
+    override var state: UIGestureRecognizer.State {
+        get { held }
+        set { held = newValue }
     }
 }

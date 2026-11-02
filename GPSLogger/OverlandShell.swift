@@ -243,7 +243,7 @@ struct DrawerTabStrip: View {
     }
 }
 
-private final class FullScreenMapHost: UIViewController {
+final class FullScreenMapHost: UIViewController {
     var onUserLocation: ((CLLocation?) -> Void)?
     private let host: UIHostingController<AnyView>
     private weak var observedMap: MKMapView?
@@ -325,6 +325,8 @@ private final class FullScreenMapHost: UIViewController {
 }
 
 private final class FullScreenMapTouchView: UIView {
+    // Chrome drawn over the map takes its own touches; every other touch goes to the map beneath it.
+    private static let chromeIdentifiers: Set<String> = ["overland.map.controls", "overland.map.compass"]
     var onMapFound: ((MKMapView) -> Void)?
     private weak var map: MKMapView?
 
@@ -334,7 +336,7 @@ private final class FullScreenMapTouchView: UIView {
         let map = currentMap()
         var ancestor = hit
         while let candidate = ancestor, candidate !== self {
-            if candidate.accessibilityIdentifier == "overland.map.controls" { return hit }
+            if let identifier = candidate.accessibilityIdentifier, Self.chromeIdentifiers.contains(identifier) { return hit }
             ancestor = candidate.superview
         }
         guard let map else { return hit }

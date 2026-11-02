@@ -280,13 +280,26 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   points above the drawer, preserving zoom and heading. Replay overview fits the trail
   when requested and does not refit as the drawer moves. Manual map gestures release the camera anchor while replay
   continues, including after gesture deceleration and at the final frame.
+  A map gesture stops live following as it begins, so the location button empties at once.
+  MapKit can report the last region while the finger is still down and nothing afterward,
+  so a gesture that stops without decelerating commits its camera when the finger lifts.
   Selecting another point or Show My Location resumes anchoring.
   While a finger is on the map, pause automatic camera corrections and camera
   transition time so MapKit can take the pan; the contact recognizer must never
   recognize or prevent gestures. Explicit recenter requests must reach the map
   even when its cached request is already follow.
   Offset programmatic cameras before animating, and ignore subpixel follow
-  jitter. Do not animate to the full-map center and correct it afterward.
+  jitter. Do not animate to the full-map center and correct it afterward. The offset
+  turns with any change of heading, so the dot holds still while the map rotates.
+  Every switch to following the live location flies there along `MapFlight`, van Wijk and
+  Nuij's zoom-and-pan path: long moves zoom out on the way, short ones are nearly a pan,
+  0.6–2 seconds. It keeps zoom and heading and aims at the moving fix; the first camera at
+  launch and Reduce Motion jump instead. Once following, the location button switches a
+  Find My style heading mode on and off where the device has a compass. `DeviceHeadingSource`
+  reads the compass from its own `CLLocationManager`, only while heading mode is on and the
+  map is visible, and a `HeadingMotion` spring turns the map about the dot. Turning heading
+  mode off while still following turns the map north; map gestures and replay leave the
+  rotation as it is.
   Live presentation uses a critically damped `LiveMapMotion`, preserving velocity
   as fixes arrive and settling at the last fix without extrapolating. Move the
   native Apple location view and camera from that same displayed coordinate.
@@ -309,6 +322,9 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   A compass below Zoom Out appears while the heading is more than 1° from north, reported
   only when that changes. MapKit's compass draws the live needle; a tap turns north through
   the zoom buttons' camera transition, keeping center, distance, pitch and replay state.
+  In heading mode the tap ends heading mode instead, which turns the map north.
+  The map host sends every touch to the map except chrome it lists by identifier, so a new
+  control over the map must be added to `FullScreenMapTouchView`'s list.
   Move the native attribution views in UIKit without changing map margins or
   the camera projection. Give Legal a 44-point touch target, try its native
   accessibility action, and fall back to Apple's Maps legal page if unavailable.

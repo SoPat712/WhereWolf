@@ -159,7 +159,7 @@ struct TripView: View {
                     IntentDonations.tripStarted(mode: GLManager.shared().currentTripMode)
                 }
                 trip = TripMapState()
-                camera = .userLocation(fallback: .automatic)
+                camera = .userLocation(followsHeading: camera.followsUserHeading, fallback: .automatic)
                 bridge.refresh()
             } label: {
                 Label(bridge.tripInProgress ? "Stop Trip" : "Start Trip",

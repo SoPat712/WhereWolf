@@ -136,9 +136,6 @@ struct OverlandRootView: View {
                 .padding(.trailing, MapChrome.edge)
                 .padding(.top, MapChrome.topInset)
             }
-            .onChange(of: recenterRequest) { _, _ in
-                camera = .userLocation(fallback: .automatic)
-            }
     }
 
     @ViewBuilder
@@ -229,6 +226,10 @@ struct OverlandRootView: View {
             replayCameraFree = true
             replayOverview = false
         }
+        // A drag stops following as it starts, so the location button empties at once.
+        if camera.followsUserLocation, let map = drawerGeometry.readMap?() {
+            camera = .camera(MapCamera(map.camera))
+        }
     }
 
     private func cameraChanged(_ current: MapCamera, byUser: Bool) {
@@ -261,13 +262,15 @@ struct OverlandRootView: View {
             Button(action: locationButtonPressed) {
                 Image(systemName: mapTab == 0 && history.isBrowsing
                       ? (replayOverview || replayCameraFree ? "location" : "location.fill")
+                      : camera.followsUserHeading ? "location.north.line.fill"
                       : (camera.followsUserLocation ? "location.fill" : "location"))
                     .frame(width: 48, height: 48)
                     .contentShape(Rectangle())
             }
             .accessibilityLabel(mapTab == 0 && history.isBrowsing
                                  ? (locationButtonShowsOverview ? "Show Entire Trail" : "Show Recorded Location")
-                                 : "Show My Location")
+                                 : !camera.followsUserLocation || !DeviceHeadingSource.available ? "Show My Location"
+                                 : camera.followsUserHeading ? "Stop Following Heading" : "Follow Heading")
             .accessibilityIdentifier("overland.map.location")
             .accessibilityValue(auditValue)
             Button { zoomMap(inward: true) } label: {
@@ -303,6 +306,11 @@ struct OverlandRootView: View {
     }
 
     private func faceNorth() {
+        // Leaving heading mode turns the map north on its own.
+        if camera.followsUserHeading {
+            camera = .userLocation(fallback: .automatic)
+            return
+        }
         guard let map = drawerGeometry.readMap?(), let result = NativeMapSurface.faceNorth(on: map) else { return }
         applyCameraResult(result)
     }
@@ -334,6 +342,11 @@ struct OverlandRootView: View {
                 replayCameraAction &+= 1
             }
             if !replayOverview { focusHistoryPosition(history.cameraCenter) }
+            return
+        }
+        // As in Find My, once the map follows you the button switches heading mode on and off.
+        if camera.followsUserLocation, DeviceHeadingSource.available {
+            camera = .userLocation(followsHeading: !camera.followsUserHeading, fallback: .automatic)
             return
         }
         trip.followingLive = true
@@ -386,6 +399,7 @@ struct OverlandRootView: View {
         replayOverview = false
         replayCameraFree = false
         withAnimation(.easeInOut(duration: 0.35)) { history.returnToLive() }
+        camera = .userLocation(fallback: .automatic)
         recenterRequest += 1
     }
 
@@ -494,7 +508,7 @@ private final class OverlandHostingController: UIHostingController<AnyView> {
 
 // MapKit's compass draws the live heading. A tap goes through the same camera transition as the zoom
 // buttons, so following and replay keep their state while the map turns north.
-private struct MapCompassControl: UIViewRepresentable {
+struct MapCompassControl: UIViewRepresentable {
     let readMap: (() -> MKMapView?)?
     let action: () -> Void
 
