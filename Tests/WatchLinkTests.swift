@@ -1,5 +1,5 @@
 import XCTest
-@testable import Overland
+@testable import Where
 
 final class WatchLinkTests: XCTestCase {
     private let status = WatchStatus(
@@ -42,7 +42,7 @@ final class WatchLinkTests: XCTestCase {
     func testEmbeddedWatchAppBelongsToThisPhoneApp() throws {
         let phone = Bundle.main
         let identifier = try XCTUnwrap(phone.bundleIdentifier)
-        let watch = try XCTUnwrap(Bundle(url: phone.bundleURL.appendingPathComponent("Watch/OverlandWatch.app")))
+        let watch = try XCTUnwrap(Bundle(url: phone.bundleURL.appendingPathComponent("Watch/WhereWatch.app")))
         XCTAssertEqual(watch.bundleIdentifier, identifier + ".watchkitapp")
         XCTAssertEqual(watch.object(forInfoDictionaryKey: "WKCompanionAppBundleIdentifier") as? String, identifier)
         for key in ["CFBundleShortVersionString", "CFBundleVersion"] {

@@ -40,7 +40,7 @@ def wait_for_app():
         buttons = {e.get("AXLabel") for e in state() if e.get("type") == "Button"}
         if {"Tracker", "Trip", "Settings"} <= buttons:
             return
-    raise AssertionError("Overland did not finish presenting its drawer tabs")
+    raise AssertionError("Where did not finish presenting its drawer tabs")
 
 
 def element(label, kind=None):

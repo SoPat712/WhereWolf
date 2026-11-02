@@ -1,5 +1,5 @@
 import XCTest
-@testable import Overland
+@testable import Where
 
 final class TipDonationTests: XCTestCase {
     private let locale = Locale(identifier: "en_US")

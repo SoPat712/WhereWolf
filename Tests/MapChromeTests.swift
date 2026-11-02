@@ -1,7 +1,7 @@
 import MapKit
 import SwiftUI
 import XCTest
-@testable import Overland
+@testable import Where
 
 @MainActor
 final class MapChromeTests: XCTestCase {

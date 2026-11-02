@@ -1,6 +1,6 @@
 import XCTest
 import MapKit
-@testable import Overland
+@testable import Where
 
 @MainActor
 final class ReplayRouteRendererTests: XCTestCase {

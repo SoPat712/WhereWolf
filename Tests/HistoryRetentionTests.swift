@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import Overland
+@testable import Where
 
 final class HistoryRetentionTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 2_000_000_000)

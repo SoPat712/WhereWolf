@@ -2,9 +2,12 @@
 
 Fork of [aaronpk/Overland-iOS](https://github.com/aaronpk/Overland-iOS).
 
-The app is named Where wherever people see it: the Home Screen, watch, widgets, Live
-Activity, iCloud Drive folder, Siri and all interface text. Targets, bundle identifiers,
-code names, the upload API and the credits to the original Overland keep the Overland name.
+The app is named Where: the Home Screen, watch, widgets, Live Activity, iCloud Drive
+folder, Siri, interface text, the Xcode project, workspace, scheme, targets (`Where`,
+`WhereTests`, `WhereTrackingActivity`, `WhereWatch`) and Swift module (`Where-Swift.h`).
+Bundle identifiers, `OVERLAND_*` build settings, defaults keys, Swift type and source file
+names, the upload API and the credits to the original Overland keep the Overland name, so
+installed copies update in place and saved data stays readable.
 README screenshots live in `docs/screenshots` and are linked through
 raw.githubusercontent.com on `main`.
 
@@ -14,7 +17,7 @@ Requires Xcode 27+, CocoaPods, minimum deployment target iOS 17.0.
 
 ```bash
 pod install
-nice -n 10 xcodebuild -jobs 1 -workspace Overland.xcworkspace -scheme Overland \
+nice -n 10 xcodebuild -jobs 1 -workspace Where.xcworkspace -scheme Where \
   -destination 'platform=iOS Simulator,name=Overland Regression' build
 ```
 
@@ -71,7 +74,7 @@ nice -n 10 xcodebuild -jobs 1 -workspace Overland.xcworkspace -scheme Overland \
 ## Regression tests
 
 ```bash
-nice -n 10 xcodebuild -jobs 1 -workspace Overland.xcworkspace -scheme Overland \
+nice -n 10 xcodebuild -jobs 1 -workspace Where.xcworkspace -scheme Where \
   -destination 'platform=iOS Simulator,name=Overland Regression' \
   -parallel-testing-enabled NO test
 ```
@@ -351,7 +354,7 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   Delegate paths also handle significant-change, region, and visit events.
   Live updates feed `-[GLManager processEngineLocation:]`. Its dedicated info
   explains benefits, accuracy/pause tradeoffs, trip behavior and background fallback.
-- **Watch app**: `OverlandWatch` is a small companion for managing tracking from the
+- **Watch app**: `WhereWatch` is a small companion for managing tracking from the
   wrist: tracking on/off, retry updates, start/end trip, send now and Usage Preset. It
   holds no location or queue data. `OverlandWatchLink` activates `WCSession` at launch
   and sends each command through the same calls as the phone's controls, with the same
@@ -362,7 +365,7 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   and only with the watch app installed. Tracking must never depend on the link. Keep the
   watch version and build number equal to `GPSLogger/Info.plist`.
   A signing profile without the watch bundle identifier can build the phone app alone with
-  `OVERLAND_WATCH_SIGNING=NO EXCLUDED_SOURCE_FILE_NAMES=OverlandWatch.app`.
+  `OVERLAND_WATCH_SIGNING=NO EXCLUDED_SOURCE_FILE_NAMES=WhereWatch.app`.
 - **Reminder action**: the missed-update reminder offers a background Resume Tracking
   action, which also appears when iOS mirrors the notification to a watch and runs on
   the iPhone without a watch app. A background launch restores tracking through
@@ -436,7 +439,7 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   extension and opt-in `SilentAudioSession`. Live Activity staleness mirrors the
   pending `reminder` notification deadline. Keep its scheduling rules in
   `GLManager`; do not drive activity staleness from another timeout. The shared ActivityAttributes
-  source belongs to both the app and `OverlandTrackingActivity` targets. Blank uses
+  source belongs to both the app and `WhereTrackingActivity` targets. Blank uses
   `IslandOnlyTrackingAttributes` in the app target only. Do not register it in the
   widget extension: the unrendered activity is what avoids the Lock Screen card.
   End and recover both activity types, and replace the type when appearance changes.

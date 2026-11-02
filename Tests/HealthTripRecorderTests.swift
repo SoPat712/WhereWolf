@@ -1,7 +1,7 @@
 import CoreLocation
 import Foundation
 import XCTest
-@testable import Overland
+@testable import Where
 
 final class HealthTripRecorderTests: XCTestCase {
     private final class FakeHealthClient: HealthTripHealthClient {

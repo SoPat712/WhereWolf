@@ -1,7 +1,7 @@
 import Foundation
 import UIKit
 import XCTest
-@testable import Overland
+@testable import Where
 
 final class TripModeTests: XCTestCase {
     private var defaults: UserDefaults!

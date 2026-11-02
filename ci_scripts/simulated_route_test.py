@@ -130,7 +130,7 @@ def main():
         runtime_log = args.output.with_suffix(".runtime.log").open("w")
         runtime_stream = subprocess.Popen(
             ["xcrun", "simctl", "spawn", udid, "log", "stream", "--style", "compact",
-             "--level", "default", "--predicate", 'process == "Overland"'],
+             "--level", "default", "--predicate", 'process == "Where"'],
             stdout=runtime_log, stderr=subprocess.STDOUT)
         if existing:
             run("xcrun", "simctl", "uninstall", udid, BUNDLE)

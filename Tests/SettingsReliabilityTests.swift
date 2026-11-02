@@ -1,5 +1,5 @@
 import XCTest
-@testable import Overland
+@testable import Where
 
 final class SettingsReliabilityTests: XCTestCase {
     func testWifiSelectionTreatsBSSIDSpellingsAsOneNetwork() throws {

@@ -2,7 +2,7 @@ import Observation
 import SwiftUI
 import UIKit
 import XCTest
-@testable import Overland
+@testable import Where
 
 @MainActor
 final class DrawerLayoutTests: XCTestCase {

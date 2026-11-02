@@ -1,6 +1,6 @@
 //
 //  TripControls.swift
-//  OverlandLiveActivity
+//  WhereLiveActivity
 //
 //  Controls for Control Center, the Lock Screen and the Action button (iOS 18+). They read the
 //  trip state the app shares in the App Group, and their intents run in the app.

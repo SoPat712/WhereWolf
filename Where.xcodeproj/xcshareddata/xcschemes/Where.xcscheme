@@ -15,9 +15,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "0FFD31511BAB7A34009B3A03"
-               BuildableName = "Overland.app"
-               BlueprintName = "Overland"
-               ReferencedContainer = "container:Overland.xcodeproj">
+               BuildableName = "Where.app"
+               BlueprintName = "Where"
+               ReferencedContainer = "container:Where.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -30,7 +30,7 @@
       shouldAutocreateTestPlan = "YES">
       <Testables>
          <TestableReference skipped="NO">
-            <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="A01100000000000000000006" BuildableName="OverlandTests.xctest" BlueprintName="OverlandTests" ReferencedContainer="container:Overland.xcodeproj" />
+            <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="A01100000000000000000006" BuildableName="WhereTests.xctest" BlueprintName="WhereTests" ReferencedContainer="container:Where.xcodeproj" />
          </TestableReference>
       </Testables>
    </TestAction>
@@ -49,9 +49,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "0FFD31511BAB7A34009B3A03"
-            BuildableName = "Overland.app"
-            BlueprintName = "Overland"
-            ReferencedContainer = "container:Overland.xcodeproj">
+            BuildableName = "Where.app"
+            BlueprintName = "Where"
+            ReferencedContainer = "container:Where.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -66,9 +66,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "0FFD31511BAB7A34009B3A03"
-            BuildableName = "Overland.app"
-            BlueprintName = "Overland"
-            ReferencedContainer = "container:Overland.xcodeproj">
+            BuildableName = "Where.app"
+            BlueprintName = "Where"
+            ReferencedContainer = "container:Where.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

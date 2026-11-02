@@ -1,6 +1,6 @@
 //
 //  TripViews.swift
-//  OverlandLiveActivity
+//  WhereLiveActivity
 //
 //  Views and formatting shared by the Live Activity, the widgets and the controls.
 //

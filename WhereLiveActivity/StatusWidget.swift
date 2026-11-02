@@ -1,6 +1,6 @@
 //
 //  StatusWidget.swift
-//  OverlandLiveActivity
+//  WhereLiveActivity
 //
 //  A Home Screen and Lock Screen widget showing whether Overland is tracking, the trip in
 //  progress, and how much data is waiting to be sent. It reads the state the app shares in the

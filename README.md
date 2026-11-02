@@ -940,11 +940,11 @@ This assumes you have [Xcode](https://developer.apple.com/xcode/) and [Homebrew]
 * `git clone https://github.com/SoPat712/Where.git && cd Where`
 * `brew install cocoapods`
 * `pod install`
-* `open Overland.xcworkspace`
-* In Project Navigator, select *Overland*, and update Project Settings:
+* `open Where.xcworkspace`
+* In Project Navigator, select *Where*, and update Project Settings:
     * Identity → Bundle Identifier: *com.yourname.overland*
     * Signing → Team: *Personal Team*
-* Set the same signing team on *OverlandTrackingActivity* and give it a bundle
+* Set the same signing team on *WhereTrackingActivity* and give it a bundle
   identifier beneath the app identifier, such as *com.yourname.overland.TrackingActivity*.
 Personal Team builds need limited entitlements for both the app and widget
 extension. Before running, set these build settings to disable unsupported
@@ -970,7 +970,7 @@ before launching Where.
 ### Simulated route test
 
 ```bash
-python3 ci_scripts/simulated_route_test.py /path/to/Overland.app
+python3 ci_scripts/simulated_route_test.py /path/to/Where.app
 ```
 
 This test requires the iOS 27 simulator runtime and IDB. Shut down other

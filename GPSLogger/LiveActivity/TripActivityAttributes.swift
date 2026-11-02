@@ -2,7 +2,7 @@
 //  TripActivityAttributes.swift
 //  Overland
 //
-//  Shared by the app and the OverlandLiveActivity widget extension.
+//  Shared by the app and the WhereTrackingActivity widget extension.
 //
 
 import ActivityKit

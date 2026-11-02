@@ -3,7 +3,7 @@ import AVFoundation
 import CoreLocation
 import UserNotifications
 import XCTest
-@testable import Overland
+@testable import Where
 
 final class BackgroundRuntimeTests: XCTestCase {
     @MainActor func testSilentAudioStartsOnlyWhenEnabledAndStops() async throws {

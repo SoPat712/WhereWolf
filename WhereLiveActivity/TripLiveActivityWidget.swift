@@ -1,6 +1,6 @@
 //
 //  TripLiveActivityWidget.swift
-//  OverlandLiveActivity
+//  WhereLiveActivity
 //
 
 import ActivityKit

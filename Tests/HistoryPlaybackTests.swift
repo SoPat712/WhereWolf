@@ -1,7 +1,7 @@
 import XCTest
 import MapKit
 import SwiftUI
-@testable import Overland
+@testable import Where
 
 final class HistoryPlaybackTests: XCTestCase {
     func testLiveMapMovesContinuouslyAcrossSuccessiveFixesAndSettlesWithoutOvershoot() {
