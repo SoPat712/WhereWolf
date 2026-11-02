@@ -16,7 +16,7 @@ do not restart services; one server response reconciles its changes together.
 Motion classification requests permission through the explicit button, never
 by changing an advanced option. Existing trip step queries can also request
 Motion & Fitness access. Authorized motion metadata remains available without enabling assistance.
-Denied/restricted permission leaves ordinary tracking available. Overland queries
+Denied/restricted permission leaves ordinary tracking available. Where queries
 up to 24 hours of activity on start and foreground return, retains at most 512
 changes, and assigns GeoJSON labels using each fix's timestamp. It does not
 poll motion history in the background. Core Motion callbacks alone cannot wake
@@ -214,7 +214,7 @@ permission alone cannot supply a missing entitlement.
 
 The user does not need a personal paid membership to use a build signed and
 distributed by an eligible developer team. A free Personal Team cannot sign this
-capability. A Shortcuts integration could pass a network snapshot to Overland,
+capability. A Shortcuts integration could pass a network snapshot to Where,
 but it is not implemented and would not provide continuous app-side identity
 access. Apple documents additional Get Network Details fields and immediate
 WiFi automations in its [Shortcuts release notes](https://support.apple.com/en-gu/111098).
@@ -254,7 +254,7 @@ Reviewed the OwnTracks docs and the Recorder, iOS and Android sources on
 - Recorder `/pub` processes one JSON object per POST. It does not iterate bare
   arrays or generic batch wrappers: those become unknown/raw records rather than
   a batch of location fixes. Encrypted messages are a special wrapper when built
-  with encryption support. Overland keeps its single-object request format.
+  with encryption support. Where keeps its single-object request format.
   [HTTP handler](https://github.com/owntracks/recorder/blob/f202b5be11fc98097d69ef460c1753cffe8300be/http.c#L632-L710),
   [message parser](https://github.com/owntracks/recorder/blob/f202b5be11fc98097d69ef460c1753cffe8300be/recorder.c#L741-L985).
 - Recorder recognizes `location`, `transition`, `waypoint`, `waypoints`, `card`,
@@ -262,13 +262,13 @@ Reviewed the OwnTracks docs and the Recorder, iOS and Android sources on
   depend on build options. Its `dump` configuration type differs from the
   documented `configuration` type. A location's `tst` is Unix epoch seconds;
   docs specify an integer, while Recorder accepts numbers and numeric strings.
-  Overland retains its existing numeric timestamp representation.
+  Where retains its existing numeric timestamp representation.
   [Types](https://github.com/owntracks/recorder/blob/f202b5be11fc98097d69ef460c1753cffe8300be/misc.h#L23-L44),
   [timestamp parser](https://github.com/owntracks/recorder/blob/f202b5be11fc98097d69ef460c1753cffe8300be/recorder.c#L1009-L1026),
   [JSON specification](https://owntracks.org/booklet/tech/json/#_type-location).
 - Any HTTP `2xx` acknowledges delivery. Recorder normally returns an array,
   often `[]`, optionally containing friend locations, cards, transitions or
-  commands. Overland does not implement incoming OwnTracks commands or friends.
+  commands. Where does not implement incoming OwnTracks commands or friends.
   A lost acknowledgment can cause a duplicate delivery; the protocol supplies no
   universal idempotency guarantee.
   [HTTP specification](https://owntracks.org/booklet/tech/http/).
@@ -276,7 +276,7 @@ Reviewed the OwnTracks docs and the Recorder, iOS and Android sources on
   removes a record on `4xx`. Other failures back off from 1 to 64 seconds.
   Android sends individual objects and retries non-`2xx` responses with backoff
   up to two minutes. Both apps accept successful responses with empty or
-  unparseable bodies. Overland retains records on every failed request,
+  unparseable bodies. Where retains records on every failed request,
   including authentication failures.
   [iOS sender](https://github.com/owntracks/ios/blob/bbb7b76220ff5e62b46ddaf76ac47b72cfd21c95/OwnTracks/OwnTracks/Connection.m#L98-L141),
   [iOS acknowledgments](https://github.com/owntracks/ios/blob/bbb7b76220ff5e62b46ddaf76ac47b72cfd21c95/OwnTracks/OwnTracks/Connection.m#L480-L580),

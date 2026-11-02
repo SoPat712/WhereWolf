@@ -26,9 +26,10 @@
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>CFBundleURLName</key>
-			<string>com.aaronpk.overland</string>
+			<string>com.sopat712.where</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
+				<string>where</string>
 				<string>overland</string>
 			</array>
 		</dict>
@@ -58,7 +59,7 @@
 	<array>
 		<string>$(PRODUCT_BUNDLE_IDENTIFIER).upload</string>
 	</array>
-	<key>OverlandBackgroundUploadIdentifier</key>
+	<key>WhereBackgroundUploadIdentifier</key>
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER).upload</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
@@ -127,17 +128,17 @@
 	</array>
 	<key>UIUserInterfaceStyle</key>
 	<string>Automatic</string>
-	<key>OverlandAppGroup</key>
-	<string>group.$(OVERLAND_BUNDLE_IDENTIFIER)</string>
-	<key>OverlandCloudContainer</key>
-	<string>iCloud.$(OVERLAND_BUNDLE_IDENTIFIER)</string>
+	<key>WhereAppGroup</key>
+	<string>group.$(WHERE_BUNDLE_IDENTIFIER)</string>
+	<key>WhereCloudContainer</key>
+	<string>iCloud.$(WHERE_BUNDLE_IDENTIFIER)</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>Import saved workout routes from Apple Health when you choose, and find previous Where workouts to avoid duplicate exports.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Save selected trips and their routes to Apple Health when you enable workout export.</string>
 	<key>NSUbiquitousContainers</key>
 	<dict>
-		<key>iCloud.$(OVERLAND_BUNDLE_IDENTIFIER)</key>
+		<key>iCloud.$(WHERE_BUNDLE_IDENTIFIER)</key>
 		<dict>
 			<key>NSUbiquitousContainerIsDocumentScopePublic</key>
 			<true/>
@@ -147,9 +148,9 @@
 			<string>Any</string>
 		</dict>
 	</dict>
-	<key>OverlandHealthKitEnabled</key>
-	<string>$(OVERLAND_HEALTHKIT_ENABLED)</string>
-	<key>OverlandICloudEnabled</key>
-	<string>$(OVERLAND_ICLOUD_ENABLED)</string>
+	<key>WhereHealthKitEnabled</key>
+	<string>$(WHERE_HEALTHKIT_ENABLED)</string>
+	<key>WhereICloudEnabled</key>
+	<string>$(WHERE_ICLOUD_ENABLED)</string>
 </dict>
 </plist>

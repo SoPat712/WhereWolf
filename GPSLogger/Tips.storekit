@@ -10,12 +10,12 @@
       "internalID" : "6474819561",
       "localizations" : [
         {
-          "description" : "app.p3k.overland.Adventurer",
+          "description" : "com.sopat712.where.Adventurer",
           "displayName" : "Adventurer",
           "locale" : "en_US"
         }
       ],
-      "productID" : "app.p3k.overland.Adventurer",
+      "productID" : "com.sopat712.where.Adventurer",
       "referenceName" : "Adventurer",
       "type" : "NonConsumable"
     },
@@ -30,7 +30,7 @@
           "locale" : "en_US"
         }
       ],
-      "productID" : "app.p3k.overland.Cosmonaut",
+      "productID" : "com.sopat712.where.Cosmonaut",
       "referenceName" : "Cosmonaut",
       "type" : "NonConsumable"
     },
@@ -45,7 +45,7 @@
           "locale" : "en_US"
         }
       ],
-      "productID" : "app.p3k.overland.Explorer",
+      "productID" : "com.sopat712.where.Explorer",
       "referenceName" : "Explorer",
       "type" : "NonConsumable"
     },
@@ -60,7 +60,7 @@
           "locale" : "en_US"
         }
       ],
-      "productID" : "app.p3k.overland.Trailblazer",
+      "productID" : "com.sopat712.where.Trailblazer",
       "referenceName" : "Trailblazer",
       "type" : "NonConsumable"
     },
@@ -75,7 +75,7 @@
           "locale" : "en_US"
         }
       ],
-      "productID" : "app.p3k.overland.Wanderer",
+      "productID" : "com.sopat712.where.Wanderer",
       "referenceName" : "Wanderer",
       "type" : "NonConsumable"
     }
@@ -165,7 +165,7 @@
               "locale" : "en_US"
             }
           ],
-          "productID" : "app.p3k.overland.Monthly.Aviator",
+          "productID" : "com.sopat712.where.Monthly.Aviator",
           "recurringSubscriptionPeriod" : "P1M",
           "referenceName" : "Aviator",
           "subscriptionGroupID" : "21425857",
@@ -190,7 +190,7 @@
               "locale" : "en_US"
             }
           ],
-          "productID" : "app.p3k.overland.Yearly.Aviator",
+          "productID" : "com.sopat712.where.Yearly.Aviator",
           "recurringSubscriptionPeriod" : "P1Y",
           "referenceName" : "Aviator (Annual)",
           "subscriptionGroupID" : "21425857",
@@ -215,7 +215,7 @@
               "locale" : "en_US"
             }
           ],
-          "productID" : "app.p3k.overland.Monthly.Commuter",
+          "productID" : "com.sopat712.where.Monthly.Commuter",
           "recurringSubscriptionPeriod" : "P1M",
           "referenceName" : "Commuter",
           "subscriptionGroupID" : "21425857",
@@ -240,7 +240,7 @@
               "locale" : "en_US"
             }
           ],
-          "productID" : "app.p3k.overland.Yearly.Commuter",
+          "productID" : "com.sopat712.where.Yearly.Commuter",
           "recurringSubscriptionPeriod" : "P1Y",
           "referenceName" : "Commuter (Annual)",
           "subscriptionGroupID" : "21425857",
@@ -265,7 +265,7 @@
               "locale" : "en_US"
             }
           ],
-          "productID" : "app.p3k.overland.Monthly.Globetrotter",
+          "productID" : "com.sopat712.where.Monthly.Globetrotter",
           "recurringSubscriptionPeriod" : "P1M",
           "referenceName" : "Globetrotter",
           "subscriptionGroupID" : "21425857",
@@ -290,7 +290,7 @@
               "locale" : "en_US"
             }
           ],
-          "productID" : "app.p3k.overland.Yearly.Globetrotter",
+          "productID" : "com.sopat712.where.Yearly.Globetrotter",
           "recurringSubscriptionPeriod" : "P1Y",
           "referenceName" : "Globetrotter (Annual)",
           "subscriptionGroupID" : "21425857",
@@ -315,7 +315,7 @@
               "locale" : "en_US"
             }
           ],
-          "productID" : "app.p3k.overland.Monthly.Mariner",
+          "productID" : "com.sopat712.where.Monthly.Mariner",
           "recurringSubscriptionPeriod" : "P1M",
           "referenceName" : "Mariner",
           "subscriptionGroupID" : "21425857",
@@ -340,7 +340,7 @@
               "locale" : "en_US"
             }
           ],
-          "productID" : "app.p3k.overland.Yearly.Mariner",
+          "productID" : "com.sopat712.where.Yearly.Mariner",
           "recurringSubscriptionPeriod" : "P1Y",
           "referenceName" : "Mariner (Annual)",
           "subscriptionGroupID" : "21425857",

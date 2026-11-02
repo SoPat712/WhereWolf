@@ -194,8 +194,8 @@ final class GLManagerBridge {
         for name in [GLNewDataNotification, GLSendingStartedNotification, GLSendingFinishedNotification,
                      GLSettingsChangedNotification, GLAuthorizationStatusChangedNotification, GLNewActivityNotification,
                      GLTrackingStateChangedNotification, GLUploadStateChangedNotification,
-                     "OverlandEngineStateChanged", "OverlandLiveUpdatesFailed", "OverlandUploadSchedulerStateChanged",
-                     "OverlandLocationHealthChanged"] {
+                     "WhereEngineStateChanged", "WhereLiveUpdatesFailed", "WhereUploadSchedulerStateChanged",
+                     "WhereLocationHealthChanged"] {
             observers.append(nc.addObserver(forName: Notification.Name(name), object: nil, queue: .main) { [weak self] _ in
                 guard let self, !self.activeScenes.isEmpty else { return }
                 self.refresh()
@@ -508,29 +508,29 @@ final class GLManagerBridge {
     @MainActor var liveActivityEnabled: Bool {
         get {
             _ = tick
-            return OverlandBackgroundRuntime.shared.liveActivityEnabled
+            return WhereBackgroundRuntime.shared.liveActivityEnabled
         }
-        set { OverlandBackgroundRuntime.shared.liveActivityEnabled = newValue; refresh() }
+        set { WhereBackgroundRuntime.shared.liveActivityEnabled = newValue; refresh() }
     }
 
     @MainActor var liveActivityAppearance: String {
         get {
             _ = tick
-            return OverlandBackgroundRuntime.shared.appearance
+            return WhereBackgroundRuntime.shared.appearance
         }
-        set { OverlandBackgroundRuntime.shared.appearance = newValue; refresh() }
+        set { WhereBackgroundRuntime.shared.appearance = newValue; refresh() }
     }
 
     @MainActor var silentAudioEnabled: Bool {
         get {
             _ = tick
-            return OverlandBackgroundRuntime.shared.silentAudioEnabled
+            return WhereBackgroundRuntime.shared.silentAudioEnabled
         }
-        set { OverlandBackgroundRuntime.shared.silentAudioEnabled = newValue; refresh() }
+        set { WhereBackgroundRuntime.shared.silentAudioEnabled = newValue; refresh() }
     }
 
-    @MainActor var liveActivityStatus: String { OverlandBackgroundRuntime.shared.activityStatus }
-    @MainActor var silentAudioStatus: String { OverlandBackgroundRuntime.shared.audioStatus }
+    @MainActor var liveActivityStatus: String { WhereBackgroundRuntime.shared.activityStatus }
+    @MainActor var silentAudioStatus: String { WhereBackgroundRuntime.shared.audioStatus }
 
     @MainActor var actualLocationEngine: String {
         _ = tick
@@ -540,7 +540,7 @@ final class GLManagerBridge {
         guard authorization == .authorizedAlways || authorization == .authorizedWhenInUse else { return "Waiting for location access" }
         if gl.didPauseByRadius { return "Paused within radius" }
         if !gl.hasContinuousUpdates { return "Event-based updates" }
-        return OverlandLocationEngine.shared.usingLiveUpdates ? "New · live updates" : "Original · location manager"
+        return WhereLocationEngine.shared.usingLiveUpdates ? "New · live updates" : "Original · location manager"
     }
 
     @MainActor var locationEngineReason: String {
@@ -551,19 +551,19 @@ final class GLManagerBridge {
         guard authorization == .authorizedAlways || authorization == .authorizedWhenInUse else {
             return "Allow location access to resume tracking."
         }
-        if OverlandLocationEngine.shared.liveUpdatesFailed {
+        if WhereLocationEngine.shared.liveUpdatesFailed {
             return "The new location engine stopped after repeated failures; the original location manager is collecting fixes. Tap Retry Background Helpers to try the new engine again."
         }
         let adaptiveStatus = gl.adaptiveTrackingStatus.lowercased()
         if adaptiveStatus.contains("quiet") || adaptiveStatus.contains("stationary") || adaptiveStatus.contains("lower accuracy") {
             return "Adaptive tracking is quiet after a confirmed stop; it is using a coarser request while watching for movement."
         }
-        if OverlandLocationEngine.shared.usingLiveUpdates { return "iOS chooses accuracy and automatic pause timing." }
+        if WhereLocationEngine.shared.usingLiveUpdates { return "iOS chooses accuracy and automatic pause timing." }
         let indicator = gl.tripInProgress() ? gl.showBackgroundLocationIndicatorDuringTrip : gl.showBackgroundLocationIndicator
         if !indicator, gl.locationManager.authorizationStatus == .authorizedAlways,
-           !OverlandBackgroundRuntime.hasBackgroundLocationActivity {
-            return OverlandBackgroundRuntime.shared.appearance == "blank"
-                && OverlandBackgroundRuntime.hasActiveTrackingActivity
+           !WhereBackgroundRuntime.hasBackgroundLocationActivity {
+            return WhereBackgroundRuntime.shared.appearance == "blank"
+                && WhereBackgroundRuntime.hasActiveTrackingActivity
                 ? "Blank Island with the indicator off uses the original engine for background tracking."
                 : "The original engine keeps background tracking available without a supporting Live Activity."
         }
@@ -571,15 +571,15 @@ final class GLManagerBridge {
     }
 
     @MainActor func retryBackgroundRuntime() {
-        OverlandLocationEngine.shared.resetLiveUpdatesFailure()
+        WhereLocationEngine.shared.resetLiveUpdatesFailure()
         GLManager.shared()?.updateLocationEngine()
-        OverlandBackgroundRuntime.shared.retry()
+        WhereBackgroundRuntime.shared.retry()
         refresh()
     }
 
     @MainActor var uploadSchedulerStatus: String {
         _ = tick
-        return OverlandUploadScheduler.shared.status
+        return WhereUploadScheduler.shared.status
     }
 
     func requestMotionPermission() {

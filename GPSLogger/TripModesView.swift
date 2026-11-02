@@ -1,6 +1,6 @@
 //
 //  TripModesView.swift
-//  Overland
+//  Where
 //
 //  SwiftUI editor for the trip-mode catalog. GLManagerBridge remains the write boundary so a
 //  successful save updates GLManager and the shared snapshot together.
@@ -71,7 +71,7 @@ extension TripModeStore {
         defaults.set(data, forKey: modesKey)
         defaults.set(TripMode.defaults.map(\.id), forKey: builtInIDsKey)
         NotificationCenter.default.post(name: Notification.Name(GLSettingsChangedNotification), object: nil)
-        OverlandShortcuts.updateAppShortcutParameters()
+        WhereShortcuts.updateAppShortcutParameters()
         WidgetCenter.shared.reloadAllTimelines()
         if #available(iOS 18.0, *) {
             ControlCenter.shared.reloadAllControls()
@@ -271,7 +271,7 @@ private struct TripModeEditor: View {
         original = mode
         self.onSave = onSave
         _name = State(initialValue: mode?.name ?? "")
-        _symbol = State(initialValue: mode?.symbol ?? "overland.walk")
+        _symbol = State(initialValue: mode?.symbol ?? "where.walk")
         _synonymsText = State(initialValue: mode?.synonyms.joined(separator: ", ") ?? "")
         _healthWorkout = State(initialValue: mode?.healthWorkout)
         _closeZoom = State(initialValue: mode?.closeZoom ?? true)
@@ -312,7 +312,7 @@ private struct TripModeEditor: View {
                             Text(symbol).tag(symbol)
                         }
                         ForEach(TripModeStore.customSymbols, id: \.self) { value in
-                            Text(value.replacingOccurrences(of: "overland.", with: "").capitalized)
+                            Text(value.replacingOccurrences(of: "where.", with: "").capitalized)
                                 .tag(value)
                         }
                     }

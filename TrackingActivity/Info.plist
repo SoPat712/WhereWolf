@@ -25,7 +25,7 @@
 		<key>NSExtensionPointIdentifier</key>
 		<string>com.apple.widgetkit-extension</string>
 	</dict>
-	<key>OverlandAppGroup</key>
-	<string>group.$(OVERLAND_BUNDLE_IDENTIFIER)</string>
+	<key>WhereAppGroup</key>
+	<string>group.$(WHERE_BUNDLE_IDENTIFIER)</string>
 </dict>
 </plist>

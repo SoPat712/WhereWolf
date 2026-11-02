@@ -114,7 +114,7 @@ final class RecentLocationHistory: NSObject {
         }
     }
 
-    private let queue = DispatchQueue(label: "com.overland.recent-location-history")
+    private let queue = DispatchQueue(label: "com.sopat712.where.recent-location-history")
     private let directoryURL: URL?
     private let defaults: UserDefaults
     private let clock: () -> Date

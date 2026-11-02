@@ -42,17 +42,17 @@
 
     [GLManager sharedManager];
     [[GLManager sharedManager] noteLocationLaunch:launchOptions[UIApplicationLaunchOptionsLocationKey] != nil];
-    [[OverlandBackgroundRuntime shared] start];
+    [[WhereBackgroundRuntime shared] start];
     [[SharedStateObserver shared] start];
     [[HealthTripRecorder shared] start];
     [[WorkoutRouteImporter shared] start];
     [[GLManager sharedManager] syncTripLiveActivity];
-    [[OverlandUploadScheduler shared] start];
-    [[OverlandWatchLink shared] start];
+    [[WhereUploadScheduler shared] start];
+    [[WhereWatchLink shared] start];
     [[GLTripEndPrompt shared] start];
     [AppShortcutParameters update];
     [GLTripActions startUpdatingQuickActions];
-#if OVERLAND_TESTFLIGHT_DIAGNOSTICS
+#if WHERE_TESTFLIGHT_DIAGNOSTICS
     // TESTFLIGHT ONLY — REMOVE BEFORE APP STORE RELEASE
     [TestFlightDiagnostics start];
 #endif

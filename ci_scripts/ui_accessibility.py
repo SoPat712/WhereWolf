@@ -49,5 +49,5 @@ def read_state(ui):
 def user_location(elements):
     """Find MapKit's system annotation without depending on its localized label or AX type."""
     return next((e for e in elements
-                 if e.get("AXUniqueId") == "overland.map.user-location"
-                 or e.get("AXIdentifier") == "overland.map.user-location"), None)
+                 if e.get("AXUniqueId") == "where.map.user-location"
+                 or e.get("AXIdentifier") == "where.map.user-location"), None)

@@ -29,7 +29,7 @@ final class WorkoutImportTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        suite = "Overland.WorkoutImportTests.\(UUID().uuidString)"
+        suite = "Where.WorkoutImportTests.\(UUID().uuidString)"
         directory = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
         defaults = UserDefaults(suiteName: suite)!
     }
@@ -148,10 +148,10 @@ final class WorkoutImportTests: XCTestCase {
         XCTAssertEqual(model.imported.count, 1)
     }
 
-    func testOverlandExportsAreExcludedWithoutExcludingOtherWorkoutApps() {
-        XCTAssertTrue(WorkoutImportHealthKitClient.isOverlandExport(bundle: "old.overland.fork", syncIdentifier: "overland-trip-1700"))
-        XCTAssertTrue(WorkoutImportHealthKitClient.isOverlandExport(bundle: Bundle.main.bundleIdentifier!, syncIdentifier: nil))
-        XCTAssertFalse(WorkoutImportHealthKitClient.isOverlandExport(bundle: "com.apple.workout", syncIdentifier: "a-workout"))
+    func testWhereExportsAreExcludedWithoutExcludingOtherWorkoutApps() {
+        XCTAssertTrue(WorkoutImportHealthKitClient.isWhereExport(bundle: "old.where.fork", syncIdentifier: "where-trip-1700"))
+        XCTAssertTrue(WorkoutImportHealthKitClient.isWhereExport(bundle: Bundle.main.bundleIdentifier!, syncIdentifier: nil))
+        XCTAssertFalse(WorkoutImportHealthKitClient.isWhereExport(bundle: "com.apple.workout", syncIdentifier: "a-workout"))
     }
 
     func testFailedLocalSaveDoesNotMarkRouteImported() async throws {

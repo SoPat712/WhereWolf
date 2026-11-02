@@ -262,7 +262,7 @@ tracking is a separate battery/coverage tradeoff. Measure it on the routes you
 care about before relying on it for prompt departure capture. See
 [policy details and remote keys](docs/tracking-improvements.md#optional-tracking-policies).
 
-Release builds temporarily define `OVERLAND_TESTFLIGHT_DIAGNOSTICS`. This
+Release builds temporarily define `WHERE_TESTFLIGHT_DIAGNOSTICS`. This
 compiles a local MetricKit collector and Settings → Diagnostics. It retains the
 latest 100 JSON reports in Application Support/Diagnostics, excluded from
 backups. Nothing is uploaded automatically; Share exports only the report you
@@ -275,7 +275,7 @@ OwnTracks HTTP contract and validation results.
 ### Before App Store release
 
 - [ ] Remove the TestFlight diagnostics collector, Diagnostics screen and launch
-  hook, and remove `OVERLAND_TESTFLIGHT_DIAGNOSTICS` from Swift and Objective-C
+  hook, and remove `WHERE_TESTFLIGHT_DIAGNOSTICS` from Swift and Objective-C
   Release build settings. Verify the App Store binary contains none of them.
 
 ## Background runtime options
@@ -620,8 +620,11 @@ A setup link opens Where and saves the endpoint, token, device ID, and
 unique-ID preference:
 
 ```
-overland://setup?url=https%3A%2F%2Fexample.com%2Fapi&token=1234&device_id=1&unique_id=yes
+where://setup?url=https%3A%2F%2Fexample.com%2Fapi&token=1234&device_id=1&unique_id=yes
 ```
+
+Setup links that servers generate for Overland, starting with `overland://`, work the
+same way.
 
 Query parameters:
 
@@ -942,22 +945,22 @@ This assumes you have [Xcode](https://developer.apple.com/xcode/) and [Homebrew]
 * `pod install`
 * `open Where.xcworkspace`
 * In Project Navigator, select *Where*, and update Project Settings:
-    * Identity → Bundle Identifier: *com.yourname.overland*
+    * Identity → Bundle Identifier: *com.yourname.where*
     * Signing → Team: *Personal Team*
 * Set the same signing team on *WhereTrackingActivity* and give it a bundle
-  identifier beneath the app identifier, such as *com.yourname.overland.TrackingActivity*.
+  identifier beneath the app identifier, such as *com.yourname.where.TrackingActivity*.
 Personal Team builds need limited entitlements for both the app and widget
 extension. Before running, set these build settings to disable unsupported
 Health and iCloud code paths:
 
 ```text
-OVERLAND_APP_ENTITLEMENTS=GPSLogger/GPSLogger.entitlements
-OVERLAND_WIDGET_ENTITLEMENTS=GPSLogger/GPSLogger.entitlements
-OVERLAND_HEALTHKIT_ENABLED=NO
-OVERLAND_ICLOUD_ENABLED=NO
+WHERE_APP_ENTITLEMENTS=GPSLogger/GPSLogger.entitlements
+WHERE_WIDGET_ENTITLEMENTS=GPSLogger/GPSLogger.entitlements
+WHERE_HEALTHKIT_ENABLED=NO
+WHERE_ICLOUD_ENABLED=NO
 ```
 
-Set `OVERLAND_BUNDLE_IDENTIFIER` and `DEVELOPMENT_TEAM` to match your fork and
+Set `WHERE_BUNDLE_IDENTIFIER` and `DEVELOPMENT_TEAM` to match your fork and
 signing team. These settings do not grant WiFi or App Group access. WiFi autofill
 and automatic zone matching require a capable profile; the editor can still
 save zones. Without an App Group, widgets cannot read the app’s shared state.
@@ -983,7 +986,7 @@ record preservation, and ID continuity after the last old point expires.
 The test also checks panel resizing, map controls, trip recording, tab switching,
 timeline selection, panning, stop confirmation, and exact numeric entry in Settings.
 It removes its simulator afterward and writes results to
-`/tmp/overland-fake-route-results.json`. It takes no screenshots and uses no
+`/tmp/where-fake-route-results.json`. It takes no screenshots and uses no
 production endpoint. Pre-granted permissions and simulated movement do not test
 first-use prompts or real-device background delivery.
 

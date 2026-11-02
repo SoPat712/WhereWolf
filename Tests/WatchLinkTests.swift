@@ -72,7 +72,7 @@ final class WatchLinkTests: XCTestCase {
     func testCommandsReachThePhonesOwnControls() {
         var calls: [String] = []
         var inTrip = false
-        var actions = OverlandWatchLink.Actions()
+        var actions = WhereWatchLink.Actions()
         actions.setTracking = { calls.append("tracking \($0)") }
         actions.retryUpdates = { calls.append("retry") }
         actions.startTrip = { calls.append("start \($0 ?? "current")") }
@@ -80,7 +80,7 @@ final class WatchLinkTests: XCTestCase {
         actions.sendNow = { calls.append("send") }
         actions.setPreset = { calls.append("preset \($0)") }
         actions.tripInProgress = { inTrip }
-        let link = OverlandWatchLink(actions: actions)
+        let link = WhereWatchLink(actions: actions)
 
         link.perform(.refresh)
         XCTAssertEqual(calls, [], "Reading status must not change anything")

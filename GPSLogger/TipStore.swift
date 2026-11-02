@@ -16,7 +16,7 @@ enum TipFrequency: String, CaseIterable, Identifiable {
     }
 
     func productID(_ name: String) -> String {
-        "app.p3k.overland.\(self == .once ? "" : rawValue + ".")\(name)"
+        "com.sopat712.where.\(self == .once ? "" : rawValue + ".")\(name)"
     }
 
     var detail: String {

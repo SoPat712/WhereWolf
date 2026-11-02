@@ -133,7 +133,7 @@ struct SettingsView: View {
                 Text("Optional alerts for interrupted tracking and upload errors. Problems Only hides routine pause, resume, and trip messages. Notifications do not keep the app running.")
             }
 
-#if OVERLAND_TESTFLIGHT_DIAGNOSTICS
+#if WHERE_TESTFLIGHT_DIAGNOSTICS
             // TESTFLIGHT ONLY — REMOVE BEFORE APP STORE RELEASE
             Section {
                 NavigationLink(destination: DiagnosticsView()) {

@@ -2,12 +2,14 @@
 
 Fork of [aaronpk/Overland-iOS](https://github.com/aaronpk/Overland-iOS).
 
-The app is named Where: the Home Screen, watch, widgets, Live Activity, iCloud Drive
-folder, Siri, interface text, the Xcode project, workspace, scheme, targets (`Where`,
-`WhereTests`, `WhereTrackingActivity`, `WhereWatch`) and Swift module (`Where-Swift.h`).
-Bundle identifiers, `OVERLAND_*` build settings, defaults keys, Swift type and source file
-names, the upload API and the credits to the original Overland keep the Overland name, so
-installed copies update in place and saved data stays readable.
+The app is named Where throughout: bundle identifiers (default `com.sopat712.where`),
+`WHERE_*` build settings, defaults keys, Swift types and source files, the Xcode project,
+workspace, scheme, targets (`Where`, `WhereTests`, `WhereTrackingActivity`, `WhereWatch`)
+and Swift module (`Where-Swift.h`). Overland appears only where it means the original app:
+credits to Aaron Parecki's Overland, the `upstream` remote, the upload format that Overland
+servers accept, and the `overland://` URL scheme, registered beside `where://` so setup
+links from those servers keep working. The `Overland` coordination name and simulator names
+belong to tooling shared with Light.
 README screenshots live in `docs/screenshots` and are linked through
 raw.githubusercontent.com on `main`.
 
@@ -59,15 +61,15 @@ nice -n 10 xcodebuild -jobs 1 -workspace Where.xcworkspace -scheme Where \
   between adjacent checks only while its idle CPU load is healthy; coordinate
   shutdown if the runtime consumes sustained CPU with the app closed. Do not use `/tmp` for
   authoritative coordination files.
-- Physical-device builds can override `OVERLAND_BUNDLE_IDENTIFIER` and
+- Physical-device builds can override `WHERE_BUNDLE_IDENTIFIER` and
   `DEVELOPMENT_TEAM`; the Live Activity extension derives its identifier from
   the app's base identifier. Match an installed fork's identity for an in-place update.
-  `OVERLAND_APP_ENTITLEMENTS` overrides only the main app's entitlement file;
+  `WHERE_APP_ENTITLEMENTS` overrides only the main app's entitlement file;
   prefer it to a global `CODE_SIGN_ENTITLEMENTS` override so app capabilities
   are not also requested by the Live Activity extension.
-  `OVERLAND_WIDGET_ENTITLEMENTS` independently overrides the extension's file.
+  `WHERE_WIDGET_ENTITLEMENTS` independently overrides the extension's file.
   A limited profile can use `GPSLogger/GPSLogger.entitlements` for both, with
-  `OVERLAND_HEALTHKIT_ENABLED=NO` and `OVERLAND_ICLOUD_ENABLED=NO`. This disables
+  `WHERE_HEALTHKIT_ENABLED=NO` and `WHERE_ICLOUD_ENABLED=NO`. This disables
   unsupported APIs; it does not grant WiFi or App Group access. See
   `docs/upstream-integration.md` for the capability-dependent features.
 
@@ -85,10 +87,10 @@ before establishing connection". That result says nothing about the tests. Run
 the suite in-process with a standalone XCTest runner instead, and keep the
 XCTestSuite hierarchy intact: flattening it skips class setup, including the
 mocked URLSession configuration.
-Tests use an in-memory queue and mocked `overland.test` requests.
+Tests use an in-memory queue and mocked `where.test` requests.
 Background-runtime integration tests require location access on the disposable
 simulator. The system-reminder integration test also requires notification
-permission and `OVERLAND_NOTIFICATION_INTEGRATION=1` in the test scheme
+permission and `WHERE_NOTIFICATION_INTEGRATION=1` in the test scheme
 environment; otherwise it is skipped. Do not run
 these on a simulator containing important trial data; tests replace app preferences temporarily.
 
@@ -104,7 +106,7 @@ check. Never run tests against important trial data; preserve each app's prefere
 ./ci_scripts/smoke_test.sh            # build, install, launch
 ./ci_scripts/idb_ui_test.sh           # drive tabs via Facebook IDB (needs idb_companion)
 xcrun simctl location booted set 45.5152,-122.6784   # set location
-xcrun simctl openurl booted "overland://setup?url=https%3A%2F%2Fhost%2Fpath"  # configure endpoint
+xcrun simctl openurl booted "where://setup?url=https%3A%2F%2Fhost%2Fpath"  # configure endpoint
 ```
 
 IDB notes: start the companion detached (`setsid idb_companion --udid $UDID &`),
@@ -119,7 +121,7 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   metadata and defaults migration. `GLTripActions` shares the existing trip
   lifecycle across UI, Shortcuts, widgets and controls; ending a trip restores
   tracking only after its summary commits. App Group identifiers derive from
-  `OVERLAND_BUNDLE_IDENTIFIER`. Without a shared container, app preferences
+  `WHERE_BUNDLE_IDENTIFIER`. Without a shared container, app preferences
   remain local and widget snapshot work stays idle. `GLCloudFileWriter` is an
   optional queue destination; acknowledge only successful atomic file writes,
   with stable record IDs for retries. `HealthTripRecorder` receives committed
@@ -130,13 +132,13 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   Home Screen quick actions on every trip start or end, including background ones, and
   when the scene resigns active. Siri phrases name trip modes with or without "trip";
   `AppShortcutParameters` gives Siri the modes at launch and when they change.
-  `IntentDonations` donates trip and tracking changes made with Overland's own controls;
+  `IntentDonations` donates trip and tracking changes made with Where's own controls;
   intents run by the system are not donated again.
 - **Workout import**: `WorkoutRouteImporter` reads other apps' saved Health routes
   after explicit read-access setup. Manual imports and optional foreground checks
   use a separate protected SQLite collection; keep every valid point, source and
   original timestamp. Route sample revisions replace local geometry; missing routes
-  remain retryable. Exclude Overland exports and remember local removals until a
+  remain retryable. Exclude Where's own exports and remember local removals until a
   manual restore. Never feed imported points through live acquisition, trip or
   replay state. Destination queueing is explicit, GeoJSON-only, and uses stable
   point IDs with `LOLDatabase` receipts committed atomically with each queue chunk.
@@ -144,7 +146,7 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   automatically upload imported Health routes or write them back to Health.
   See `docs/workout-import.md` for ordering and signing constraints.
 - **Screens are SwiftUI** (`GPSLogger/*.swift`). SceneDelegate creates the root
-  hosting controller; `OverlandShell` stacks the shared map host, the Settings
+  hosting controller; `WhereShell` stacks the shared map host, the Settings
   host, and the drawer. `MapControlPanel` is a Find My style drawer: one glass
   sheet with Tracker/Trip controls above `DrawerTabStrip` (no system tab bar).
   Settings hides the map, keeps the drawer collapsed, and takes its bottom inset
@@ -337,7 +339,7 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   Move the native attribution views in UIKit without changing map margins or
   the camera projection. Give Legal a 44-point touch target, try its native
   accessibility action, and fall back to Apple's Maps legal page if unavailable.
-- **`OverlandLocationEngine`** uses iOS 17 `CLLocationUpdate.liveUpdates` for
+- **`WhereLocationEngine`** uses iOS 17 `CLLocationUpdate.liveUpdates` for
   Best accuracy with automatic pausing. An active Status or Minimal Live Activity supports
   background updates with the indicator off. With Always access and no active
   supporting Live Activity, indicator-off tracking falls back to `CLLocationManager`.
@@ -356,7 +358,7 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   explains benefits, accuracy/pause tradeoffs, trip behavior and background fallback.
 - **Watch app**: `WhereWatch` is a small companion for managing tracking from the
   wrist: tracking on/off, retry updates, start/end trip, send now and Usage Preset. It
-  holds no location or queue data. `OverlandWatchLink` activates `WCSession` at launch
+  holds no location or queue data. `WhereWatchLink` activates `WCSession` at launch
   and sends each command through the same calls as the phone's controls, with the same
   limits and Stop confirmation. `GPSLogger/Shared/WatchLink.swift` defines the messages
   and belongs to both targets. Commands use live `sendMessage` only and are never queued,
@@ -365,7 +367,7 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   and only with the watch app installed. Tracking must never depend on the link. Keep the
   watch version and build number equal to `GPSLogger/Info.plist`.
   A signing profile without the watch bundle identifier can build the phone app alone with
-  `OVERLAND_WATCH_SIGNING=NO EXCLUDED_SOURCE_FILE_NAMES=WhereWatch.app`.
+  `WHERE_WATCH_SIGNING=NO EXCLUDED_SOURCE_FILE_NAMES=WhereWatch.app`.
 - **Reminder action**: the missed-update reminder offers a background Resume Tracking
   action, which also appears when iOS mirrors the notification to a watch and runs on
   the iPhone without a watch app. A background launch restores tracking through
@@ -420,7 +422,7 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   commit. Health logs use a serial queue, protected atomic writes, backup exclusion
   and a strict metadata allowlist; retain at most 200 events for seven days.
   Never store coordinates, endpoints or credentials, or upload logs automatically.
-- **`OverlandUploadScheduler`** registers one network-required `BGProcessingTask`
+- **`WhereUploadScheduler`** registers one network-required `BGProcessingTask`
   at launch. Background scheduling and connection-return retries are independent,
   default-off choices. Both call the existing uploader; retain its one-request
   limit, 20-request yield, backoff, Retry-After and authentication block. Coalesce
@@ -435,7 +437,7 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   and a user's drain continues through every batch. Its monitor runs only while it is on.
   Optional iOS 18 `CLServiceSession` retains already-Always authorization intent;
   invalidate it on Stop, option-off or lost authorization.
-- **Background helpers**: `OverlandBackgroundRuntime` controls the ActivityKit
+- **Background helpers**: `WhereBackgroundRuntime` controls the ActivityKit
   extension and opt-in `SilentAudioSession`. Live Activity staleness mirrors the
   pending `reminder` notification deadline. Keep its scheduling rules in
   `GLManager`; do not drive activity staleness from another timeout. The shared ActivityAttributes
@@ -443,7 +445,7 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   `IslandOnlyTrackingAttributes` in the app target only. Do not register it in the
   widget extension: the unrendered activity is what avoids the Lock Screen card.
   End and recover both activity types, and replace the type when appearance changes.
-  Relevance remains zero. It ranks Overland's own activities, not other apps;
+  Relevance remains zero. It ranks Where's own activities, not other apps;
   iOS controls which activity occupies the main Island or a detached bubble.
   Silent audio checks playback only while opted in. Unexpected stops get three
   bounded retries; calls and media-service loss block automatic recovery.
@@ -483,7 +485,7 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
 ## Before App Store release
 
 - [ ] Remove `TestFlightDiagnostics.swift`, `DiagnosticsView.swift`, their Settings
-  and AppDelegate entry points, and `OVERLAND_TESTFLIGHT_DIAGNOSTICS` from both
+  and AppDelegate entry points, and `WHERE_TESTFLIGHT_DIAGNOSTICS` from both
   Swift and Objective-C Release settings. Verify the collector is absent from
   the App Store binary. TestFlight reports stay in the app container, excluded
   from backups, until the user explicitly shares one.

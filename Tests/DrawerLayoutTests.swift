@@ -9,7 +9,7 @@ final class DrawerLayoutTests: XCTestCase {
     func testTabControlsMatchFindMyOpenAndClosed() async throws {
         try await withDrawer { panel, _ in
             @MainActor func findTabs(_ view: UIView) -> UIView? {
-                if view.accessibilityIdentifier == "overland.panel.tabs" { return view }
+                if view.accessibilityIdentifier == "where.panel.tabs" { return view }
                 return view.subviews.lazy.compactMap(findTabs).first
             }
             let tabs = try XCTUnwrap(findTabs(panel.view))

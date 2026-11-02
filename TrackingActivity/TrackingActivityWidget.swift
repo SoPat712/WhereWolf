@@ -54,7 +54,7 @@ struct TrackingActivityWidget: Widget {
                     Image(systemName: "location.fill").foregroundStyle(.blue)
                 }
             }
-            .widgetURL(URL(string: "overland://tracker"))
+            .widgetURL(URL(string: "where://tracker"))
         }
     }
 
@@ -65,7 +65,7 @@ struct TrackingActivityWidget: Widget {
 }
 
 @main
-struct OverlandWidgetBundle: WidgetBundle {
+struct WhereWidgetBundle: WidgetBundle {
     var body: some Widget {
         TrackingActivityWidget()
         TripLiveActivityWidget()

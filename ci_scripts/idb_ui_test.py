@@ -64,8 +64,8 @@ def shot(name):
         run("screenshot", str(shots / name))
 
 
-subprocess.run(["xcrun", "simctl", "terminate", udid, "com.aaronpk.overland"], capture_output=True)
-subprocess.check_call(["xcrun", "simctl", "launch", udid, "com.aaronpk.overland"])
+subprocess.run(["xcrun", "simctl", "terminate", udid, "com.sopat712.where"], capture_output=True)
+subprocess.check_call(["xcrun", "simctl", "launch", udid, "com.sopat712.where"])
 wait_for_app()
 if os.environ.get("IDB_FOCUS_SIMULATOR") == "1":
     run("focus")
@@ -92,8 +92,8 @@ tap("Server")
 element("Add Header", "Button")
 shot("verified_server.png")
 # Reset navigation without touching preferences or recording state.
-subprocess.check_call(["xcrun", "simctl", "terminate", udid, "com.aaronpk.overland"])
-subprocess.check_call(["xcrun", "simctl", "launch", udid, "com.aaronpk.overland"])
+subprocess.check_call(["xcrun", "simctl", "terminate", udid, "com.sopat712.where"])
+subprocess.check_call(["xcrun", "simctl", "launch", udid, "com.sopat712.where"])
 wait_for_app()
 tap("Settings")
 for _ in range(8):

@@ -123,7 +123,7 @@ final class HistoryRetentionTests: XCTestCase {
     }
 
     private func makeDefaults() -> UserDefaults {
-        let suite = "Overland.HistoryRetentionTests.\(UUID().uuidString)"
+        let suite = "Where.HistoryRetentionTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defaults.set(suite, forKey: suiteNameKey)
         return defaults
@@ -131,7 +131,7 @@ final class HistoryRetentionTests: XCTestCase {
 
     private func makeDirectory() -> URL {
         FileManager.default.temporaryDirectory
-            .appendingPathComponent("Overland.HistoryRetentionTests.\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("Where.HistoryRetentionTests.\(UUID().uuidString)", isDirectory: true)
     }
 
     private func record(_ store: RecentLocationHistory, timestamp: Date) {

@@ -147,7 +147,7 @@
 - (instancetype)initWithDirectory:(NSURL *)directory {
     if((self = [super init])) {
         _directory = directory;
-        _queue = dispatch_queue_create("app.overland.location-health-log", DISPATCH_QUEUE_SERIAL);
+        _queue = dispatch_queue_create("com.sopat712.where.location-health-log", DISPATCH_QUEUE_SERIAL);
     }
     return self;
 }

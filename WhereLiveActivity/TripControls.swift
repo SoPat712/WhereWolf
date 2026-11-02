@@ -24,7 +24,7 @@ struct TripControl: ControlWidget {
 
         func currentValue() async throws -> Value {
             guard SharedTripState.isSharedStorageAvailable else {
-                throw NSError(domain: "Overland.WidgetSharing", code: 1,
+                throw NSError(domain: "Where.WidgetSharing", code: 1,
                               userInfo: [NSLocalizedDescriptionKey: "Widget sharing is unavailable in this build."])
             }
             let state = SharedTripState.read()
@@ -33,7 +33,7 @@ struct TripControl: ControlWidget {
     }
 
     var body: some ControlWidgetConfiguration {
-        StaticControlConfiguration(kind: "com.aaronpk.overland.TripControl", provider: Provider()) { value in
+        StaticControlConfiguration(kind: "com.sopat712.where.TripControl", provider: Provider()) { value in
             ControlWidgetToggle(isOn: value.tripInProgress, action: ToggleTripIntent()) {
                 Label { Text("Trip") } icon: { Image(tripMode: value.mode) }
             } valueLabel: { isOn in
@@ -49,7 +49,7 @@ struct TripControl: ControlWidget {
 @available(iOS 18.0, *)
 struct SendNowControl: ControlWidget {
     var body: some ControlWidgetConfiguration {
-        StaticControlConfiguration(kind: "com.aaronpk.overland.SendNowControl") {
+        StaticControlConfiguration(kind: "com.sopat712.where.SendNowControl") {
             ControlWidgetButton(action: SendNowIntent()) {
                 Label("Send Now", systemImage: "arrow.up.circle")
             }

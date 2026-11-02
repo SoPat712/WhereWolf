@@ -6,7 +6,7 @@ APP_PATH="${1:-}"
 SIM="${SIM:-Overland Regression}"
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
 SHOTS="$DIR/Screenshots"
-DERIVED_DATA="${DERIVED_DATA:-/tmp/overland-smoke-build}"
+DERIVED_DATA="${DERIVED_DATA:-/tmp/where-smoke-build}"
 BUILD_JOBS="${BUILD_JOBS:-1}"
 if [ "$BUILD_JOBS" != "1" ] && [ "$BUILD_JOBS" != "2" ]; then
     echo "Use BUILD_JOBS=1 (preferred) or 2 to keep build concurrency within the project limit." >&2
@@ -36,8 +36,8 @@ if [ -z "$APP_PATH" ]; then
 fi
 
 xcrun simctl install "$UDID" "$APP_PATH"
-xcrun simctl terminate "$UDID" com.aaronpk.overland 2>/dev/null || true
-xcrun simctl launch "$UDID" com.aaronpk.overland
+xcrun simctl terminate "$UDID" com.sopat712.where 2>/dev/null || true
+xcrun simctl launch "$UDID" com.sopat712.where
 if [ "${CAPTURE_SCREENSHOTS:-0}" = "1" ]; then
     mkdir -p "$SHOTS"
     sleep 3

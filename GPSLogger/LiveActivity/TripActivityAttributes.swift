@@ -1,6 +1,6 @@
 //
 //  TripActivityAttributes.swift
-//  Overland
+//  Where
 //
 //  Shared by the app and the WhereTrackingActivity widget extension.
 //

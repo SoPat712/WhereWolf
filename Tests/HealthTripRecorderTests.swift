@@ -54,7 +54,7 @@ final class HealthTripRecorderTests: XCTestCase {
 
     func testRouteCodecRoundTripsFiniteLocationsAndHeaders() throws {
         let point = location(latitude: 45.5152, longitude: -122.6784, seconds: 1_700_000_000)
-        let header = HealthRouteHeader(tripID: "overland-trip-1700000000", mode: "walk",
+        let header = HealthRouteHeader(tripID: "where-trip-1700000000", mode: "walk",
                                        start: point.timestamp, distance: 123.5)
         let data = try XCTUnwrap(HealthRouteCodec.encodeFile(header: header, locations: [point]))
         let decoded = try XCTUnwrap(HealthRouteCodec.decodeFile(data))
@@ -101,9 +101,9 @@ final class HealthTripRecorderTests: XCTestCase {
 
     func testDisabledRecorderDoesNotProbeHealthOrRequestPermission() {
         let fake = FakeHealthClient()
-        let defaults = UserDefaults(suiteName: "Overland.HealthTripRecorderTests.\(UUID().uuidString)")!
+        let defaults = UserDefaults(suiteName: "Where.HealthTripRecorderTests.\(UUID().uuidString)")!
         let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("Overland.HealthTripRecorderTests.\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("Where.HealthTripRecorderTests.\(UUID().uuidString)", isDirectory: true)
         let recorder = HealthTripRecorder(dependencies: HealthTripRecorderDependencies(
             defaults: defaults, directory: directory, health: fake))
 
@@ -114,7 +114,7 @@ final class HealthTripRecorderTests: XCTestCase {
 
     func testExportStatePersistsWorkoutUUIDAndRouteProgress() throws {
         let uuid = UUID()
-        let state = HealthTripExportState(tripID: "overland-trip-1", mode: "walk",
+        let state = HealthTripExportState(tripID: "where-trip-1", mode: "walk",
                                            start: Date(timeIntervalSince1970: 1),
                                            end: Date(timeIntervalSince1970: 2), distance: 10,
                                            workoutUUID: uuid, workoutSaved: true, routeSaved: false)
@@ -131,7 +131,7 @@ final class HealthTripRecorderTests: XCTestCase {
         let main = UserDefaults.standard
         let domain = Bundle.main.bundleIdentifier!
         let original = main.persistentDomain(forName: domain) ?? [:]
-        let suite = "Overland.HealthTripRecorderTests.\(UUID().uuidString)"
+        let suite = "Where.HealthTripRecorderTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
         defer {

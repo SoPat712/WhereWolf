@@ -20,7 +20,7 @@ def run(*args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("udid")
-    parser.add_argument("--output", type=Path, default=Path("/tmp/overland-ui-layout.json"))
+    parser.add_argument("--output", type=Path, default=Path("/tmp/where-ui-layout.json"))
     parser.add_argument("--start-at", choices=("tabs", "navigation", "forms", "server"), default="tabs",
                         help="Resume after earlier checks have passed")
     parser.add_argument("--map-only", action="store_true", help="Run only map gesture and camera checks")
@@ -202,10 +202,10 @@ asyncio.run(main())
                 if abs(a["height"] - target) > 3.1 and abs(b["height"] - target) > 3.1:
                     assert (b["height"] - a["height"]) * direction <= 0.2, "Spring reversed before its final overshoot"
                 for index in range(3):
-                    key = f"overland.drawer.icon.{index}"
+                    key = f"where.drawer.icon.{index}"
                     assert key in a and key in b, "Actual tab-icon frame probe is missing"
                     # Fixed layout plus the sheet's horizontal transform explains icon travel.
-                    center_x = sum(a[f"overland.drawer.icon.{i}"] for i in range(3)) / 3
+                    center_x = sum(a[f"where.drawer.icon.{i}"] for i in range(3)) / 3
                     factor = (a[key] - center_x) / (a["width"] - 24)
                     residual = (b[key] - a[key]) - factor * (b["width"] - a["width"])
                     assert abs(residual) <= 2, f"Tab icon jumped independently of width: {residual} pt"
@@ -630,7 +630,7 @@ asyncio.run(main())
         if resume_context:
             prerequisite = f"Recenter and simulated location movement retain the camera target: {resume_context}, after drawer movement"
             assert checks and checks[-1] == prerequisite, "Saved checks do not end at the requested animation checkpoint"
-            assert slow_drawer, "Resuming animation checks requires OVERLAND_UI_AUDIT=1"
+            assert slow_drawer, "Resuming animation checks requires WHERE_UI_AUDIT=1"
         else:
             settings_gap()
             chrome_pans()
@@ -655,7 +655,7 @@ asyncio.run(main())
             animated_tabs()
         set_panel("Expanded")
         if not slow_drawer:
-            limitations.append("Mid-transition edge pans and recenter require OVERLAND_UI_AUDIT=1 on a Debug simulator build.")
+            limitations.append("Mid-transition edge pans and recenter require WHERE_UI_AUDIT=1 on a Debug simulator build.")
         limitations.append("IDB HID has no touch identifier: panning or tapping recenter with a second finger while holding the drawer mid-drag is not covered. Mid-drag visible-center alignment is sampled during a continuous drawer swipe.")
 
     original_size = run("xcrun", "simctl", "ui", args.udid, "content_size").strip()

@@ -46,7 +46,7 @@ final class SilentAudioSession {
 }
 
 private final class SilentAudioWorker: NSObject, AVAudioPlayerDelegate, @unchecked Sendable {
-    private let queue = DispatchQueue(label: "app.overland.silent-audio")
+    private let queue = DispatchQueue(label: "com.sopat712.where.silent-audio")
     private let report: @Sendable (String, Bool) -> Void
     private var observers: [NSObjectProtocol] = []
     private var enabled = false

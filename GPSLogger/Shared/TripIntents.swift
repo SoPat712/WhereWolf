@@ -1,11 +1,11 @@
 //
 //  TripIntents.swift
-//  Overland
+//  Where
 //
 //  The trip actions for Shortcuts, Siri, widgets, controls and the Live Activity. This file is
 //  compiled into the app and the widget extension, so the extension's buttons can refer to the
 //  intents. On iOS 17+ they're LiveActivityIntents, which the system always runs in the app's
-//  process, so the code that calls GLManager is only compiled into the app (OVERLAND_APP).
+//  process, so the code that calls GLManager is only compiled into the app (WHERE_APP).
 //
 
 import AppIntents
@@ -54,7 +54,7 @@ struct TripModeQuery: EntityStringQuery {
 @available(iOS 17.0, *)
 struct StartTripIntent: AppIntent {
     static var title: LocalizedStringResource = "Start Trip"
-    #if !OVERLAND_APP
+    #if !WHERE_APP
     // The app lists this in Shortcuts. The extension's copy is only for its buttons.
     static var isDiscoverable: Bool { false }
     #endif
@@ -75,7 +75,7 @@ struct StartTripIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        #if OVERLAND_APP
+        #if WHERE_APP
         let manager: GLManager = GLManager.shared()
         if manager.tripInProgress() {
             return .result(dialog: "A \(TripIntentText.modeName(manager.currentTripMode)) trip is already in progress.")
@@ -96,7 +96,7 @@ struct StartTripIntent: AppIntent {
 @available(iOS 17.0, *)
 struct EndTripIntent: AppIntent {
     static var title: LocalizedStringResource = "End Trip"
-    #if !OVERLAND_APP
+    #if !WHERE_APP
     // The app lists this in Shortcuts. The extension's copy is only for its buttons.
     static var isDiscoverable: Bool { false }
     #endif
@@ -104,7 +104,7 @@ struct EndTripIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        #if OVERLAND_APP
+        #if WHERE_APP
         let manager: GLManager = GLManager.shared()
         if !manager.tripInProgress() {
             return .result(dialog: "There's no trip in progress.")
@@ -122,7 +122,7 @@ struct EndTripIntent: AppIntent {
 @available(iOS 17.0, *)
 struct SendNowIntent: AppIntent {
     static var title: LocalizedStringResource = "Send Data Now"
-    #if !OVERLAND_APP
+    #if !WHERE_APP
     // The app lists this in Shortcuts. The extension's copy is only for its buttons.
     static var isDiscoverable: Bool { false }
     #endif
@@ -130,7 +130,7 @@ struct SendNowIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        #if OVERLAND_APP
+        #if WHERE_APP
         let manager: GLManager = GLManager.shared()
         if !manager.hasDestination() {
             return .result(dialog: "Where doesn't have anywhere to send data yet. Set a server URL or choose iCloud Drive in Where's settings.")
@@ -154,20 +154,20 @@ struct ToggleTripIntent: SetValueIntent, LiveActivityIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        #if OVERLAND_APP
+        #if WHERE_APP
         guard SharedTripState.isSharedStorageAvailable else {
-            throw NSError(domain: "Overland.WidgetSharing", code: 1,
+            throw NSError(domain: "Where.WidgetSharing", code: 1,
                           userInfo: [NSLocalizedDescriptionKey: "Widget sharing is unavailable in this build."])
         }
         let manager: GLManager = GLManager.shared()
         if value {
             guard ["Always", "When in Use"].contains(manager.authorizationStatusAsString()) else {
-                throw NSError(domain: "Overland.Trip", code: 1,
+                throw NSError(domain: "Where.Trip", code: 1,
                               userInfo: [NSLocalizedDescriptionKey: "Allow location access in Where before starting a trip."])
             }
             GLTripActions.startTrip(withMode: nil)
             guard manager.tripInProgress() else {
-                throw NSError(domain: "Overland.Trip", code: 2,
+                throw NSError(domain: "Where.Trip", code: 2,
                               userInfo: [NSLocalizedDescriptionKey: "The trip could not start. Open Where to check its status."])
             }
         } else {
@@ -188,7 +188,7 @@ extension EndTripIntent: LiveActivityIntent {}
 @available(iOS 17.0, *)
 extension SendNowIntent: LiveActivityIntent {}
 
-#if OVERLAND_APP
+#if WHERE_APP
 enum TripIntentText {
     static func modeName(_ mode: String?) -> String {
         guard let mode = mode else { return "" }

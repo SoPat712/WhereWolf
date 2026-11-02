@@ -88,7 +88,7 @@ final class BackgroundRuntimeTests: XCTestCase {
 
     @MainActor func testLiveActivityAndAudioFollowTracking() async throws {
         try await withTrackingActivity { activity in
-            let runtime = OverlandBackgroundRuntime.shared
+            let runtime = WhereBackgroundRuntime.shared
             runtime.appearance = "blank"
             try await waitUntil {
                 Activity<IslandOnlyTrackingAttributes>.activities.contains {
@@ -120,8 +120,8 @@ final class BackgroundRuntimeTests: XCTestCase {
     @MainActor func testBlankActivityUsesLegacyUntilWidgetAppearanceIsRestored() async throws {
         try await withTrackingActivity { _ in
             let manager = GLManager.shared()!
-            let runtime = OverlandBackgroundRuntime.shared
-            let engine = OverlandLocationEngine.shared
+            let runtime = WhereBackgroundRuntime.shared
+            let engine = WhereLocationEngine.shared
             manager.showBackgroundLocationIndicator = false
             manager.useNewLocationEngine = true
             runtime.appearance = "blank"
@@ -130,8 +130,8 @@ final class BackgroundRuntimeTests: XCTestCase {
                     && Activity<TrackingActivityAttributes>.activities.isEmpty
                     && !engine.usingLiveUpdates && !engine.hasBackgroundSession
             }
-            XCTAssertTrue(OverlandBackgroundRuntime.hasActiveTrackingActivity)
-            XCTAssertFalse(OverlandBackgroundRuntime.hasBackgroundLocationActivity)
+            XCTAssertTrue(WhereBackgroundRuntime.hasActiveTrackingActivity)
+            XCTAssertFalse(WhereBackgroundRuntime.hasBackgroundLocationActivity)
             runtime.appearance = "status"
             try await waitUntil {
                 Activity<IslandOnlyTrackingAttributes>.activities.isEmpty
@@ -145,8 +145,8 @@ final class BackgroundRuntimeTests: XCTestCase {
     @MainActor func testIndicatorToggleAndLiveActivityControlBackgroundSession() async throws {
         try await withTrackingActivity { _ in
             let manager = GLManager.shared()!
-            let runtime = OverlandBackgroundRuntime.shared
-            let engine = OverlandLocationEngine.shared
+            let runtime = WhereBackgroundRuntime.shared
+            let engine = WhereLocationEngine.shared
             manager.pausesAutomatically = false
             manager.showBackgroundLocationIndicator = false
             manager.useNewLocationEngine = true
@@ -181,7 +181,7 @@ final class BackgroundRuntimeTests: XCTestCase {
     @MainActor func testEndedActivityFallsBackWithoutEnablingIndicator() async throws {
         try await withTrackingActivity { activity in
             let manager = GLManager.shared()!
-            let engine = OverlandLocationEngine.shared
+            let engine = WhereLocationEngine.shared
             manager.showBackgroundLocationIndicator = false
             manager.useNewLocationEngine = true
             try await waitUntil { engine.usingLiveUpdates && !engine.hasBackgroundSession }
@@ -196,17 +196,17 @@ final class BackgroundRuntimeTests: XCTestCase {
     @MainActor func testEndedBlankActivityFallsBackWithoutEnablingIndicator() async throws {
         try await withTrackingActivity { _ in
             let manager = GLManager.shared()!
-            let engine = OverlandLocationEngine.shared
+            let engine = WhereLocationEngine.shared
             manager.showBackgroundLocationIndicator = false
             manager.useNewLocationEngine = true
-            OverlandBackgroundRuntime.shared.appearance = "blank"
+            WhereBackgroundRuntime.shared.appearance = "blank"
             try await waitUntil {
                 Activity<IslandOnlyTrackingAttributes>.activities.contains { $0.activityState == .active }
                     && !engine.usingLiveUpdates && !engine.hasBackgroundSession
             }
             let activity = try XCTUnwrap(Activity<IslandOnlyTrackingAttributes>.activities.first)
             await activity.end(nil, dismissalPolicy: .immediate)
-            try await waitUntil { !engine.usingLiveUpdates && !OverlandBackgroundRuntime.hasActiveTrackingActivity }
+            try await waitUntil { !engine.usingLiveUpdates && !WhereBackgroundRuntime.hasActiveTrackingActivity }
             XCTAssertFalse(engine.hasBackgroundSession)
             XCTAssertFalse(manager.locationManager.showsBackgroundLocationIndicator)
             XCTAssertTrue(manager.trackingEnabled)
@@ -214,8 +214,8 @@ final class BackgroundRuntimeTests: XCTestCase {
     }
 
     @MainActor func testLiveActivityFollowsScheduledReminder() async throws {
-        guard ProcessInfo.processInfo.environment["OVERLAND_NOTIFICATION_INTEGRATION"] == "1" else {
-            throw XCTSkip("Enable OVERLAND_NOTIFICATION_INTEGRATION with notifications approved to test the system reminder service.")
+        guard ProcessInfo.processInfo.environment["WHERE_NOTIFICATION_INTEGRATION"] == "1" else {
+            throw XCTSkip("Enable WHERE_NOTIFICATION_INTEGRATION with notifications approved to test the system reminder service.")
         }
         try await withTrackingActivity { activity in
             let center = UNUserNotificationCenter.current()
@@ -241,7 +241,7 @@ final class BackgroundRuntimeTests: XCTestCase {
         let domain = Bundle.main.bundleIdentifier!
         let saved = defaults.persistentDomain(forName: domain) ?? [:]
         let manager = GLManager.shared()!
-        let runtime = OverlandBackgroundRuntime.shared
+        let runtime = WhereBackgroundRuntime.shared
         manager.stopAllUpdates()
         defer {
             manager.stopAllUpdates()

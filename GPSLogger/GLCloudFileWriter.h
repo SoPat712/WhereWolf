@@ -1,6 +1,6 @@
 //
 //  GLCloudFileWriter.h
-//  Overland
+//  Where
 //
 //  Saves location data as GeoJSON files in the app's iCloud Drive folder, as an alternative to
 //  sending it to a server.

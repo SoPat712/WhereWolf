@@ -11,7 +11,7 @@ final class UploadSchedulerTests: XCTestCase {
     }
 
     @MainActor
-    private final class FakeTask: _OverlandUploadSchedulerTask {
+    private final class FakeTask: _WhereUploadSchedulerTask {
         var expirationHandler: (() -> Void)?
         private(set) var completionResults: [Bool] = []
 
@@ -21,7 +21,7 @@ final class UploadSchedulerTests: XCTestCase {
     }
 
     @MainActor
-    private final class FakePathMonitor: _OverlandUploadSchedulerPathMonitor {
+    private final class FakePathMonitor: _WhereUploadSchedulerPathMonitor {
         var onPathUpdate: ((Bool) -> Void)?
         private(set) var startCount = 0
         private(set) var cancelCount = 0
@@ -45,18 +45,18 @@ final class UploadSchedulerTests: XCTestCase {
         let center = NotificationCenter()
         let path = FakePathMonitor()
         var now = Date(timeIntervalSince1970: 1_000)
-        var state = _OverlandUploadSchedulerState()
-        var registeredHandler: _OverlandUploadSchedulerDependencies.TaskHandler?
+        var state = _WhereUploadSchedulerState()
+        var registeredHandler: _WhereUploadSchedulerDependencies.TaskHandler?
         var submittedDates: [Date] = []
         var cancelCount = 0
         var pendingUploadCalls = 0
         var connectivityRecoveryCalls = 0
 
-        func dependencies() -> _OverlandUploadSchedulerDependencies {
-            _OverlandUploadSchedulerDependencies(
-                identifier: { "test.overland.upload" },
+        func dependencies() -> _WhereUploadSchedulerDependencies {
+            _WhereUploadSchedulerDependencies(
+                identifier: { "test.where.upload" },
                 now: { [weak self] in self?.now ?? Date(timeIntervalSince1970: 1_000) },
-                state: { [weak self] in self?.state ?? _OverlandUploadSchedulerState() },
+                state: { [weak self] in self?.state ?? _WhereUploadSchedulerState() },
                 register: { [weak self] _, handler in
                     self?.registeredHandler = handler
                     return true
@@ -88,8 +88,8 @@ final class UploadSchedulerTests: XCTestCase {
         }
     }
 
-    private func makeScheduler(_ harness: Harness) -> OverlandUploadScheduler {
-        OverlandUploadScheduler(dependencies: harness.dependencies())
+    private func makeScheduler(_ harness: Harness) -> WhereUploadScheduler {
+        WhereUploadScheduler(dependencies: harness.dependencies())
     }
 
     func testAsynchronousStatusChangesNotifyTheSettingsObserver() async {
@@ -97,7 +97,7 @@ final class UploadSchedulerTests: XCTestCase {
         let scheduler = makeScheduler(harness)
         var statuses: [String] = []
         let observer = harness.center.addObserver(
-            forName: OverlandUploadScheduler.stateChangedNotification, object: scheduler, queue: .main
+            forName: WhereUploadScheduler.stateChangedNotification, object: scheduler, queue: .main
         ) { _ in statuses.append(scheduler.status) }
         defer {
             harness.center.removeObserver(observer)

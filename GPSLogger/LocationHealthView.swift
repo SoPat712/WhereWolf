@@ -166,7 +166,7 @@ struct LocationHealthView: View {
             guard !Task.isCancelled else { return }
             entries = loaded
         }
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OverlandLocationHealthChanged"))) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WhereLocationHealthChanged"))) { _ in
             reloadRevision += 1
         }
         .onAppear { bridge.refresh() }

@@ -58,8 +58,8 @@ private enum TrackingActivityHandle {
 
 @Observable
 @MainActor
-@objc final class OverlandBackgroundRuntime: NSObject {
-    @objc static let shared = OverlandBackgroundRuntime()
+@objc final class WhereBackgroundRuntime: NSObject {
+    @objc static let shared = WhereBackgroundRuntime()
 
     static var hasActiveTrackingActivity: Bool { TrackingActivityHandle.all.contains { $0.isActive } }
 
@@ -68,9 +68,9 @@ private enum TrackingActivityHandle {
     }
 
     private enum Key {
-        static let liveActivity = "OverlandLiveActivityEnabled"
-        static let appearance = "OverlandLiveActivityAppearance"
-        static let silentAudio = "OverlandSilentAudioEnabled"
+        static let liveActivity = "WhereLiveActivityEnabled"
+        static let appearance = "WhereLiveActivityAppearance"
+        static let silentAudio = "WhereSilentAudioEnabled"
     }
 
     private(set) var activityStatus = "Waiting for tracking"

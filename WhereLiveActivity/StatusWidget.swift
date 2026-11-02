@@ -2,7 +2,7 @@
 //  StatusWidget.swift
 //  WhereLiveActivity
 //
-//  A Home Screen and Lock Screen widget showing whether Overland is tracking, the trip in
+//  A Home Screen and Lock Screen widget showing whether Where is tracking, the trip in
 //  progress, and how much data is waiting to be sent. It reads the state the app shares in the
 //  App Group. The app reloads it when the state changes.
 //
@@ -39,7 +39,7 @@ struct StatusProvider: TimelineProvider {
 
 struct StatusWidget: Widget {
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: "com.aaronpk.overland.StatusWidget", provider: StatusProvider()) { entry in
+        StaticConfiguration(kind: "com.sopat712.where.StatusWidget", provider: StatusProvider()) { entry in
             StatusWidgetView(state: entry.state)
                 .widgetBackground()
         }

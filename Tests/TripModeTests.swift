@@ -8,7 +8,7 @@ final class TripModeTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        let suite = "Overland.TripModeTests.\(UUID().uuidString)"
+        let suite = "Where.TripModeTests.\(UUID().uuidString)"
         defaults = UserDefaults(suiteName: suite)
         TripModeStore.setUserDefaults(defaults)
     }
@@ -46,13 +46,13 @@ final class TripModeTests: XCTestCase {
     func testMigrationTranslatesOldSymbolsAndAppendsOnlyNewDefaults() throws {
         let saved = [
             TripMode(id: "walk", name: "On Foot", symbol: "figure.walk", closeZoom: false),
-            TripMode(id: "kayak", name: "Kayak", symbol: "overland.kayak", closeZoom: true),
+            TripMode(id: "kayak", name: "Kayak", symbol: "where.kayak", closeZoom: true),
         ]
         defaults.set(try JSONEncoder().encode(saved), forKey: TripModeStore.modesKey)
         defaults.set(Array(TripMode.originalIDs), forKey: TripModeStore.builtInIDsKey)
 
         let modes = TripModeStore.modes
-        XCTAssertEqual(modes.first(where: { $0.id == "walk" })?.symbol, "overland.walk")
+        XCTAssertEqual(modes.first(where: { $0.id == "walk" })?.symbol, "where.walk")
         XCTAssertTrue(modes.contains { $0.id == "kayak" })
         XCTAssertTrue(modes.contains { $0.id == "hike" })
         XCTAssertTrue(modes.contains { $0.id == "funicular" })
@@ -104,7 +104,7 @@ final class TripModeTests: XCTestCase {
     }
 
     func testIconPayloadDistinguishesAppOwnedSVGFromSFSymbol() {
-        let custom = TripMode(id: "kayak", name: "Kayak", symbol: "overland.kayak", closeZoom: true)
+        let custom = TripMode(id: "kayak", name: "Kayak", symbol: "where.kayak", closeZoom: true)
         let apple = TripMode(id: "row", name: "Row", symbol: "figure.rower", closeZoom: true)
         XCTAssertTrue(TripModeStore.save([custom, apple]))
 

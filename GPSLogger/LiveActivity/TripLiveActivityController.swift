@@ -1,6 +1,6 @@
 //
 //  TripLiveActivityController.swift
-//  Overland
+//  Where
 //
 //  Shows the active trip as a Live Activity. GLManager calls this from Objective-C,
 //  so it's available on every iOS version and does nothing before iOS 16.2.

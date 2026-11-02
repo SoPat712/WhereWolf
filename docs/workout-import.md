@@ -5,17 +5,17 @@ to Health; it does not import routes recorded by other workout apps.
 
 Open Settings → Integrations & Exports → Import Workout Routes. Connect Apple
 Health to request read access to workouts and workout routes. This does not
-request write access, start a workout, or enable Overland's Health export option.
+request write access, start a workout, or enable Where's Health export option.
 Health does not reveal whether read access was denied. An empty list can mean
 there are no matching workouts, read access is unavailable, or the watch has not
 finished syncing its route.
 
 Choose a lookback of 24 hours, 7 days or 30 days. The page lists up to 100 saved
-workouts, newest first. Import a route manually, or enable Import When Overland
+workouts, newest first. Import a route manually, or enable Import When Where
 Opens. Automatic import defaults off and checks when a scene becomes active;
 this version does not register HealthKit background delivery. It never queues
 data for a destination automatically. Workouts without a readable route remain
-retryable. Overland's own workout exports are excluded to prevent feedback loops.
+retryable. Where's own workout exports are excluded to prevent feedback loops.
 
 Imported routes live in a separate, protected SQLite collection excluded from
 backups. Every valid point is retained, with original timestamps, coordinates,
@@ -55,7 +55,7 @@ Updated route geometry does not retract points already sent to a destination.
 ## Availability
 
 The installed app needs HealthKit signing support and the user's read permission.
-`OVERLAND_HEALTHKIT_ENABLED=NO` prevents Health access in limited-profile builds;
+`WHERE_HEALTHKIT_ENABLED=NO` prevents Health access in limited-profile builds;
 those builds can still browse previously imported local routes. Automatic
 import and read-access setup are independent from workout export.
 

@@ -1,6 +1,6 @@
 //
 //  SceneDelegate.m
-//  Overland
+//  Where
 //
 //  Created by Aaron Parecki on 12/10/23.
 //  Copyright © 2023 Aaron Parecki. All rights reserved.
@@ -40,7 +40,7 @@
     NSURL *url = context.URL;
     
     if([[url host] isEqualToString:@"tracker"]) {
-        [[NSNotificationCenter defaultCenter] postNotificationName:@"OverlandOpenTracker" object:nil];
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"WhereOpenTracker" object:nil];
     }
     if([[url host] isEqualToString:@"setup"]) {
         NSURLComponents *urlComponents = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
@@ -87,7 +87,7 @@
 
     UIWindowScene *windowScene = (UIWindowScene *)scene;
     self.window = [[UIWindow alloc] initWithWindowScene:windowScene];
-    self.window.rootViewController = [OverlandRootHosting makeRoot];
+    self.window.rootViewController = [WhereRootHosting makeRoot];
     [self.window makeKeyAndVisible];
 
     if(connectionOptions.URLContexts.count > 0) {
@@ -121,7 +121,7 @@
 
 - (void)handleTrackingActivity:(NSUserActivity *)activity {
     NSString *type = [NSString stringWithFormat:@"%@.startTracking", NSBundle.mainBundle.bundleIdentifier];
-    if([activity.activityType isEqual:type] || [activity.activityType isEqual:@"com.aaronpk.overland.startTracking"]) {
+    if([activity.activityType isEqual:type]) {
         [[GLManager sharedManager] startAllUpdates];
     }
 }

@@ -1,6 +1,6 @@
 //
 //  TripModes.swift
-//  Overland
+//  Where
 //
 //  The editable trip-mode catalog. Mode IDs are stable app identifiers; a server receives the
 //  configured server value, or the ID when no value was configured.
@@ -25,32 +25,32 @@ struct TripMode: Codable, Equatable, Identifiable {
 
     static let defaults: [TripMode] = [
         // On foot
-        TripMode(id: "walk", name: "Walk", symbol: "overland.walk", closeZoom: true, synonyms: ["Walking"], healthWorkout: "walking"),
-        TripMode(id: "run", name: "Run", symbol: "overland.run", closeZoom: true, synonyms: ["Running", "Jog"], healthWorkout: "running"),
-        TripMode(id: "hike", name: "Hike", symbol: "overland.hike", closeZoom: true, synonyms: ["Hiking"], healthWorkout: "hiking"),
+        TripMode(id: "walk", name: "Walk", symbol: "where.walk", closeZoom: true, synonyms: ["Walking"], healthWorkout: "walking"),
+        TripMode(id: "run", name: "Run", symbol: "where.run", closeZoom: true, synonyms: ["Running", "Jog"], healthWorkout: "running"),
+        TripMode(id: "hike", name: "Hike", symbol: "where.hike", closeZoom: true, synonyms: ["Hiking"], healthWorkout: "hiking"),
         // Small wheels
-        TripMode(id: "bicycle", name: "Bicycle", symbol: "overland.bicycle", closeZoom: true, synonyms: ["Bike", "Cycling", "Cycle"], healthWorkout: "cycling"),
-        TripMode(id: "ebike", name: "E-Bike", symbol: "overland.ebike", closeZoom: true, synonyms: ["Ebike", "Electric Bike", "Electric Bicycle"]),
-        TripMode(id: "scooter", name: "Scooter", symbol: "overland.scooter", closeZoom: true),
-        TripMode(id: "skate", name: "Skate", symbol: "overland.skate", closeZoom: true, synonyms: ["Skating", "Ice Skating", "Roller Skating"], healthWorkout: "skating"),
+        TripMode(id: "bicycle", name: "Bicycle", symbol: "where.bicycle", closeZoom: true, synonyms: ["Bike", "Cycling", "Cycle"], healthWorkout: "cycling"),
+        TripMode(id: "ebike", name: "E-Bike", symbol: "where.ebike", closeZoom: true, synonyms: ["Ebike", "Electric Bike", "Electric Bicycle"]),
+        TripMode(id: "scooter", name: "Scooter", symbol: "where.scooter", closeZoom: true),
+        TripMode(id: "skate", name: "Skate", symbol: "where.skate", closeZoom: true, synonyms: ["Skating", "Ice Skating", "Roller Skating"], healthWorkout: "skating"),
         // Snow
-        TripMode(id: "ski", name: "Ski", symbol: "overland.ski", closeZoom: true, synonyms: ["Skiing"], healthWorkout: "downhillSkiing"),
-        TripMode(id: "snowboard", name: "Snowboard", symbol: "overland.snowboard", closeZoom: true, synonyms: ["Snowboarding"], healthWorkout: "snowboarding"),
-        TripMode(id: "sleigh", name: "Sleigh", symbol: "overland.sleigh", closeZoom: false),
+        TripMode(id: "ski", name: "Ski", symbol: "where.ski", closeZoom: true, synonyms: ["Skiing"], healthWorkout: "downhillSkiing"),
+        TripMode(id: "snowboard", name: "Snowboard", symbol: "where.snowboard", closeZoom: true, synonyms: ["Snowboarding"], healthWorkout: "snowboarding"),
+        TripMode(id: "sleigh", name: "Sleigh", symbol: "where.sleigh", closeZoom: false),
         // Road
-        TripMode(id: "car", name: "Car", symbol: "overland.car", closeZoom: false, synonyms: ["Drive", "Driving"]),
-        TripMode(id: "taxi", name: "Taxi", symbol: "overland.taxi", closeZoom: false),
-        TripMode(id: "bus", name: "Bus", symbol: "overland.bus", closeZoom: false),
+        TripMode(id: "car", name: "Car", symbol: "where.car", closeZoom: false, synonyms: ["Drive", "Driving"]),
+        TripMode(id: "taxi", name: "Taxi", symbol: "where.taxi", closeZoom: false),
+        TripMode(id: "bus", name: "Bus", symbol: "where.bus", closeZoom: false),
         // Rail and cable
-        TripMode(id: "tram", name: "Tram", symbol: "overland.tram", closeZoom: false, synonyms: ["Streetcar", "Light Rail"]),
-        TripMode(id: "metro", name: "Metro", symbol: "overland.metro", closeZoom: false, synonyms: ["Subway", "Underground"]),
-        TripMode(id: "train", name: "Train", symbol: "overland.train", closeZoom: false, synonyms: ["Rail"]),
-        TripMode(id: "monorail", name: "Monorail", symbol: "overland.monorail", closeZoom: false),
-        TripMode(id: "gondola", name: "Gondola", symbol: "overland.gondola", closeZoom: false, synonyms: ["Cable Car"]),
-        TripMode(id: "funicular", name: "Funicular", symbol: "overland.funicular", closeZoom: false, synonyms: ["Incline", "Cliff Railway"]),
+        TripMode(id: "tram", name: "Tram", symbol: "where.tram", closeZoom: false, synonyms: ["Streetcar", "Light Rail"]),
+        TripMode(id: "metro", name: "Metro", symbol: "where.metro", closeZoom: false, synonyms: ["Subway", "Underground"]),
+        TripMode(id: "train", name: "Train", symbol: "where.train", closeZoom: false, synonyms: ["Rail"]),
+        TripMode(id: "monorail", name: "Monorail", symbol: "where.monorail", closeZoom: false),
+        TripMode(id: "gondola", name: "Gondola", symbol: "where.gondola", closeZoom: false, synonyms: ["Cable Car"]),
+        TripMode(id: "funicular", name: "Funicular", symbol: "where.funicular", closeZoom: false, synonyms: ["Incline", "Cliff Railway"]),
         // Water and air
-        TripMode(id: "boat", name: "Boat", symbol: "overland.boat", closeZoom: false, synonyms: ["Ferry", "Sailing"]),
-        TripMode(id: "plane", name: "Plane", symbol: "overland.plane", closeZoom: false, synonyms: ["Flight", "Flying"]),
+        TripMode(id: "boat", name: "Boat", symbol: "where.boat", closeZoom: false, synonyms: ["Ferry", "Sailing"]),
+        TripMode(id: "plane", name: "Plane", symbol: "where.plane", closeZoom: false, synonyms: ["Flight", "Flying"]),
     ]
 
     // The SF Symbols used by built-in modes before the app-owned icons were added.
