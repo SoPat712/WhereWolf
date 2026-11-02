@@ -2,6 +2,12 @@
 
 Fork of [aaronpk/Overland-iOS](https://github.com/aaronpk/Overland-iOS).
 
+The app is named Where wherever people see it: the Home Screen, watch, widgets, Live
+Activity, iCloud Drive folder, Siri and all interface text. Targets, bundle identifiers,
+code names, the upload API and the credits to the original Overland keep the Overland name.
+README screenshots live in `docs/screenshots` and are linked through
+raw.githubusercontent.com on `main`.
+
 ## Build
 
 Requires Xcode 27+, CocoaPods, minimum deployment target iOS 17.0.

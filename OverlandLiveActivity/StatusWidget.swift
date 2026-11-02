@@ -43,8 +43,8 @@ struct StatusWidget: Widget {
             StatusWidgetView(state: entry.state)
                 .widgetBackground()
         }
-        .configurationDisplayName("Overland")
-        .description("Shows whether Overland is tracking, the trip in progress, and the data waiting to be sent.")
+        .configurationDisplayName("Where")
+        .description("Shows whether Where is tracking, the trip in progress, and the data waiting to be sent.")
         .supportedFamilies([.systemSmall, .systemMedium, .accessoryRectangular, .accessoryCircular, .accessoryInline])
     }
 }
@@ -55,7 +55,7 @@ struct StatusWidgetView: View {
 
     var body: some View {
         if !SharedTripState.isSharedStorageAvailable {
-            Text("Open Overland to set up widget sharing.")
+            Text("Open Where to set up widget sharing.")
                 .font(.caption)
         } else {
         switch family {

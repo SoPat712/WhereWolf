@@ -126,7 +126,7 @@ struct AddWifiZoneView: View {
                 } header: {
                     Text("Choose Networks")
                 } footer: {
-                    Text("Select the networks that share this location. This list includes networks Overland has seen or you have saved. iOS does not provide a nearby-network scan or access to its full saved-network list. To add another connected network, switch to it in iOS Settings and refresh.")
+                    Text("Select the networks that share this location. This list includes networks Where has seen or you have saved. iOS does not provide a nearby-network scan or access to its full saved-network list. To add another connected network, switch to it in iOS Settings and refresh.")
                 }
 
                 Section {

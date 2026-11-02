@@ -13,7 +13,7 @@ import Foundation
 @available(iOS 17.0, *)
 struct SetTrackingIntent: AppIntent {
     static var title: LocalizedStringResource = "Turn Tracking On or Off"
-    static var description = IntentDescription("Turns Overland's location tracking on or off. Turning it off doesn't end a trip in progress.")
+    static var description = IntentDescription("Turns Where's location tracking on or off. Turning it off doesn't end a trip in progress.")
 
     @Parameter(title: "Tracking", displayName: Bool.IntentDisplayName(true: "On", false: "Off"))
     var enabled: Bool
@@ -37,7 +37,7 @@ struct SetTrackingIntent: AppIntent {
             manager.stopAllUpdates()
         }
         SharedStateObserver.shared.stateChanged()
-        return .result(dialog: enabled ? "Overland is tracking your location." : "Overland stopped tracking your location.")
+        return .result(dialog: enabled ? "Where is tracking your location." : "Where stopped tracking your location.")
     }
 }
 
@@ -98,7 +98,7 @@ enum TripActivityTypeAppEnum: String, AppEnum {
 @available(iOS 17.0, *)
 struct SetTripActivityTypeIntent: AppIntent {
     static var title: LocalizedStringResource = "Set Trip Activity Type"
-    static var description = IntentDescription("Sets the activity type Overland gives iOS during trips, the same as in Trip Settings. It applies from the next trip.")
+    static var description = IntentDescription("Sets the activity type Where gives iOS during trips, the same as in Trip Settings. It applies from the next trip.")
 
     @Parameter(title: "Activity Type")
     var activityType: TripActivityTypeAppEnum
@@ -148,7 +148,7 @@ enum TripAccuracyAppEnum: String, AppEnum {
 @available(iOS 17.0, *)
 struct SetTripAccuracyIntent: AppIntent {
     static var title: LocalizedStringResource = "Set Trip Location Accuracy"
-    static var description = IntentDescription("Sets how accurate Overland's location tracking is during trips, the same as in Trip Settings. During a trip, it applies right away.")
+    static var description = IntentDescription("Sets how accurate Where's location tracking is during trips, the same as in Trip Settings. During a trip, it applies right away.")
 
     @Parameter(title: "Accuracy")
     var accuracy: TripAccuracyAppEnum
@@ -169,7 +169,7 @@ struct SetTripAccuracyIntent: AppIntent {
 @available(iOS 17.0, *)
 struct GetTripStatusIntent: AppIntent {
     static var title: LocalizedStringResource = "Get Tracking Status"
-    static var description = IntentDescription("Tells you whether Overland is tracking, the trip in progress, and how much data is waiting to be sent.")
+    static var description = IntentDescription("Tells you whether Where is tracking, the trip in progress, and how much data is waiting to be sent.")
 
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<String> & ProvidesDialog {

@@ -1015,7 +1015,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				DEVELOPMENT_TEAM = 7MC6UZR2UV;
 				INFOPLIST_FILE = GPSLogger/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "Overland GPS Tracker";
+				INFOPLIST_KEY_CFBundleDisplayName = Where;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1052,7 +1052,7 @@
 					"OVERLAND_TESTFLIGHT_DIAGNOSTICS=1",
 				);
 				INFOPLIST_FILE = GPSLogger/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "Overland GPS Tracker";
+				INFOPLIST_KEY_CFBundleDisplayName = Where;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1197,7 +1197,7 @@
 				CURRENT_PROJECT_VERSION = 202610310040;
 				DEVELOPMENT_TEAM = 7MC6UZR2UV;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = Overland;
+				INFOPLIST_KEY_CFBundleDisplayName = Where;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "$(OVERLAND_BUNDLE_IDENTIFIER)";
 				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = NO;
@@ -1228,7 +1228,7 @@
 				CURRENT_PROJECT_VERSION = 202610310040;
 				DEVELOPMENT_TEAM = 7MC6UZR2UV;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = Overland;
+				INFOPLIST_KEY_CFBundleDisplayName = Where;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "$(OVERLAND_BUNDLE_IDENTIFIER)";
 				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = NO;

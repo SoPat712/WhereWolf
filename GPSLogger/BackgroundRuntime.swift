@@ -251,7 +251,7 @@ private enum TrackingActivityHandle {
             return
         }
         guard UIApplication.shared.applicationState == .active else {
-            activityStatus = "Open Overland to start the Live Activity"
+            activityStatus = "Open Where to start the Live Activity"
             return
         }
         do {

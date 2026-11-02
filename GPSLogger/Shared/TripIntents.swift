@@ -58,7 +58,7 @@ struct StartTripIntent: AppIntent {
     // The app lists this in Shortcuts. The extension's copy is only for its buttons.
     static var isDiscoverable: Bool { false }
     #endif
-    static var description = IntentDescription("Starts a trip in Overland. Tracking turns on for the trip, and back off when the trip ends if it was off before.")
+    static var description = IntentDescription("Starts a trip in Where. Tracking turns on for the trip, and back off when the trip ends if it was off before.")
 
     @Parameter(title: "Mode", description: "Leave empty to use the last trip mode.")
     var mode: TripModeEntity?
@@ -81,10 +81,10 @@ struct StartTripIntent: AppIntent {
             return .result(dialog: "A \(TripIntentText.modeName(manager.currentTripMode)) trip is already in progress.")
         }
         guard ["Always", "When in Use"].contains(manager.authorizationStatusAsString()) else {
-            return .result(dialog: "Allow location access in Overland before starting a trip.")
+            return .result(dialog: "Allow location access in Where before starting a trip.")
         }
         GLTripActions.startTrip(withMode: mode?.id)
-        guard manager.tripInProgress() else { return .result(dialog: "The trip could not start. Open Overland to check its status.") }
+        guard manager.tripInProgress() else { return .result(dialog: "The trip could not start. Open Where to check its status.") }
         SharedStateObserver.shared.tripChanged(inProgress: true)
         return .result(dialog: "Started a \(TripIntentText.modeName(manager.currentTripMode)) trip.")
         #else
@@ -100,7 +100,7 @@ struct EndTripIntent: AppIntent {
     // The app lists this in Shortcuts. The extension's copy is only for its buttons.
     static var isDiscoverable: Bool { false }
     #endif
-    static var description = IntentDescription("Ends the trip in progress in Overland.")
+    static var description = IntentDescription("Ends the trip in progress in Where.")
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
@@ -126,17 +126,17 @@ struct SendNowIntent: AppIntent {
     // The app lists this in Shortcuts. The extension's copy is only for its buttons.
     static var isDiscoverable: Bool { false }
     #endif
-    static var description = IntentDescription("Sends the location data waiting in Overland's queue to your server or iCloud Drive now, instead of waiting for the send interval.")
+    static var description = IntentDescription("Sends the location data waiting in Where's queue to your server or iCloud Drive now, instead of waiting for the send interval.")
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
         #if OVERLAND_APP
         let manager: GLManager = GLManager.shared()
         if !manager.hasDestination() {
-            return .result(dialog: "Overland doesn't have anywhere to send data yet. Set a server URL or choose iCloud Drive in Overland's settings.")
+            return .result(dialog: "Where doesn't have anywhere to send data yet. Set a server URL or choose iCloud Drive in Where's settings.")
         }
         manager.sendQueueNow()
-        return .result(dialog: "Sending Overland's data now.")
+        return .result(dialog: "Sending Where's data now.")
         #else
         return .result(dialog: "")
         #endif
@@ -163,12 +163,12 @@ struct ToggleTripIntent: SetValueIntent, LiveActivityIntent {
         if value {
             guard ["Always", "When in Use"].contains(manager.authorizationStatusAsString()) else {
                 throw NSError(domain: "Overland.Trip", code: 1,
-                              userInfo: [NSLocalizedDescriptionKey: "Allow location access in Overland before starting a trip."])
+                              userInfo: [NSLocalizedDescriptionKey: "Allow location access in Where before starting a trip."])
             }
             GLTripActions.startTrip(withMode: nil)
             guard manager.tripInProgress() else {
                 throw NSError(domain: "Overland.Trip", code: 2,
-                              userInfo: [NSLocalizedDescriptionKey: "The trip could not start. Open Overland to check its status."])
+                              userInfo: [NSLocalizedDescriptionKey: "The trip could not start. Open Where to check its status."])
             }
         } else {
             GLTripActions.endTripRestoringTracking()

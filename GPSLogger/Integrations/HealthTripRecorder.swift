@@ -282,7 +282,7 @@ private final class HealthKitTripHealthClient: HealthTripHealthClient {
                 if let error {
                     completion(error.localizedDescription)
                 } else if store.authorizationStatus(for: HKObjectType.workoutType()) != .sharingAuthorized {
-                    completion("Overland isn't allowed to save workouts. You can allow it in the Health app, under Profile → Apps → Overland.")
+                    completion("Where isn't allowed to save workouts. You can allow it in the Health app, under Profile → Apps → Where.")
                 } else {
                     completion(nil)
                 }

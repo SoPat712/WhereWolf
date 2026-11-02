@@ -25,7 +25,7 @@ struct LocationHealthEntry: Identifiable, Sendable {
     var title: String {
         switch kind {
         case "logging_started": return "Health Log Enabled"
-        case "app_launched": return "Overland Opened"
+        case "app_launched": return "Where Opened"
         case "monitor_resumed": return "Checking Location Updates"
         case "monitor_paused": return "Location Checks Paused"
         case "updates_missing": return "Location Updates Stopped Arriving"
@@ -122,7 +122,7 @@ struct LocationHealthView: View {
             } header: {
                 Text("Current Status")
             } footer: {
-                Text("Checks run when iOS gives Overland execution time. They cannot wake a suspended app. Stop, automatic pauses, stationary radius pauses, and adaptive power saving are respected. Background Recovery Monitoring remains a separate option.")
+                Text("Checks run when iOS gives Where execution time. They cannot wake a suspended app. Stop, automatic pauses, stationary radius pauses, and adaptive power saving are respected. Background Recovery Monitoring remains a separate option.")
             }
 
             Section {
@@ -156,7 +156,7 @@ struct LocationHealthView: View {
             } header: {
                 Text("Recent Events")
             } footer: {
-                Text("The log describes what Overland observed while it could run. Missing events do not prove that iOS terminated the app. These checks cannot recover points that were never received.")
+                Text("The log describes what Where observed while it could run. Missing events do not prove that iOS terminated the app. These checks cannot recover points that were never received.")
             }
         }
         .navigationTitle("Location Updates & Recovery")
@@ -185,7 +185,7 @@ struct LocationHealthView: View {
     }
 
     private var report: String {
-        (["Overland Location Health Log"] + entries.map {
+        (["Where Location Health Log"] + entries.map {
             "\($0.date.formatted(date: .numeric, time: .standard)) — \($0.title)\($0.detail.isEmpty ? "" : ": " + $0.detail)"
         }).joined(separator: "\n")
     }

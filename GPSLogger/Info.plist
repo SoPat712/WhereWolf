@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>Overland</string>
+	<string>Where</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -53,7 +53,7 @@
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Please enable location services to allow the app to track in the background</string>
 	<key>NSMotionUsageDescription</key>
-	<string>Overland uses motion activity to identify walking, cycling, driving and stops, support optional adaptive tracking, and count trip steps.</string>
+	<string>Where uses motion activity to identify walking, cycling, driving and stops, support optional adaptive tracking, and count trip steps.</string>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>$(PRODUCT_BUNDLE_IDENTIFIER).upload</string>
@@ -132,7 +132,7 @@
 	<key>OverlandCloudContainer</key>
 	<string>iCloud.$(OVERLAND_BUNDLE_IDENTIFIER)</string>
 	<key>NSHealthShareUsageDescription</key>
-	<string>Import saved workout routes from Apple Health when you choose, and find previous Overland workouts to avoid duplicate exports.</string>
+	<string>Import saved workout routes from Apple Health when you choose, and find previous Where workouts to avoid duplicate exports.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Save selected trips and their routes to Apple Health when you enable workout export.</string>
 	<key>NSUbiquitousContainers</key>
@@ -142,7 +142,7 @@
 			<key>NSUbiquitousContainerIsDocumentScopePublic</key>
 			<true/>
 			<key>NSUbiquitousContainerName</key>
-			<string>Overland</string>
+			<string>Where</string>
 			<key>NSUbiquitousContainerSupportedFolderLevels</key>
 			<string>Any</string>
 		</dict>

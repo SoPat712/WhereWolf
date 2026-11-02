@@ -14,7 +14,7 @@ struct TrackingActivityWidget: Widget {
                         emptyContent
                     } else if context.isStale {
                         VStack(spacing: 4) {
-                            Label("Open Overland", systemImage: "exclamationmark.triangle.fill")
+                            Label("Open Where", systemImage: "exclamationmark.triangle.fill")
                                 .foregroundStyle(.orange)
                             Text("Location updates were stopped. Launch the app to resume.")
                                 .font(.caption)

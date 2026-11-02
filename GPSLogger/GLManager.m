@@ -2289,7 +2289,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
 
 - (UNMutableNotificationContent *)reminderContent {
     UNMutableNotificationContent *content = [[UNMutableNotificationContent alloc] init];
-    content.title = [NSString localizedUserNotificationStringForKey:@"Overland" arguments:nil];
+    content.title = [NSString localizedUserNotificationStringForKey:@"Where" arguments:nil];
     content.body = [NSString localizedUserNotificationStringForKey:@"Location updates were stopped. Resume tracking or open the app." arguments:nil];
     content.sound = [UNNotificationSound defaultSound];
     content.categoryIdentifier = GLNotificationCategoryReminderName;

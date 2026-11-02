@@ -323,7 +323,7 @@ private struct TripModeEditor: View {
                 } header: {
                     Text("Icon")
                 } footer: {
-                    Text("Choose an Overland icon or enter an SF Symbol name. App-owned icons can be included in trip records; SF Symbols are sent by name for Apple platforms.")
+                    Text("Choose a Where icon or enter an SF Symbol name. App-owned icons can be included in trip records; SF Symbols are sent by name for Apple platforms.")
                 }
 
                 Section {
@@ -346,7 +346,7 @@ private struct TripModeEditor: View {
                 } header: {
                     Text("Trip Behavior")
                 } footer: {
-                    Text("A selected workout lets Overland save this mode's trips to Apple Health. Closer zoom is useful for slower travel.")
+                    Text("A selected workout lets Where save this mode's trips to Apple Health. Closer zoom is useful for slower travel.")
                 }
 
                 Section {

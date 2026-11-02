@@ -41,7 +41,7 @@ struct TripControl: ControlWidget {
             }
             .tint(.green)
         }
-        .displayName("Overland Trip")
+        .displayName("Where Trip")
         .description("Starts a trip in the last trip mode, or ends the trip in progress.")
     }
 }
@@ -54,7 +54,7 @@ struct SendNowControl: ControlWidget {
                 Label("Send Now", systemImage: "arrow.up.circle")
             }
         }
-        .displayName("Send Overland Data")
-        .description("Sends the location data waiting in Overland's queue now.")
+        .displayName("Send Where Data")
+        .description("Sends the location data waiting in Where's queue now.")
     }
 }

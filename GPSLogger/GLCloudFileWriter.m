@@ -48,7 +48,7 @@
 }
 
 + (NSString *)setupInstructions {
-    return @"In the Settings app, tap your name, then iCloud. Make sure iCloud Drive is turned on, and that Overland is turned on in the list of apps using iCloud.";
+    return @"In the Settings app, tap your name, then iCloud. Make sure iCloud Drive is turned on, and that Where is turned on in the list of apps using iCloud.";
 }
 
 + (BOOL)isAvailable {
@@ -67,7 +67,7 @@
 
 #pragma mark - Private, on the writer's queue
 
-// The Documents folder of the app's iCloud container, which appears in iCloud Drive as "Overland".
+// The Documents folder of the app's iCloud container, which appears in iCloud Drive as "Where".
 // Looking up the container can block, so this runs on the writer's queue.
 - (NSURL *)documentsURL {
     if (_documentsURL == nil) {

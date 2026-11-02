@@ -49,7 +49,7 @@ struct SettingsView: View {
             } header: {
                 SettingsSectionHeader(title: "Connection", topic: .permissions)
             } footer: {
-                Text("Always access lets Overland record locations in the background.")
+                Text("Always access lets Where record locations in the background.")
             }
 
             Section {
@@ -405,7 +405,7 @@ struct BackgroundSettingsView: View {
                     SettingsRowLabel(title: "Location Updates & Recovery", symbol: "location.magnifyingglass", color: .blue)
                 }
                 LabeledContent("Background App Refresh", value: bridge.backgroundRefreshStatus)
-                Text("Recovery monitoring keeps significant-change location monitoring alongside Standard tracking, including trips. It requires Always location access and can help iOS relaunch Overland after system termination. Events are coarse and may be delayed; Background App Refresh restrictions can limit relaunch. More wakeups can use additional battery.")
+                Text("Recovery monitoring keeps significant-change location monitoring alongside Standard tracking, including trips. It requires Always location access and can help iOS relaunch Where after system termination. Events are coarse and may be delayed; Background App Refresh restrictions can limit relaunch. More wakeups can use additional battery.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                 Button("Retry Background Helpers") { bridge.retryBackgroundRuntime() }

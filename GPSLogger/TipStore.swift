@@ -118,7 +118,7 @@ final class TipStore {
         }) else { return }
         await transaction.finish()
         if transaction.revocationDate == nil {
-            notice = Notice(title: "Thank You!", message: "Your support helps keep Overland moving.")
+            notice = Notice(title: "Thank You!", message: "Your support helps keep Where moving.")
         }
     }
 }

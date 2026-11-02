@@ -20,7 +20,7 @@ struct WatchControlsView: View {
                     ProgressView()
                 }
             }
-            .navigationTitle("Overland")
+            .navigationTitle("Where")
             .toolbar {
                 if model.busy {
                     ToolbarItem(placement: .topBarTrailing) { ProgressView() }

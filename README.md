@@ -1,10 +1,14 @@
-Overland GPS Tracker for iOS
-============================
+Where
+=====
 
-Overland records your location in the background and sends it to a server you
+Where records your location in the background and sends it to a server you
 choose. Records can include GPS coordinates, motion state, steps, and battery
 level. The app keeps data locally while offline and uploads it in batches when
 a connection is available.
+
+Where is made by [SoPat712](https://github.com/SoPat712). It started from
+[Overland](https://github.com/aaronpk/Overland-iOS) by Aaron Parecki and keeps
+Overland's API, so services built for Overland work with it.
 
 You can use an existing backend or build an HTTP receiver. Supported services
 and integrations include:
@@ -22,9 +26,37 @@ and integrations include:
 For Android, see [Colota](https://github.com/dietrichmax/colota) and its
 [Overland integration](https://colota.app/docs/integrations/overland).
 
-## About this fork
+## Screenshots
 
-This fork uses SwiftUI screens inside a UIKit shell, with Liquid
+A simulated day in Tokyo, recorded in the iOS Simulator. The routes come from Apple Maps
+directions, so the trails follow the same streets as the map.
+
+<table>
+<tr>
+<td align="center" width="33%"><img src="https://raw.githubusercontent.com/SoPat712/Where/main/docs/screenshots/tokyo-day-replay.jpg" width="250" alt="A day in Tokyo, replayed"><br>A day in Tokyo, replayed</td>
+<td align="center" width="33%"><img src="https://raw.githubusercontent.com/SoPat712/Where/main/docs/screenshots/meiji-jingu-walk.jpg" width="250" alt="Walking through Meiji Jingu"><br>Walking through Meiji Jingu</td>
+<td align="center" width="33%"><img src="https://raw.githubusercontent.com/SoPat712/Where/main/docs/screenshots/nihonbashi-drive.jpg" width="250" alt="Driving through Nihonbashi"><br>Driving through Nihonbashi</td>
+</tr>
+<tr>
+<td align="center" width="33%"><img src="https://raw.githubusercontent.com/SoPat712/Where/main/docs/screenshots/sumida-river-satellite.jpg" width="250" alt="Satellite, over the Sumida River"><br>Satellite, over the Sumida River</td>
+<td align="center" width="33%"><img src="https://raw.githubusercontent.com/SoPat712/Where/main/docs/screenshots/imperial-palace-dark.jpg" width="250" alt="Dark mode by the Imperial Palace"><br>Dark mode by the Imperial Palace</td>
+<td align="center" width="33%"><img src="https://raw.githubusercontent.com/SoPat712/Where/main/docs/screenshots/tokyo-day-dark-closed.jpg" width="250" alt="The whole day, drawer closed"><br>The whole day, drawer closed</td>
+</tr>
+<tr>
+<td align="center" width="33%"><img src="https://raw.githubusercontent.com/SoPat712/Where/main/docs/screenshots/trip-ueno-akihabara.jpg" width="250" alt="A bike trip from Ueno to Akihabara"><br>A bike trip from Ueno to Akihabara</td>
+<td align="center" width="33%"><img src="https://raw.githubusercontent.com/SoPat712/Where/main/docs/screenshots/trip-settings.jpg" width="250" alt="Trip Settings"><br>Trip Settings</td>
+<td align="center" width="33%"><img src="https://raw.githubusercontent.com/SoPat712/Where/main/docs/screenshots/replay-point-details.jpg" width="250" alt="Details for a recorded point"><br>Details for a recorded point</td>
+</tr>
+<tr>
+<td align="center" width="33%"><img src="https://raw.githubusercontent.com/SoPat712/Where/main/docs/screenshots/live-details.jpg" width="250" alt="Live location details"><br>Live location details</td>
+<td align="center" width="33%"><img src="https://raw.githubusercontent.com/SoPat712/Where/main/docs/screenshots/settings.jpg" width="250" alt="Settings"><br>Settings</td>
+<td align="center" width="33%"><img src="https://raw.githubusercontent.com/SoPat712/Where/main/docs/screenshots/sending-wifi-only.jpg" width="250" alt="Send Only on Wi-Fi"><br>Send Only on Wi-Fi</td>
+</tr>
+</table>
+
+## About Where
+
+Where uses SwiftUI screens inside a UIKit shell, with Liquid
 Glass on iOS 26 and later and material backgrounds on earlier versions. It
 requires iOS 17.
 
@@ -62,7 +94,7 @@ Drawer geometry and map-credit positioning stay in UIKit so animation frames
 do not rebuild the SwiftUI root. The tabs stay in place as the drawer resizes.
 
 Settings → Support → Tip Jar opens a SwiftUI screen with a bottom selector for
-SoPat712, the creator of this fork, and aaronpk, Overland's original creator. SoPat712's
+SoPat712, who makes Where, and aaronpk, who created Overland. SoPat712's
 page keeps the existing one-time, monthly, and yearly in-app tip products and
 Restore Purchases, using StoreKit 2. Aaron's page offers one-time $5, $10, $25,
 or custom USD tips through Cash App, PayPal, or Venmo only when StoreKit reports
@@ -70,19 +102,23 @@ the US App Store storefront; otherwise it shows his open-source credit and a
 link to Overland on GitHub. The payment links open in the browser. The legacy
 Tip Jar controller and main storyboard have been removed.
 
-The fork includes PR #180's precision controls, accuracy filter, and stationary
+Where includes PR #180's precision controls, accuracy filter, and stationary
 stopping, plus its later notification, persisted pause-state, and safe-settings
 follow-ups. It also adds multiple WiFi zones with optional BSSID matching,
 custom HTTP headers, server-certificate diagnostics, and the last 50 send
 outcomes for the current app session.
 
-Upstream features through October 28, 2026 include editable trip modes,
+Overland features through October 28, 2026 include editable trip modes,
 Shortcuts and Siri actions, widgets and Control Center controls, an optional
 trip Live Activity, iCloud Drive exports, Apple Health workouts and routes,
 stationary-point filtering, and WiFi-zone placement on a map. These use the
-fork’s existing screens and glass styling. Health, iCloud, WiFi identity and
+app’s existing screens and glass styling. Health, iCloud, WiFi identity and
 widget sharing require the corresponding signing capabilities. See the
 [integration notes](docs/upstream-integration.md) for behavior and build options.
+Siri phrases work with or without the word "trip", such as "Start a walk in Where",
+and Siri learns from the trips and tracking changes you make in the app. The Home
+Screen quick actions show Stop Trip during a trip and your trip modes otherwise,
+and update whenever a trip starts or ends.
 Trip icons include Google’s [Material Symbols](https://github.com/google/material-design-icons),
 licensed under Apache License 2.0.
 
@@ -139,7 +175,7 @@ The original engine also supports automatic pausing when enabled. With Always
 location access and the background indicator off, live updates require an active
 Status or Minimal Live Activity. Blank uses the original engine: its app-only
 activity does not keep the live-update stream delivering in the background.
-Without a supporting activity, Overland also uses the original engine to honor
+Without a supporting activity, Where also uses the original engine to honor
 the indicator setting. Activity creation, dismissal and expiry update that selection
 without changing saved preferences. Trips retain their separate indicator setting.
 
@@ -175,7 +211,7 @@ its behavior and limits.
   access. Its End Trip action ends the trip, and its Health workout, at the time
   you stopped. Turning it on asks for notification permission; it does not need
   the Notifications setting.
-- **Sending → Send Only on Wi-Fi** holds the sends Overland starts itself while
+- **Sending → Send Only on Wi-Fi** holds the sends Where starts itself while
   the phone is on cellular or a personal hotspot, and sends them once it is on
   Wi-Fi. Wi-Fi in Low Data Mode still sends, and iCloud Drive saves are not
   held. Send Now, widgets, Shortcuts, Control Center, the Live Activity and the
@@ -191,7 +227,7 @@ its behavior and limits.
 - **Background → Background Recovery Monitoring** adds significant-change
   monitoring alongside Standard tracking and trips. It defaults off and requires
   Always access and device support. This gives iOS another opportunity to relaunch
-  Overland after system termination; it cannot promise a wake interval or bypass
+  Where after system termination; it cannot promise a wake interval or bypass
   force-quit. The page also shows the system Background App Refresh status.
 - **Background → Location Updates & Recovery** contains two independent,
   default-off options. **Automatically Retry Location Updates** checks for missing
@@ -263,9 +299,9 @@ Settings → Background Runtime adds two helpers that follow Start/Stop Tracking
   If playback remains paused afterward, use Retry Background Helpers. It uses
   no microphone and may increase battery use.
 
-The Live Activity uses the deadline of Overland's existing ten-minute location
+The Live Activity uses the deadline of Where's existing ten-minute location
 reminder. If that deadline passes, Status and Minimal show the same request to
-open Overland in the Dynamic Island; Blank stays empty. Tapping the activity
+open Where in the Dynamic Island; Blank stays empty. Tapping the activity
 opens Tracker. Rescheduling or canceling the reminder updates the
 activity's deadline. The existing notification remains enabled by its own setting.
 This is a missed-update warning, not proof that the app was killed or the server
@@ -278,14 +314,14 @@ restarts location updates and needs no watch app. It respects Stop and pauses.
 iOS generally does not relaunch an app that was force-quit.
 
 Activities can be dismissed or disabled, and expire after at most eight active
-hours. Open Overland or use Retry Background Helpers to request another. The
+hours. Open Where or use Retry Background Helpers to request another. The
 app cannot update an ended activity after it has been killed; iOS controls when
 it renders the warning from the previously supplied deadline.
 
-Overland uses a relevance score of zero and sends no Live Activity alerts.
+Where uses a relevance score of zero and sends no Live Activity alerts.
 [ActivityKit relevance scores](https://developer.apple.com/documentation/activitykit/activitycontent/relevancescore)
 rank activities from the same app. iOS chooses the main Island and detached
-bubble across apps, so Overland cannot reserve the main Island for Music or
+bubble across apps, so Where cannot reserve the main Island for Music or
 force its own activity into the smaller presentation.
 
 These helpers require tracking to be enabled with location access and an active
@@ -300,7 +336,7 @@ for sources and the remaining device tests.
 
 ## Apple Watch
 
-The optional watch app (watchOS 10 or later) manages Overland from your wrist:
+The optional watch app (watchOS 10 or later) manages Where from your wrist:
 turn tracking on or off, retry location updates, start or end a trip, send queued
 locations and choose a Usage Preset. It controls the iPhone app and needs the iPhone
 in range. It does not record locations, and commands are not queued for later.
@@ -309,7 +345,7 @@ happens and tracking does not depend on it.
 
 ## Documentation
 
-This fork can also [import saved workout routes](docs/workout-import.md) from
+Where can also [import saved workout routes](docs/workout-import.md) from
 Apple Health, including routes recorded by other apps. The feature is opt-in,
 keeps a separate local route collection, and offers an explicit action to queue
 the points for your destination. It requires a HealthKit-capable signed build.
@@ -318,10 +354,16 @@ the points for your destination. It requires a HealthKit-capable signed build.
 
 Start Tracking begins location collection. Stop Tracking asks for confirmation;
 Keep Tracking dismisses the alert without stopping. The map follows your location
-until you pan it. The native Apple Maps credit and Legal link sit at the top left.
+until you touch it: dragging or pinching stops following at once, and the location
+button empties. The native Apple Maps credit and Legal link sit at the top left.
 At the top right, the speedometer sits above the glass pill containing Map Style,
-Location, Zoom In and Zoom Out. Tap Show My Location to follow again. The tab controls sit
-just above the home indicator.
+Location, Zoom In and Zoom Out. Tap Show My Location to fly back to your location
+from anywhere: a long move zooms out on the way, as in Apple Maps, and the zoom and
+rotation you chose stay. While the map follows you, the same button turns heading
+mode on and off, as in Find My: the map turns with the direction the phone faces,
+and turning it off returns the map to north. A compass appears below Zoom Out while
+the map is rotated; tap it to turn north. The tab controls sit just above the home
+indicator.
 
 The map uses Apple’s native current-location dot and accuracy display. Its
 position follows the same display smoothing as the camera; recorded locations
@@ -552,7 +594,7 @@ power use; it does not guarantee background execution.
 
 #### App and system settings
 
-Overland's preferences live in the app. iOS Settings manages system permissions
+Where's preferences live in the app. iOS Settings manages system permissions
 and Background App Refresh.
 
 * `Sending → Include Tracking Stats` adds tracking configuration to GeoJSON points
@@ -574,7 +616,7 @@ provide sliders and exact numeric entry.
 
 #### Configuration by custom URL
 
-A setup link opens Overland and saves the endpoint, token, device ID, and
+A setup link opens Where and saves the endpoint, token, device ID, and
 unique-ID preference:
 
 ```
@@ -626,7 +668,7 @@ updates; they do not control the significant-change service.
 
 This combines standard updates while moving with significant-change monitoring
 while stationary. Resume timing depends on iOS. Neither an exact resume distance
-nor a battery-saving percentage has been established for this fork.
+nor a battery-saving percentage has been established for Where.
 
 ## Configuration guide
 
@@ -651,7 +693,7 @@ Finish an active trip before selecting a preset. Editing a setting covered by
 the preset changes the selector to Custom.
 
 The first three presets adapt the usage profiles above. Balanced's 50 m / 180 s
-thresholds and the Walking / Running and Driving variants are Overland choices.
+thresholds and the Walking / Running and Driving variants are Where choices.
 They are not Apple-provided presets.
 
 Ordinary automatic sends keep their location-driven interval. Successful sends
@@ -665,11 +707,11 @@ Sources: [Apple desired accuracy](https://developer.apple.com/documentation/core
 [Core Location](https://developer.apple.com/documentation/corelocation), and
 [Apple engineer's iOS 16.4 background guidance](https://developer.apple.com/forums/thread/726945).
 The forum advice applies to a particular configuration. Queueing, filtering, and
-trip overrides described here are behavior implemented by this fork.
+trip overrides described here are behavior implemented by Where.
 
 ## API
 
-Overland posts location data to the configured endpoint.
+Where posts location data to the configured endpoint in Overland's format.
 
 Endpoint URL templates use values from the most recent location update:
 
@@ -771,7 +813,7 @@ Your server must reply with a JSON response containing:
 This indicates to the app that the batch was received, and it will delete those points from the local cache. If the app receives any other response, it will keep the data locally and try to send it again at the next interval.
 
 If your server cannot return this JSON, enable **Accept Any Successful HTTP Response**
-under **Settings → Server** in Overland. Any successful HTTP 2xx response then
+under **Settings → Server** in Where. Any successful HTTP 2xx response then
 acknowledges the batch.
 
 
@@ -887,7 +929,7 @@ OwnTracks message; Recorder normally returns `[]`. GeoJSON records retain their
 existing format and acknowledgment rule. Only Latest preserves events and trip
 summaries while replacing older location fixes.
 
-In the Overland Server URL setup, set the "Device ID" to the Owntracks topic you want, for example "username/device". This will be appended to the string "owntracks/" for the topic URL. Use the "Access Token" field for your Home Assistant username.
+In Where's server setup, set the "Device ID" to the Owntracks topic you want, for example "username/device". This will be appended to the string "owntracks/" for the topic URL. Use the "Access Token" field for your Home Assistant username.
 
 
 
@@ -895,7 +937,7 @@ In the Overland Server URL setup, set the "Device ID" to the Owntracks topic you
 
 This assumes you have [Xcode](https://developer.apple.com/xcode/) and [Homebrew](https://brew.sh) installed. A paid Apple Developer account is not needed.
 
-* `git clone https://github.com/SoPat712/Overland-iOS.git && cd Overland-iOS`
+* `git clone https://github.com/SoPat712/Where.git && cd Where`
 * `brew install cocoapods`
 * `pod install`
 * `open Overland.xcworkspace`
@@ -923,7 +965,7 @@ Keep the default entitlement files for a team supporting those capabilities.
 
 Plug in your device, select it under Product → Destination, and choose Product
 → Run (⌘R). If iOS asks you to trust the developer, follow the prompt in Settings
-before launching Overland.
+before launching Where.
 
 ### Simulated route test
 
@@ -962,14 +1004,15 @@ Both `ci_scripts/smoke_test.sh` and `ci_scripts/idb_ui_test.sh` skip screenshots
 by default. Set `CAPTURE_SCREENSHOTS=1` only when you want a capture. The smoke
 script builds with two concurrent operations and lower scheduling priority.
 
-## Upstream contributions
+## Credits
 
-This fork incorporates work from Aaron Parecki and the upstream contributors:
+Where builds on Overland by Aaron Parecki and its contributors. It also
+incorporates these pull requests from the Overland repository:
 
 - [yniverz, PR #180](https://github.com/aaronpk/Overland-iOS/pull/180): precision,
   filtering, stationary stopping, and subsequent pause/settings follow-ups.
 - [Rubeanie, PR #190](https://github.com/aaronpk/Overland-iOS/pull/190): custom HTTP
-  headers, adapted to this fork's request handling and SwiftUI settings.
+  headers, adapted to Where's request handling and SwiftUI settings.
 - [dietrichmax, PR #193](https://github.com/aaronpk/Overland-iOS/pull/193): Colota link.
 - [calebgab, PR #187](https://github.com/aaronpk/Overland-iOS/pull/187): Reitti link.
 - [weltspion, PR #195](https://github.com/aaronpk/Overland-iOS/pull/195): Geomanic listing.
@@ -981,6 +1024,8 @@ access, purchases, VoiceOver, iPad layout, and older iOS versions need further
 validation.
 
 ## License
+
+Where's changes from 2026 onward are copyright by SoPat712 and contributors.
 
 Contributions from 2017 onward are copyright by Aaron Parecki and contributors
 

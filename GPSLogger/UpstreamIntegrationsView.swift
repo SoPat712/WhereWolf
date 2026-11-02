@@ -18,7 +18,7 @@ struct UpstreamIntegrationsView: View {
                     if !bridge.cloudAvailable {
                         Label("iCloud Drive is unavailable", systemImage: "icloud.slash")
                             .foregroundStyle(.orange)
-                        Text("Enable iCloud Drive for Overland in iOS Settings. The installed build also needs iCloud support. Unwritten data stays in the queue.")
+                        Text("Enable iCloud Drive for Where in iOS Settings. The installed build also needs iCloud support. Unwritten data stays in the queue.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
@@ -27,7 +27,7 @@ struct UpstreamIntegrationsView: View {
                 SettingsSectionHeader(title: "Location Destination", topic: .server)
             } footer: {
                 Text(bridge.savesToICloudDrive
-                     ? "Exports GeoJSON to Overland’s folder in iCloud Drive. iOS manages cloud synchronization after the file is saved. Trip files omit records outside a trip. Your server settings remain saved."
+                     ? "Exports GeoJSON to Where’s folder in iCloud Drive. iOS manages cloud synchronization after the file is saved. Trip files omit records outside a trip. Your server settings remain saved."
                      : "Uses your configured server and the existing upload queue. iCloud export is optional.")
             }
 
@@ -53,7 +53,7 @@ struct UpstreamIntegrationsView: View {
 
             Section {
                 LabeledContent("Widget Sharing", value: SharedTripState.isSharedStorageAvailable ? "Available" : "Unavailable in This Build")
-                Text("Add Overland to the Home Screen or Lock Screen for tracking status and trip controls. Control Center controls are available on iOS 18 and later.")
+                Text("Add Where to the Home Screen or Lock Screen for tracking status and trip controls. Control Center controls are available on iOS 18 and later.")
                     .font(.footnote).foregroundStyle(.secondary)
                 Text("Shortcuts and Siri can start or end trips, send queued data, change trip settings, and report tracking status.")
                     .font(.footnote).foregroundStyle(.secondary)
