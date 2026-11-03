@@ -198,8 +198,8 @@ def main():
     args = parser.parse_args()
     if args.command[:1] == ['--']:
         args.command = args.command[1:]
-    if not args.command or not 0 < args.resume < args.target <= 80:
-        parser.error('Provide a command and 0 < resume < target <= 80')
+    if not args.command or not 0 < args.resume < args.target <= 95:
+        parser.error('Provide a command and 0 < resume < target <= 95')
     if any(not Path(root).is_absolute() or len(root) < 15 for root in args.work_root):
         parser.error('Work roots must be specific absolute DerivedData paths')
     if any(not Path(path).is_absolute() or len(path) < 15 for path in args.process_path):
