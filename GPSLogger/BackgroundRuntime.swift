@@ -78,6 +78,10 @@ private enum TrackingActivityHandle {
     struct AudioDependencies {
         var otherAudioPlaying: () -> Bool = { AVAudioSession.sharedInstance().isOtherAudioPlaying }
         var uptime: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
+        var authorization: () -> CLAuthorizationStatus = { GLManager.shared().locationManager.authorizationStatus }
+        var schedule: (TimeInterval, DispatchWorkItem) -> Void = { delay, work in
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+        }
     }
 
     private(set) var activityStatus = "Waiting for tracking"
@@ -95,13 +99,18 @@ private enum TrackingActivityHandle {
     @ObservationIgnored private var wasEligible = false
     @ObservationIgnored private var lastUpdate = Date.distantPast
     @ObservationIgnored private var lastContent: TrackingActivityAttributes.ContentState?
-    @ObservationIgnored var audioDependencies = AudioDependencies()
+    @ObservationIgnored var audioDependencies = AudioDependencies() {
+        didSet { resetAudioPolicy() }
+    }
     @ObservationIgnored private var audioPolicy = LiveActivityAudioPolicy()
+    @ObservationIgnored private var audioFollowUp: DispatchWorkItem?
+    @ObservationIgnored private var audioFollowUpDeadline: TimeInterval?
+    @ObservationIgnored private var audioFollowUpRevision = 0
 
     private override init() {
         super.init()
         UserDefaults.standard.register(defaults: [Key.liveActivity: true,
-                                                 Key.appearance: "minimal", Key.silentAudio: false,
+                                                 Key.appearance: "blank", Key.silentAudio: false,
                                                  Key.hideWhileAudioPlays: false])
     }
 
@@ -115,7 +124,7 @@ private enum TrackingActivityHandle {
     }
 
     var appearance: String {
-        get { UserDefaults.standard.string(forKey: Key.appearance) ?? "minimal" }
+        get { UserDefaults.standard.string(forKey: Key.appearance) ?? "blank" }
         set {
             guard TrackingActivityAttributes.Appearance(rawValue: newValue) != nil else { return }
             UserDefaults.standard.set(newValue, forKey: Key.appearance)
@@ -238,18 +247,51 @@ private enum TrackingActivityHandle {
 
     private func sampleOtherAudio() {
         let wasHiding = audioPolicy.isHiding
-        let authorization = GLManager.shared().locationManager.authorizationStatus
-        audioPolicy.sample(enabled: hideWhileAudioPlays,
-                           otherAudioPlaying: hideWhileAudioPlays && authorization == .authorizedAlways
+        let enabled = hideWhileAudioPlays && eligible
+        let authorization = audioDependencies.authorization()
+        audioPolicy.sample(enabled: enabled,
+                           otherAudioPlaying: enabled && authorization == .authorizedAlways
                                && audioDependencies.otherAudioPlaying(),
                            authorization: authorization,
                            at: audioDependencies.uptime())
+        scheduleAudioFollowUp()
         if wasHiding != audioPolicy.isHiding { GLManager.shared().syncTripLiveActivity() }
+    }
+
+    private func scheduleAudioFollowUp() {
+        let deadline = audioPolicy.confirmationDeadline
+        guard deadline != audioFollowUpDeadline else { return }
+        cancelAudioFollowUp()
+        guard let deadline else { return }
+        audioFollowUpDeadline = deadline
+        let current = audioFollowUpRevision
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, current == self.audioFollowUpRevision else { return }
+            self.audioFollowUp = nil
+            self.audioFollowUpDeadline = nil
+            self.refresh()
+        }
+        audioFollowUp = work
+        // This only confirms a pending change; it cannot wake a suspended process.
+        audioDependencies.schedule(max(0, deadline - audioDependencies.uptime()) + 0.1, work)
+    }
+
+    private func cancelAudioFollowUp() {
+        audioFollowUp?.cancel()
+        audioFollowUp = nil
+        audioFollowUpDeadline = nil
+        audioFollowUpRevision += 1
+    }
+
+    func resetAudioPolicy() {
+        // Deadlines and sampling history belong to the clock that created them.
+        cancelAudioFollowUp()
+        audioPolicy = LiveActivityAudioPolicy()
     }
 
     func audioAction(for kind: LiveActivityAudioPolicy.Kind, eligible: Bool,
                      hasActivity: Bool) -> LiveActivityAudioPolicy.Action {
-        if audioPolicy.isHiding && (!hideWhileAudioPlays || GLManager.shared().locationManager.authorizationStatus != .authorizedAlways) {
+        if audioPolicy.isHiding && (!hideWhileAudioPlays || audioDependencies.authorization() != .authorizedAlways) {
             sampleOtherAudio()
         }
         return audioPolicy.action(for: kind, eligible: eligible, hasActivity: hasActivity, scene: audioScene)

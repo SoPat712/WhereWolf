@@ -293,9 +293,10 @@ OwnTracks HTTP contract and validation results.
 
 Settings → Background adds helpers that follow Start/Stop Tracking:
 
-- **Tracking Live Activity** defaults to Minimal, a location icon in the Dynamic
-  Island. Status also shows the last successful send in the expanded view.
-  Blank starts a separate app-only activity whose attributes have no registered
+- **Tracking Live Activity** defaults to Blank for new installs; saved appearance
+  choices remain. Minimal shows a location icon in the Dynamic Island. Status
+  also shows the last successful send in the expanded view. Blank starts a
+  separate app-only activity whose attributes have no registered
   widget configuration. The compact blank Island and absence of a Lock Screen
   card were verified on an iOS 27 simulator and a physical iPhone. Status and
   Minimal retain the widget's empty Lock Screen view, which iOS can still display
@@ -307,10 +308,13 @@ Settings → Background adds helpers that follow Start/Stop Tracking:
   15 seconds apart find another app playing audio, freeing the Island for iOS
   to choose another app. Short sounds between checks are ignored. Checks run
   on existing location, lifecycle and activity events and received audio
-  notifications; there is no extra timer. When audio stops, WhereWolf tries once
-  to restore each activity in the background. If iOS refuses, the activities
-  may return only when WhereWolf is next opened. Indicator-off tracking falls back
-  to the original location engine while hidden. WhereWolf's own silent audio
+  notifications, with one follow-up to confirm each change. It reacts within
+  about 15 seconds while WhereWolf runs in the background (moving or with
+  Silent Audio on). While iOS has it suspended, it reacts at the next location
+  update or when you open the app. When audio stops, the same confirmation lets
+  WhereWolf try once to restore each activity in the background. If iOS refuses,
+  the activities may return only when WhereWolf is next opened. Indicator-off
+  tracking falls back to the original location engine while hidden. WhereWolf's own silent audio
   does not count and keeps its existing behavior. This setting is local-only.
 - **Silent Audio (Experimental)** defaults off. It loops digital silence through
   the audio playback session and mixes with other audio. Calls can interrupt it.

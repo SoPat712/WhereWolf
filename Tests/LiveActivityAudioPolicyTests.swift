@@ -48,6 +48,69 @@ final class LiveActivityAudioPolicyTests: XCTestCase {
         XCTAssertFalse(policy.isHiding)
     }
 
+    func testFirstAudioReadingSetsConfirmationDeadline() {
+        var policy = LiveActivityAudioPolicy()
+        XCTAssertNil(policy.confirmationDeadline)
+        policy.sample(enabled: true, otherAudioPlaying: true, authorization: .authorizedAlways, at: 100)
+        XCTAssertFalse(policy.isHiding)
+        XCTAssertEqual(policy.confirmationDeadline, 115)
+        policy.sample(enabled: true, otherAudioPlaying: true, authorization: .authorizedAlways, at: 115.1)
+        XCTAssertTrue(policy.isHiding)
+        XCTAssertNil(policy.confirmationDeadline)
+    }
+
+    func testAudioStoppingNeedsConfirmationBeforeRestoring() {
+        var policy = hiddenActivity(.minimal)
+        policy.sample(enabled: true, otherAudioPlaying: false, authorization: .authorizedAlways, at: 30)
+        XCTAssertEqual(policy.confirmationDeadline, 45)
+        policy.sample(enabled: true, otherAudioPlaying: false, authorization: .authorizedAlways, at: 44.9)
+        XCTAssertTrue(policy.isHiding)
+        XCTAssertEqual(policy.action(for: .minimal, eligible: true, hasActivity: false, scene: .background), .hide)
+        policy.sample(enabled: true, otherAudioPlaying: false, authorization: .authorizedAlways, at: 45.1)
+        XCTAssertFalse(policy.isHiding)
+        XCTAssertNil(policy.confirmationDeadline)
+        XCTAssertEqual(request(&policy, for: .minimal, eligible: true, hasActivity: false, scene: .background), .restore)
+        XCTAssertEqual(request(&policy, for: .minimal, eligible: true, hasActivity: false, scene: .background), .waitForForeground)
+    }
+
+    func testRepeatedReadingsKeepOriginalConfirmationDeadline() {
+        var policy = LiveActivityAudioPolicy()
+        for time in [0.0, 1, 3, 14.9] {
+            policy.sample(enabled: true, otherAudioPlaying: true, authorization: .authorizedAlways, at: time)
+            XCTAssertEqual(policy.confirmationDeadline, 15)
+        }
+        policy.sample(enabled: true, otherAudioPlaying: true, authorization: .authorizedAlways, at: 15)
+        for time in [30.0, 31, 33, 44.9] {
+            policy.sample(enabled: true, otherAudioPlaying: false, authorization: .authorizedAlways, at: time)
+            XCTAssertEqual(policy.confirmationDeadline, 45)
+        }
+    }
+
+    func testBriefAudioGapCancelsRestoreConfirmation() {
+        var policy = playingAudio()
+        policy.sample(enabled: true, otherAudioPlaying: false, authorization: .authorizedAlways, at: 30)
+        XCTAssertEqual(policy.confirmationDeadline, 45)
+        policy.sample(enabled: true, otherAudioPlaying: true, authorization: .authorizedAlways, at: 35)
+        XCTAssertTrue(policy.isHiding)
+        XCTAssertNil(policy.confirmationDeadline)
+        policy.sample(enabled: true, otherAudioPlaying: false, authorization: .authorizedAlways, at: 45)
+        XCTAssertEqual(policy.confirmationDeadline, 60)
+    }
+
+    func testSettingOffOrLostAlwaysAccessClearsPendingConfirmation() {
+        for hidden in [false, true] {
+            for enabled in [false, true] {
+                var policy = hidden ? playingAudio() : LiveActivityAudioPolicy()
+                policy.sample(enabled: true, otherAudioPlaying: !hidden, authorization: .authorizedAlways, at: 30)
+                XCTAssertNotNil(policy.confirmationDeadline)
+                policy.sample(enabled: enabled, otherAudioPlaying: !hidden,
+                              authorization: enabled ? .authorizedWhenInUse : .authorizedAlways, at: 31)
+                XCTAssertFalse(policy.isHiding)
+                XCTAssertNil(policy.confirmationDeadline)
+            }
+        }
+    }
+
     func testLocationSamplesWaitFifteenSecondsAfterAnySample() {
         var policy = LiveActivityAudioPolicy()
         XCTAssertTrue(policy.shouldSampleLocation(at: 0))
@@ -179,5 +242,6 @@ final class LiveActivityAudioPolicyTests: XCTestCase {
 
     private func stoppedAudio(_ policy: inout LiveActivityAudioPolicy) {
         policy.sample(enabled: true, otherAudioPlaying: false, authorization: .authorizedAlways, at: 30)
+        policy.sample(enabled: true, otherAudioPlaying: false, authorization: .authorizedAlways, at: 45)
     }
 }

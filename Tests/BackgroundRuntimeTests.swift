@@ -1,11 +1,28 @@
 import ActivityKit
 import AVFoundation
 import CoreLocation
+import UIKit
 import UserNotifications
 import XCTest
 @testable import WhereWolf
 
 final class BackgroundRuntimeTests: XCTestCase {
+    @MainActor func testBlankAppearanceDefaultPreservesSavedChoices() {
+        let defaults = UserDefaults.standard
+        let domain = Bundle.main.bundleIdentifier!
+        let saved = defaults.persistentDomain(forName: domain) ?? [:]
+        let runtime = WhereWolfBackgroundRuntime.shared
+        let key = "WhereWolfLiveActivityAppearance"
+        defer { defaults.setPersistentDomain(saved, forName: domain) }
+        defaults.removeObject(forKey: key)
+        XCTAssertEqual(runtime.appearance, "blank")
+        XCTAssertNil(defaults.persistentDomain(forName: domain)?[key])
+        for appearance in ["status", "minimal", "blank"] {
+            defaults.set(appearance, forKey: key)
+            XCTAssertEqual(runtime.appearance, appearance)
+        }
+    }
+
     @MainActor func testSilentAudioStartsOnlyWhenEnabledAndStops() async throws {
         let audio = SilentAudioSession()
         audio.refresh()
@@ -217,10 +234,9 @@ final class BackgroundRuntimeTests: XCTestCase {
         try await withTrackingActivity { _ in
             let runtime = WhereWolfBackgroundRuntime.shared
             let saved = runtime.audioDependencies
-            var playing = false
-            var uptime: TimeInterval = 0
-            runtime.audioDependencies = .init(otherAudioPlaying: { playing }, uptime: { uptime })
-            defer { runtime.audioDependencies = saved; runtime.hideWhileAudioPlays = false }
+            let clock = AudioClock()
+            runtime.audioDependencies = clock.dependencies
+            defer { runtime.hideWhileAudioPlays = false; runtime.audioDependencies = saved }
             let manager = GLManager.shared()!
             let engine = WhereWolfLocationEngine.shared
             manager.showBackgroundLocationIndicator = false
@@ -237,25 +253,206 @@ final class BackgroundRuntimeTests: XCTestCase {
                         $0.activityState == .active && $0.content.state.appearance.rawValue == appearance
                     } && Activity<IslandOnlyTrackingAttributes>.activities.isEmpty
                 }
-                playing = true
+                clock.playing = true
                 runtime.hideWhileAudioPlays = true
-                uptime += 15
-                runtime.checkAudioFromLocation()
+                XCTAssertEqual(clock.pendingCount, 1)
+                XCTAssertTrue(WhereWolfBackgroundRuntime.hasActiveTrackingActivity)
+                try clock.fireNext()
                 try await waitUntil { runtime.activityStatus == "Hidden while other audio plays" }
+                XCTAssertEqual(clock.pendingCount, 0)
                 XCTAssertFalse(WhereWolfBackgroundRuntime.hasActiveTrackingActivity)
                 XCTAssertFalse(engine.usingLiveUpdates)
                 XCTAssertFalse(engine.hasBackgroundSession)
                 XCTAssertTrue(manager.trackingEnabled)
                 XCTAssertFalse(manager.showBackgroundLocationIndicator)
-                playing = false
-                uptime += 15
+                clock.playing = false
+                clock.uptime += 15
                 runtime.checkAudioFromLocation()
+                XCTAssertEqual(clock.pendingCount, 1)
+                XCTAssertEqual(runtime.activityStatus, "Hidden while other audio plays")
+                try clock.fireNext()
                 try await waitUntil {
                     runtime.activityStatus == "Active" && WhereWolfBackgroundRuntime.hasActiveTrackingActivity
                         && engine.usingLiveUpdates == (appearance != "blank")
                 }
+                XCTAssertEqual(clock.pendingCount, 0)
                 XCTAssertFalse(engine.hasBackgroundSession)
                 runtime.hideWhileAudioPlays = false
+            }
+        }
+    }
+
+    @MainActor func testDisablingAudioHidingCancelsFollowUp() async throws {
+        try await withTrackingActivity { _ in
+            let runtime = WhereWolfBackgroundRuntime.shared
+            let saved = runtime.audioDependencies
+            defer { runtime.hideWhileAudioPlays = false; runtime.audioDependencies = saved }
+            for hidden in [false, true] {
+                let clock = AudioClock()
+                clock.playing = true
+                runtime.audioDependencies = clock.dependencies
+                runtime.hideWhileAudioPlays = true
+                if hidden {
+                    try clock.fireNext()
+                    try await waitUntil { runtime.activityStatus == "Hidden while other audio plays" }
+                    clock.playing = false
+                    clock.uptime += 15
+                    runtime.checkAudioFromLocation()
+                }
+                let work = try XCTUnwrap(clock.scheduled.last?.work)
+                XCTAssertEqual(clock.pendingCount, 1)
+                let time = clock.uptime
+                runtime.hideWhileAudioPlays = false
+                XCTAssertTrue(work.isCancelled)
+                XCTAssertEqual(clock.pendingCount, 0)
+                try await waitUntil { runtime.activityStatus == "Active" }
+                XCTAssertEqual(clock.uptime, time)
+                XCTAssertEqual(clock.scheduledCount, hidden ? 2 : 1)
+            }
+        }
+    }
+
+    @MainActor func testLosingAlwaysAccessCancelsAudioFollowUp() async throws {
+        try await withTrackingActivity { _ in
+            let runtime = WhereWolfBackgroundRuntime.shared
+            let saved = runtime.audioDependencies
+            defer { runtime.hideWhileAudioPlays = false; runtime.audioDependencies = saved }
+            for hidden in [false, true] {
+                let clock = AudioClock()
+                clock.playing = true
+                runtime.audioDependencies = clock.dependencies
+                runtime.hideWhileAudioPlays = true
+                if hidden {
+                    try clock.fireNext()
+                    try await waitUntil { runtime.activityStatus == "Hidden while other audio plays" }
+                    clock.playing = false
+                    clock.uptime += 15
+                    runtime.checkAudioFromLocation()
+                }
+                let work = try XCTUnwrap(clock.scheduled.last?.work)
+                let time = clock.uptime
+                clock.authorization = .authorizedWhenInUse
+                NotificationCenter.default.post(name: Notification.Name(GLAuthorizationStatusChangedNotification), object: nil)
+                try await waitUntil { work.isCancelled && runtime.activityStatus == "Active" }
+                XCTAssertEqual(clock.pendingCount, 0)
+                XCTAssertEqual(clock.uptime, time)
+                XCTAssertEqual(clock.scheduledCount, hidden ? 2 : 1)
+                runtime.hideWhileAudioPlays = false
+            }
+        }
+    }
+
+    @MainActor func testStoppingTrackingCancelsAudioFollowUp() async throws {
+        try await withTrackingActivity { _ in
+            let runtime = WhereWolfBackgroundRuntime.shared
+            let saved = runtime.audioDependencies
+            let clock = AudioClock()
+            clock.playing = true
+            runtime.audioDependencies = clock.dependencies
+            defer { runtime.hideWhileAudioPlays = false; runtime.audioDependencies = saved }
+            runtime.hideWhileAudioPlays = true
+            let work = try XCTUnwrap(clock.scheduled.first?.work)
+            GLManager.shared().stopAllUpdates()
+            try await waitUntil { work.isCancelled && !WhereWolfBackgroundRuntime.hasActiveTrackingActivity }
+            XCTAssertEqual(clock.pendingCount, 0)
+            XCTAssertFalse(GLManager.shared().trackingEnabled)
+        }
+    }
+
+    @MainActor func testRepeatedAudioReadingsKeepOneFollowUpAndLateExecutionConfirms() async throws {
+        try await withTrackingActivity { _ in
+            let runtime = WhereWolfBackgroundRuntime.shared
+            let saved = runtime.audioDependencies
+            let clock = AudioClock()
+            clock.playing = true
+            runtime.audioDependencies = clock.dependencies
+            defer { runtime.hideWhileAudioPlays = false; runtime.audioDependencies = saved }
+            for time in 0..<15 {
+                clock.uptime = TimeInterval(time)
+                runtime.hideWhileAudioPlays = true
+                XCTAssertEqual(clock.pendingCount, 1)
+                XCTAssertEqual(clock.scheduledCount, 1)
+                XCTAssertEqual(try XCTUnwrap(clock.scheduled.first?.deadline), 15.1, accuracy: 0.001)
+            }
+            try clock.fireNext(lateBy: 60)
+            try await waitUntil { runtime.activityStatus == "Hidden while other audio plays" }
+            XCTAssertEqual(clock.pendingCount, 0)
+            XCTAssertEqual(clock.scheduledCount, 1)
+            clock.playing = false
+            clock.uptime += 15
+            for _ in 0..<15 { runtime.hideWhileAudioPlays = true }
+            XCTAssertEqual(clock.pendingCount, 1)
+            XCTAssertEqual(clock.scheduledCount, 2)
+            try clock.fireNext()
+            try await waitUntil { runtime.activityStatus == "Active" }
+            XCTAssertEqual(clock.pendingCount, 0)
+            XCTAssertEqual(clock.scheduledCount, 2)
+        }
+    }
+
+    @MainActor func testResolvedAudioReadingCancelsAndReplacesFollowUp() async throws {
+        try await withTrackingActivity { _ in
+            let runtime = WhereWolfBackgroundRuntime.shared
+            let saved = runtime.audioDependencies
+            let clock = AudioClock()
+            clock.playing = true
+            runtime.audioDependencies = clock.dependencies
+            defer { runtime.hideWhileAudioPlays = false; runtime.audioDependencies = saved }
+            runtime.hideWhileAudioPlays = true
+            let first = try XCTUnwrap(clock.scheduled.first?.work)
+            clock.uptime = 5
+            clock.playing = false
+            runtime.hideWhileAudioPlays = true
+            XCTAssertTrue(first.isCancelled)
+            XCTAssertEqual(clock.pendingCount, 0)
+            clock.uptime = 10
+            clock.playing = true
+            runtime.hideWhileAudioPlays = true
+            XCTAssertEqual(clock.pendingCount, 1)
+            XCTAssertEqual(clock.scheduledCount, 2)
+            XCTAssertEqual(try XCTUnwrap(clock.scheduled.last?.deadline), 25.1, accuracy: 0.001)
+            clock.uptime = 15.1
+            first.perform()
+            XCTAssertTrue(WhereWolfBackgroundRuntime.hasActiveTrackingActivity)
+            XCTAssertEqual(clock.pendingCount, 1)
+            try clock.fireNext()
+            try await waitUntil { runtime.activityStatus == "Hidden while other audio plays" }
+            XCTAssertEqual(clock.pendingCount, 0)
+        }
+    }
+
+    @MainActor func testReplacingAudioDependenciesClearsPendingAndHiddenState() async throws {
+        try await withTrackingActivity { _ in
+            let runtime = WhereWolfBackgroundRuntime.shared
+            let saved = runtime.audioDependencies
+            defer { runtime.hideWhileAudioPlays = false; runtime.audioDependencies = saved }
+            for phase in 0..<3 {
+                let clock = AudioClock()
+                clock.playing = true
+                runtime.audioDependencies = clock.dependencies
+                runtime.hideWhileAudioPlays = true
+                let hiding = try XCTUnwrap(clock.scheduled.first?.work)
+                if phase > 0 {
+                    try clock.fireNext()
+                    try await waitUntil { runtime.activityStatus == "Hidden while other audio plays" }
+                }
+                if phase == 2 {
+                    clock.playing = false
+                    clock.uptime += 15
+                    runtime.checkAudioFromLocation()
+                    XCTAssertEqual(clock.pendingCount, 1)
+                }
+                let pending = clock.scheduled.last?.work
+                runtime.willRestoreAfterAudio(.trip)
+                runtime.audioDependencies = saved
+                XCTAssertEqual(clock.pendingCount, 0)
+                if phase == 0 { XCTAssertTrue(hiding.isCancelled) }
+                if phase == 2 { XCTAssertTrue(try XCTUnwrap(pending).isCancelled) }
+                for kind in LiveActivityAudioPolicy.Kind.allCases {
+                    XCTAssertEqual(runtime.audioAction(for: kind, eligible: true, hasActivity: false), .keep)
+                }
+                runtime.hideWhileAudioPlays = false
+                try await waitUntil { runtime.activityStatus == "Active" }
             }
         }
     }
@@ -296,12 +493,12 @@ final class BackgroundRuntimeTests: XCTestCase {
             let manager = GLManager.shared()!
             let defaults = UserDefaults.standard
             let start = Date()
-            var playing = true
-            var uptime: TimeInterval = 0
-            runtime.audioDependencies = .init(otherAudioPlaying: { playing }, uptime: { uptime })
+            let clock = AudioClock()
+            clock.playing = true
+            runtime.audioDependencies = clock.dependencies
             defer {
-                runtime.audioDependencies = saved
                 runtime.hideWhileAudioPlays = false
+                runtime.audioDependencies = saved
                 defaults.removeObject(forKey: GLTripStartTimeDefaultsName)
                 manager.tripLiveActivityEnabled = false
             }
@@ -309,16 +506,16 @@ final class BackgroundRuntimeTests: XCTestCase {
             manager.tripLiveActivityEnabled = true
             try await waitUntil { Activity<TripActivityAttributes>.activities.contains { $0.activityState == .active } }
             runtime.hideWhileAudioPlays = true
-            uptime = 15
-            runtime.checkAudioFromLocation()
+            try clock.fireNext()
             try await waitUntil {
                 Activity<TripActivityAttributes>.activities.isEmpty && !WhereWolfBackgroundRuntime.hasActiveTrackingActivity
             }
             XCTAssertEqual(manager.currentTripStart(), start)
             XCTAssertTrue(manager.trackingEnabled)
-            playing = false
-            uptime = 30
+            clock.playing = false
+            clock.uptime += 15
             runtime.checkAudioFromLocation()
+            try clock.fireNext()
             try await waitUntil {
                 Activity<TripActivityAttributes>.activities.contains { $0.activityState == .active }
                     && WhereWolfBackgroundRuntime.hasActiveTrackingActivity
@@ -359,9 +556,12 @@ final class BackgroundRuntimeTests: XCTestCase {
         let saved = defaults.persistentDomain(forName: domain) ?? [:]
         let manager = GLManager.shared()!
         let runtime = WhereWolfBackgroundRuntime.shared
+        let savedAudioDependencies = runtime.audioDependencies
         manager.stopAllUpdates()
+        runtime.audioDependencies = .init()
         defer {
             manager.stopAllUpdates()
+            runtime.audioDependencies = savedAudioDependencies
             defaults.setPersistentDomain(saved, forName: domain)
         }
         guard manager.locationManager.authorizationStatus == .authorizedAlways else {
@@ -374,15 +574,33 @@ final class BackgroundRuntimeTests: XCTestCase {
         runtime.hideWhileAudioPlays = false
         runtime.appearance = "minimal"
         runtime.liveActivityEnabled = true
-        manager.startAllUpdates()
-        try await waitUntil { !Activity<TrackingActivityAttributes>.activities.isEmpty }
-        let activity = try XCTUnwrap(Activity<TrackingActivityAttributes>.activities.first)
-        try await body(activity)
-        manager.stopAllUpdates()
-        try await waitUntil {
-            Activity<TrackingActivityAttributes>.activities.isEmpty && Activity<IslandOnlyTrackingAttributes>.activities.isEmpty
+        do {
+            manager.startAllUpdates()
+            runtime.retry()
+            try await waitUntil("initial tracking activity") {
+                runtime.activityStatus == "Active" && WhereWolfBackgroundRuntime.hasBackgroundLocationActivity
+            }
+            let activity = try XCTUnwrap(Activity<TrackingActivityAttributes>.activities.first { $0.activityState == .active })
+            try await body(activity)
+        } catch {
+            try? await stopBackgroundHelpers()
+            throw error
         }
-        try await waitUntil { runtime.audioStatus == "Off" }
+        try await stopBackgroundHelpers()
+    }
+
+    @MainActor private func stopBackgroundHelpers() async throws {
+        let runtime = WhereWolfBackgroundRuntime.shared
+        GLManager.shared().stopAllUpdates()
+        runtime.hideWhileAudioPlays = false
+        runtime.silentAudioEnabled = false
+        runtime.liveActivityEnabled = false
+        runtime.resetAudioPolicy()
+        try await waitUntil("background helper cleanup") {
+            Activity<TrackingActivityAttributes>.activities.isEmpty
+                && Activity<IslandOnlyTrackingAttributes>.activities.isEmpty
+                && Activity<TripActivityAttributes>.activities.isEmpty && runtime.audioStatus == "Off"
+        }
     }
 
     @MainActor func testReminderOffersAResumeActionThatRunsInTheBackground() async throws {
@@ -411,13 +629,43 @@ final class BackgroundRuntimeTests: XCTestCase {
         XCTAssertFalse(defaults.bool(forKey: GLTrackingStateDefaultsName))
     }
 
-    @MainActor private func waitUntil(_ predicate: () -> Bool) async throws {
+    @MainActor private func waitUntil(_ description: String = "background runtime state",
+                                      file: StaticString = #filePath, line: UInt = #line,
+                                      _ predicate: () -> Bool) async throws {
         for _ in 0..<100 {
             if predicate() { return }
             try await Task.sleep(for: .milliseconds(100))
         }
-        XCTFail("Timed out waiting for background runtime state")
+        let runtime = WhereWolfBackgroundRuntime.shared
+        let manager = GLManager.shared()!
+        XCTFail("Timed out waiting for \(description): activity=\(runtime.activityStatus), audio=\(runtime.audioStatus), appState=\(UIApplication.shared.applicationState.rawValue), tracking=\(manager.trackingEnabled), authorization=\(manager.locationManager.authorizationStatus.rawValue), appearance=\(runtime.appearance), hideForAudio=\(runtime.hideWhileAudioPlays), widgetActivities=\(Activity<TrackingActivityAttributes>.activities.count), blankActivities=\(Activity<IslandOnlyTrackingAttributes>.activities.count)", file: file, line: line)
         throw NSError(domain: "BackgroundRuntimeTests", code: 1)
+    }
+
+    @MainActor private final class AudioClock {
+        var playing = false
+        var uptime: TimeInterval = 0
+        var authorization = CLAuthorizationStatus.authorizedAlways
+        var scheduled: [(deadline: TimeInterval, work: DispatchWorkItem)] = []
+        var scheduledCount = 0
+
+        var pendingCount: Int { scheduled.filter { !$0.work.isCancelled }.count }
+
+        var dependencies: WhereWolfBackgroundRuntime.AudioDependencies {
+            .init(otherAudioPlaying: { self.playing }, uptime: { self.uptime },
+                  authorization: { self.authorization }, schedule: { delay, work in
+                self.scheduled.append((self.uptime + delay, work))
+                self.scheduledCount += 1
+            })
+        }
+
+        func fireNext(lateBy delay: TimeInterval = 0) throws {
+            scheduled.removeAll { $0.work.isCancelled }
+            let next = try XCTUnwrap(scheduled.first)
+            scheduled.removeFirst()
+            uptime = max(uptime, next.deadline) + delay
+            next.work.perform()
+        }
     }
 
     @MainActor private func interrupt(_ type: AVAudioSession.InterruptionType,

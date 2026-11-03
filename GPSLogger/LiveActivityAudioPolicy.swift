@@ -1,6 +1,8 @@
 import CoreLocation
 
 struct LiveActivityAudioPolicy {
+    static let confirmationInterval: TimeInterval = 15
+
     enum Kind: CaseIterable {
         case status, minimal, blank, trip
 
@@ -12,26 +14,31 @@ struct LiveActivityAudioPolicy {
     private enum Attempt { case ready, background, foreground }
 
     private(set) var isHiding = false
-    private var audioSince: TimeInterval?
+    private(set) var confirmationDeadline: TimeInterval?
     private var lastSample = -TimeInterval.infinity
     private var pending: [Bool: Attempt] = [:]
 
-    func shouldSampleLocation(at time: TimeInterval) -> Bool { time - lastSample >= 15 }
+    func shouldSampleLocation(at time: TimeInterval) -> Bool { time - lastSample >= Self.confirmationInterval }
 
     mutating func sample(enabled: Bool, otherAudioPlaying: Bool,
                          authorization: CLAuthorizationStatus, at time: TimeInterval) {
         lastSample = time
-        guard enabled, authorization == .authorizedAlways, otherAudioPlaying else {
-            audioSince = nil
+        guard enabled, authorization == .authorizedAlways else {
+            confirmationDeadline = nil
             isHiding = false
             return
         }
-        // Separate readings 15 seconds apart ignore brief prompts without scheduling a wakeup.
-        if let audioSince {
-            if time - audioSince >= 15 { isHiding = true }
-        } else {
-            audioSince = time
+        guard otherAudioPlaying != isHiding else {
+            confirmationDeadline = nil
+            return
         }
+        if let confirmationDeadline {
+            guard time >= confirmationDeadline else { return }
+            isHiding = otherAudioPlaying
+            self.confirmationDeadline = nil
+            return
+        }
+        confirmationDeadline = time + Self.confirmationInterval
     }
 
     mutating func action(for kind: Kind, eligible: Bool, hasActivity: Bool, scene: Scene) -> Action {

@@ -478,7 +478,8 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   extension and opt-in `SilentAudioSession`. Live Activity staleness mirrors the
   pending `reminder` notification deadline. Keep its scheduling rules in
   `GLManager`; do not drive activity staleness from another timeout. The shared ActivityAttributes
-  source belongs to both the app and `WhereWolfTrackingActivity` targets. Blank uses
+  source belongs to both the app and `WhereWolfTrackingActivity` targets. Blank is
+  the default appearance for new installs; saved choices remain. Blank uses
   `IslandOnlyTrackingAttributes` in the app target only. Do not register it in the
   widget extension: the unrendered activity is what avoids the Lock Screen card.
   End and recover both activity types, and replace the type when appearance changes.
@@ -487,9 +488,14 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   Hide While Audio Plays defaults off and is local-only. Two other-audio readings
   at least 15 seconds apart hide Status, Minimal, Blank and separate trip activities,
   only with Always location access. Sample on existing lifecycle/activity/audio
-  events and location callbacks (at most once per 15 seconds); add no timer or
-  audio-session activation. Own silent audio does not count or stop. Audio ending
-  permits one background restore attempt per activity family, then waits for
+  events and location callbacks (at most once per 15 seconds). A pending audio
+  change schedules one cancellable refresh just after 15 seconds, for both hiding
+  and restoring; use no repeating timer or audio-session activation. Cancel it when
+  resolved, disabled, tracking stops or Always access is lost. It reacts within
+  about 15 seconds while WhereWolf runs in the background (moving or with Silent
+  Audio on); while suspended, it reacts at the next location update or app open.
+  Own silent audio does not count or stop. Confirmed audio ending permits one
+  background restore attempt per activity family, then waits for
   foreground or explicit Retry after a refusal. Hiding is not a failure. Preserve
   Stop, pauses, trip state and the reminder deadline.
   Silent audio checks playback only while opted in. Unexpected stops get three
