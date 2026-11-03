@@ -308,6 +308,13 @@ final class GLManagerBridge {
         return (current, known, wifiZoneLocation)
     }
 
+    // Asks iOS for the current network directly, for screens that can wait for the answer.
+    func refreshCurrentWifiNetwork(_ completion: @escaping (WifiZoneNetwork?) -> Void) {
+        GLManager.refreshCurrentWifiNetwork { info in
+            completion(WifiZoneNetwork((info as? [String: String]) ?? [:]))
+        }
+    }
+
     var wifiZoneLocation: CLLocation? {
         _ = clockTick
         guard let gl = GLManager.shared(), let location = gl.lastReceivedLocation ?? gl.lastLocation,

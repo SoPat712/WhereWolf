@@ -456,8 +456,9 @@ struct DrawerTabStrip: View {
     @GestureState private var pressed: Int?
 
     static let contentInset: CGFloat = 4
-    // Items match the system tab bar measured on iOS 27: 54-point cells with a 16-point semibold
-    // symbol centered 20 points down and a 10-point label centered 41 down. The strip is never
+    // Items match the system tab bar measured on iOS 27: 54-point cells with a symbol centered 20
+    // points down and a 10-point label centered 41 down. UIKit draws its 16-point semibold tab
+    // symbols about 1.4 times larger, which a 22.6-point semibold symbol matches. The strip is never
     // scaled, so the bar can hand off to the system one without the items changing size.
     static let cellHeight: CGFloat = 54
 
@@ -472,7 +473,7 @@ struct DrawerTabStrip: View {
             ForEach(Self.tabs) { tab in
                 VStack(spacing: 0) {
                     Image(systemName: tab.symbol)
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.system(size: 22.6, weight: .semibold))
                         .frame(height: 30)
 #if targetEnvironment(simulator)
                         .background(DrawerIconAuditProbe(index: tab.id))

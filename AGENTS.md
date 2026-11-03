@@ -357,8 +357,9 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   capsule is 346 wide and about 76 tall with its bottom 28 points up, clear of the home
   indicator. Open, the sheet is 382 wide with its bottom 8 points up, and the 352-wide tab
   strip sits 20.5 points up. Blend between them as the drawer moves. Tab items match the
-  system tab bar measured on iOS 27 (54-point cells, a 16-point semibold symbol centered 20
-  points down, a 10-point medium label centered 41 down) and are never scaled; the drawer
+  system tab bar measured on iOS 27 (54-point cells; UIKit draws 16-point semibold symbols about
+  1.4 times larger, so a 22.6-point semibold symbol centered 20 points down; a 10-point medium
+  label centered 41 down) and are never scaled; the drawer
   changes only the strip's layout width, so open and closed change the spacing. The closed
   capsule keeps 10.6 points above the strip for the grabber mark and 3.2 below. Zoom buttons
   preserve replay following and rotation; manual map gestures remain free.
@@ -501,6 +502,9 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   Preserve import receipts, local history, saved workouts and active trips.
 - Notifications remain opt-in. Problems Only suppresses routine status and trip
   messages while retaining upload errors and the existing missed-update reminder.
+- Current WiFi identity tries `CNCopyCurrentNetworkInfo`, which is deprecated and can be empty
+  on current iOS, then a cached `NEHotspotNetwork.fetchCurrent` result under two minutes old;
+  each miss refreshes that cache in the background, and Choose Networks waits for a fresh fetch.
 - WiFi zones: `WifiZones` defaults key, array of `{name, latitude, longitude[,
   bssid]}` dicts; legacy single-zone keys migrate on first access. Matching is
   SSID-first, BSSID tiebreaker. Canonical SSID/BSSID identity has one coordinate

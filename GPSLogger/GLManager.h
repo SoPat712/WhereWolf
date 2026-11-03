@@ -157,6 +157,7 @@ typedef void (^CaseBlock)(void);
 
 + (NSString *)currentWifiHotSpotName;
 + (NSDictionary *)currentWifiNetworkInfo;
++ (void)refreshCurrentWifiNetwork:(void (^)(NSDictionary *network))completion;
 + (NSString *)normalizedWifiBSSID:(NSString *)bssid;
 + (NSArray<NSDictionary<NSString *, NSString *> *> *)knownWifiNetworks;
 

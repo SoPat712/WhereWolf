@@ -898,6 +898,8 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
                 let frame = candidate.convert(candidate.bounds, to: view)
                 sample[identifier + ".x"] = frame.midX
                 sample[identifier + ".y"] = frame.midY
+                sample[identifier + ".w"] = frame.width
+                sample[identifier + ".h"] = frame.height
             }
             for child in candidate.subviews { collectIcons(child) }
         }

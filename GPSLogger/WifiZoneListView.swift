@@ -206,6 +206,14 @@ struct AddWifiZoneView: View {
         let snapshot = bridge.wifiNetworkSnapshot()
         current = snapshot.current
         mergeNetworks(snapshot.known + (snapshot.current.map { [$0] } ?? []))
+        let firstLoad = !loaded
+        bridge.refreshCurrentWifiNetwork { network in
+            guard let network else { return }
+            let wasMissing = current == nil
+            current = network
+            mergeNetworks([network])
+            if firstLoad, wasMissing, seed == nil, selected.isEmpty { selected.insert(network) }
+        }
         guard !loaded else { return }
         loaded = true
         if let seed, let network = WifiZoneNetwork(seed) {

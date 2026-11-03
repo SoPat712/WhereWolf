@@ -237,7 +237,9 @@ private struct TripModeIcon: View {
     var body: some View {
         Group {
             if let image = TripModeStore.image(symbol: symbol) {
+                // Custom symbol sets otherwise draw in their original black.
                 Image(uiImage: image)
+                    .renderingMode(.template)
                     .resizable()
                     .scaledToFit()
             } else {

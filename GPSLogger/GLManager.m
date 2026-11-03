@@ -19,6 +19,7 @@
 #import <sqlite3.h>
 #import "Where-Swift.h"
 @import UserNotifications;
+@import NetworkExtension;
 
 @interface GLManager()
 
@@ -4203,22 +4204,49 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     }
 }
 
-// iOS redacts SSID/BSSID without location permission and the wifi-info entitlement
+static NSDictionary *GLFetchedWifiNetwork;
+static CFAbsoluteTime GLFetchedWifiTime;
+static BOOL GLFetchingWifiNetwork;
+
+static NSDictionary *GLNormalizedCurrentWifiInfo(id ssid, id rawBSSID) {
+    if(![ssid isKindOfClass:NSString.class] || [ssid length] == 0) return nil;
+    NSString *bssid = GLCanonicalWifiBSSID(rawBSSID);
+    if(GLIsRedactedWifiNetwork(ssid, bssid)) return nil;
+    return bssid ? @{@"SSID": ssid, @"BSSID": bssid} : @{@"SSID": ssid};
+}
+
+// iOS redacts SSID/BSSID without location permission and the wifi-info entitlement.
+// CNCopyCurrentNetworkInfo has been deprecated since iOS 14 and can return nothing on current
+// iOS, so a recent NEHotspotNetwork result fills in, refreshed in the background for later calls.
 + (NSDictionary *)currentWifiNetworkInfo {
     NSArray *ifs = (__bridge_transfer id)CNCopySupportedInterfaces();
     for (NSString *ifnam in ifs) {
         NSDictionary *info = (__bridge_transfer id)CNCopyCurrentNetworkInfo((__bridge CFStringRef)ifnam);
         if(![info isKindOfClass:NSDictionary.class]) continue;
-        id ssid = info[@"SSID"];
-        if(![ssid isKindOfClass:NSString.class] || [ssid length] == 0) continue;
-        NSMutableDictionary *normalized = [@{@"SSID": ssid} mutableCopy];
-        NSString *bssid = GLCanonicalWifiBSSID(info[@"BSSID"]);
-        if(GLIsRedactedWifiNetwork(ssid, bssid)) continue;
-        if(bssid) normalized[@"BSSID"] = bssid;
-        else [normalized removeObjectForKey:@"BSSID"];
-        return normalized.copy;
+        NSDictionary *network = GLNormalizedCurrentWifiInfo(info[@"SSID"], info[@"BSSID"]);
+        if(network) return network;
+    }
+    [self refreshCurrentWifiNetwork:nil];
+    @synchronized (GLManager.class) {
+        if(GLFetchedWifiNetwork && CFAbsoluteTimeGetCurrent() - GLFetchedWifiTime < 120) return GLFetchedWifiNetwork;
     }
     return @{};
+}
+
++ (void)refreshCurrentWifiNetwork:(void (^)(NSDictionary *network))completion {
+    @synchronized (GLManager.class) {
+        if(GLFetchingWifiNetwork && !completion) return;
+        GLFetchingWifiNetwork = YES;
+    }
+    [NEHotspotNetwork fetchCurrentWithCompletionHandler:^(NEHotspotNetwork *current) {
+        NSDictionary *network = GLNormalizedCurrentWifiInfo(current.SSID, current.BSSID);
+        @synchronized (GLManager.class) {
+            GLFetchingWifiNetwork = NO;
+            GLFetchedWifiNetwork = network;
+            GLFetchedWifiTime = CFAbsoluteTimeGetCurrent();
+        }
+        if(completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(network ?: @{}); });
+    }];
 }
 
 #pragma mark - FMDB
