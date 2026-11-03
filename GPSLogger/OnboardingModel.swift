@@ -128,8 +128,9 @@ final class OnboardingModel {
     init(defaults: UserDefaults, actions: OnboardingActions) {
         self.defaults = defaults
         self.actions = actions
-        completed = defaults.bool(forKey: Self.completedKey)
-        isPresented = !completed
+        let done = defaults.bool(forKey: Self.completedKey)
+        completed = done
+        isPresented = !done
     }
 
     var steps: [OnboardingStep] {

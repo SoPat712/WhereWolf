@@ -87,6 +87,8 @@
 		B08800000000000000000041 /* BackgroundRuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B08800000000000000000040 /* BackgroundRuntimeTests.swift */; };
 		B08800000000000000000051 /* LiveActivityAudioPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = B08800000000000000000050 /* LiveActivityAudioPolicy.swift */; };
 		B08800000000000000000053 /* LiveActivityAudioPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B08800000000000000000052 /* LiveActivityAudioPolicyTests.swift */; };
+		B08800000000000000000055 /* LiveActivityReopenPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = B08800000000000000000054 /* LiveActivityReopenPrompt.swift */; };
+		B08800000000000000000057 /* LiveActivityReopenPromptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B08800000000000000000056 /* LiveActivityReopenPromptTests.swift */; };
 		BAEDDD70BD822527C8684813 /* HealthTripRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 156F17CEE92C6ACFC40D1261 /* HealthTripRecorder.swift */; };
 		C02700000000000000000001 /* TestFlightDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = C02700000000000000000002 /* TestFlightDiagnostics.swift */; };
 		C02700000000000000000003 /* DiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C02700000000000000000004 /* DiagnosticsView.swift */; };
@@ -122,6 +124,10 @@
 		FD8716D075FB5292BFD3C574 /* HistoryRetentionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BEB326A17A6C66C642C0A6B /* HistoryRetentionTests.swift */; };
 		FE9D896276FE76C0B7D6DDF6 /* GLTripActions.m in Sources */ = {isa = PBXBuildFile; fileRef = 21602F0B954DE517514264C4 /* GLTripActions.m */; };
 		FFFD07EC57EDFD9A3BF5CB30 /* TripControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = C215F1FD102A461140930DC1 /* TripControls.swift */; };
+		C0B0A0000000000000000002 /* OnboardingModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0B0A0000000000000000001 /* OnboardingModel.swift */; };
+		C0B0A0000000000000000004 /* OnboardingServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0B0A0000000000000000003 /* OnboardingServices.swift */; };
+		C0B0A0000000000000000006 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0B0A0000000000000000005 /* OnboardingView.swift */; };
+		C0B0A0000000000000000008 /* OnboardingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0B0A0000000000000000007 /* OnboardingTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -268,6 +274,8 @@
 		B08800000000000000000040 /* BackgroundRuntimeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/BackgroundRuntimeTests.swift; sourceTree = SOURCE_ROOT; };
 		B08800000000000000000050 /* LiveActivityAudioPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/LiveActivityAudioPolicy.swift; sourceTree = SOURCE_ROOT; };
 		B08800000000000000000052 /* LiveActivityAudioPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/LiveActivityAudioPolicyTests.swift; sourceTree = SOURCE_ROOT; };
+		B08800000000000000000054 /* LiveActivityReopenPrompt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/LiveActivityReopenPrompt.swift; sourceTree = SOURCE_ROOT; };
+		B08800000000000000000056 /* LiveActivityReopenPromptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/LiveActivityReopenPromptTests.swift; sourceTree = SOURCE_ROOT; };
 		B43520312801460797C456DA /* TrackingActivity.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; name = TrackingActivity.entitlements; path = TrackingActivity/TrackingActivity.entitlements; sourceTree = "<group>"; };
 		C02700000000000000000002 /* TestFlightDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/TestFlightDiagnostics.swift; sourceTree = SOURCE_ROOT; };
 		C02700000000000000000004 /* DiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/DiagnosticsView.swift; sourceTree = SOURCE_ROOT; };
@@ -301,6 +309,10 @@
 		D8F54F73CE518F85F9D383BF /* TripActivityAttributes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripActivityAttributes.swift; path = GPSLogger/LiveActivity/TripActivityAttributes.swift; sourceTree = "<group>"; };
 		E0A408349E469AC6E6DA46BA /* libPods-WhereWolf.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-WhereWolf.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		F4DFFAB32440A8511E1D869A /* Pods-WhereWolf.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-WhereWolf.debug.xcconfig"; path = "Pods/Target Support Files/Pods-WhereWolf/Pods-WhereWolf.debug.xcconfig"; sourceTree = "<group>"; };
+		C0B0A0000000000000000001 /* OnboardingModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/OnboardingModel.swift; sourceTree = SOURCE_ROOT; };
+		C0B0A0000000000000000003 /* OnboardingServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/OnboardingServices.swift; sourceTree = SOURCE_ROOT; };
+		C0B0A0000000000000000005 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/OnboardingView.swift; sourceTree = SOURCE_ROOT; };
+		C0B0A0000000000000000007 /* OnboardingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/OnboardingTests.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -377,6 +389,7 @@
 			children = (
 				C0A7C4000000000000000022 /* WhereWolfWatch */,
 				A01100000000000000000001 /* WhereWolfTests.m */,
+				C0B0A0000000000000000007 /* OnboardingTests.swift */,
 				A0CC00000000000000000001 /* HistoryPlaybackTests.swift */,
 				C0A7C4000000000000000008 /* WatchLinkTests.swift */,
 				00D3E0000000000000000001 /* TripEndPromptTests.swift */,
@@ -390,6 +403,7 @@
 				A0EE00000000000000000001 /* DrawerLayoutTests.swift */,
 				B08800000000000000000040 /* BackgroundRuntimeTests.swift */,
 				B08800000000000000000052 /* LiveActivityAudioPolicyTests.swift */,
+				B08800000000000000000056 /* LiveActivityReopenPromptTests.swift */,
 				A09900000000000000000021 /* TipDonationTests.swift */,
 				B08800000000000000000014 /* TrackingActivity */,
 				6DEC9B3621F3F88500D9E8C4 /* WhereWolf.entitlements */,
@@ -449,6 +463,7 @@
 				C02700000000000000000004 /* DiagnosticsView.swift */,
 				B08800000000000000000001 /* BackgroundRuntime.swift */,
 				B08800000000000000000050 /* LiveActivityAudioPolicy.swift */,
+				B08800000000000000000054 /* LiveActivityReopenPrompt.swift */,
 				B08800000000000000000002 /* SilentAudioSession.swift */,
 				0FCF53231F81AAAC00577A0F /* GPSLogger.entitlements */,
 				0FFD31581BAB7A34009B3A03 /* AppDelegate.h */,
@@ -460,6 +475,9 @@
 				0FCAFE00F00D0000000000A1 /* WifiZoneListView.swift */,
 				0FCAFE00F00D0000000000C1 /* WhereWolfLocationEngine.swift */,
 				0FCAFE00F00D0000000000E1 /* GLManagerBridge.swift */,
+				C0B0A0000000000000000005 /* OnboardingView.swift */,
+				C0B0A0000000000000000003 /* OnboardingServices.swift */,
+				C0B0A0000000000000000001 /* OnboardingModel.swift */,
 				C0A7C4000000000000000007 /* WhereWolfWatchLink.swift */,
 				0FCAFE00F00D0000000000E2 /* WhereWolfRootView.swift */,
 				0FCAFE00F00D0000000000E3 /* TrackerView.swift */,
@@ -763,6 +781,7 @@
 				C02700000000000000000003 /* DiagnosticsView.swift in Sources */,
 				B0880000000000000000000B /* BackgroundRuntime.swift in Sources */,
 				B08800000000000000000051 /* LiveActivityAudioPolicy.swift in Sources */,
+				B08800000000000000000055 /* LiveActivityReopenPrompt.swift in Sources */,
 				B0880000000000000000000C /* SilentAudioSession.swift in Sources */,
 				B0880000000000000000000D /* TrackingActivityAttributes.swift in Sources */,
 				0FFD315A1BAB7A34009B3A03 /* AppDelegate.m in Sources */,
@@ -771,6 +790,9 @@
 				0FCAFE00F00D0000000000B1 /* WifiZoneListView.swift in Sources */,
 				0FCAFE00F00D0000000000D1 /* WhereWolfLocationEngine.swift in Sources */,
 				0FCAFE00F00D0000000000F1 /* GLManagerBridge.swift in Sources */,
+				C0B0A0000000000000000006 /* OnboardingView.swift in Sources */,
+				C0B0A0000000000000000004 /* OnboardingServices.swift in Sources */,
+				C0B0A0000000000000000002 /* OnboardingModel.swift in Sources */,
 				C0A7C4000000000000000017 /* WhereWolfWatchLink.swift in Sources */,
 				C0A7C4000000000000000016 /* WatchLink.swift in Sources */,
 				0FCAFE00F00D0000000000F2 /* WhereWolfRootView.swift in Sources */,
@@ -826,6 +848,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A01100000000000000000002 /* WhereWolfTests.m in Sources */,
+				C0B0A0000000000000000008 /* OnboardingTests.swift in Sources */,
 				C0A100000000000000000007 /* TrackingPolicyTests.m in Sources */,
 				D0F100000000000000000007 /* LocationHealthTests.m in Sources */,
 				D0F200000000000000000002 /* MapChromeTests.swift in Sources */,
@@ -834,6 +857,7 @@
 				A09900000000000000000020 /* TipDonationTests.swift in Sources */,
 				B08800000000000000000041 /* BackgroundRuntimeTests.swift in Sources */,
 				B08800000000000000000053 /* LiveActivityAudioPolicyTests.swift in Sources */,
+				B08800000000000000000057 /* LiveActivityReopenPromptTests.swift in Sources */,
 				A0CC00000000000000000002 /* HistoryPlaybackTests.swift in Sources */,
 				C0A7C4000000000000000018 /* WatchLinkTests.swift in Sources */,
 				00D3E0000000000000000002 /* TripEndPromptTests.swift in Sources */,
