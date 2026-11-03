@@ -8,13 +8,13 @@ permalink: /privacy/
 
 Effective November 3, 2026
 
-WhereWolf is developed by Josh Patra ([SoPat712](https://github.com/SoPat712)).
+WhereWolf is developed by [SoPat712](https://github.com/SoPat712) (“the developer”).
 This policy describes the WhereWolf iOS app and its companion watch app.
 
 ## What the developer receives
 
 WhereWolf has no developer-operated server. The app does not automatically send
-your location, Health data, or usage information to Josh Patra. It has no ads,
+your location, Health data, or usage information to the developer. It has no ads,
 analytics service, or tracking across other companies' apps and websites. It
 includes no advertising or analytics SDKs. FMDB, its third-party database
 library, works locally with SQLite.
@@ -84,7 +84,7 @@ or copies already queued or sent.
 If you select iCloud Drive as your destination, WhereWolf writes export files to
 your own iCloud Drive container instead of sending the queue to an HTTP server.
 Apple handles iCloud storage and synchronization. You control these files and
-Health records through Apple's apps and settings; Josh Patra cannot access them
+Health records through Apple's apps and settings; the developer cannot access them
 through WhereWolf.
 
 ## Settings backup and optional iCloud sync
@@ -106,7 +106,7 @@ synchronizable Keychain item managed by iCloud Keychain. They are never written 
 the key-value store. Local modification metadata excludes credential values.
 Permissions, tracking on/off, active trips, device identifiers, activity IDs,
 queues, recorded history, imports and Health records are not synchronized by this
-feature. Apple handles iCloud synchronization; Josh Patra cannot access those
+feature. Apple handles iCloud synchronization; the developer cannot access those
 settings through WhereWolf. Turning sync off stops further settings synchronization
 on this iPhone; previously synchronized values remain in iCloud. Keychain items can
 persist separately from the app's local files.
@@ -156,7 +156,7 @@ and the [Apple Privacy Policy](https://www.apple.com/legal/privacy/).
 
 Tips to support WhereWolf are processed by Apple through in-app purchases. WhereWolf
 checks products, purchase results, and subscription status using StoreKit;
-Josh Patra does not receive your payment card or bank details through the app.
+the developer does not receive your payment card or bank details through the app.
 In the US App Store storefront, the app also offers optional links to tip
 Overland's creator, Aaron Parecki, through Cash App, PayPal, or Venmo. These
 open external services, whose own privacy practices apply. The Venmo link
@@ -210,7 +210,7 @@ accounts. The same permission and destination choices apply to every user.
 ## Changes and contact
 
 Changes to this policy will appear on this page with an updated effective date.
-For privacy questions, contact Josh Patra through a
+For privacy questions, contact the developer through a
 [GitHub issue](https://github.com/SoPat712/WhereWolf/issues).
 
 [WhereWolf support]({{ '/' | relative_url }})

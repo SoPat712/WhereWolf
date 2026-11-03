@@ -21,6 +21,6 @@ server credentials, and other private information.
 - [Privacy policy]({{ '/privacy/' | relative_url }})
 - [Source code](https://github.com/SoPat712/WhereWolf)
 
-WhereWolf is made by Josh Patra ([SoPat712](https://github.com/SoPat712)). It started
+WhereWolf is made by [SoPat712](https://github.com/SoPat712). It started
 from [Overland](https://github.com/aaronpk/Overland-iOS) by Aaron Parecki and keeps
 Overland's API, so services built for Overland work with it.
