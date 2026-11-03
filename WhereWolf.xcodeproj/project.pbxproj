@@ -71,6 +71,7 @@
 		A0990000000000000000000D /* TipDonation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A09900000000000000000003 /* TipDonation.swift */; };
 		A09900000000000000000020 /* TipDonationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A09900000000000000000021 /* TipDonationTests.swift */; };
 		A0BB00000000000000000002 /* NativeMapSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0BB00000000000000000001 /* NativeMapSurface.swift */; };
+		D0F300000000000000000002 /* LiveHeadingBeam.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0F300000000000000000001 /* LiveHeadingBeam.swift */; };
 		A0BC00000000000000000002 /* ReplayRouteRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0BC00000000000000000001 /* ReplayRouteRenderer.swift */; };
 		A0BC00000000000000000012 /* ReplayRouteRendererTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0BC00000000000000000011 /* ReplayRouteRendererTests.swift */; };
 		A0CC00000000000000000002 /* HistoryPlaybackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0CC00000000000000000001 /* HistoryPlaybackTests.swift */; };
@@ -111,6 +112,7 @@
 		D0F100000000000000000005 /* LocationHealthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0F100000000000000000004 /* LocationHealthView.swift */; };
 		D0F100000000000000000007 /* LocationHealthTests.m in Sources */ = {isa = PBXBuildFile; fileRef = D0F100000000000000000006 /* LocationHealthTests.m */; };
 		D0F200000000000000000002 /* MapChromeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0F200000000000000000001 /* MapChromeTests.swift */; };
+		D0F400000000000000000002 /* LiveHeadingBeamTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0F400000000000000000001 /* LiveHeadingBeamTests.swift */; };
 		D1DD2EEF17FE44F979CA2C48 /* TripModesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 007A0E62CFBBFA8FE9DEADC3 /* TripModesView.swift */; };
 		D1F0000000000000000000A2 /* MapMotion.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F0000000000000000000A1 /* MapMotion.swift */; };
 		D1F0000000000000000000B2 /* ReplayTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F0000000000000000000B1 /* ReplayTimeline.swift */; };
@@ -272,6 +274,7 @@
 		A09900000000000000000003 /* TipDonation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TipDonation.swift; sourceTree = "<group>"; };
 		A09900000000000000000021 /* TipDonationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/TipDonationTests.swift; sourceTree = SOURCE_ROOT; };
 		A0BB00000000000000000001 /* NativeMapSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMapSurface.swift; sourceTree = "<group>"; };
+		D0F300000000000000000001 /* LiveHeadingBeam.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveHeadingBeam.swift; sourceTree = "<group>"; };
 		A0BC00000000000000000001 /* ReplayRouteRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplayRouteRenderer.swift; sourceTree = "<group>"; };
 		A0BC00000000000000000011 /* ReplayRouteRendererTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/ReplayRouteRendererTests.swift; sourceTree = SOURCE_ROOT; };
 		A0CC00000000000000000001 /* HistoryPlaybackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/HistoryPlaybackTests.swift; sourceTree = SOURCE_ROOT; };
@@ -314,6 +317,7 @@
 		D0F100000000000000000004 /* LocationHealthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationHealthView.swift; sourceTree = "<group>"; };
 		D0F100000000000000000006 /* LocationHealthTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Tests/LocationHealthTests.m; sourceTree = SOURCE_ROOT; };
 		D0F200000000000000000001 /* MapChromeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/MapChromeTests.swift; sourceTree = SOURCE_ROOT; };
+		D0F400000000000000000001 /* LiveHeadingBeamTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/LiveHeadingBeamTests.swift; sourceTree = SOURCE_ROOT; };
 		D1F0000000000000000000A1 /* MapMotion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapMotion.swift; sourceTree = "<group>"; };
 		D1F0000000000000000000B1 /* ReplayTimeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplayTimeline.swift; sourceTree = "<group>"; };
 		D1F0000000000000000000C1 /* WifiOnlySending.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WifiOnlySending.swift; sourceTree = "<group>"; };
@@ -424,6 +428,7 @@
 				C0A100000000000000000006 /* TrackingPolicyTests.m */,
 				D0F100000000000000000006 /* LocationHealthTests.m */,
 				D0F200000000000000000001 /* MapChromeTests.swift */,
+				D0F400000000000000000001 /* LiveHeadingBeamTests.swift */,
 				C0A100000000000000000008 /* LocationEngineRecoveryTests.swift */,
 				C0A10000000000000000000A /* UploadSchedulerTests.swift */,
 				A0BC00000000000000000011 /* ReplayRouteRendererTests.swift */,
@@ -520,6 +525,7 @@
 				0FCAFE00F00D0000000000E4 /* SettingsView.swift */,
 				A02200000000000000000001 /* SettingsHelpView.swift */,
 				A0BB00000000000000000001 /* NativeMapSurface.swift */,
+				D0F300000000000000000001 /* LiveHeadingBeam.swift */,
 				C0A100000000000000000001 /* GLTrackingPolicy.h */,
 				D0F100000000000000000001 /* GLLocationHealth.h */,
 				D0F100000000000000000002 /* GLLocationHealth.m */,
@@ -843,6 +849,7 @@
 				C0A7C4000000000000000016 /* WatchLink.swift in Sources */,
 				0FCAFE00F00D0000000000F2 /* WhereWolfRootView.swift in Sources */,
 				A0BB00000000000000000002 /* NativeMapSurface.swift in Sources */,
+				D0F300000000000000000002 /* LiveHeadingBeam.swift in Sources */,
 				C0A100000000000000000003 /* GLTrackingPolicy.m in Sources */,
 				D0F100000000000000000003 /* GLLocationHealth.m in Sources */,
 				D0F100000000000000000005 /* LocationHealthView.swift in Sources */,
@@ -901,6 +908,7 @@
 				C0A100000000000000000007 /* TrackingPolicyTests.m in Sources */,
 				D0F100000000000000000007 /* LocationHealthTests.m in Sources */,
 				D0F200000000000000000002 /* MapChromeTests.swift in Sources */,
+				D0F400000000000000000002 /* LiveHeadingBeamTests.swift in Sources */,
 				C0A100000000000000000009 /* LocationEngineRecoveryTests.swift in Sources */,
 				C0A10000000000000000000B /* UploadSchedulerTests.swift in Sources */,
 				A09900000000000000000020 /* TipDonationTests.swift in Sources */,

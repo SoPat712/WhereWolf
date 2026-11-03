@@ -392,8 +392,16 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   0.6–2 seconds. It keeps zoom and heading and aims at the moving fix; the first camera at
   launch and Reduce Motion jump instead. Once following, the location button switches a
   Find My style heading mode on and off where the device has a compass. `DeviceHeadingSource`
-  reads the compass from its own `CLLocationManager`, only while heading mode is on and the
-  map is visible, and a `HeadingMotion` spring turns the map about the dot. Turning heading
+  reads the compass from its own `CLLocationManager` with a 2° filter while tracking is on,
+  the scene is active and the live Tracker/Trip map is visible. Stop, Settings, replay and inactive
+  or background scenes stop it. `LiveHeadingController` shares those readings with a soft
+  blue 46-point beam under the native dot, independently of heading mode; invalid accuracy
+  hides it, and worse accuracy widens and fades it. Prefer true heading, then magnetic;
+  Core Location adjusts for interface orientation. Smooth geographic heading with
+  `HeadingMotion`, then apply the camera projection, respecting Reduce Motion. The beam
+  shares the dot's layer movement and adds no touch view. Keep `userTrackingMode` at `.none`;
+  MapKit exposes no independent native beam switch. A separate `HeadingMotion` spring turns
+  the map about the dot in heading mode. Turning heading
   mode off while still following turns the map north; map gestures and replay leave the
   rotation as it is.
   Live presentation uses a critically damped `LiveMapMotion`, preserving velocity

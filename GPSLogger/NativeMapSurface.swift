@@ -17,6 +17,11 @@ private final class PresentedUserLocationView: MKUserLocationView {
         observePosition()
     }
 
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        (layer.sublayers?.first { $0 is LiveHeadingBeamLayer } as? LiveHeadingBeamLayer)?.center(in: self)
+    }
+
     override func action(for layer: CALayer, forKey event: String) -> (any CAAction)? {
         if event == "position", presentedCenter != nil { return NSNull() }
         return super.action(for: layer, forKey: event)
@@ -308,6 +313,7 @@ struct NativeMapSurface: UIViewRepresentable {
     var scenePhase: ScenePhase
     var sceneVisible: Bool { scenePhase != .background }
     var pageActive: Bool
+    var trackingEnabled = false
     var onCameraChange: (MapCamera, Bool) -> Void
     var onInteraction: () -> Void
     var onRotationChange: (Bool) -> Void = { _ in }
@@ -506,15 +512,23 @@ struct NativeMapSurface: UIViewRepresentable {
         private var latestLiveTimestamp: Date?
         private var mapHeading = HeadingMotion(response: 9)
         private var mapHeadingDisplayLink: CADisplayLink?
-        private var headingSource: DeviceHeadingSource?
+        private let liveHeading: LiveHeadingController
         private var followingHeading = false
         // Switching to following flies to the live location on its next fix instead of jumping there.
         private var flyToUser = false
         private var cameraFlight = false
         private var replayDetached: Bool { parent.replayActive && !parent.replayFollowing && !parent.replayOverview }
 
-        init(_ parent: NativeMapSurface) {
+        init(_ parent: NativeMapSurface, liveHeading: LiveHeadingController? = nil) {
+            let liveHeading = liveHeading ?? LiveHeadingController()
             self.parent = parent
+            self.liveHeading = liveHeading
+            super.init()
+            liveHeading.onHeading = { [weak self] in self?.receiveDeviceHeading($0) }
+            liveHeading.onNeedsDisplay = { [weak self] in
+                guard let self, let map = self.map else { return }
+                self.alignMarkers(on: map)
+            }
         }
 
         func update(_ parent: NativeMapSurface, animated: Bool) {
@@ -618,6 +632,7 @@ struct NativeMapSurface: UIViewRepresentable {
 
         func alignMarkers(on map: MKMapView) {
             guard parent.sceneVisible, parent.pageActive else {
+                liveHeading.hide()
                 replayTrailLayer.hide()
                 replayFutureLayer.hide()
                 replayAccuracyLayer.hide()
@@ -631,6 +646,7 @@ struct NativeMapSurface: UIViewRepresentable {
                 alignAnchor(on: map)
             }
             if parent.replayRoute != nil, let selectedPoint, let view = map.view(for: selectedPoint) {
+                liveHeading.hide()
                 align(view, to: selectedPoint.coordinate, on: map)
                 replayAccuracyLayer.update(coordinate: selectedPoint.coordinate, accuracy: parent.replayAccuracy, on: map, below: view)
                 if let presentation = replayPresentation {
@@ -647,8 +663,12 @@ struct NativeMapSurface: UIViewRepresentable {
                 replayTrailLayer.hide()
                 replayFutureLayer.hide()
                 replayAccuracyLayer.hide()
-                if map.showsUserLocation, let displayedLiveCoordinate, let view = map.view(for: map.userLocation) {
-                    align(view, to: displayedLiveCoordinate, on: map)
+                if map.showsUserLocation, let coordinate = displayedLiveCoordinate ?? map.userLocation.location?.coordinate,
+                   let view = map.view(for: map.userLocation) as? MKUserLocationView {
+                    align(view, to: coordinate, on: map)
+                    liveHeading.render(coordinate: coordinate, on: map, marker: view)
+                } else {
+                    liveHeading.hide()
                 }
             }
         }
@@ -711,22 +731,7 @@ struct NativeMapSurface: UIViewRepresentable {
                 view.face(nil)
                 return
             }
-            let direction = CGVector(dx: sin(heading), dy: -cos(heading))
-            let world = MKMapRect.world
-            let origin = MKMapPoint(coordinate)
-            let distance = min(world.width / 1024,
-                max(1, map.visibleMapRect.width / max(1, Double(map.bounds.width)) * 24))
-            var x = (origin.x + direction.dx * distance).truncatingRemainder(dividingBy: world.width)
-            if x < 0 { x += world.width }
-            let y = min(world.maxY, max(0, origin.y + direction.dy * distance))
-            let start = map.convert(coordinate, toPointTo: map)
-            let end = map.convert(MKMapPoint(x: x, y: y).coordinate, toPointTo: map)
-            let dx = end.x - start.x
-            let dy = end.y - start.y
-            let angle = dx.isFinite && dy.isFinite && hypot(dx, dy) > 0.01
-                ? atan2(dx, -dy)
-                : atan2(direction.dx, -direction.dy) - CGFloat(map.camera.heading) * .pi / 180
-            view.face(angle)
+            view.face(MapHeadingProjection.angle(heading: heading, coordinate: coordinate, on: map))
         }
 
         private func applyPosition(_ map: MKMapView, animated: Bool, force: Bool = false) {
@@ -1128,7 +1133,8 @@ struct NativeMapSurface: UIViewRepresentable {
 
         // Heading mode, as in Find My: while following, the map turns with the direction the phone faces.
         private var headingModeActive: Bool {
-            parent.position.followsUserLocation && parent.position.followsUserHeading && parent.sceneVisible
+            parent.position.followsUserLocation && parent.position.followsUserHeading && parent.trackingEnabled
+                && parent.scenePhase == .active
                 && parent.pageActive && !parent.replayActive && parent.replayRoute == nil
         }
 
@@ -1140,35 +1146,33 @@ struct NativeMapSurface: UIViewRepresentable {
 
         private func updateHeadingMode(on map: MKMapView) {
             let active = headingModeActive
-            if active, let orientation = map.window?.windowScene?.interfaceOrientation {
-                headingSource?.orientation = orientation
-            }
+            liveHeading.update(tracking: parent.trackingEnabled, sceneActive: parent.scenePhase == .active,
+                               mapVisible: parent.pageActive, showsLiveLocation: map.showsUserLocation,
+                               orientation: map.window?.windowScene?.interfaceOrientation ?? .portrait)
             guard active != followingHeading else { return }
             followingHeading = active
             if active {
-                guard DeviceHeadingSource.available else { return }
-                let source = DeviceHeadingSource()
-                source.onHeading = { [weak self] in self?.receiveDeviceHeading($0) }
-                if let orientation = map.window?.windowScene?.interfaceOrientation { source.orientation = orientation }
-                source.start()
-                headingSource = source
+                if let reading = liveHeading.reading { receiveDeviceHeading(reading.degrees) }
                 return
             }
-            stopHeadingMode()
+            stopMapHeading()
             // Leaving heading mode while still following turns the map back to north.
-            if parent.position.followsUserLocation, parent.sceneVisible, parent.pageActive,
+            if parent.position.followsUserLocation, !parent.position.followsUserHeading, parent.sceneVisible, parent.pageActive,
                !parent.replayActive, parent.replayRoute == nil, NativeMapSurface.isRotated(heading: map.camera.heading) {
                 _ = faceNorth(on: map)
             }
         }
 
         func stopHeadingMode() {
-            headingSource?.stop()
-            headingSource = nil
+            liveHeading.stop()
+            stopMapHeading()
+            followingHeading = false
+        }
+
+        private func stopMapHeading() {
             mapHeadingDisplayLink?.invalidate()
             mapHeadingDisplayLink = nil
             mapHeading = HeadingMotion(response: 9)
-            followingHeading = false
         }
 
         func receiveDeviceHeading(_ degrees: CLLocationDirection, at time: TimeInterval = CACurrentMediaTime()) {
@@ -1417,46 +1421,5 @@ private final class CameraFrameTarget: NSObject {
         case .live: coordinator.advanceLiveLocation(at: link.timestamp)
         case .heading: coordinator.advanceMapHeading(at: link.timestamp)
         }
-    }
-}
-
-// Compass readings for heading mode, from a manager of its own so GLManager's tracking never changes.
-@MainActor
-final class DeviceHeadingSource: NSObject, CLLocationManagerDelegate {
-    static var available: Bool { CLLocationManager.headingAvailable() }
-    var onHeading: ((CLLocationDirection) -> Void)?
-    private let manager = CLLocationManager()
-
-    var orientation: UIInterfaceOrientation = .portrait {
-        didSet {
-            // Interface landscape left is the device turned right, and the reverse.
-            let device: CLDeviceOrientation
-            switch orientation {
-            case .portraitUpsideDown: device = .portraitUpsideDown
-            case .landscapeLeft: device = .landscapeRight
-            case .landscapeRight: device = .landscapeLeft
-            default: device = .portrait
-            }
-            if manager.headingOrientation != device { manager.headingOrientation = device }
-        }
-    }
-
-    override init() {
-        super.init()
-        manager.delegate = self
-        manager.headingFilter = 1
-    }
-
-    func start() { manager.startUpdatingHeading() }
-
-    func stop() {
-        manager.stopUpdatingHeading()
-        manager.delegate = nil
-    }
-
-    nonisolated func locationManager(_ manager: CLLocationManager, didUpdateHeading heading: CLHeading) {
-        guard heading.headingAccuracy >= 0 else { return }
-        let value = heading.trueHeading >= 0 ? heading.trueHeading : heading.magneticHeading
-        MainActor.assumeIsolated { onHeading?(value) }
     }
 }

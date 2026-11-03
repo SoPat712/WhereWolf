@@ -477,7 +477,12 @@ indicator.
 
 The map uses Apple’s native current-location dot and accuracy display. Its
 position follows the same display smoothing as the camera; recorded locations
-and reported accuracy remain unchanged.
+and reported accuracy remain unchanged. While tracking on a device with a compass,
+a soft blue beam points where the phone faces, including while you pan the map or
+leave heading mode off. It widens and fades with compass uncertainty and hides
+when no valid heading is available. It follows screen orientation and respects
+Reduce Motion. Compass updates stop in Settings, replay, inactive or background
+scenes, and when tracking stops.
 
 * `Updated` shows the time since the last accepted location point.
 * `Current location` shows its coordinates and reported horizontal accuracy.

@@ -238,6 +238,7 @@ struct WhereWolfRootView: View {
                                 selected: selected,
                                 selectedTitle: mapTab == 1 ? "Trip point" : "Recorded point",
                                 scenePhase: scenePhase, pageActive: selection < 2,
+                                trackingEnabled: bridge.trackingEnabled,
                                 onCameraChange: cameraChanged, onInteraction: stopFollowing,
                                 onRotationChange: { mapRotated = $0 })
     }

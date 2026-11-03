@@ -582,6 +582,7 @@ final class MapChromeTests: XCTestCase {
     func testHeadingModeTurnsTheMapAroundTheDotAndReturnsNorth() async throws {
         try await withMap { surface, coordinator, map in
             var surface = surface
+            surface.trackingEnabled = true
             surface.replayRoute = nil
             surface.replayActive = false
             surface.selected = nil
@@ -617,6 +618,94 @@ final class MapChromeTests: XCTestCase {
             self.assertCentered(live, on: map, tolerance: 2)
             coordinator.receiveDeviceHeading(180)
             XCTAssertEqual(remainder(map.camera.heading, 360), 0, accuracy: 0.5)
+        }
+    }
+
+    func testBeamCompassLifecycleIsIndependentOfCameraFollowing() async throws {
+        let source = StubDeviceHeadingSource()
+        let heading = LiveHeadingController(available: { true }, makeSource: { source })
+        try await withMap(liveHeading: heading) { surface, coordinator, map in
+            var live = surface
+            live.replayRoute = nil
+            live.replayActive = false
+            live.selected = nil
+            live.trackingEnabled = true
+            coordinator.update(live, animated: false)
+            XCTAssertEqual(source.starts, 1)
+            let camera = map.camera.copy() as! MKMapCamera
+            source.onHeading?(DeviceHeadingReading(trueHeading: 90, magneticHeading: 80, accuracy: 5))
+            XCTAssertEqual(map.camera.heading, camera.heading, accuracy: 0.001)
+            XCTAssertEqual(map.userTrackingMode, .none)
+
+            live.position = .userLocation(followsHeading: true, fallback: .automatic)
+            coordinator.update(live, animated: false)
+            XCTAssertEqual(source.starts, 1)
+            live.position = .userLocation(fallback: .automatic)
+            coordinator.update(live, animated: false)
+            XCTAssertEqual(source.stops, 0)
+
+            for gate in 0..<6 {
+                var hidden = live
+                switch gate {
+                case 0: hidden.trackingEnabled = false
+                case 1: hidden.scenePhase = .inactive
+                case 2: hidden.scenePhase = .background
+                case 3: hidden.pageActive = false
+                case 4: hidden.replayActive = true
+                default: hidden.replayRoute = surface.replayRoute
+                }
+                let callback = source.onHeading
+                let stops = source.stops
+                coordinator.update(hidden, animated: false)
+                XCTAssertEqual(source.stops, stops + 1, "gate \(gate)")
+                XCTAssertNil(heading.reading)
+                callback?(DeviceHeadingReading(trueHeading: 180, magneticHeading: 170, accuracy: 5))
+                XCTAssertNil(heading.reading)
+                coordinator.update(live, animated: false)
+                XCTAssertNotNil(source.onHeading)
+            }
+        }
+    }
+
+    func testBeamProjectsCameraChangesImmediatelyAndReduceMotionJumps() async throws {
+        let source = StubDeviceHeadingSource()
+        let heading = LiveHeadingController(available: { true }, makeSource: { source }, reduceMotion: { true })
+        try await withMap(liveHeading: heading) { surface, coordinator, map in
+            var live = surface
+            live.replayRoute = nil
+            live.replayActive = false
+            live.selected = nil
+            live.trackingEnabled = true
+            coordinator.update(live, animated: false)
+            let coordinate = CLLocationCoordinate2D(latitude: 45, longitude: -122)
+            let marker = MKUserLocationView(annotation: nil, reuseIdentifier: nil)
+            marker.bounds = CGRect(x: 0, y: 0, width: 22, height: 22)
+            marker.center = CGPoint(x: map.bounds.midX, y: map.bounds.midY)
+            map.addSubview(marker)
+            defer { marker.removeFromSuperview(); heading.onNeedsDisplay = nil }
+            heading.onNeedsDisplay = { [weak heading, weak map, weak marker] in
+                guard let map, let marker else { return }
+                heading?.render(coordinate: coordinate, on: map, marker: marker)
+            }
+            for degrees in [359.0, 1, 90, 270] {
+                source.onHeading?(DeviceHeadingReading(trueHeading: degrees, magneticHeading: 0, accuracy: 5))
+                let beam = try XCTUnwrap(marker.layer.sublayers?.compactMap { $0 as? LiveHeadingBeamLayer }.first)
+                let expected = MapHeadingProjection.angle(heading: degrees * .pi / 180, coordinate: coordinate, on: map)
+                XCTAssertEqual(remainder(atan2(beam.transform.m12, beam.transform.m11) - expected, 2 * .pi),
+                               0, accuracy: 0.000001)
+            }
+            for cameraHeading in [0.0, 37, 90, 270] {
+                map.setCamera(MKMapCamera(lookingAtCenter: coordinate, fromDistance: 2_000,
+                                         pitch: 35, heading: cameraHeading), animated: false)
+                heading.render(coordinate: coordinate, on: map, marker: marker)
+                let beam = try XCTUnwrap(marker.layer.sublayers?.compactMap { $0 as? LiveHeadingBeamLayer }.first)
+                let expected = MapHeadingProjection.angle(heading: 270 * .pi / 180, coordinate: coordinate, on: map)
+                XCTAssertEqual(remainder(atan2(beam.transform.m12, beam.transform.m11) - expected, 2 * .pi),
+                               0, accuracy: 0.000001)
+                XCTAssertEqual(beam.animationKeys() ?? [], [])
+            }
+            source.onHeading?(nil)
+            XCTAssertFalse(marker.layer.sublayers?.contains { $0 is LiveHeadingBeamLayer } ?? false)
         }
     }
 
@@ -727,7 +816,8 @@ final class MapChromeTests: XCTestCase {
         XCTAssertEqual(actual.y, expected.y, accuracy: tolerance, file: file, line: line)
     }
 
-    private func withMap(_ work: (NativeMapSurface, NativeMapSurface.Coordinator, MKMapView) async throws -> Void) async throws {
+    private func withMap(liveHeading: LiveHeadingController? = nil,
+                         _ work: (NativeMapSurface, NativeMapSurface.Coordinator, MKMapView) async throws -> Void) async throws {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.first as? UIWindowScene)
         let previous = scene.windows.first(where: \.isKeyWindow)
         let window = UIWindow(windowScene: scene)
@@ -750,7 +840,7 @@ final class MapChromeTests: XCTestCase {
             replayPosition: 0, replayActive: true, replayFollowing: true, replayFollowDistance: 2_000,
             selected: coordinates[0], selectedTitle: "Recorded point", scenePhase: .active, pageActive: true,
             onCameraChange: { _, _ in }, onInteraction: {})
-        let coordinator = surface.makeCoordinator()
+        let coordinator = NativeMapSurface.Coordinator(surface, liveHeading: liveHeading ?? LiveHeadingController())
         let map = surface.makeMap(coordinator: coordinator)
         map.frame = host.view.bounds
         map.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -763,6 +853,7 @@ final class MapChromeTests: XCTestCase {
             coordinator.stopCameraTransition()
             coordinator.stopReplayHeading()
             coordinator.stopLiveMotion()
+            coordinator.stopHeadingMode()
             map.delegate = nil
             window.isHidden = true
             previous?.makeKey()
