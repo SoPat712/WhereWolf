@@ -25,7 +25,9 @@ def read_state(ui):
     bars = [e["frame"] for e in bridge
             if e.get("type") == "NavigationBar" and e.get("pid") == app_pid
             and e["frame"]["height"] > 0][-1:]
-    has_tabs = any(e.get("AXLabel") == "Tab Bar" for e in elements)
+    has_tabs = any(e.get("AXLabel") == "Tab Bar" or e.get("type") == "TabBar"
+                   or e.get("AXUniqueId") == "where.system.tabs"
+                   or e.get("AXIdentifier") == "where.system.tabs" for e in elements)
     present = {(e.get("type"), e.get("AXLabel")) for e in elements}
 
     # The alternate reader includes clipped content; merge only native navigation.

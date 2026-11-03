@@ -154,17 +154,35 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   automatically upload imported Health routes or write them back to Health.
   See `docs/workout-import.md` for ordering and signing constraints.
 - **Screens are SwiftUI** (`GPSLogger/*.swift`). SceneDelegate creates the root
-  hosting controller; `WhereShell` stacks the shared map host, the Settings
-  host, and the drawer. `MapControlPanel` is a Find My style drawer: one glass
-  sheet with Tracker/Trip controls above `DrawerTabStrip` (no system tab bar).
-  Settings hides the map, keeps the drawer collapsed, and takes its bottom inset
-  from the drawer top. Keep per-frame drawer geometry and map-credit updates in
-  UIKit. The spring requests the screen's maximum refresh rate, with the iPhone
+  hosting controller; `WhereShell` uses `UITabBarController` with a regular
+  Settings child, one persistent map host moved between the map-tab placeholders,
+  and the drawer above all tab pages. `MapControlPanel` is a Find My style drawer:
+  one glass sheet with Tracker/Trip controls above `DrawerTabStrip`. The system
+  bar is hidden on those tabs. Settings hides the map and uses the native bar
+  and safe area. Both bars call the root's `selectTab`. The drawer's existing
+  display-link spring tweens its current frame and corner radius into the native
+  bar's measured glass platter, fading its controls and grabber. The tab items keep
+  their size: only the strip's side insets and margins shrink to the system bar's, so
+  at the handoff each icon sits on its native counterpart. UIKit lays out
+  the transparent native bar from the start so Settings' safe area stays fixed;
+  the landing frame exchanges the bars without a native animation. Returning
+  tweens from the platter to the closed drawer. Retarget from the current geometry
+  on interruption; Reduce Motion swaps instantly. A completed handoff clears its
+  spring and geometry; leaving native Settings starts from a fresh platter measure.
+  Ignore old SwiftUI selection renders until an eager native selection is acknowledged
+  or a later tab activation replaces it. Replaced springs cannot finish a newer handoff.
+  Measure layout bounds of visible native item controls or button-trait views,
+  ignoring item press transforms, expanded by the measured 4-point
+  platter padding; fall back to the container frame. Keep the native bar transparent
+  after UIKit's unhide/layout and through every tween frame until handoff.
+  Before iOS 26, tween to the full-width native bar with square
+  corners. Keep per-frame drawer geometry and map-credit updates in UIKit. The
+  spring requests the screen's maximum refresh rate, with the iPhone
   ProMotion plist opt-in enabled. Freeze drawer sizing while the history ruler
   drags or coasts on the active Tracker tab; update hosted controls only when
-  their tab changes. Tab replacement releases the previous interaction and
-  spring. New content measurements retarget an unfinished spring immediately;
-  compare its target before restarting it. Ignore measurements from replaced
+  their tab changes. Outside a bar tween, tab replacement releases the previous
+  interaction and spring. New content measurements retarget an unfinished drawer
+  settle immediately; compare its target before restarting it. Ignore measurements from replaced
   hosting roots. Fitting content has no vertical scrolling or bounce; enable
   scrolling only for content exceeding the screen's available height.
   Tracker starts with a glass history ruler and one compact control row. Live
@@ -338,8 +356,11 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   their geometry is measured from Find My screenshots on a 402-point phone. Closed, the
   capsule is 346 wide and about 76 tall with its bottom 28 points up, clear of the home
   indicator. Open, the sheet is 382 wide with its bottom 8 points up, and the 352-wide tab
-  strip sits 20.5 points up. Blend between them as the drawer moves. Lay the strip out at its
-  open size and scale it evenly when closed; do not stretch it sideways. Zoom buttons
+  strip sits 20.5 points up. Blend between them as the drawer moves. Tab items match the
+  system tab bar measured on iOS 27 (54-point cells, a 16-point semibold symbol centered 20
+  points down, a 10-point medium label centered 41 down) and are never scaled; the drawer
+  changes only the strip's layout width, so open and closed change the spacing. The closed
+  capsule keeps 10.6 points above the strip for the grabber mark and 3.2 below. Zoom buttons
   preserve replay following and rotation; manual map gestures remain free.
   A compass below Zoom Out appears while the heading is more than 1° from north, reported
   only when that changes. MapKit's compass draws the live needle; a tap turns north through

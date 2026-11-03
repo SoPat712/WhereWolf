@@ -61,7 +61,7 @@ struct WhereRootView: View {
                                         bottom: -geometry.safeAreaInsets.bottom, right: 0)),
                                      safeTop: geometry.safeAreaInsets.top)),
                 controls: AnyView(panelContent),
-                tabs: AnyView(DrawerTabStrip(selection: selection, onSelect: selectTab).tint(.blue)),
+                onSelect: selectTab,
                 settings: AnyView(settingsPage)
             )
             .ignoresSafeArea(.container)

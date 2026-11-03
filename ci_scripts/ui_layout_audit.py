@@ -81,11 +81,29 @@ def main():
         ui("swipe", *map(str, (*start, *end)), "--duration", "0.65", "--delta", "5")
         time.sleep(3 if slow_drawer and drawer else 0.8)
 
+    def tab_presentation(elements=None):
+        elements = state() if elements is None else elements
+        element = next((e for e in elements if e.get("AXLabel") == "Tab presentation"), None)
+        assert element and element.get("AXValue"), "Tab presentation audit is missing"
+        return json.loads(element["AXValue"])
+
     def selected(label):
-        tabs = [e for e in state() if e.get("AXLabel") in ("Tracker", "Trip", "Settings")
+        elements = state()
+        presentation = tab_presentation(elements)
+        deadline = time.monotonic() + 90
+        while presentation.get("barTransitioning"):
+            assert time.monotonic() < deadline, "The bar transition did not finish"
+            time.sleep(0.1)
+            elements = state()
+            presentation = tab_presentation(elements)
+        tabs = [e for e in elements if e.get("AXLabel") in ("Tracker", "Trip", "Settings")
                 and e.get("type") == "Button"]
         assert len(tabs) == 3, f"Expected three tabs: {len(tabs)}"
-        elements = state()
+        settings = label == "Settings"
+        assert presentation["selection"] == ("Tracker", "Trip", "Settings").index(label)
+        assert presentation["systemBarHidden"] == (not settings), "Wrong system tab bar visibility"
+        assert presentation["systemBarVisible"] == settings, "System tab bar is not presented as expected"
+        assert presentation["drawerHidden"] == settings, "Wrong drawer visibility"
         has_map = any(e.get("subrole") == "AXMapArea" for e in elements)
         has_trip_controls = any(e.get("AXLabel") == "Trip Settings" and e.get("type") == "Button"
                                 for e in elements)
@@ -607,19 +625,10 @@ asyncio.run(main())
 
         def settings_gap():
             set_panel("Collapsed")
-            compact = drawer_geometry()
-            assert not compact["settings"], "Expected map drawer geometry"
             tap("Settings")
             selected("Settings")
-            settings = drawer_geometry()
-            assert settings["settings"], "Expected Settings drawer geometry"
-            map_gap = compact["safeBottomY"] - compact["tabsBottom"]
-            settings_gap = settings["safeBottomY"] - settings["tabsBottom"]
-            assert map_gap >= -19 and settings_gap >= -19, "Tab controls overlap the home indicator"
-            assert abs(settings["sheetBottom"] - compact["sheetBottom"]) <= 1, "Settings capsule bottom differs from the collapsed map capsule"
-            assert abs(settings_gap - map_gap) <= 1, "Settings capsule changes the bottom safe-area gap"
-            assert abs(settings["tabsBottom"] - compact["tabsBottom"]) <= 1, "Settings moves the tab strip vertically"
-            record("Settings and collapsed map capsules share their bottom safe-area gap and tab position")
+            assert not find("Drawer geometry"), "Settings exposes the drawer geometry probe"
+            record("Settings uses the system tab bar with the map and drawer hidden")
             tap("Tracker")
             selected("Tracker")
 
@@ -748,27 +757,19 @@ asyncio.run(main())
 
             swipe(center("Tracker", "Button"), center("Settings", "Button"))
             selected("Settings")
-            swipe(center("Settings", "Button"), center("Tracker", "Button"))
+            tap("Tracker")
             selected("Tracker")
             # Begin on an unselected tab to catch coordinate calculations anchored to selection.
             swipe(center("Trip", "Button"), center("Settings", "Button"))
             selected("Settings")
-            record("Horizontal scrub works in both directions and from an unselected tab")
+            record("Drawer tab scrubbing and native tab taps switch between map pages and Settings")
 
             assert not find("Controls panel"), "Settings exposes the map panel"
+            assert not find("Drawer geometry"), "Settings exposes the drawer geometry probe"
             assert not any(e.get("subrole") == "AXMapArea" for e in state()), "Settings exposes a map"
-            settings_tabs = {label: frame(label, "Button") for label in baseline}
-            # Settings keeps the drawer closed, so its strip matches the closed one.
-            assert abs(settings_tabs["Trip"]["y"] - closed["Trip"]["y"]) <= 1, "Settings moves the tab strip vertically"
-            assert abs(settings_tabs["Settings"]["height"] - closed["Tracker"]["height"]) < 1, "Settings changes the selected tab hit area"
-            start = center("Settings", "Button")
-            swipe(start, (start[0], start[1] - 160))
-            selected("Settings")
-            assert all(abs(frame(label, "Button")["y"] - before["y"]) < 1
-                       for label, before in settings_tabs.items()), "Settings bar responds to drawer pan"
-            record("Settings uses compact tab padding and disables drawer pan while preserving tab hit areas")
+            record("Settings uses the native bar and exposes no drawer")
             scroll_to("Privacy Policy")
-            record("Last Settings row scrolls above the drawer tabs")
+            record("Last Settings row scrolls above the system tab bar")
 
         if args.start_at != "server":
             tap("Settings")
@@ -791,7 +792,7 @@ asyncio.run(main())
         scroll_to("Server", "Button", direction="down")
         tap("Server")
         scroll_to("Clear Server URL", "Button")
-        record("Last Server action scrolls clear of the drawer tabs")
+        record("Last Server action scrolls clear of the system tab bar")
 
         tap("Tracker")
         for appearance in ("dark", "light"):
@@ -822,7 +823,7 @@ asyncio.run(main())
             ui("tap", str(round(f["x"] + f["width"] / 2)), str(round(f["y"] + f["height"] / 2)))
             time.sleep(0.7)
         scroll_to("Privacy Policy", attempts=40)
-        record("Largest accessibility text keeps the last Settings row above the compact bar")
+        record("Largest accessibility text keeps the last Settings row above the system tab bar")
     except Exception:
         args.output.with_suffix(".accessibility.json").write_text(json.dumps(state(), indent=2))
         raise

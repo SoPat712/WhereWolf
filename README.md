@@ -74,9 +74,14 @@ the compact drawer. Fitting content stays flat, without vertical scrolling or
 bounce. On small screens or with large text, the drawer stops at the available
 height and lets overflowing content scroll. Tab changes immediately retarget
 the drawer's current animation to the new content height. Drag
-sideways across the tabs to switch pages. Settings replaces the map and scrolls
-above the collapsed drawer. Sliders have common-value detents and selection
-feedback, and still support exact numeric entry. Dragging previews a setting;
+sideways across the drawer tabs to switch pages. Settings hides the map and
+uses iOS's own tab bar, with native Liquid Glass on iOS 26 and later. The drawer's
+glass shrinks into the native bar while its tab icons and labels keep their size,
+landing exactly on the native ones; returning grows it back into the closed capsule. Selecting another tab during
+the move retargets it from its current size. Reduce Motion swaps the bars instantly.
+Before iOS 26, the glass changes into the full-width native bar with square corners.
+Settings content uses the system safe area throughout the transition. Sliders
+have common-value detents and selection feedback, and still support exact numeric entry. Dragging previews a setting;
 releasing saves it once.
 
 Hold the history ruler briefly, then drag to scroll through larger stretches of
@@ -88,7 +93,7 @@ with a translucent glass background and fades toward the grouped Settings
 background as the sheet expands; collapsing reverses the fade. Cards use the
 same secondary grouped colors as the main Settings form in light and dark mode.
 
-UIKit handles the drawer's drag gestures and detents; SwiftUI draws the tabs. The
+UIKit handles the drawer's drag gestures and detents; SwiftUI draws its tabs. The
 drawer uses interactive `UIGlassEffect` on iOS 26 and later, with a material
 fallback on older versions. Its spring follows the display's available refresh
 rate, up to 120 Hz on ProMotion iPhones. The app enables

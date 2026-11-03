@@ -1,4 +1,5 @@
 import Observation
+import MapKit
 import SwiftUI
 import UIKit
 import XCTest
@@ -7,22 +8,24 @@ import XCTest
 @MainActor
 final class DrawerLayoutTests: XCTestCase {
     func testTabControlsMatchFindMyOpenAndClosed() async throws {
-        try await withDrawer { panel, _ in
+        try await withDrawer(tabs: AnyView(DrawerTabStrip(selection: 0, onSelect: { _ in }))) { panel, _ in
             @MainActor func findTabs(_ view: UIView) -> UIView? {
                 if view.accessibilityIdentifier == "where.panel.tabs" { return view }
                 return view.subviews.lazy.compactMap(findTabs).first
             }
             let tabs = try XCTUnwrap(findTabs(panel.view))
-            for enabled in [true, false, true] {
-                panel.setContentEnabled(enabled)
+            let grabber = try XCTUnwrap(self.findView(in: panel.view, label: "Controls panel"))
+            for expanded in [true, false, true] {
+                if expanded { grabber.accessibilityIncrement() } else { grabber.accessibilityDecrement() }
                 try await waitForLayout(panel)
                 let bottom = tabs.convert(tabs.bounds, to: panel.view).maxY
                 let safe = panel.view.bounds.maxY - panel.view.safeAreaInsets.bottom
                 XCTAssertLessThanOrEqual(bottom, panel.view.bounds.maxY - 14)
                 if panel.view.safeAreaInsets.bottom >= 28 {
-                    // Closed, the capsule clears the home indicator. Open, the strip sits lower.
-                    XCTAssertEqual(bottom, enabled ? safe + 13.5 : safe - 2, accuracy: 1)
-                    if !enabled {
+                    // Closed, the capsule clears the home indicator and the unscaled strip sits
+                    // 3.2 points above its bottom, below the grabber mark. Open, the strip sits lower.
+                    XCTAssertEqual(bottom, expanded ? safe + 13.5 : safe + 2.8, accuracy: 1)
+                    if !expanded {
                         let sheet = tabs.superview!.convert(tabs.superview!.bounds, to: panel.view)
                         XCTAssertEqual(panel.view.bounds.maxY - sheet.maxY, 28, accuracy: 1)
                         XCTAssertEqual(sheet.height, 76, accuracy: 1)
@@ -199,13 +202,14 @@ final class DrawerLayoutTests: XCTestCase {
         return view.subviews.lazy.compactMap { self.sheetBackground(in: $0) }.first
     }
 
-    private func withDrawer(_ run: (MapControlPanelController, DrawerLayoutState) async throws -> Void) async throws {
+    private func withDrawer(tabs: AnyView = AnyView(Text("Tabs").frame(height: 60)),
+                            _ run: (MapControlPanelController, DrawerLayoutState) async throws -> Void) async throws {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.first as? UIWindowScene)
         let previous = scene.windows.first(where: \.isKeyWindow)
         let state = DrawerLayoutState()
         let panel = MapControlPanelController(
             controls: AnyView(DrawerLayoutControls(state: state, marker: state.marker)),
-            tabs: AnyView(Text("Tabs").frame(height: 60))
+            tabs: tabs
         )
         let clock = DrawerAnimationClock()
         panel.animationClock = { clock.timestamp }
@@ -240,6 +244,11 @@ final class DrawerLayoutTests: XCTestCase {
         guard observer.completed else {
             throw NSError(domain: "DrawerLayoutTests", code: 1)
         }
+    }
+
+    private func findView(in view: UIView, label: String) -> UIView? {
+        if view.accessibilityLabel == label { return view }
+        return view.subviews.lazy.compactMap { self.findView(in: $0, label: label) }.first
     }
 
     private func contentScroll(in view: UIView) -> UIScrollView? {
@@ -346,4 +355,527 @@ private final class DrawerAnimationClock: NSObject {
 
     // A suspended simulator must not skip the unfinished spring this fixture tests.
     @objc private func frame() { timestamp += 1.0 / 60 }
+}
+
+@MainActor
+final class WhereTabRoutingTests: XCTestCase {
+    func testExternalSelectionRoutesBetweenBothMapTabsAndSettings() async throws {
+        try await withShell(settleDrawer: false) { shell, _, map in
+            var callbacks: [Int] = []
+            shell.onSelect = { callbacks.append($0) }
+            for selection in [2, 0, 1, 2, 1, 0] {
+                self.update(shell, selection: selection, map: map)
+                XCTAssertEqual(shell.selectedIndex, selection)
+                XCTAssertEqual(shell.drawerTabs.selection, selection)
+                XCTAssertEqual(shell.selectedViewController === shell.viewControllers?[2], selection == 2)
+            }
+            XCTAssertTrue(callbacks.isEmpty, "External selection must not feed back into selectTab.")
+        }
+    }
+
+    func testBothBarsRouteThroughSelectTabIncludingReselection() async throws {
+        try await withShell(settleDrawer: false) { shell, _, map in
+            var requests: [Int] = []
+            let selectTab: (Int) -> Void = { requests.append($0) }
+            shell.onSelect = selectTab
+            self.update(shell, selection: 1, map: map)
+            shell.drawerTabs.onSelect(2)
+            XCTAssertEqual(requests, [2])
+            XCTAssertEqual(shell.selectedIndex, 1, "The root owns drawer selection.")
+            self.update(shell, selection: 2, activation: requests.count, map: map)
+
+            let settings = try XCTUnwrap(shell.viewControllers?[2])
+            shell.tabBarController(shell, didSelect: settings)
+            XCTAssertEqual(requests, [2, 2], "Native reselection must reach selectTab to reset Settings navigation.")
+            let tracker = try XCTUnwrap(shell.viewControllers?.first)
+            shell.selectedViewController = tracker
+            shell.tabBarController(shell, didSelect: tracker)
+            XCTAssertEqual(requests, [2, 2, 0])
+            self.update(shell, selection: 0, activation: requests.count, map: map)
+            shell.drawerTabs.onSelect(0)
+            XCTAssertEqual(requests, [2, 2, 0, 0], "Drawer reselection must reach selectTab to reopen it.")
+        }
+    }
+
+    func testSharedMapHostAndMapSurviveEveryTabChange() async throws {
+        try await withShell { shell, _, map in
+            let host = try XCTUnwrap(self.mapChildren(shell).compactMap { $0 as? FullScreenMapHost }.first)
+            let container = try XCTUnwrap(host.parent)
+            XCTAssertTrue(shell.currentMap() === map)
+            for selection in [1, 2, 0, 2, 1, 0] {
+                self.update(shell, selection: selection, map: map)
+                shell.view.layoutIfNeeded()
+                XCTAssertEqual(self.mapChildren(shell).compactMap { $0 as? FullScreenMapHost }.count, 1)
+                XCTAssertTrue(self.mapChildren(shell).contains { $0 === host })
+                XCTAssertTrue(shell.currentMap() === map)
+                XCTAssertTrue(host.parent === container)
+            }
+        }
+    }
+
+    func testSystemBarAndDrawerVisibilityFollowTheSelectedTab() async throws {
+        try await withShell(settleDrawer: false) { shell, panel, map in
+            for selection in [0, 2, 1, 2, 0] {
+                self.update(shell, selection: selection, map: map)
+                if #available(iOS 18.0, *) {
+                    XCTAssertEqual(shell.isTabBarHidden, selection < 2)
+                } else {
+                    XCTAssertEqual(shell.tabBar.isHidden, selection < 2)
+                }
+                XCTAssertEqual(panel.view.isHidden, selection == 2)
+                XCTAssertEqual(shell.currentDrawerGeometry() == nil, selection == 2)
+                let settings = try XCTUnwrap(shell.viewControllers?[2])
+                XCTAssertEqual(settings.additionalSafeAreaInsets, .zero)
+            }
+            XCTAssertEqual(shell.tabBar.items?.map(\.title), ["Tracker", "Trip", "Settings"])
+            XCTAssertEqual(shell.tabBar.items?.map(\.tag), [0, 1, 2])
+        }
+    }
+
+    func testSettingsStopsAnUnfinishedDrawerSpring() async throws {
+        try await withShell { shell, panel, _ in
+            let grabber = try XCTUnwrap(self.findGrabber(in: panel.view))
+            grabber.accessibilityDecrement()
+            XCTAssertTrue(panel.isAnimating)
+            self.update(shell, selection: 2, completeTransition: false)
+            panel.advanceAnimation(at: 1_000)
+            XCTAssertTrue(panel.view.isHidden)
+            XCTAssertFalse(panel.isAnimating)
+            shell.view.layoutIfNeeded()
+            panel.view.setNeedsLayout()
+            panel.view.layoutIfNeeded()
+            XCTAssertFalse(panel.isAnimating)
+            self.update(shell, selection: 0)
+            XCTAssertFalse(panel.view.isHidden)
+            XCTAssertEqual(grabber.accessibilityValue, "Collapsed")
+        }
+    }
+
+    func testCurrentMapTabActivationReopensCollapsedDrawer() async throws {
+        try await withShell { shell, panel, _ in
+            let grabber = try XCTUnwrap(self.findGrabber(in: panel.view))
+            grabber.accessibilityDecrement()
+            try await self.waitForLayout(panel)
+            XCTAssertEqual(grabber.accessibilityValue, "Collapsed")
+            var activation = 0
+            shell.onSelect = { _ in activation += 1 }
+            self.update(shell, selection: 1)
+            grabber.accessibilityDecrement()
+            try await self.waitForLayout(panel)
+            shell.drawerTabs.onSelect(1)
+            self.update(shell, selection: 1, activation: activation)
+            try await self.waitForLayout(panel)
+            XCTAssertEqual(grabber.accessibilityValue, "Expanded")
+        }
+    }
+
+    func testBarHandoffReservesSettingsSafeAreaAndReturnsClosed() async throws {
+        try await withShell(settleDrawer: false) { shell, panel, map in
+            shell.view.layoutIfNeeded()
+            panel.animationClock = { 0 }
+            self.update(shell, selection: 2, map: map, completeTransition: false)
+            let settings = try XCTUnwrap(shell.viewControllers?[2])
+            let safeBottom = settings.view.safeAreaInsets.bottom
+            if !UIAccessibility.isReduceMotionEnabled {
+                XCTAssertTrue(panel.isBarTransitioning)
+                XCTAssertFalse(panel.view.isHidden)
+                XCTAssertEqual(shell.tabBar.alpha, 0)
+                XCTAssertTrue(shell.tabBar.accessibilityElementsHidden)
+                if #available(iOS 18.0, *) { XCTAssertFalse(shell.isTabBarHidden) }
+                shell.tabBar.alpha = 1
+                shell.view.setNeedsLayout()
+                shell.view.layoutIfNeeded()
+                XCTAssertEqual(shell.tabBar.alpha, 0)
+                shell.tabBar.alpha = 1
+                panel.advanceAnimation(at: 0.04)
+                XCTAssertEqual(shell.tabBar.alpha, 0)
+            }
+            panel.advanceAnimation(at: 100)
+            XCTAssertTrue(panel.view.isHidden)
+            XCTAssertFalse(panel.isAnimating)
+            XCTAssertEqual(shell.tabBar.alpha, 1)
+            XCTAssertEqual(settings.additionalSafeAreaInsets, .zero)
+            XCTAssertEqual(settings.view.safeAreaInsets.bottom, safeBottom, accuracy: 0.5)
+            let platter = try XCTUnwrap(shell.systemPlatterGeometry)
+            self.assertGeometry(panel.currentBarGeometry(), equals: platter)
+            XCTAssertNil(panel.view.hitTest(CGPoint(x: platter.frame.midX, y: platter.frame.midY), with: nil))
+
+            self.update(shell, selection: 0, map: map, completeTransition: false)
+            if !UIAccessibility.isReduceMotionEnabled {
+                XCTAssertFalse(panel.view.isHidden)
+                XCTAssertEqual(shell.tabBar.alpha, 0)
+                self.assertGeometry(panel.currentBarGeometry(), equals: platter)
+            }
+            panel.advanceAnimation(at: 100)
+            XCTAssertFalse(panel.view.isHidden)
+            XCTAssertFalse(panel.isAnimating)
+            self.assertGeometry(panel.currentBarGeometry(), equals: panel.closedBarGeometry())
+            let grabber = try XCTUnwrap(self.findGrabber(in: panel.view))
+            XCTAssertEqual(grabber.accessibilityValue, "Collapsed")
+            if #available(iOS 18.0, *) { XCTAssertTrue(shell.isTabBarHidden) }
+            else { XCTAssertTrue(shell.tabBar.isHidden) }
+        }
+    }
+
+    func testBarInterruptionRetargetsTheCurrentFrame() async throws {
+        guard !UIAccessibility.isReduceMotionEnabled else { throw XCTSkip("Reduce Motion swaps bars immediately.") }
+        try await withShell(settleDrawer: false) { shell, panel, map in
+            shell.view.layoutIfNeeded()
+            panel.animationClock = { 0 }
+            self.update(shell, selection: 2, map: map, completeTransition: false)
+            panel.advanceAnimation(at: 0.04)
+            let presented = panel.currentBarGeometry()
+            self.update(shell, selection: 1, map: map, completeTransition: false)
+            self.assertGeometry(panel.currentBarGeometry(), equals: presented)
+            XCTAssertTrue(panel.isBarTransitioning)
+            XCTAssertFalse(panel.view.isHidden)
+            XCTAssertEqual(shell.tabBar.alpha, 0)
+            panel.advanceAnimation(at: 100)
+            self.assertGeometry(panel.currentBarGeometry(), equals: panel.closedBarGeometry())
+            XCTAssertFalse(panel.isAnimating)
+        }
+    }
+
+    func testReturnFromCompletedSettingsHandoffUsesFreshPlatterAfterReselection() async throws {
+        try await withShell(settleDrawer: false) { shell, panel, map in
+            shell.view.layoutIfNeeded()
+            panel.animationClock = { 0 }
+            self.update(shell, selection: 2, activation: 1, map: map)
+            let platter = SystemTabBarGeometry.measure(shell.tabBar, in: shell.view)
+            self.assertGeometry(panel.currentBarGeometry(), equals: platter)
+            XCTAssertFalse(panel.isAnimating)
+            let completedRevision = panel.barTransitionRevision
+
+            let settings = try XCTUnwrap(shell.viewControllers?[2])
+            shell.tabBarController(shell, didSelect: settings)
+            self.update(shell, selection: 2, activation: 2, map: map)
+            self.update(shell, selection: 2, activation: 2, map: map)
+            panel.transitionBar(toSystem: true, systemGeometry: platter, animated: true)
+            shell.view.setNeedsLayout()
+            shell.view.layoutIfNeeded()
+            XCTAssertEqual(panel.barTransitionRevision, completedRevision)
+            XCTAssertFalse(panel.isAnimating)
+            XCTAssertTrue(panel.view.isHidden)
+            XCTAssertEqual(shell.tabBar.alpha, 1)
+
+            let tracker = try XCTUnwrap(shell.viewControllers?.first)
+            shell.tabBarController(shell, didSelect: tracker)
+            self.assertGeometry(try XCTUnwrap(shell.systemPlatterGeometry), equals: platter)
+            if !UIAccessibility.isReduceMotionEnabled {
+                self.assertGeometry(panel.currentBarGeometry(), equals: platter)
+            }
+            let returnRevision = panel.barTransitionRevision
+            // Replay the old SwiftUI render between native selection and its acknowledgement.
+            self.update(shell, selection: 2, activation: 2, map: map, completeTransition: false)
+            XCTAssertEqual(shell.selectedIndex, 0)
+            XCTAssertEqual(panel.barTransitionRevision, returnRevision)
+            if !UIAccessibility.isReduceMotionEnabled {
+                self.assertGeometry(panel.currentBarGeometry(), equals: platter)
+                XCTAssertEqual(shell.tabBar.alpha, 0)
+            }
+            panel.advanceAnimation(at: 100)
+            self.assertGeometry(panel.currentBarGeometry(), equals: panel.closedBarGeometry())
+            XCTAssertFalse(panel.isAnimating)
+            // A delayed acknowledgement must not reopen the just-arrived closed capsule.
+            self.update(shell, selection: 0, activation: 3, map: map, completeTransition: false)
+            XCTAssertEqual(panel.barTransitionRevision, returnRevision)
+            self.assertGeometry(panel.currentBarGeometry(), equals: panel.closedBarGeometry())
+            XCTAssertFalse(panel.isAnimating)
+            self.update(shell, selection: 2, activation: 2, map: map, completeTransition: false)
+            XCTAssertEqual(shell.selectedIndex, 0)
+            XCTAssertEqual(panel.barTransitionRevision, returnRevision)
+            XCTAssertFalse(panel.isAnimating)
+
+            let trip = try XCTUnwrap(shell.viewControllers?[1])
+            shell.tabBarController(shell, didSelect: trip)
+            // A newer external tab activation can replace an unacknowledged native request.
+            self.update(shell, selection: 2, activation: 5, map: map)
+            XCTAssertEqual(shell.selectedIndex, 2)
+            XCTAssertTrue(panel.view.isHidden)
+            XCTAssertEqual(shell.tabBar.alpha, 1)
+            XCTAssertFalse(panel.isAnimating)
+        }
+    }
+
+    func testRetargetDuringAdvanceOrLandingCannotCompleteTheReplacedHandoff() async throws {
+        guard !UIAccessibility.isReduceMotionEnabled else { throw XCTSkip("Reduce Motion swaps bars immediately.") }
+        for trigger in [1, 2] {
+            try await withShell(settleDrawer: false) { shell, panel, _ in
+                shell.view.layoutIfNeeded()
+                panel.animationClock = { 0 }
+                let platter = DrawerBarGeometry(frame: CGRect(x: 64, y: 791, width: 274, height: 62), radius: 31)
+                let originalFrame = panel.onBarTransitionFrame
+                let originalCompletion = panel.onBarTransitionCompletion
+                defer {
+                    panel.onBarTransitionFrame = originalFrame
+                    panel.onBarTransitionCompletion = originalCompletion
+                }
+                var completions: [Bool] = []
+                panel.onBarTransitionCompletion = { completions.append($0) }
+                panel.transitionBar(toSystem: true, systemGeometry: platter, animated: true)
+                var frames = 0
+                panel.onBarTransitionFrame = {
+                    originalFrame?()
+                    frames += 1
+                    if frames == trigger {
+                        panel.transitionBar(toSystem: false, systemGeometry: platter, animated: true)
+                    }
+                }
+                panel.advanceAnimation(at: 100)
+                XCTAssertTrue(panel.isBarTransitioning)
+                XCTAssertFalse(panel.view.isHidden)
+                XCTAssertTrue(completions.isEmpty)
+                panel.advanceAnimation(at: 100)
+                XCTAssertEqual(completions, [false])
+                self.assertGeometry(panel.currentBarGeometry(), equals: panel.closedBarGeometry())
+                XCTAssertFalse(panel.isAnimating)
+            }
+        }
+    }
+
+    func testDrawerSettleCannotCancelTheBarTransitionStartedDuringItsLayout() async throws {
+        guard !UIAccessibility.isReduceMotionEnabled else { throw XCTSkip("Reduce Motion swaps bars immediately.") }
+        try await withShell { shell, panel, _ in
+            panel.animationClock = { 0 }
+            let platter = DrawerBarGeometry(frame: CGRect(x: 64, y: 791, width: 274, height: 62), radius: 31)
+            let originalTop = panel.onPresentedTopChange
+            let originalCompletion = panel.onBarTransitionCompletion
+            defer {
+                panel.onPresentedTopChange = originalTop
+                panel.onBarTransitionCompletion = originalCompletion
+            }
+            var startedBar = false
+            var completions: [Bool] = []
+            panel.onBarTransitionCompletion = { completions.append($0) }
+            let grabber = try XCTUnwrap(self.findGrabber(in: panel.view))
+            grabber.accessibilityDecrement()
+            panel.onPresentedTopChange = { top in
+                originalTop?(top)
+                guard !startedBar else { return }
+                startedBar = true
+                panel.transitionBar(toSystem: true, systemGeometry: platter, animated: true)
+            }
+            panel.advanceAnimation(at: 100)
+            XCTAssertTrue(startedBar)
+            XCTAssertTrue(panel.isBarTransitioning)
+            XCTAssertFalse(panel.view.isHidden)
+            XCTAssertTrue(completions.isEmpty)
+            panel.advanceAnimation(at: 100)
+            XCTAssertEqual(completions, [true])
+            self.assertGeometry(panel.currentBarGeometry(), equals: platter)
+            XCTAssertTrue(panel.view.isHidden)
+            XCTAssertFalse(panel.isAnimating)
+        }
+    }
+
+    private func update(_ shell: WhereShellController, selection: Int, activation: Int = 0, map: MKMapView? = nil,
+                        completeTransition: Bool = true) {
+        let map = map ?? shell.currentMap() ?? MKMapView()
+        shell.update(map: AnyView(ShellTestMap(map: map)), controls: AnyView(Text("Controls").frame(height: 100)),
+                     settings: AnyView(NavigationStack { Text("Settings") }), selection: selection,
+                     activation: activation, controlsID: selection < 2 ? selection : shell.drawerTabs.selection,
+                     contentInteracting: false)
+        if completeTransition {
+            panelController(in: shell)?.advanceAnimation(at: 1_000)
+        }
+    }
+
+    private func withShell(settleDrawer: Bool = true,
+                           _ run: (WhereShellController, MapControlPanelController, MKMapView) async throws -> Void) async throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.first as? UIWindowScene)
+        let previous = scene.windows.first(where: \.isKeyWindow)
+        let map = MKMapView()
+        let shell = WhereShellController(
+            map: AnyView(ShellTestMap(map: map)), controls: AnyView(Text("Controls").frame(height: 100)),
+            settings: AnyView(NavigationStack { Text("Settings") }), selection: 0, controlsID: 0, onSelect: { _ in }
+        )
+        let panel = try XCTUnwrap(panelController(in: shell))
+        XCTAssertTrue(panel.view.superview === shell.view)
+        let clock = DrawerAnimationClock()
+        panel.animationClock = { clock.timestamp }
+        clock.start()
+        let window = UIWindow(windowScene: scene)
+        window.rootViewController = shell
+        window.makeKeyAndVisible()
+        defer {
+            clock.stop()
+            panel.setVisible(false)
+            window.isHidden = true
+            previous?.makeKey()
+        }
+        if settleDrawer {
+            try await waitForLayout(panel) { shell.currentMap() === map }
+        }
+        try await run(shell, panel, map)
+    }
+
+    private func waitForLayout(_ panel: MapControlPanelController, ready: @escaping () -> Bool = { true }) async throws {
+        let settled = expectation(description: "Drawer layout settled")
+        let observer = LayoutFrameObserver {
+            panel.advanceAnimation(at: 1_000)
+            if panel.isLayoutSettled && ready() { settled.fulfill(); return true }
+            return false
+        }
+        observer.start()
+        defer { observer.stop() }
+        await fulfillment(of: [settled], timeout: 15)
+        guard observer.completed else { throw NSError(domain: "WhereTabRoutingTests", code: 1) }
+    }
+
+    private func assertGeometry(_ actual: DrawerBarGeometry, equals expected: DrawerBarGeometry,
+                                file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertEqual(actual.frame.minX, expected.frame.minX, accuracy: 1, file: file, line: line)
+        XCTAssertEqual(actual.frame.minY, expected.frame.minY, accuracy: 1, file: file, line: line)
+        XCTAssertEqual(actual.frame.width, expected.frame.width, accuracy: 1, file: file, line: line)
+        XCTAssertEqual(actual.frame.height, expected.frame.height, accuracy: 1, file: file, line: line)
+        XCTAssertEqual(actual.radius, expected.radius, accuracy: 1, file: file, line: line)
+    }
+
+    private func panelController(in shell: WhereShellController) -> MapControlPanelController? {
+        shell.view.subviews.lazy.compactMap { $0.next as? MapControlPanelController }.first
+    }
+
+    private func mapChildren(_ shell: WhereShellController) -> [UIViewController] {
+        var visited: Set<ObjectIdentifier> = []
+        var result: [UIViewController] = []
+        @MainActor func visit(_ controller: UIViewController) {
+            guard visited.insert(ObjectIdentifier(controller)).inserted else { return }
+            result.append(controller)
+            controller.children.forEach { visit($0) }
+        }
+        visit(shell)
+        shell.viewControllers?.forEach { visit($0) }
+        return result
+    }
+
+    private func findGrabber(in view: UIView) -> UIView? {
+        if view.accessibilityLabel == "Controls panel" { return view }
+        return view.subviews.lazy.compactMap { self.findGrabber(in: $0) }.first
+    }
+}
+
+private struct ShellTestMap: UIViewRepresentable {
+    let map: MKMapView
+    func makeUIView(context: Context) -> MKMapView { map }
+    func updateUIView(_ view: MKMapView, context: Context) { }
+}
+
+@MainActor
+final class DrawerBarTransitionTests: XCTestCase {
+    private let expanded = DrawerBarGeometry(frame: CGRect(x: 10, y: 480, width: 382, height: 386), radius: 46)
+    private let system = DrawerBarGeometry(frame: CGRect(x: 36, y: 780, width: 330, height: 62), radius: 31)
+    private let closed = DrawerBarGeometry(frame: CGRect(x: 28, y: 770, width: 346, height: 76), radius: 38)
+
+    func testGeometryBlendIncludesEveryComponentAndBothEnds() {
+        let tween = DrawerBarTween(from: expanded, to: system, toSystem: true)
+        XCTAssertEqual(tween.geometry(at: 0), expanded)
+        XCTAssertEqual(tween.geometry(at: 1), system)
+        let middle = tween.geometry(at: 0.5)
+        XCTAssertEqual(middle.frame, CGRect(x: 23, y: 630, width: 356, height: 224))
+        XCTAssertEqual(middle.radius, 38.5)
+    }
+
+    func testRetargetPreservesGeometryAndOpacity() {
+        let tween = DrawerBarTween(from: expanded, to: system, toSystem: true, initialContentOpacity: 1)
+        let retargeted = tween.retarget(to: closed, toSystem: false, at: 0.8)
+        XCTAssertEqual(retargeted.geometry(at: 0), tween.geometry(at: 0.8))
+        XCTAssertEqual(retargeted.opacity(at: 0), tween.opacity(at: 0.8))
+        XCTAssertEqual(retargeted.opacity(at: 0, content: true), tween.opacity(at: 0.8, content: true))
+        XCTAssertEqual(retargeted.geometry(at: 1), closed)
+        XCTAssertEqual(retargeted.opacity(at: 1), 1)
+    }
+
+    func testOvershootKeepsEveryGeometryComponentWithinThreePoints() {
+        let tween = DrawerBarTween(from: expanded, to: system, toSystem: true)
+        let overshot = tween.geometry(at: 1 + tween.overshoot)
+        XCTAssertEqual(overshot.frame.minX, system.frame.minX, accuracy: 3.001)
+        XCTAssertEqual(overshot.frame.minY, system.frame.minY, accuracy: 3.001)
+        XCTAssertEqual(overshot.frame.width, system.frame.width, accuracy: 3.001)
+        XCTAssertEqual(overshot.frame.height, system.frame.height, accuracy: 3.001)
+        XCTAssertEqual(overshot.radius, system.radius, accuracy: 3.001)
+    }
+
+    func testContentAndTabsFadeOutOnlyNearTheSystemEnd() {
+        let tween = DrawerBarTween(from: expanded, to: system, toSystem: true, initialContentOpacity: 1)
+        XCTAssertEqual(tween.opacity(at: 0.7), 1)
+        XCTAssertEqual(tween.opacity(at: 0.7, content: true), 1)
+        XCTAssertLessThan(tween.opacity(at: 0.85), 1)
+        XCTAssertGreaterThan(tween.opacity(at: 0.85), 0)
+        XCTAssertEqual(tween.opacity(at: 1), 0)
+        XCTAssertEqual(tween.opacity(at: 1, content: true), 0)
+    }
+
+    func testPlatterMeasurementUsesThreeItemControlsWhileBarIsTransparent() {
+        let container = UIView(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        let bar = UIView(frame: CGRect(x: 0, y: 791, width: 402, height: 83))
+        container.addSubview(bar)
+        bar.alpha = 0
+        for x in [68.0, 154.0, 240.0] {
+            let item = UIControl(frame: CGRect(x: x, y: 4, width: 94, height: 54))
+            bar.addSubview(item)
+        }
+        let measured = SystemTabBarGeometry.measure(bar, in: container)
+        if #available(iOS 26.0, *) {
+            XCTAssertEqual(measured, DrawerBarGeometry(frame: CGRect(x: 64, y: 791, width: 274, height: 62), radius: 31))
+        } else {
+            XCTAssertEqual(measured, DrawerBarGeometry(frame: bar.frame, radius: 0))
+        }
+    }
+
+    func testPlatterMeasurementIncludesButtonTraitsAndNestedCoordinates() {
+        let container = UIView(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        let bar = UIView(frame: CGRect(x: 0, y: 791, width: 402, height: 83))
+        container.addSubview(bar)
+        let items = UIView(frame: CGRect(x: 8, y: 4, width: 386, height: 54))
+        bar.addSubview(items)
+        for x in [60.0, 146.0, 232.0] {
+            let item = UIView(frame: CGRect(x: x, y: 0, width: 94, height: 54))
+            item.accessibilityTraits = .button
+            items.addSubview(item)
+        }
+        items.addSubview(UIControl(frame: .zero))
+        let hidden = UIControl(frame: bar.bounds)
+        hidden.isHidden = true
+        bar.addSubview(hidden)
+        let measured = SystemTabBarGeometry.measure(bar, in: container)
+        if #available(iOS 26.0, *) {
+            XCTAssertEqual(measured, DrawerBarGeometry(frame: CGRect(x: 64, y: 791, width: 274, height: 62), radius: 31))
+        } else {
+            XCTAssertEqual(measured, DrawerBarGeometry(frame: bar.frame, radius: 0))
+        }
+    }
+
+    func testPlatterMeasurementIgnoresNativePressAndCompensatingButtonTransforms() {
+        let container = UIView(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        let bar = UIView(frame: CGRect(x: 0, y: 791, width: 402, height: 83))
+        container.addSubview(bar)
+        for x in [68.0, 154.0, 240.0] {
+            let item = UIControl(frame: CGRect(x: x, y: 4, width: 94, height: 54))
+            item.transform = CGAffineTransform(scaleX: 1.16, y: 1.16)
+            let button = UIView(frame: item.bounds)
+            button.accessibilityTraits = .button
+            button.transform = CGAffineTransform(scaleX: 1 / 1.16, y: 1 / 1.16)
+            item.addSubview(button)
+            bar.addSubview(item)
+        }
+        let measured = SystemTabBarGeometry.measure(bar, in: container)
+        if #available(iOS 26.0, *) {
+            XCTAssertEqual(measured, DrawerBarGeometry(frame: CGRect(x: 64, y: 791, width: 274, height: 62), radius: 31))
+        } else {
+            XCTAssertEqual(measured, DrawerBarGeometry(frame: bar.frame, radius: 0))
+        }
+    }
+
+    func testPlatterMeasurementFallsBackToTheContainerWithoutItems() {
+        let container = UIView(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        let bar = UIView(frame: CGRect(x: 0, y: 791, width: 402, height: 83))
+        container.addSubview(bar)
+        bar.addSubview(UIControl(frame: .zero))
+        let measured = SystemTabBarGeometry.measure(bar, in: container)
+        if #available(iOS 26.0, *) {
+            XCTAssertEqual(measured, DrawerBarGeometry(frame: bar.frame, radius: 41.5))
+        } else {
+            XCTAssertEqual(measured, DrawerBarGeometry(frame: bar.frame, radius: 0))
+        }
+    }
 }

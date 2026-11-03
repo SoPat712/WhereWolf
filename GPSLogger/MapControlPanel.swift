@@ -1,12 +1,66 @@
 import SwiftUI
 import UIKit
 
+struct DrawerBarGeometry: Equatable {
+    var frame: CGRect
+    var radius: CGFloat
+
+    func blended(to other: Self, progress: CGFloat) -> Self {
+        if progress == 0 { return self }
+        if progress == 1 { return other }
+        func blend(_ a: CGFloat, _ b: CGFloat) -> CGFloat { a + (b - a) * progress }
+        let frame = CGRect(x: blend(self.frame.minX, other.frame.minX), y: blend(self.frame.minY, other.frame.minY),
+                           width: max(1, blend(self.frame.width, other.frame.width)),
+                           height: max(1, blend(self.frame.height, other.frame.height)))
+        return Self(frame: frame, radius: min(min(frame.width, frame.height) / 2, max(0, blend(radius, other.radius))))
+    }
+}
+
+struct DrawerBarTween {
+    let from: DrawerBarGeometry
+    let to: DrawerBarGeometry
+    let toSystem: Bool
+    var initialTabsOpacity: CGFloat = 1
+    var initialContentOpacity: CGFloat = 0
+
+    var overshoot: CGFloat {
+        let delta = [abs(to.frame.minX - from.frame.minX), abs(to.frame.minY - from.frame.minY),
+                     abs(to.frame.width - from.frame.width), abs(to.frame.height - from.frame.height),
+                     abs(to.radius - from.radius)].reduce(CGFloat(1)) { max($0, $1) }
+        return min(0.02, 3 / delta)
+    }
+
+    func geometry(at progress: CGFloat) -> DrawerBarGeometry { from.blended(to: to, progress: progress) }
+
+    func opacity(at progress: CGFloat, content: Bool = false) -> CGFloat {
+        let initial = content ? initialContentOpacity : initialTabsOpacity
+        let t = toSystem ? (progress - 0.7) / 0.3 : progress / 0.7
+        let clamped = min(1, max(0, t))
+        let eased = clamped * clamped * (3 - 2 * clamped)
+        let target: CGFloat = toSystem || content ? 0 : 1
+        return initial + (target - initial) * eased
+    }
+
+    func retarget(to geometry: DrawerBarGeometry, toSystem: Bool, at progress: CGFloat,
+                  opacityProgress: CGFloat? = nil) -> Self {
+        let phase = opacityProgress ?? progress
+        return Self(from: self.geometry(at: progress), to: geometry, toSystem: toSystem,
+                    initialTabsOpacity: opacity(at: phase), initialContentOpacity: opacity(at: phase, content: true))
+    }
+}
+
 // A Find My style drawer: one glass sheet whose bottom holds the tab strip. Collapsed, the
 // sheet is just the tab capsule; expanded, the tabs float in their own capsule under the content.
 final class MapControlPanelController: UIViewController, UIGestureRecognizerDelegate, UIScrollViewDelegate {
     var onCollapsedTopChange: ((CGFloat) -> Void)?
     var onPresentedTopChange: ((CGFloat) -> Void)?
     var animationClock: (() -> CFTimeInterval)?
+    var onBarTransitionCompletion: ((Bool) -> Void)?
+    var onBarTransitionFrame: (() -> Void)?
+#if targetEnvironment(simulator)
+    var barAuditMetadata: (() -> [String: Double])?
+    private(set) var barTransitionAudits: [[String: Any]] = []
+#endif
     enum Position: String {
         case collapsed = "Collapsed"
         case expanded = "Expanded"
@@ -21,6 +75,7 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
     private let controlsHost: UIHostingController<AnyView>
     private var hostContentHeightConstraint: NSLayoutConstraint!
     private let tabsHost: UIHostingController<AnyView>
+    private var panelCenterConstraint: NSLayoutConstraint!
     private var panelBottomConstraint: NSLayoutConstraint!
     private var panelHeightConstraint: NSLayoutConstraint!
     private var panelWidthConstraint: NSLayoutConstraint!
@@ -41,8 +96,18 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
         let frequency: CGFloat
         let damping: CGFloat
         let resizesContent: Bool
+        var bar: DrawerBarTween? = nil
+        var barRevision: Int = 0
     }
     private var spring: Settle?
+    private var barGeometry: DrawerBarGeometry?
+    // The system bar this transition leaves or reaches, and the strip inset that puts our items on its items.
+    private var systemBar: (geometry: DrawerBarGeometry, tabsInset: CGFloat, toSystem: Bool)?
+    private(set) var barTransitionRevision = 0
+    private var finishingBarTransition = false
+    private var systemHandoffComplete = false
+    private var barProgress: CGFloat = 0
+    private var barOpacityProgress: CGFloat = 0
     private var tabsWidthConstraint: NSLayoutConstraint!
     private var measurementScheduled = false
     private var measurementNeeded = true
@@ -59,7 +124,6 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
     private var auditTime: CFTimeInterval = 0
 #endif
     private var isDragging = false
-    private var contentEnabled = true
     private var contentInteracting = false
     private var position = Position.expanded
     private var controlsRevision = 0
@@ -75,11 +139,14 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
     private let maximumWidth: CGFloat = 620
     private let collapsedWidthRatio: CGFloat = 0.86
     private let expandedWidthRatio: CGFloat = 0.95
-    // Measured from Find My on a 402-point iPhone. The tab strip keeps its open layout and scales
-    // evenly as the drawer closes, so nothing stretches sideways.
+    // Measured from Find My on a 402-point iPhone. The tab strip is never scaled: its items keep
+    // the system tab bar's size and only the spacing between them follows the drawer's width.
     private let closedTabsInset: CGFloat = 17
     private let openTabsInset: CGFloat = 15
-    private let closedTabsMargin: CGFloat = 11.3
+    // The closed capsule stays about 76 points tall around the 62-point strip, with room above
+    // it for the grabber mark.
+    private let closedTabsTopMargin: CGFloat = 10.6
+    private let closedTabsBottomMargin: CGFloat = 3.2
     private let openTabsBottomInset: CGFloat = 12.5
     private let grabberMarkInset: CGFloat = 4.6
     private let expandedCornerRadius: CGFloat = 46
@@ -130,6 +197,7 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        guard !view.isHidden, barGeometry == nil else { return }
         let waitingForMeasurement = measurementScheduled && measuredWidth > 0
         if !isDragging && spring == nil && !contentInteracting && !waitingForMeasurement,
            measurementNeeded || abs(measuredWidth - view.bounds.width) > 0.5 {
@@ -148,32 +216,60 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
 
     func update(controls: AnyView, tabs: AnyView) {
         loadViewIfNeeded()
-        _ = freezePresentationGeometry()
+        if barGeometry == nil { _ = freezePresentationGeometry() }
         isDragging = false
         contentInteracting = false
         scrollView.setContentOffset(.zero, animated: false)
         setControls(controls)
-        tabsHost.rootView = tabs
+        updateTabs(tabs)
         controlsHost.view.setNeedsLayout()
         scheduleMeasurement()
         controlsHost.view.layoutIfNeeded()
     }
 
+    func updateTabs(_ tabs: AnyView) { tabsHost.rootView = tabs }
+
     func expand() {
         loadViewIfNeeded()
-        guard contentEnabled, position != .expanded || spring != nil || isDragging else { return }
+        guard barGeometry == nil, !view.isHidden, position != .expanded || spring != nil || isDragging else { return }
         settle(to: .expanded)
     }
 
-    func setContentEnabled(_ enabled: Bool) {
+    func setVisible(_ visible: Bool) {
         loadViewIfNeeded()
-        guard enabled != contentEnabled else { return }
-        settle(to: enabled ? .expanded : .collapsed, force: true, contentEnabled: enabled)
+        guard view.isHidden == visible else { return }
+        _ = freezePresentationGeometry()
+        barTransitionRevision += 1
+        finishingBarTransition = false
+        systemHandoffComplete = false
+        barGeometry = nil
+        systemBar = nil
+        barProgress = 0
+        barOpacityProgress = 0
+        isDragging = false
+        contentInteracting = false
+        view.isHidden = !visible
+        drawerPan.isEnabled = visible
+        grabber.isEnabled = visible
+        grabber.isAccessibilityElement = visible
+        scrollView.isUserInteractionEnabled = visible
+        scrollView.setContentOffset(scrollView.contentOffset, animated: false)
+        if visible {
+            position = .expanded
+            grabber.accessibilityValue = position.rawValue
+            UIView.performWithoutAnimation {
+                updateMeasuredHeights()
+                updatePanelMetrics(preservePresentedHeight: false)
+                view.layoutIfNeeded()
+            }
+        }
     }
 
     func setContentInteracting(_ interacting: Bool) {
         guard interacting != contentInteracting else { return }
         contentInteracting = interacting
+        guard barGeometry == nil else { return }
+        guard !isViewLoaded || !view.isHidden else { return }
         if interacting {
             _ = freezePresentationGeometry()
             return
@@ -221,11 +317,12 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
         (view as? PanelPassthroughView)?.sheet = effectView
         (view as? PanelPassthroughView)?.grabber = grabber
 
+        panelCenterConstraint = effectView.centerXAnchor.constraint(equalTo: view.centerXAnchor)
         panelBottomConstraint = effectView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         panelHeightConstraint = effectView.heightAnchor.constraint(equalToConstant: 300)
         panelWidthConstraint = effectView.widthAnchor.constraint(equalToConstant: 360)
         NSLayoutConstraint.activate([
-            effectView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            panelCenterConstraint,
             panelBottomConstraint,
             panelHeightConstraint,
             panelWidthConstraint,
@@ -269,7 +366,7 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
         tabsHeightConstraint = tabsContainer.heightAnchor.constraint(equalToConstant: measuredTabsHeight)
         tabsTopConstraint = tabsContainer.topAnchor.constraint(equalTo: scrollView.bottomAnchor)
         tabsBottomConstraint = tabsContainer.bottomAnchor.constraint(equalTo: content.bottomAnchor,
-                                                                    constant: -closedTabsMargin)
+                                                                    constant: -closedTabsBottomMargin)
         tabsLeadingConstraint = tabsContainer.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: closedTabsInset)
         tabsTrailingConstraint = tabsContainer.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -closedTabsInset)
         NSLayoutConstraint.activate([
@@ -360,11 +457,13 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
 
     private func scheduleMeasurement() {
         measurementNeeded = true
-        guard !measurementScheduled, !isDragging, !contentInteracting else { return }
+        guard barGeometry == nil, !measurementScheduled, !isDragging, !contentInteracting,
+              viewIfLoaded?.isHidden != true else { return }
         measurementScheduled = true
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             measurementScheduled = false
+            guard !view.isHidden, barGeometry == nil else { return }
             if !isDragging, !contentInteracting, measuredWidth > 0 {
                 updateMeasuredHeights()
                 let values = detents()
@@ -386,12 +485,11 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
         measuredWidth = view.bounds.width
         let width = expandedWidth()
         controlsWidthConstraint.constant = width
-        tabsWidthConstraint.constant = max(1, expandedWidth() - openTabsInset * 2)
         hostContentHeightConstraint.constant = max(1, controlsContentHeight)
         let height = controlsContentHeight + contentTopPadding + contentBottomPadding
         if height.isFinite, abs(height - measuredContentHeight) > 0.5 { measuredContentHeight = height }
 
-        let tabs = tabsHost.sizeThatFits(in: CGSize(width: tabsWidthConstraint.constant,
+        let tabs = tabsHost.sizeThatFits(in: CGSize(width: max(1, expandedWidth() - openTabsInset * 2),
                                                     height: .greatestFiniteMagnitude))
         let tabsHeight = ceil(tabs.height)
         if tabsHeight.isFinite, tabsHeight > 0, abs(tabsHeight - measuredTabsHeight) > 0.5 {
@@ -413,10 +511,6 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
         return safeBottom > 0 ? max(8, safeBottom - 26) : 8
     }
 
-    private func closedTabsScale() -> CGFloat {
-        min(1, max(0.5, (collapsedWidth() - closedTabsInset * 2) / max(1, expandedWidth() - openTabsInset * 2)))
-    }
-
     private func expandedWidth() -> CGFloat {
         max(1, min(maximumWidth, (view.bounds.width * expandedWidthRatio).rounded()))
     }
@@ -433,13 +527,13 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
     }
 
     private func detents() -> (collapsed: CGFloat, expanded: CGFloat, content: CGFloat) {
-        let collapsed = measuredTabsHeight * closedTabsScale() + closedTabsMargin * 2
+        let collapsed = measuredTabsHeight + closedTabsTopMargin + closedTabsBottomMargin
         let openChrome = grabberHeight + measuredTabsHeight + openTabsBottomInset
         let capacity = max(
             0,
             view.bounds.height - openBottomInset() - view.safeAreaInsets.top - minimumTopClearance - openChrome
         )
-        let content = contentEnabled ? min(measuredContentHeight, capacity) : 0
+        let content = min(measuredContentHeight, capacity)
         return (collapsed, content > 0 ? openChrome + content : collapsed, content)
     }
 
@@ -459,24 +553,24 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
     private func updatePanelMetrics(preservePresentedHeight: Bool) {
         guard view.bounds.width > 0, panelHeightConstraint != nil else { return }
         let values = detents()
-        updateContentSpacing()
         let overflows = measuredContentHeight > values.content + 0.5
-        scrollView.isScrollEnabled = contentEnabled && position == .expanded && overflows
+        scrollView.isScrollEnabled = position == .expanded && overflows
         scrollView.showsVerticalScrollIndicator = scrollView.isScrollEnabled
         if !scrollView.isScrollEnabled, scrollView.contentOffset != .zero {
             scrollView.setContentOffset(.zero, animated: false)
         }
         scrollView.accessibilityElementsHidden = position == .collapsed
-        scrollView.isUserInteractionEnabled = contentEnabled
         if !preservePresentedHeight {
             panelHeightConstraint.constant = position == .expanded ? values.expanded : values.collapsed
         }
         applyProgress(height: panelHeightConstraint.constant, detents: values)
     }
 
-    // The hosting view keeps its layout width; only its transform follows the sheet.
     private func applyProgress(height: CGFloat,
                                detents: (collapsed: CGFloat, expanded: CGFloat, content: CGFloat)) {
+        panelCenterConstraint.constant = 0
+        tabsContainer.alpha = 1
+        grabber.alpha = 1
         let fraction = detents.content > 0 ? progress(for: height, detents: detents) : 0
         let resizesContent = spring?.resizesContent == true
         let alpha = resizesContent ? 1 : min(1, max(0, fraction))
@@ -484,9 +578,8 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
         panelWidthConstraint.constant = resizesContent ? expandedWidth() : width(for: height, detents: detents)
         // Each state has its own spacing, as in Find My, so the drawer blends between them as it moves.
         func blend(_ closed: CGFloat, _ open: CGFloat) -> CGFloat { closed + (open - closed) * alpha }
-        let closedMargin = (detents.collapsed - measuredTabsHeight) / 2
-        let top = blend(closedMargin, grabberHeight)
-        let bottom = blend(closedMargin, openTabsBottomInset)
+        let top = blend(closedTabsTopMargin, grabberHeight)
+        let bottom = blend(closedTabsBottomMargin, openTabsBottomInset)
         let room = height - top - measuredTabsHeight - bottom
         grabberHeightConstraint.constant = top
         tabsBottomConstraint.constant = -bottom
@@ -499,14 +592,13 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
         effectView.layer.cornerRadius = resizesContent ? expandedCornerRadius : cornerRadius(for: height, detents: detents)
         tabsBackground.alpha = alpha
         scrollView.alpha = alpha
-        let scale = (panelWidthConstraint.constant - inset * 2) / max(1, tabsWidthConstraint.constant)
-        tabsHost.view.transform = CGAffineTransform(scaleX: scale, y: scale)
+        tabsWidthConstraint.constant = max(1, panelWidthConstraint.constant - inset * 2)
     }
 
     // MARK: - Dragging
 
     @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
-        guard contentEnabled else { return }
+        guard !view.isHidden, barGeometry == nil else { return }
         let values = detents()
         switch gesture.state {
         case .began:
@@ -604,28 +696,232 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
         settle(to: position == .collapsed ? .expanded : .collapsed)
     }
 
-    private func updateContentSpacing() {
-        grabber.alpha = contentEnabled ? 1 : 0
+    var isBarTransitioning: Bool { barGeometry != nil && !finishingBarTransition }
+    var isAnimating: Bool { spring != nil || topDisplayLink != nil }
+
+    func currentBarGeometry() -> DrawerBarGeometry {
+        DrawerBarGeometry(frame: effectView.convert(effectView.bounds, to: view), radius: effectView.layer.cornerRadius)
     }
 
+    private func presentedBarGeometry() -> DrawerBarGeometry {
+        let layer = effectView.layer.presentation() ?? effectView.layer
+        return DrawerBarGeometry(frame: layer.convert(layer.bounds, to: view.layer.presentation() ?? view.layer),
+                                 radius: layer.cornerRadius)
+    }
+
+    func closedBarGeometry() -> DrawerBarGeometry {
+        let height = detents().collapsed
+        let width = collapsedWidth()
+        return DrawerBarGeometry(frame: CGRect(x: (view.bounds.width - width) / 2,
+                                                y: view.bounds.height - closedBottomInset() - height,
+                                                width: width, height: height), radius: height / 2)
+    }
+
+    func transitionBar(toSystem: Bool, systemGeometry: DrawerBarGeometry, systemTabsInset: CGFloat = 4,
+                       animated: Bool, fromSystem: Bool = false) {
+        loadViewIfNeeded()
+        if toSystem, systemHandoffComplete, spring?.bar == nil { return }
+        let proposedTarget = toSystem ? systemGeometry : closedBarGeometry()
+        if !fromSystem, let previous = spring?.bar, previous.toSystem == toSystem, previous.to == proposedTarget { return }
+        let previous = spring?.bar
+        let previousProgress = barProgress
+        let previousOpacity = barOpacityProgress
+        let startsAtSystem = fromSystem || systemHandoffComplete || view.isHidden
+        let previousRevision = barTransitionRevision
+        barTransitionRevision += 1
+        let revision = barTransitionRevision
+        finishingBarTransition = false
+        systemHandoffComplete = false
+#if targetEnvironment(simulator)
+        if let index = barTransitionAudits.indices.last,
+           barTransitionAudits[index]["revision"] as? Int == previousRevision,
+           barTransitionAudits[index]["completed"] as? Bool == false {
+            barTransitionAudits[index]["interrupted"] = true
+        }
+#endif
+        if view.isHidden { updateMeasuredHeights() }
+        guard revision == barTransitionRevision else { return }
+        let target = toSystem ? systemGeometry : closedBarGeometry()
+        let tween: DrawerBarTween
+        if startsAtSystem {
+            tween = DrawerBarTween(from: systemGeometry, to: target, toSystem: toSystem,
+                                   initialTabsOpacity: 0, initialContentOpacity: 0)
+        } else if let previous {
+            tween = previous.retarget(to: target, toSystem: toSystem, at: previousProgress,
+                                      opacityProgress: previousOpacity)
+        } else {
+            tween = DrawerBarTween(from: barGeometry ?? presentedBarGeometry(), to: target, toSystem: toSystem,
+                                   initialTabsOpacity: tabsContainer.alpha, initialContentOpacity: scrollView.alpha)
+        }
+        _ = freezePresentationGeometry()
+        isDragging = false
+        contentInteracting = false
+        barProgress = 0
+        barOpacityProgress = 0
+        barGeometry = tween.from
+        systemBar = (systemGeometry, systemTabsInset, toSystem)
+        view.isHidden = false
+        drawerPan.isEnabled = false
+        grabber.isEnabled = false
+        grabber.isAccessibilityElement = false
+        scrollView.isUserInteractionEnabled = false
+        scrollView.accessibilityElementsHidden = true
+        scrollView.setContentOffset(scrollView.contentOffset, animated: false)
+        applyBarGeometry(tween.from, tabsOpacity: tween.initialTabsOpacity, contentOpacity: tween.initialContentOpacity)
+        guard revision == barTransitionRevision else { return }
+        var frequency: CGFloat = 22
+#if targetEnvironment(simulator)
+        if usesAuditClock { frequency = 4.5 }
+        if usesAuditClock {
+            barTransitionAudits.append(["revision": revision, "toSystem": toSystem,
+                                        "from": Self.auditGeometry(tween.from), "to": Self.auditGeometry(tween.to),
+                                        "samples": [[String: Double]](), "completed": false, "interrupted": false])
+            if barTransitionAudits.count > 12 { barTransitionAudits.removeFirst() }
+        }
+#endif
+        spring = Settle(start: animationClock?() ?? CACurrentMediaTime(), height: 0, velocity: 0, target: 1,
+                        frequency: frequency, damping: 0.8, resizesContent: false, bar: tween, barRevision: revision)
+#if targetEnvironment(simulator)
+        sampleBarTransition(revision: revision)
+#endif
+        guard revision == barTransitionRevision else { return }
+        if animated && !UIAccessibility.isReduceMotionEnabled {
+            startTrackingTop()
+        } else {
+            finishBarTransition(tween, revision: revision)
+        }
+    }
+
+    private func applyBarGeometry(_ geometry: DrawerBarGeometry, tabsOpacity: CGFloat, contentOpacity: CGFloat) {
+        barGeometry = geometry
+        UIView.performWithoutAnimation {
+            let values = detents()
+            applyProgress(height: geometry.frame.height, detents: values)
+            panelCenterConstraint.constant = geometry.frame.midX - view.bounds.midX
+            panelBottomConstraint.constant = geometry.frame.maxY - view.bounds.maxY
+            panelWidthConstraint.constant = geometry.frame.width
+            effectView.layer.cornerRadius = geometry.radius
+            // Past the closed capsule the strip settles into the system bar: the side insets and
+            // margins shrink to the system's while the items keep their size.
+            if let system = systemBar {
+                let closedWidth = collapsedWidth()
+                if geometry.frame.width < closedWidth {
+                    let span = max(1, closedWidth - system.geometry.frame.width)
+                    let t = min(1, max(0, (closedWidth - geometry.frame.width) / span))
+                    let start = tabsLeadingConstraint.constant
+                    let inset = start + (max(0, system.tabsInset) - start) * t
+                    tabsLeadingConstraint.constant = inset
+                    tabsTrailingConstraint.constant = -inset
+                }
+                if geometry.frame.height < values.collapsed {
+                    let room = max(0, geometry.frame.height - measuredTabsHeight)
+                    let share = closedTabsTopMargin / (closedTabsTopMargin + closedTabsBottomMargin)
+                    grabberHeightConstraint.constant = room * share
+                    tabsBottomConstraint.constant = -room * (1 - share)
+                    controlsHeightConstraint.constant = 0
+                    tabsTopConstraint.constant = 0
+                }
+            }
+            tabsWidthConstraint.constant = max(1, geometry.frame.width - tabsLeadingConstraint.constant * 2)
+            // The items match the system bar's, so they stay opaque through the handoff.
+            tabsContainer.alpha = 1
+            grabber.alpha = systemBar?.toSystem == false ? tabsOpacity : min(tabsOpacity, contentOpacity)
+            scrollView.alpha = contentOpacity
+            view.layoutIfNeeded()
+            onBarTransitionFrame?()
+        }
+        reportPanelTop()
+    }
+
+    private func finishBarTransition(_ tween: DrawerBarTween, revision: Int) {
+        guard revision == barTransitionRevision, spring?.barRevision == revision else { return }
+        finishingBarTransition = true
+        barProgress = 1
+        barOpacityProgress = 1
+        applyBarGeometry(tween.to, tabsOpacity: tween.toSystem ? 0 : 1, contentOpacity: 0)
+        // Layout and hosting callbacks can synchronously replace the transition we just advanced.
+        guard revision == barTransitionRevision else { return }
+        spring = nil
+        stopTrackingTop()
+        barGeometry = nil
+        systemBar = nil
+        barProgress = 0
+        barOpacityProgress = 0
+        systemHandoffComplete = tween.toSystem
+        finishingBarTransition = false
+        position = .collapsed
+        grabber.accessibilityValue = position.rawValue
+        drawerPan.isEnabled = !tween.toSystem
+        grabber.isEnabled = !tween.toSystem
+        grabber.isAccessibilityElement = !tween.toSystem
+        scrollView.isUserInteractionEnabled = !tween.toSystem
+        view.isHidden = tween.toSystem
+        if !tween.toSystem {
+            UIView.performWithoutAnimation {
+                updatePanelMetrics(preservePresentedHeight: false)
+                view.layoutIfNeeded()
+            }
+        }
+        guard revision == barTransitionRevision else { return }
+        onBarTransitionCompletion?(tween.toSystem)
+        guard revision == barTransitionRevision else { return }
+#if targetEnvironment(simulator)
+        sampleBarTransition(revision: revision, completed: true)
+        guard revision == barTransitionRevision else { return }
+        if usesAuditClock, let index = barTransitionAudits.indices.last,
+           barTransitionAudits[index]["revision"] as? Int == revision {
+            barTransitionAudits[index]["completed"] = true
+        }
+#endif
+        if measurementNeeded, !tween.toSystem { scheduleMeasurement() }
+    }
+
+#if targetEnvironment(simulator)
+    private static func auditGeometry(_ geometry: DrawerBarGeometry) -> [String: Double] {
+        ["x": geometry.frame.minX, "y": geometry.frame.minY, "width": geometry.frame.width,
+         "height": geometry.frame.height, "radius": geometry.radius]
+    }
+
+    private func sampleBarTransition(revision: Int, completed: Bool = false) {
+        guard usesAuditClock, let index = barTransitionAudits.indices.last,
+              barTransitionAudits[index]["revision"] as? Int == revision else { return }
+        var samples = barTransitionAudits[index]["samples"] as? [[String: Double]] ?? []
+        let geometry = barGeometry ?? DrawerBarGeometry(frame: effectView.convert(effectView.bounds, to: view),
+                                                        radius: effectView.layer.cornerRadius)
+        var sample = Self.auditGeometry(geometry)
+        sample["progress"] = completed ? 1 : barProgress
+        sample["opacityProgress"] = completed ? 1 : barOpacityProgress
+        sample["tabsOpacity"] = tabsContainer.alpha
+        sample["drawerHidden"] = view.isHidden ? 1 : 0
+        func collectIcons(_ candidate: UIView) {
+            if let identifier = candidate.accessibilityIdentifier, identifier.hasPrefix("where.drawer.icon.") {
+                let frame = candidate.convert(candidate.bounds, to: view)
+                sample[identifier + ".x"] = frame.midX
+                sample[identifier + ".y"] = frame.midY
+            }
+            for child in candidate.subviews { collectIcons(child) }
+        }
+        collectIcons(tabsHost.view)
+        sample.merge(barAuditMetadata?() ?? [:]) { _, value in value }
+        guard revision == barTransitionRevision,
+              barTransitionAudits[index]["revision"] as? Int == revision else { return }
+        samples.append(sample)
+        if samples.count > 600 { samples.removeFirst() }
+        barTransitionAudits[index]["samples"] = samples
+    }
+#endif
+
     private func settle(to newPosition: Position, force: Bool = false,
-                        contentEnabled enabled: Bool? = nil, velocity: CGFloat = 0, resizesContent: Bool = false) {
+                        velocity: CGFloat = 0, resizesContent: Bool = false) {
+        guard !view.isHidden, barGeometry == nil else { return }
         guard force || newPosition != position || spring != nil || isDragging else { return }
         let height = freezePresentationGeometry()
         isDragging = false
-        if let enabled {
-            contentEnabled = enabled
-            grabber.isEnabled = enabled
-            grabber.isAccessibilityElement = enabled
-            drawerPan.isEnabled = enabled
-        }
         position = newPosition
         guard view.bounds.width > 0, view.bounds.height > 0 else {
-            updateContentSpacing()
             grabber.accessibilityValue = position.rawValue
             return
         }
-        updateContentSpacing()
         let values = detents()
         let target = newPosition == .expanded ? values.expanded : values.collapsed
         var frequency: CGFloat = 22
@@ -656,12 +952,18 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
     }
 
     @objc private func advanceSpring(_ link: CADisplayLink) {
-        guard let spring else { return }
+        guard spring != nil else { return }
 #if targetEnvironment(simulator)
         // CPU guarding must not skip the audit's interaction window between delivered frames.
         if usesAuditClock { auditTime += link.duration > 0 ? link.duration : 1.0 / 60 }
 #endif
-        let t = max(0, CGFloat((animationClock?() ?? link.targetTimestamp) - spring.start))
+        advanceAnimation(at: animationClock?() ?? link.targetTimestamp)
+    }
+
+    func advanceAnimation(at timestamp: CFTimeInterval) {
+        guard let spring else { return }
+        let revision = barTransitionRevision
+        let t = max(0, CGFloat(timestamp - spring.start))
         let w = spring.frequency
         let x = spring.height - spring.target
         let v = spring.velocity
@@ -674,12 +976,28 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
             displacement = exp(-decay * t) * (x * cos(oscillation * t)
                 + (v + decay * x) / oscillation * sin(oscillation * t))
         }
+        if let bar = spring.bar {
+            guard spring.barRevision == barTransitionRevision, !finishingBarTransition else { return }
+            if UIAccessibility.isReduceMotionEnabled { finishBarTransition(bar, revision: spring.barRevision); return }
+            barProgress = min(1 + bar.overshoot, max(0, 1 + displacement))
+            // Keep the labels until the settling tail, rather than clearing them at the first overshoot.
+            barOpacityProgress = bar.toSystem ? min(1, t * w / 12) : barProgress
+            applyBarGeometry(bar.geometry(at: barProgress), tabsOpacity: bar.opacity(at: barOpacityProgress),
+                             contentOpacity: bar.opacity(at: barOpacityProgress, content: true))
+            guard spring.barRevision == barTransitionRevision else { return }
+#if targetEnvironment(simulator)
+            sampleBarTransition(revision: spring.barRevision)
+#endif
+            if t * w >= 12, abs(displacement) < 0.0001 { finishBarTransition(bar, revision: spring.barRevision) }
+            return
+        }
         let values = detents()
         let overshoot: CGFloat = spring.damping == 1 ? 0 : 3
         let maximum = spring.resizesContent ? max(values.expanded, spring.height) : values.expanded
         let minimum = spring.resizesContent ? min(values.collapsed, spring.height) : values.collapsed
         let height = min(maximum + overshoot, max(minimum - overshoot, spring.target + displacement))
         applyInteractiveHeight(height, detents: values)
+        guard revision == barTransitionRevision else { return }
 #if targetEnvironment(simulator)
         sampleSettle()
 #endif
@@ -691,12 +1009,13 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
                 updatePanelMetrics(preservePresentedHeight: false)
                 view.layoutIfNeeded()
             }
+            guard revision == barTransitionRevision else { return }
             reportPanelTop()
             grabber.accessibilityValue = position.rawValue
 #if targetEnvironment(simulator)
             sampleSettle()
 #endif
-            if contentEnabled && !spring.resizesContent {
+            if !spring.resizesContent {
                 UIAccessibility.post(notification: .layoutChanged, argument: grabber)
             }
         }
@@ -782,7 +1101,7 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
             "sheetBottom": frame.maxY, "safeBottomY": view.bounds.maxY - safeBottom,
             "safeBottom": safeBottom, "screenHeight": view.bounds.height,
             "tabsBottom": tabFrame.maxY, "tabHeight": tabFrame.height,
-            "settings": contentEnabled ? 0 : 1,
+            "drawerHidden": view.isHidden,
             "scrollOffset": scrollView.contentOffset.y,
             "contentHeight": scrollView.contentSize.height,
             "scrollHeight": scrollView.bounds.height,
@@ -800,7 +1119,7 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
 #endif
 
     func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        guard contentEnabled else { return false }
+        guard !view.isHidden, barGeometry == nil else { return false }
         guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return true }
         let velocity = pan.velocity(in: view)
         dragStartsInScroll = scrollView.isScrollEnabled && scrollView.bounds.contains(pan.location(in: scrollView))
@@ -826,6 +1145,7 @@ private final class PanelPassthroughView: UIView {
     }
 
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        guard isUserInteractionEnabled, !isHidden, alpha > 0.01 else { return false }
         if hitsGrabber(point) { return true }
         guard let sheet, !sheet.isHidden, sheet.alpha > 0.01 else { return false }
         let layer = sheet.layer.presentation() ?? sheet.layer
@@ -834,6 +1154,7 @@ private final class PanelPassthroughView: UIView {
     }
 
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        guard isUserInteractionEnabled, !isHidden, alpha > 0.01 else { return nil }
         if hitsGrabber(point) { return grabber }
         guard self.point(inside: point, with: event), let sheet else { return nil }
         for child in sheet.contentView.subviews.reversed() {
