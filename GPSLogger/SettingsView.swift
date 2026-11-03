@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 
 struct SettingsView: View {
     @State private var confirmingStop = false
@@ -365,6 +366,9 @@ struct SendingSettingsView: View {
 
 struct BackgroundSettingsView: View {
     @State private var bridge = GLManagerBridge.shared
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var audioNotificationsAllowed = true
+    @State private var requestingAudioNotifications = false
 
     var body: some View {
         Form {
@@ -379,6 +383,26 @@ struct BackgroundSettingsView: View {
             Section {
                 Toggle("Tracking Live Activity", isOn: $bridge.liveActivityEnabled)
                 Toggle("Hide While Audio Plays", isOn: $bridge.hideLiveActivityWhileAudioPlays)
+                if bridge.hideLiveActivityWhileAudioPlays {
+                    Toggle("Ask to Reopen When Audio Stops", isOn: $bridge.askToReopenAfterAudio)
+                    Text("On by default. If the Live Activity cannot return after music stops, a notification 45 seconds later asks you to open WhereWolf. This needs notification permission, independently of Notifications and Problems Only.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                    if bridge.askToReopenAfterAudio && !audioNotificationsAllowed {
+                        HStack {
+                            Text("Allow notifications for this prompt.")
+                            Spacer()
+                            Button("Allow") {
+                                requestingAudioNotifications = true
+                                Task {
+                                    _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
+                                    await refreshAudioNotificationPermission()
+                                    requestingAudioNotifications = false
+                                }
+                            }
+                            .disabled(requestingAudioNotifications)
+                        }
+                    }
+                }
                 LabeledContent("Active Engine", value: bridge.actualLocationEngine)
                 if !bridge.locationEngineReason.isEmpty {
                     Text(bridge.locationEngineReason).font(.footnote).foregroundStyle(.secondary)
@@ -424,6 +448,15 @@ struct BackgroundSettingsView: View {
         .navigationTitle("Background")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { bridge.refresh() }
+        .task { await refreshAudioNotificationPermission() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await refreshAudioNotificationPermission() } }
+        }
+    }
+
+    private func refreshAudioNotificationPermission() async {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        audioNotificationsAllowed = [.authorized, .provisional, .ephemeral].contains(settings.authorizationStatus)
     }
 }
 

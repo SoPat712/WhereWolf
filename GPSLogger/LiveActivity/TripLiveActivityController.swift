@@ -112,6 +112,7 @@ import UIKit
             runtime.restoredAfterAudio(.trip)
             GLManager.shared().updateLocationEngine()
         } catch {
+            if action == .restore { runtime.restoreAfterAudioFailed() }
             if action != .restore { NSLog("Couldn't start the trip Live Activity: %@", error.localizedDescription) }
         }
     }

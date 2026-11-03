@@ -536,6 +536,14 @@ final class GLManagerBridge {
         set { WhereWolfBackgroundRuntime.shared.hideWhileAudioPlays = newValue; refresh() }
     }
 
+    @MainActor var askToReopenAfterAudio: Bool {
+        get {
+            _ = tick
+            return WhereWolfBackgroundRuntime.shared.askToReopenAfterAudio
+        }
+        set { WhereWolfBackgroundRuntime.shared.askToReopenAfterAudio = newValue; refresh() }
+    }
+
     @MainActor var silentAudioEnabled: Bool {
         get {
             _ = tick

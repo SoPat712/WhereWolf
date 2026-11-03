@@ -7,6 +7,19 @@ import XCTest
 @testable import WhereWolf
 
 final class BackgroundRuntimeTests: XCTestCase {
+    @MainActor func testAudioReopenPromptDefaultsOnAndPreservesSavedChoice() {
+        let defaults = UserDefaults.standard
+        let domain = Bundle.main.bundleIdentifier!
+        let saved = defaults.persistentDomain(forName: domain) ?? [:]
+        let key = "WhereWolfLiveActivityAskToReopenAfterAudio"
+        defer { defaults.setPersistentDomain(saved, forName: domain) }
+        defaults.removeObject(forKey: key)
+        XCTAssertTrue(WhereWolfBackgroundRuntime.shared.askToReopenAfterAudio)
+        XCTAssertNil(defaults.persistentDomain(forName: domain)?[key])
+        defaults.set(false, forKey: key)
+        XCTAssertFalse(WhereWolfBackgroundRuntime.shared.askToReopenAfterAudio)
+    }
+
     @MainActor func testBlankAppearanceDefaultPreservesSavedChoices() {
         let defaults = UserDefaults.standard
         let domain = Bundle.main.bundleIdentifier!
@@ -550,6 +563,99 @@ final class BackgroundRuntimeTests: XCTestCase {
         }
     }
 
+    @MainActor func testAudioReopenPromptWithdrawsOnEveryRuntimeEvent() async throws {
+        for event in ["audio", "foreground", "restored", "retry", "hideOff", "promptOff", "access", "stop", "appearanceOff"] {
+            try await withTrackingActivity { _ in
+                let runtime = WhereWolfBackgroundRuntime.shared
+                let savedDependencies = runtime.audioDependencies
+                let savedPrompt = runtime.reopenPrompt
+                let center = ReopenNotificationCenter()
+                let clock = AudioClock()
+                runtime.reopenPrompt = LiveActivityReopenPrompt(center: center)
+                runtime.audioDependencies = clock.dependencies
+                defer {
+                    runtime.hideWhileAudioPlays = false
+                    runtime.audioDependencies = savedDependencies
+                    runtime.reopenPrompt = savedPrompt
+                }
+                clock.playing = true
+                runtime.hideWhileAudioPlays = true
+                try clock.fireNext()
+                try await waitUntil { runtime.activityStatus == "Hidden while other audio plays" }
+                clock.scene = .inactive
+                clock.playing = false
+                clock.uptime += 15
+                runtime.checkAudioFromLocation()
+                try clock.fireNext()
+                try await waitUntil { center.additions.count == 1 }
+                XCTAssertEqual(runtime.activityStatus, "Open WhereWolf to restore the Live Activity")
+                center.delivered.insert(LiveActivityReopenPrompt.notificationID)
+                switch event {
+                case "audio":
+                    clock.playing = true
+                    clock.uptime += 15
+                    runtime.checkAudioFromLocation()
+                case "foreground":
+                    NotificationCenter.default.post(name: UIApplication.willEnterForegroundNotification, object: nil)
+                case "restored": runtime.restoredAfterAudio(.minimal)
+                case "retry": runtime.retry()
+                case "hideOff": runtime.hideWhileAudioPlays = false
+                case "promptOff": runtime.askToReopenAfterAudio = false
+                case "access":
+                    clock.authorization = .authorizedWhenInUse
+                    NotificationCenter.default.post(name: Notification.Name(GLAuthorizationStatusChangedNotification), object: nil)
+                case "stop": GLManager.shared().stopAllUpdates()
+                default: runtime.liveActivityEnabled = false
+                }
+                try await waitUntil(event) {
+                    center.pending[LiveActivityReopenPrompt.notificationID] == nil
+                        && !center.delivered.contains(LiveActivityReopenPrompt.notificationID)
+                }
+                await Task.yield()
+                XCTAssertEqual(center.additions.count, 1, event)
+            }
+        }
+    }
+
+    @MainActor func testRefusedBackgroundAudioRestoreSchedulesOnePrompt() async throws {
+        try await withTrackingActivity { _ in
+            let runtime = WhereWolfBackgroundRuntime.shared
+            let savedDependencies = runtime.audioDependencies
+            let savedPrompt = runtime.reopenPrompt
+            let center = ReopenNotificationCenter()
+            let clock = AudioClock()
+            runtime.reopenPrompt = LiveActivityReopenPrompt(center: center)
+            runtime.audioDependencies = clock.dependencies
+            defer {
+                runtime.hideWhileAudioPlays = false
+                runtime.audioDependencies = savedDependencies
+                runtime.reopenPrompt = savedPrompt
+            }
+            clock.playing = true
+            runtime.hideWhileAudioPlays = true
+            try clock.fireNext()
+            try await waitUntil { runtime.activityStatus == "Hidden while other audio plays" }
+            clock.scene = .background
+            clock.playing = false
+            clock.uptime += 15
+            runtime.checkAudioFromLocation()
+            try clock.fireNext()
+            XCTAssertEqual(runtime.audioAction(for: .minimal, eligible: true, hasActivity: false), .restore)
+            runtime.willRestoreAfterAudio(.minimal)
+            // Exercise the refusal hook without asking ActivityKit to start an activity.
+            runtime.restoreAfterAudioFailed()
+            try await waitUntil { center.additions.count == 1 }
+            for _ in 0..<20 {
+                XCTAssertEqual(runtime.audioAction(for: .minimal, eligible: true, hasActivity: false), .waitForForeground)
+                runtime.restoreAfterAudioFailed()
+            }
+            await Task.yield()
+            XCTAssertEqual(center.additions.count, 1)
+            XCTAssertEqual(runtime.activityStatus, "Open WhereWolf to restore the Live Activity")
+            XCTAssertTrue(GLManager.shared().trackingEnabled)
+        }
+    }
+
     @MainActor private func withTrackingActivity(_ body: (Activity<TrackingActivityAttributes>) async throws -> Void) async throws {
         let defaults = UserDefaults.standard
         let domain = Bundle.main.bundleIdentifier!
@@ -557,11 +663,14 @@ final class BackgroundRuntimeTests: XCTestCase {
         let manager = GLManager.shared()!
         let runtime = WhereWolfBackgroundRuntime.shared
         let savedAudioDependencies = runtime.audioDependencies
+        let savedPrompt = runtime.reopenPrompt
+        runtime.reopenPrompt = LiveActivityReopenPrompt(center: ReopenNotificationCenter())
         manager.stopAllUpdates()
         runtime.audioDependencies = .init()
         defer {
             manager.stopAllUpdates()
             runtime.audioDependencies = savedAudioDependencies
+            runtime.reopenPrompt = savedPrompt
             defaults.setPersistentDomain(saved, forName: domain)
         }
         guard manager.locationManager.authorizationStatus == .authorizedAlways else {
@@ -572,6 +681,7 @@ final class BackgroundRuntimeTests: XCTestCase {
         defaults.set(-1, forKey: "GLSendIntervalDefaults")
         runtime.silentAudioEnabled = false
         runtime.hideWhileAudioPlays = false
+        runtime.askToReopenAfterAudio = true
         runtime.appearance = "minimal"
         runtime.liveActivityEnabled = true
         do {
@@ -646,6 +756,7 @@ final class BackgroundRuntimeTests: XCTestCase {
         var playing = false
         var uptime: TimeInterval = 0
         var authorization = CLAuthorizationStatus.authorizedAlways
+        var scene = LiveActivityAudioPolicy.Scene.foreground
         var scheduled: [(deadline: TimeInterval, work: DispatchWorkItem)] = []
         var scheduledCount = 0
 
@@ -653,7 +764,7 @@ final class BackgroundRuntimeTests: XCTestCase {
 
         var dependencies: WhereWolfBackgroundRuntime.AudioDependencies {
             .init(otherAudioPlaying: { self.playing }, uptime: { self.uptime },
-                  authorization: { self.authorization }, schedule: { delay, work in
+                  authorization: { self.authorization }, scene: { self.scene }, schedule: { delay, work in
                 self.scheduled.append((self.uptime + delay, work))
                 self.scheduledCount += 1
             })

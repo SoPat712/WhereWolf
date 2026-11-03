@@ -72,6 +72,7 @@ private enum TrackingActivityHandle {
         static let liveActivity = "WhereWolfLiveActivityEnabled"
         static let appearance = "WhereWolfLiveActivityAppearance"
         static let hideWhileAudioPlays = "WhereWolfLiveActivityHideWhileAudioPlays"
+        static let askToReopenAfterAudio = "WhereWolfLiveActivityAskToReopenAfterAudio"
         static let silentAudio = "WhereWolfSilentAudioEnabled"
     }
 
@@ -79,6 +80,13 @@ private enum TrackingActivityHandle {
         var otherAudioPlaying: () -> Bool = { AVAudioSession.sharedInstance().isOtherAudioPlaying }
         var uptime: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
         var authorization: () -> CLAuthorizationStatus = { GLManager.shared().locationManager.authorizationStatus }
+        var scene: () -> LiveActivityAudioPolicy.Scene = {
+            switch UIApplication.shared.applicationState {
+            case .active: return .foreground
+            case .background: return .background
+            default: return .inactive
+            }
+        }
         var schedule: (TimeInterval, DispatchWorkItem) -> Void = { delay, work in
             DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
         }
@@ -103,6 +111,10 @@ private enum TrackingActivityHandle {
         didSet { resetAudioPolicy() }
     }
     @ObservationIgnored private var audioPolicy = LiveActivityAudioPolicy()
+    @ObservationIgnored var reopenPrompt = LiveActivityReopenPrompt() {
+        willSet { reopenPrompt.reset() }
+    }
+    @ObservationIgnored private var otherAudioPlaying = false
     @ObservationIgnored private var audioFollowUp: DispatchWorkItem?
     @ObservationIgnored private var audioFollowUpDeadline: TimeInterval?
     @ObservationIgnored private var audioFollowUpRevision = 0
@@ -111,7 +123,8 @@ private enum TrackingActivityHandle {
         super.init()
         UserDefaults.standard.register(defaults: [Key.liveActivity: true,
                                                  Key.appearance: "blank", Key.silentAudio: false,
-                                                 Key.hideWhileAudioPlays: false])
+                                                 Key.hideWhileAudioPlays: false,
+                                                 Key.askToReopenAfterAudio: true])
     }
 
     var liveActivityEnabled: Bool {
@@ -151,6 +164,14 @@ private enum TrackingActivityHandle {
 
     var audioStatus: String { audio.status }
 
+    var askToReopenAfterAudio: Bool {
+        get { UserDefaults.standard.bool(forKey: Key.askToReopenAfterAudio) }
+        set {
+            UserDefaults.standard.set(newValue, forKey: Key.askToReopenAfterAudio)
+            refresh()
+        }
+    }
+
     @objc func start() {
         guard !started else { return }
         started = true
@@ -166,6 +187,7 @@ private enum TrackingActivityHandle {
             Task { @MainActor in
                 guard let self else { return }
                 self.suppressed = false
+                self.reopenPrompt.dismiss()
                 self.audioPolicy.foregroundOrRetry()
                 GLManager.shared().reconcileTracking()
                 self.refresh()
@@ -181,7 +203,12 @@ private enum TrackingActivityHandle {
                      AVAudioSession.interruptionNotification, AVAudioSession.routeChangeNotification,
                      AVAudioSession.mediaServicesWereLostNotification, AVAudioSession.mediaServicesWereResetNotification] {
             observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                Task { @MainActor in self?.refresh() }
+                Task { @MainActor in
+                    if name == UIApplication.willEnterForegroundNotification || name == UIScene.willEnterForegroundNotification {
+                        self?.reopenPrompt.dismiss()
+                    }
+                    self?.refresh()
+                }
             })
         }
         observers.append(center.addObserver(forName: Notification.Name(GLReminderChangedNotification),
@@ -205,6 +232,7 @@ private enum TrackingActivityHandle {
     }
 
     func retry() {
+        reopenPrompt.dismiss()
         suppressed = false
         audioPolicy.foregroundOrRetry()
         refresh()
@@ -249,12 +277,13 @@ private enum TrackingActivityHandle {
         let wasHiding = audioPolicy.isHiding
         let enabled = hideWhileAudioPlays && eligible
         let authorization = audioDependencies.authorization()
+        otherAudioPlaying = enabled && authorization == .authorizedAlways && audioDependencies.otherAudioPlaying()
         audioPolicy.sample(enabled: enabled,
-                           otherAudioPlaying: enabled && authorization == .authorizedAlways
-                               && audioDependencies.otherAudioPlaying(),
+                           otherAudioPlaying: otherAudioPlaying,
                            authorization: authorization,
                            at: audioDependencies.uptime())
         scheduleAudioFollowUp()
+        updateReopenPrompt()
         if wasHiding != audioPolicy.isHiding { GLManager.shared().syncTripLiveActivity() }
     }
 
@@ -287,6 +316,8 @@ private enum TrackingActivityHandle {
         // Deadlines and sampling history belong to the clock that created them.
         cancelAudioFollowUp()
         audioPolicy = LiveActivityAudioPolicy()
+        otherAudioPlaying = false
+        reopenPrompt.reset()
     }
 
     func audioAction(for kind: LiveActivityAudioPolicy.Kind, eligible: Bool,
@@ -294,19 +325,38 @@ private enum TrackingActivityHandle {
         if audioPolicy.isHiding && (!hideWhileAudioPlays || audioDependencies.authorization() != .authorizedAlways) {
             sampleOtherAudio()
         }
-        return audioPolicy.action(for: kind, eligible: eligible, hasActivity: hasActivity, scene: audioScene)
+        let pending = audioPolicy.hasPendingRestore(for: kind)
+        let action = audioPolicy.action(for: kind, eligible: eligible, hasActivity: hasActivity, scene: audioScene)
+        updateReopenPrompt()
+        if action == .waitForForeground { reopenPrompt.schedule() }
+        if pending && hasActivity && action == .keep { reopenPrompt.dismiss() }
+        return action
     }
 
     private var audioScene: LiveActivityAudioPolicy.Scene {
-        switch UIApplication.shared.applicationState {
-        case .active: return .foreground
-        case .background: return .background
-        default: return .inactive
-        }
+        audioDependencies.scene()
     }
 
     func willRestoreAfterAudio(_ kind: LiveActivityAudioPolicy.Kind) { audioPolicy.willRequest(kind, scene: audioScene) }
-    func restoredAfterAudio(_ kind: LiveActivityAudioPolicy.Kind) { audioPolicy.restored(kind) }
+    func restoredAfterAudio(_ kind: LiveActivityAudioPolicy.Kind) {
+        audioPolicy.restored(kind)
+        reopenPrompt.dismiss()
+    }
+
+    func restoreAfterAudioFailed() {
+        updateReopenPrompt()
+        reopenPrompt.schedule()
+    }
+
+    private func updateReopenPrompt() {
+        reopenPrompt.update(.init(hideWhileAudioPlays: hideWhileAudioPlays,
+                                  askToReopen: askToReopenAfterAudio,
+                                  authorization: audioDependencies.authorization(),
+                                  trackingEligible: eligible,
+                                  hasPendingRestore: audioPolicy.hasPendingRestore,
+                                  isHiding: audioPolicy.isHiding,
+                                  otherAudioPlaying: otherAudioPlaying, scene: audioScene))
+    }
 
     private func updateActivity() async {
         let current = revision
@@ -397,6 +447,7 @@ private enum TrackingActivityHandle {
         } catch {
             if audioAction == .restore {
                 activityStatus = "Open WhereWolf to restore the Live Activity"
+                restoreAfterAudioFailed()
             } else {
                 suppressed = true
                 activityStatus = "Could not start: \(error.localizedDescription)"

@@ -498,6 +498,13 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   background restore attempt per activity family, then waits for
   foreground or explicit Retry after a refusal. Hiding is not a failure. Preserve
   Stop, pauses, trip state and the reminder deadline.
+  Ask to Reopen When Audio Stops defaults on, is local-only and appears under
+  Hide While Audio Plays. After confirmed audio ending, a refused or deferred
+  restore schedules one authorized local prompt 45 seconds later with the fixed
+  `WhereWolfLiveActivityAudioReopen` identifier. Withdraw pending and delivered
+  prompts on renewed audio, foreground, restore, Retry, either switch off, lost
+  Always access, Stop or no remaining activity to restore. Only the inline Allow
+  button requests notification permission; never request it in the background.
   Silent audio checks playback only while opted in. Unexpected stops get three
   bounded retries; calls and media-service loss block automatic recovery.
 - Settings sliders use common-value detents with exact numeric entry. Commit
@@ -510,6 +517,8 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   Preserve import receipts, local history, saved workouts and active trips.
 - Notifications remain opt-in. Problems Only suppresses routine status and trip
   messages while retaining upload errors and the existing missed-update reminder.
+  The trip-end and audio-reopen prompts use their own switches and existing
+  notification permission, independently of Notifications and Problems Only.
 - Current WiFi identity tries `CNCopyCurrentNetworkInfo`, which is deprecated and can be empty
   on current iOS, then a cached `NEHotspotNetwork.fetchCurrent` result under two minutes old;
   each miss refreshes that cache in the background, and Choose Networks waits for a fresh fetch.

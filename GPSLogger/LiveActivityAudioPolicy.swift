@@ -18,6 +18,10 @@ struct LiveActivityAudioPolicy {
     private var lastSample = -TimeInterval.infinity
     private var pending: [Bool: Attempt] = [:]
 
+    var hasPendingRestore: Bool { !pending.isEmpty }
+
+    func hasPendingRestore(for kind: Kind) -> Bool { pending[kind.isTrip] != nil }
+
     func shouldSampleLocation(at time: TimeInterval) -> Bool { time - lastSample >= Self.confirmationInterval }
 
     mutating func sample(enabled: Bool, otherAudioPlaying: Bool,
