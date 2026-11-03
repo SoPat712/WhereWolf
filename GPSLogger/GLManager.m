@@ -3888,15 +3888,23 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
 }
 
 - (void)requestNotificationPermission {
+    [self requestNotificationPermissionWithCompletion:nil];
+}
+
+- (void)requestNotificationPermissionWithCompletion:(void (^)(BOOL granted))completion {
     NSUInteger revision = ++self.notificationPermissionRevision;
     [UNUserNotificationCenter.currentNotificationCenter requestAuthorizationWithOptions:UNAuthorizationOptionAlert | UNAuthorizationOptionSound
         completionHandler:^(BOOL granted, NSError *error) {
             dispatch_async(dispatch_get_main_queue(), ^{
-                if(revision != self.notificationPermissionRevision) return;
+                if(revision != self.notificationPermissionRevision) {
+                    if(completion) completion(NO);
+                    return;
+                }
                 [NSUserDefaults.standardUserDefaults setBool:granted forKey:GLNotificationPermissionRequestedDefaultsName];
                 [NSUserDefaults.standardUserDefaults setBool:granted forKey:GLNotificationsEnabledDefaultsName];
                 [self scheduleLocalNotification];
                 [[NSNotificationCenter defaultCenter] postNotificationName:GLSettingsChangedNotification object:self];
+                if(completion) completion(granted);
             });
         }];
 }

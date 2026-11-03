@@ -120,6 +120,15 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
 
 ## Architecture
 
+- **Onboarding**: first launch presents the native full-screen Setup Guide before
+  creating the map. `OnboardingModel` owns step order, status and injected actions;
+  permissions run only from buttons. Settings' first row reopens it. Done and
+  Skip All set `WhereWolfOnboardingCompleted`; only Done's Start Tracking starts
+  recording. Presets stay staged until Done. Destination and helper changes use
+  `GLManagerBridge`; scene and pasted setup links share its validated parser.
+  Health read access is private: report access reviewed, never approval.
+  The map enables its location dot only with existing location authorization, so
+  skipping setup cannot ask for permission through MapKit.
 - **Core stays Objective-C**: `GLManager` owns location, queueing
   (LOLDatabase/SQLite), batching, and HTTP. Don't rewrite it.
 - **Upstream integrations**: `TripModeStore` owns stable mode IDs, editable

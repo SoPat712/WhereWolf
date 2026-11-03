@@ -43,32 +43,8 @@
         [[NSNotificationCenter defaultCenter] postNotificationName:@"WhereWolfOpenTracker" object:nil];
     }
     if([[url host] isEqualToString:@"setup"]) {
-        NSURLComponents *urlComponents = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
-        NSArray *queryItems  = urlComponents.queryItems;
-        NSString *endpoint = [self queryValueForKey:@"url" fromQueryItems:queryItems];
-        NSString *token    = [self queryValueForKey:@"token" fromQueryItems:queryItems];
-        NSString *deviceId = [self queryValueForKey:@"device_id" fromQueryItems:queryItems];
-        NSString *uniqueId = [self queryValueForKey:@"unique_id" fromQueryItems:queryItems];
-        if(![GLManager isValidEndpoint:endpoint]) return;
-        NSLog(@"Applying server configuration");
-        [[GLManager sharedManager] saveNewDeviceId:deviceId];
-        [[GLManager sharedManager] saveNewAPIEndpoint:endpoint andAccessToken:token];
-        [[NSUserDefaults standardUserDefaults] setBool:[uniqueId isEqualToString:@"yes"] forKey:GLIncludeUniqueIdDefaultsName];
-        NSMutableDictionary *headers = [NSMutableDictionary dictionary];
-        for(NSURLQueryItem *item in queryItems) {
-            if([item.name hasPrefix:@"header_"] && item.name.length > 7 && item.value) {
-                headers[[item.name substringFromIndex:7]] = item.value;
-            }
-        }
-        if(headers.count > 0) [GLManager sharedManager].customHTTPHeaders = headers;
+        [WhereWolfSetupURLHandler apply:url];
     }
-}
-
-- (NSString *)queryValueForKey:(NSString *)key fromQueryItems:(NSArray *)queryItems
-{
-    NSPredicate *predicate = [NSPredicate predicateWithFormat:@"name=%@", key];
-    NSURLQueryItem *queryItem = [[queryItems filteredArrayUsingPredicate:predicate] firstObject];
-    return queryItem.value;
 }
 
 #pragma mark - Quick Actions

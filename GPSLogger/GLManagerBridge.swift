@@ -131,12 +131,13 @@ final class GLManagerBridge {
     var healthEnabled: Bool { _ = tick; return HealthTripRecorder.shared.isEnabled }
     var healthLastError: String? { _ = tick; return HealthTripRecorder.shared.lastError }
 
-    func setHealthEnabled(_ enabled: Bool) {
-        guard !healthRequestInFlight else { return }
+    func setHealthEnabled(_ enabled: Bool, completion: ((String?) -> Void)? = nil) {
+        guard !healthRequestInFlight else { completion?("A Health access request is already in progress."); return }
         healthAuthorizationError = nil
         guard enabled else {
             HealthTripRecorder.shared.isEnabled = false
             refresh()
+            completion?(nil)
             return
         }
         healthRequestInFlight = true
@@ -146,6 +147,7 @@ final class GLManagerBridge {
             healthAuthorizationError = error
             if error == nil { HealthTripRecorder.shared.isEnabled = true }
             refresh()
+            completion?(error)
         }
     }
 
@@ -629,6 +631,12 @@ final class GLManagerBridge {
     var locationPermission: String {
         _ = tick
         return GLManager.shared().authorizationStatusAsString()
+    }
+
+    var hasLocationAccess: Bool {
+        _ = tick
+        let status = GLManager.shared().locationManager.authorizationStatus
+        return status == .authorizedAlways || status == .authorizedWhenInUse
     }
 
     func requestLocationPermission() {

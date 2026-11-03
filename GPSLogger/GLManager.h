@@ -241,6 +241,7 @@ typedef void (^CaseBlock)(void);
 
 - (NSString *)authorizationStatusAsString;
 - (void)requestAuthorizationPermission;
+- (void)requestNotificationPermissionWithCompletion:(void (^ _Nullable)(BOOL granted))completion NS_SWIFT_NAME(requestNotificationPermission(completion:));
 - (NSInteger)usageProfile;
 - (void)applyUsageProfile:(NSInteger)profile;
 

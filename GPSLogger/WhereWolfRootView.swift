@@ -25,6 +25,7 @@ struct WhereWolfRootView: View {
     @State private var tripRevision: Int?
     @State private var history = HistoryPlaybackModel()
     @State private var bridge = GLManagerBridge.shared
+    @State private var onboarding = OnboardingModel.live()
     @State private var drawerGeometry = MapDrawerGeometry()
     @State private var recenterRequest = 0
     @State private var replayCameraDistance: CLLocationDistance?
@@ -49,6 +50,16 @@ struct WhereWolfRootView: View {
     }
 
     var body: some View {
+        Group {
+            if onboarding.completed { appContent }
+            else { Color(uiColor: .systemBackground).ignoresSafeArea() }
+        }
+        .fullScreenCover(isPresented: $onboarding.isPresented) {
+            OnboardingView(model: onboarding)
+        }
+    }
+
+    private var appContent: some View {
         GeometryReader { geometry in
             WhereWolfShell(
                 drawerGeometry: drawerGeometry,
@@ -151,7 +162,7 @@ struct WhereWolfRootView: View {
 
     private var settingsPage: some View {
         NavigationStack(path: $settingsPath) {
-            SettingsView()
+            SettingsView(openSetup: { onboarding.reopen() })
                 .navigationDestination(for: SettingsDestination.self) { destination in
                     switch destination {
                     case .server:

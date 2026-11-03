@@ -381,7 +381,8 @@ struct NativeMapSurface: UIViewRepresentable {
     @MainActor func makeMap(coordinator: Coordinator) -> MKMapView {
         let map = AttributionMapView(frame: .zero)
         map.delegate = coordinator
-        map.showsUserLocation = sceneVisible && pageActive && !replayActive && replayRoute == nil
+        map.showsUserLocation = GLManagerBridge.shared.hasLocationAccess
+            && sceneVisible && pageActive && !replayActive && replayRoute == nil
         map.showsCompass = false
         // Native follow mode changes the chosen zoom; presentation follows fixes here.
         map.userTrackingMode = .none
@@ -534,7 +535,8 @@ struct NativeMapSurface: UIViewRepresentable {
             }
             if map.mapType != parent.mapType { map.mapType = parent.mapType }
             let visible = parent.sceneVisible && parent.pageActive
-            let showLocation = visible && !parent.replayActive && parent.replayRoute == nil
+            let showLocation = GLManagerBridge.shared.hasLocationAccess
+                && visible && !parent.replayActive && parent.replayRoute == nil
             if map.showsUserLocation != showLocation { map.showsUserLocation = showLocation }
             if !showLocation { stopLiveMotion() }
             if !visible || replayModeChanged

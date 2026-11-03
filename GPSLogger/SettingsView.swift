@@ -2,12 +2,20 @@ import SwiftUI
 import UserNotifications
 
 struct SettingsView: View {
+    var openSetup: () -> Void = {}
     @State private var confirmingStop = false
     @State private var showingTipJar = false
     @State private var bridge = GLManagerBridge.shared
 
     var body: some View {
         Form {
+            Section {
+                Button(action: openSetup) {
+                    SettingsRowLabel(title: "Setup Guide", symbol: "list.bullet.clipboard", color: .blue)
+                }
+                .foregroundStyle(.primary)
+                .accessibilityIdentifier("wherewolf.settings.setup")
+            }
             Section {
                 NavigationLink(value: SettingsDestination.server) {
                     LabeledContent {
@@ -64,11 +72,9 @@ struct SettingsView: View {
                 }
                 Picker(selection: $bridge.usageProfile) {
                     Text("Custom").tag(0)
-                    Text("High Resolution").tag(1)
-                    Text("Low Power").tag(2)
-                    Text("Balanced").tag(3)
-                    Text("Walking / Running").tag(4)
-                    Text("Driving").tag(5)
+                    ForEach(UsagePreset.values, id: \.self) { value in
+                        Text(UsagePreset.name(value)).tag(value)
+                    }
                 } label: {
                     SettingsRowLabel(title: "Usage Preset", symbol: "dial.medium.fill", color: .indigo)
                 }
@@ -152,7 +158,7 @@ struct SettingsView: View {
                     SettingsRowLabel(title: "Support", symbol: "questionmark.circle.fill", color: .blue)
                 }
                 .foregroundStyle(.primary)
-                Link(destination: URL(string: "https://sopat712.github.io/WhereWolf/privacy/")!) {
+                Link(destination: WhereWolfLinks.privacy) {
                     SettingsRowLabel(title: "Privacy Policy", symbol: "hand.raised.fill", color: .gray)
                 }
                 .foregroundStyle(.primary)
@@ -170,14 +176,7 @@ struct SettingsView: View {
     }
 
     private var profileDescription: String {
-        switch bridge.usageProfile {
-        case 1: return "Detailed routes: Standard, Best accuracy, no automatic pausing."
-        case 2: return "Coarse history: significant changes controlled by iOS."
-        case 3: return "Everyday history: Both, 100 m accuracy, stop within 50 m after 3 minutes."
-        case 4: return "Walking or running: Standard, Best accuracy, Fitness activity."
-        case 5: return "Detailed driving: Standard, Navigation accuracy, Automotive activity."
-        default: return "Your current combination of settings."
-        }
+        UsagePreset.description(bridge.usageProfile)
     }
 
 }

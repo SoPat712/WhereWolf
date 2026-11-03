@@ -29,6 +29,27 @@ and integrations include:
 For Android, see [Colota](https://github.com/dietrichmax/colota) and its
 [Overland integration](https://colota.app/docs/integrations/overland).
 
+## Setup Guide
+
+On first launch, WhereWolf walks through location access (While Using, then
+Always and Precise), optional Motion & Fitness and notifications, your data
+destination, the five tracking presets, Dynamic Island and Live Activity,
+optional Apple Health access, and background settings. Permissions are requested
+only when you tap their buttons. Denied or limited access offers Open Settings;
+returning refreshes the status. Apple Health keeps route read approval private,
+so the guide reports when access was reviewed.
+
+Paste a `wherewolf://setup` or `overland://setup` link from your server, enter an
+HTTP(S) endpoint and token with GeoJSON or OwnTracks format, choose iCloud Drive,
+or keep records on the device. Keeping records on the device clears the server
+endpoint and disables iCloud export; queued records remain available to send later.
+Preset selection takes effect when you finish the guide.
+
+The final summary lets you revisit each choice. **Start Tracking** begins
+recording with your chosen preset; **Finish Without Tracking** and **Skip All**
+complete setup without starting it. Reopen the guide from the first row in
+Settings at any time. An existing recording continues when you reopen it.
+
 ## Screenshots
 
 A simulated day in Tokyo, recorded in the iOS Simulator. The routes come from Apple Maps
