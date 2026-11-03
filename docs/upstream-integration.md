@@ -33,7 +33,7 @@ The glass styling, drawer, shared native map, replay renderer and app icon are
 retained. Upstream storyboard/tab-bar presentation and Icon Composer appearance
 changes are not applied. The fork already had StoreKit 2 tips, custom HTTP
 headers, WiFi/BSSID mappings, trip-distance caching and queue fixes; those
-implementations are retained. All five Usage Presets and existing defaults are
+implementations are retained. The five original Usage Presets and existing users’ settings are
 unchanged. New export, Health, trip-card and filtering choices are opt-in.
 
 ## Storage and signing

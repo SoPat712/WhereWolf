@@ -530,6 +530,16 @@ final class GLManagerBridge {
         set { WhereWolfBackgroundRuntime.shared.appearance = newValue; refresh() }
     }
 
+    @MainActor var liveActivityLockScreenCard: Bool {
+        get { _ = tick; return WhereWolfBackgroundRuntime.shared.lockScreenCard }
+        set { WhereWolfBackgroundRuntime.shared.lockScreenCard = newValue; refresh() }
+    }
+
+    @MainActor var liveActivityPresentation: TrackingActivityPresentation {
+        _ = tick
+        return WhereWolfBackgroundRuntime.shared.presentation
+    }
+
     @MainActor var hideLiveActivityWhileAudioPlays: Bool {
         get {
             _ = tick

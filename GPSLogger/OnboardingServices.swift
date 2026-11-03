@@ -135,7 +135,7 @@ extension GLManagerBridge {
         result.cloudSelected = savesToICloudDrive
         result.serverConfigured = endpointSet
         result.destination = savesToICloudDrive ? (cloudAvailable ? "iCloud Drive" : "iCloud Drive · Unavailable")
-            : endpointSet ? "Your server · \(gl.usesOwntracksFormat() ? "OwnTracks" : "GeoJSON")" : "Keep on device for now"
+            : endpointSet ? (URL(string: gl.apiEndpointURL() ?? "")?.host ?? "Your server") : "This iPhone"
         result.usagePreset = usageProfile
         result.tracking = trackingOn
         result.tripActive = tripInProgress
@@ -148,6 +148,10 @@ extension GLManagerBridge {
         result.backgroundRefresh = backgroundRefreshStatus
         result.lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
         result.watchPaired = WCSession.isSupported() && WCSession.default.isPaired
+        result.activeHelpers = [backgroundIndicator, advancedBool("background_recovery"),
+                                advancedBool("explicit_service_session"), advancedBool("automatic_location_retry"),
+                                silentAudioEnabled].filter { $0 }.count
+        result.sendInterval = sendIntervalValue < 1 ? "Manual" : SettingFormat.seconds(sendIntervalValue)
         result.silentAudio = silentAudioEnabled
         return result
     }

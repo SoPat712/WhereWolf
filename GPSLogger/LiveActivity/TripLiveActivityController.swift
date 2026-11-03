@@ -69,6 +69,7 @@ import UIKit
 
     private func updateActivity() async {
         let runtime = WhereWolfBackgroundRuntime.shared
+        defer { runtime.tripActivityChanged() }
         let activities = Activity<TripActivityAttributes>.activities.filter { $0.activityState == .active || $0.activityState == .stale }
         let action = runtime.audioAction(for: .trip, eligible: trip != nil, hasActivity: !activities.isEmpty)
         guard let trip else {

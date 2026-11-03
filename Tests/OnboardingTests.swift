@@ -12,141 +12,83 @@ final class OnboardingTests: XCTestCase {
         var events: [String] = []
         var settingsOpened = 0
         var destinationValid = true
-        var requestError: String?
         var onRequest: (@MainActor (OnboardingPermission) async -> Void)?
 
         init() { defaults = UserDefaults(suiteName: suite)! }
-
+        func clean() { defaults.removePersistentDomain(forName: suite) }
         func model() -> OnboardingModel {
             OnboardingModel(defaults: defaults, actions: OnboardingActions(
                 loadStatus: { self.status },
-                request: {
-                    self.requests.append($0)
-                    await self.onRequest?($0)
-                    return self.requestError
-                },
+                request: { self.requests.append($0); await self.onRequest?($0); return nil },
                 openSettings: { self.settingsOpened += 1 },
-                applyDestination: {
-                    self.destinations.append($0)
-                    return self.destinationValid
-                },
-                applyPreset: { self.events.append("preset:\($0)") },
+                applyDestination: { self.destinations.append($0); return self.destinationValid },
+                applyPreset: { self.events.append("preset:\($0)"); self.status.usagePreset = $0 },
                 startTracking: {
                     XCTAssertTrue(self.defaults.bool(forKey: OnboardingModel.completedKey))
                     self.events.append("start")
                 }
             ))
         }
-
-        func clean() { defaults.removePersistentDomain(forName: suite) }
     }
 
-    func testStepOrderIncludesHealthWhenAvailable() async {
+    func testEightStepsStayInMockupOrderWithOrWithoutHealth() async {
         let h = Harness(); defer { h.clean() }
-        h.status.healthAvailable = true
-        let model = h.model()
-        await model.refresh()
-        XCTAssertEqual(model.steps, [.welcome, .whileUsing, .always, .motion, .notifications,
-                                     .destination, .preset, .liveActivity, .health, .goodToKnow, .done])
-        for step in model.steps {
-            XCTAssertEqual(model.step, step)
-            model.next()
+        for health in [false, true] {
+            h.status.healthAvailable = health
+            let model = h.model(); await model.refresh()
+            XCTAssertEqual(model.steps, [.welcome, .permissions, .destination, .tracking, .sending, .liveActivity, .stayingActive, .done])
+            for step in model.steps { XCTAssertEqual(model.step, step); model.next() }
+            XCTAssertEqual(model.stepNumber, 8)
+            model.back(); XCTAssertEqual(model.step, .stayingActive)
         }
-        XCTAssertEqual(model.stepNumber, 11)
     }
 
-    func testUnavailableHealthIsSkippedInBothDirections() async {
+    func testNavigationAndRefreshNeverRequestOrStart() async {
         let h = Harness(); defer { h.clean() }
         let model = h.model(); await model.refresh()
-        XCTAssertEqual(model.steps.count, 10)
-        model.go(to: .liveActivity); model.next()
-        XCTAssertEqual(model.step, .goodToKnow)
-        model.back()
-        XCTAssertEqual(model.step, .liveActivity)
-        model.go(to: .health)
-        XCTAssertEqual(model.step, .liveActivity)
-    }
-
-    func testLaunchRefreshAndNavigationNeverRequestOrStart() async {
-        let h = Harness(); defer { h.clean() }
-        h.status.healthAvailable = true
-        let model = h.model()
-        XCTAssertTrue(model.isPresented)
-        XCTAssertFalse(model.completed)
-        await model.refresh()
         for _ in model.steps { model.next(); await model.refresh() }
-        model.back(); model.go(to: .motion); model.reopen(); await model.refresh()
+        model.back(); model.go(to: .permissions); model.reopen(); await model.refresh()
         XCTAssertTrue(h.requests.isEmpty)
         XCTAssertTrue(h.events.isEmpty)
-        XCTAssertFalse(h.defaults.bool(forKey: OnboardingModel.completedKey))
+        XCTAssertFalse(model.completed)
     }
 
-    func testAlwaysRequestIsGatedOnWhileUsing() async {
+    func testLocationUsesSeparateExplicitWhileUsingAndAlwaysActions() async {
         let h = Harness(); defer { h.clean() }
         let model = h.model(); await model.refresh()
-        for location in [OnboardingLocationAccess.notDetermined, .denied, .restricted] {
-            h.status.location = location
-            await model.refresh(); await model.request(.always)
-            XCTAssertFalse(model.canRequestAlways)
-        }
-        XCTAssertTrue(h.requests.isEmpty)
-        h.status.location = .whileUsing
-        await model.refresh()
-        XCTAssertTrue(model.canRequestAlways)
         await model.request(.always)
-        XCTAssertEqual(h.requests, [.always])
-    }
-
-    func testWhileUsingAndAlwaysAreSeparateExplicitActions() async {
-        let h = Harness(); defer { h.clean() }
-        let model = h.model(); await model.refresh()
+        XCTAssertTrue(h.requests.isEmpty)
         await model.request(.whileUsing)
         XCTAssertEqual(h.requests, [.whileUsing])
         h.status.location = .whileUsing
-        await model.refresh(); model.go(to: .always)
+        await model.refresh()
+        XCTAssertTrue(model.canRequestAlways)
         XCTAssertEqual(h.requests, [.whileUsing])
         await model.request(.always)
         XCTAssertEqual(h.requests, [.whileUsing, .always])
-        XCTAssertTrue(h.events.isEmpty)
-    }
-
-    func testDeferredAlwaysChoiceOffersSettingsInsteadOfRepeatedRequests() async {
-        let h = Harness(); defer { h.clean() }
-        h.status.location = .whileUsing
-        let model = h.model(); await model.refresh()
-        await model.request(.always)
         XCTAssertTrue(model.opensSettings(for: .always))
         await model.request(.always)
-        XCTAssertEqual(h.requests, [.always])
         XCTAssertEqual(h.settingsOpened, 1)
+        XCTAssertEqual(h.requests.count, 2)
     }
 
-    func testReducedAccuracyAlwaysActionOpensSettings() async {
+    func testDeniedLimitedAndReducedAccuracyOfferSettings() async {
         let h = Harness(); defer { h.clean() }
-        h.status.location = .always; h.status.preciseLocation = false
-        let model = h.model(); await model.refresh()
-        XCTAssertEqual(model.status.permission(.always), .limited)
-        XCTAssertTrue(model.summary(for: .always).contains("Reduced Accuracy"))
-        await model.request(.always)
-        XCTAssertEqual(h.settingsOpened, 1)
-        XCTAssertTrue(h.requests.isEmpty)
-    }
-
-    func testDeniedAndLimitedPermissionActionsOpenSettings() async {
-        let h = Harness(); defer { h.clean() }
-        h.status.location = .denied
-        h.status.motion = .limited
-        h.status.notifications = .denied
+        h.status.location = .denied; h.status.motion = .limited; h.status.notifications = .denied
         h.status.healthAvailable = true; h.status.healthWrite = .denied
         let model = h.model(); await model.refresh()
         for permission in [OnboardingPermission.whileUsing, .always, .motion, .notifications, .healthWrite] {
             await model.request(permission)
         }
         XCTAssertEqual(h.settingsOpened, 5)
+        h.status.location = .always; h.status.preciseLocation = false
+        await model.refresh(); await model.request(.always)
+        XCTAssertEqual(h.settingsOpened, 6)
+        XCTAssertTrue(model.locationSummary.contains("Reduced Accuracy"))
         XCTAssertTrue(h.requests.isEmpty)
     }
 
-    func testOptionalRequestsUseOnlyInjectedActions() async {
+    func testOptionalAccessUsesInjectedActionsAndHealthReadStaysPrivate() async {
         let h = Harness(); defer { h.clean() }
         h.status.healthAvailable = true
         let model = h.model(); await model.refresh()
@@ -154,180 +96,123 @@ final class OnboardingTests: XCTestCase {
             await model.request(permission)
         }
         XCTAssertEqual(h.requests, [.motion, .notifications, .healthWrite, .healthRead])
+        h.status.healthReadReviewed = true
+        await model.refresh()
+        XCTAssertEqual(model.healthSummary, "Access reviewed")
+        XCTAssertEqual(model.status.permission(.healthRead), .notDetermined)
         XCTAssertTrue(h.events.isEmpty)
     }
 
-    func testUnavailableOptionalPermissionsNeverRequest() async {
+    func testUnavailablePermissionsDoNotRequest() async {
         let h = Harness(); defer { h.clean() }
         h.status.motion = .unavailable
-        h.status.healthWrite = .unavailable
         let model = h.model(); await model.refresh()
         for permission in [OnboardingPermission.motion, .healthWrite, .healthRead] { await model.request(permission) }
         XCTAssertTrue(h.requests.isEmpty)
     }
 
-    func testHealthReadReviewNeverClaimsPermissionWasGranted() async {
-        let h = Harness(); defer { h.clean() }
-        h.status.healthAvailable = true; h.status.healthReadReviewed = true
-        let model = h.model(); await model.refresh()
-        XCTAssertEqual(model.status.permission(.healthRead), .notDetermined)
-        XCTAssertTrue(model.summary(for: .health).contains("Access reviewed"))
-    }
-
-    func testRefreshReadsChangedPermissionsWithoutRequestingAgain() async {
+    func testPresetAppliesThroughBridgeActionAndEditsRefreshToCustom() async {
         let h = Harness(); defer { h.clean() }
         let model = h.model(); await model.refresh()
-        h.status.location = .always; h.status.notifications = .granted
-        h.status.motion = .granted; h.status.lowPower = true
-        await model.refresh()
-        XCTAssertEqual(model.status.permission(.always), .granted)
-        XCTAssertEqual(model.status.notifications, .granted)
-        XCTAssertTrue(model.summary(for: .goodToKnow).contains("On"))
-        XCTAssertTrue(h.requests.isEmpty)
-    }
-
-    func testPresetSelectionIsStagedAndRefreshPreservesIt() async {
-        let h = Harness(); defer { h.clean() }
-        h.status.usagePreset = 3
-        let model = h.model(); await model.refresh()
-        XCTAssertEqual(model.selectedPreset, 3)
-        model.selectedPreset = 4
-        await model.refresh()
+        XCTAssertEqual(model.selectedPreset, 6)
+        XCTAssertEqual(UsagePreset.values, [6, 1, 3, 2, 4, 5])
+        await model.choosePreset(4)
+        XCTAssertEqual(h.events, ["preset:4"])
         XCTAssertEqual(model.selectedPreset, 4)
-        XCTAssertTrue(h.events.isEmpty)
-        XCTAssertEqual(UsagePreset.values, [1, 2, 3, 4, 5])
+        h.status.usagePreset = 0
+        await model.refresh()
+        XCTAssertEqual(model.selectedPreset, 0)
+        XCTAssertEqual(model.summary(for: .tracking), "Custom")
+        model.go(to: .done); model.finish(startTracking: false)
+        XCTAssertEqual(h.events, ["preset:4"], "Finishing must not overwrite edited settings")
     }
 
-    func testNoTrackingStartBeforeDoneEvenWithLocationAccess() async {
+    func testActiveTripRejectsPresetChanges() async {
         let h = Harness(); defer { h.clean() }
-        h.status.location = .always
+        h.status.tripActive = true; h.status.usagePreset = 0
+        let model = h.model(); await model.refresh()
+        await model.choosePreset(6)
+        XCTAssertEqual(model.selectedPreset, 0)
+        XCTAssertTrue(h.events.isEmpty)
+    }
+
+    func testOnlyFinalStartStartsAndOnlyOnceAfterCompletionFlag() async {
+        let h = Harness(); defer { h.clean() }
+        h.status.location = .whileUsing
         let model = h.model(); await model.refresh()
         for step in model.steps where step != .done {
-            model.go(to: step)
-            model.finish(startTracking: true)
-            model.finish(startTracking: false)
+            model.go(to: step); model.finish(startTracking: true); model.finish(startTracking: false)
         }
         XCTAssertTrue(h.events.isEmpty)
         XCTAssertFalse(model.completed)
-    }
-
-    func testFinalStartAppliesPresetThenStartsAndCompletesOnce() async {
-        let h = Harness(); defer { h.clean() }
-        h.status.location = .whileUsing; h.status.usagePreset = 3
-        let model = h.model(); await model.refresh(); model.go(to: .done)
-        model.finish(startTracking: true)
-        model.finish(startTracking: true)
-        XCTAssertEqual(h.events, ["preset:3", "start"])
+        model.go(to: .done); model.finish(startTracking: true); model.finish(startTracking: true)
+        XCTAssertEqual(h.events, ["start"])
         XCTAssertTrue(model.completed)
         XCTAssertFalse(model.isPresented)
+    }
+
+    func testMissingLocationCannotPromptFromFinalStart() async {
+        let h = Harness(); defer { h.clean() }
+        let model = h.model(); await model.refresh(); model.go(to: .done)
+        model.finish(startTracking: true)
+        XCTAssertTrue(h.events.isEmpty); XCTAssertTrue(h.requests.isEmpty); XCTAssertFalse(model.completed)
+        model.finish(startTracking: false)
+        XCTAssertTrue(model.completed)
+        XCTAssertTrue(h.events.isEmpty)
+    }
+
+    func testSkipAllCompletesWithoutApplyingOrStartingAndCanReopen() async {
+        let h = Harness(); defer { h.clean() }
+        let model = h.model(); await model.refresh(); model.skipAll()
+        XCTAssertTrue(model.completed); XCTAssertFalse(model.isPresented)
+        XCTAssertTrue(h.events.isEmpty); XCTAssertTrue(h.requests.isEmpty)
         XCTAssertTrue(h.model().completed)
-    }
-
-    func testFinalStartWithoutLocationCannotCauseAnImplicitPrompt() async {
-        let h = Harness(); defer { h.clean() }
-        let model = h.model(); await model.refresh(); model.go(to: .done)
-        model.finish(startTracking: true)
-        XCTAssertTrue(h.events.isEmpty)
-        XCTAssertTrue(h.requests.isEmpty)
-        XCTAssertFalse(model.completed)
-        model.finish(startTracking: false)
-        XCTAssertTrue(model.completed)
-    }
-
-    func testFinishWithoutTrackingSavesPresetAndCompletionOnly() async {
-        let h = Harness(); defer { h.clean() }
-        let model = h.model(); await model.refresh()
-        model.selectedPreset = 2; model.go(to: .done)
-        model.finish(startTracking: false)
-        XCTAssertEqual(h.events, ["preset:2"])
-        XCTAssertTrue(h.defaults.bool(forKey: OnboardingModel.completedKey))
-        XCTAssertTrue(h.requests.isEmpty)
-    }
-
-    func testCustomPresetAndActiveTripArePreserved() async {
-        let h = Harness(); defer { h.clean() }
-        for trip in [false, true] {
-            h.status.tripActive = trip
-            let model = h.model(); model.reopen(); await model.refresh()
-            model.selectedPreset = trip ? 5 : 0
-            model.go(to: .done); model.finish(startTracking: false)
-        }
-        XCTAssertTrue(h.events.isEmpty)
-    }
-
-    func testSkipAllSetsFlagWithoutApplyingPresetRequestingOrStarting() async {
-        let h = Harness(); defer { h.clean() }
-        let model = h.model(); await model.refresh()
-        model.selectedPreset = 1; model.skipAll()
-        XCTAssertTrue(h.defaults.bool(forKey: OnboardingModel.completedKey))
-        XCTAssertFalse(model.isPresented)
-        XCTAssertTrue(h.events.isEmpty)
-        XCTAssertTrue(h.requests.isEmpty)
-    }
-
-    func testSetupGuideReopensCompletedGuideAndLoadsCurrentPreset() async {
-        let h = Harness(); defer { h.clean() }
-        h.defaults.set(true, forKey: OnboardingModel.completedKey)
-        let model = h.model()
-        XCTAssertFalse(model.isPresented)
-        model.reopen(); h.status.usagePreset = 5; await model.refresh()
-        XCTAssertTrue(model.isPresented)
-        XCTAssertTrue(model.completed)
-        XCTAssertEqual(model.step, .welcome)
+        h.status.usagePreset = 5
+        model.reopen(); await model.refresh()
+        XCTAssertTrue(model.isPresented); XCTAssertEqual(model.step, .welcome)
         XCTAssertEqual(model.selectedPreset, 5)
-        XCTAssertTrue(h.requests.isEmpty)
-        XCTAssertTrue(h.events.isEmpty)
     }
 
-    func testSummaryFixReturnsDirectlyToDone() async {
+    func testSummaryEditsReturnDirectlyToDoneAndUseLiveStatus() async {
         let h = Harness(); defer { h.clean() }
+        h.status.destination = "wherewolf.test"; h.status.sendInterval = "1 min"
+        h.status.activeHelpers = 3; h.status.hideForAudio = true
         let model = h.model(); await model.refresh()
-        model.go(to: .done); model.go(to: .destination)
-        XCTAssertTrue(model.fixingSummary)
-        model.next()
-        XCTAssertEqual(model.step, .done)
-        XCTAssertFalse(model.fixingSummary)
-        XCTAssertFalse(model.completed)
+        XCTAssertEqual(model.summary(for: .destination), "wherewolf.test · 1 min")
+        XCTAssertEqual(model.summary(for: .stayingActive), "3 of 5 on")
+        XCTAssertEqual(model.summary(for: .liveActivity), "Blank · hides for music")
+        for step in model.steps where step != .done && step != .welcome {
+            model.go(to: .done); model.go(to: step)
+            XCTAssertTrue(model.fixingSummary); model.next()
+            XCTAssertEqual(model.step, .done); XCTAssertFalse(model.fixingSummary)
+        }
     }
 
-    func testAllDestinationChoicesGoThroughInjectedBridgeAction() async {
+    func testDestinationsUseInjectedValidationWithoutStarting() async {
         let h = Harness(); defer { h.clean() }
-        let model = h.model(); await model.refresh()
+        let model = h.model(); await model.refresh(); model.go(to: .destination)
         let choices: [OnboardingDestination] = [.setupLink("wherewolf://setup?url=https%3A%2F%2Fwherewolf.test"),
             .server(endpoint: "https://wherewolf.test", token: "test", ownTracks: true), .iCloud, .device]
         for choice in choices { await model.chooseDestination(choice) }
         XCTAssertEqual(h.destinations, choices)
         XCTAssertTrue(h.events.isEmpty)
-        XCTAssertTrue(h.requests.isEmpty)
-    }
-
-    func testInvalidDestinationStaysOnStepWithError() async {
-        let h = Harness(); defer { h.clean() }
         h.destinationValid = false
-        let model = h.model(); await model.refresh(); model.go(to: .destination)
         await model.chooseDestination(.setupLink("invalid"))
-        XCTAssertNotNil(model.error)
-        XCTAssertEqual(model.step, .destination)
-        XCTAssertFalse(model.completed)
+        XCTAssertNotNil(model.error); XCTAssertEqual(model.step, .destination)
     }
 
     func testInFlightPermissionCannotBeSkippedOrRequestedTwice() async throws {
         let h = Harness(); defer { h.clean() }
         var pending: CheckedContinuation<Void, Never>?
-        h.onRequest = { _ in
-            await withCheckedContinuation { pending = $0 }
-        }
+        h.onRequest = { _ in await withCheckedContinuation { pending = $0 } }
         let model = h.model(); await model.refresh()
         let request = Task { await model.request(.motion) }
         for _ in 0..<100 where pending == nil { await Task.yield() }
         let continuation = try XCTUnwrap(pending)
-        model.skipAll(); model.next()
-        await model.request(.motion)
-        XCTAssertTrue(model.busy)
-        XCTAssertFalse(model.completed)
+        model.skipAll(); model.next(); await model.request(.motion)
+        XCTAssertTrue(model.busy); XCTAssertFalse(model.completed)
         XCTAssertEqual(model.step, .welcome)
-        continuation.resume()
-        await request.value
+        continuation.resume(); await request.value
         XCTAssertEqual(h.requests, [.motion])
     }
 }

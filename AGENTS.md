@@ -120,15 +120,17 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
 
 ## Architecture
 
-- **Onboarding**: first launch presents the native full-screen Setup Guide before
-  creating the map. `OnboardingModel` owns step order, status and injected actions;
-  permissions run only from buttons. Settings' first row reopens it. Done and
-  Skip All set `WhereWolfOnboardingCompleted`; only Done's Start Tracking starts
-  recording. Presets stay staged until Done. Destination and helper changes use
-  `GLManagerBridge`; scene and pasted setup links share its validated parser.
-  Health read access is private: report access reviewed, never approval.
-  The map enables its location dot only with existing location authorization, so
-  skipping setup cannot ask for permission through MapKit.
+- **Onboarding**: eight native glass panels float over the existing, non-interactive
+  map: Welcome, Permissions, Destination, Tracking, Sending, Live Activity,
+  Staying Active and Done. Use `ViewThatFits`; scroll only for content that cannot
+  fit. `OnboardingModel` owns order, live status and injected actions; permissions
+  run only from buttons. Settings' first row reopens it. Done and Skip All set
+  `WhereWolfOnboardingCompleted`; only Done's Start Tracking starts recording.
+  Skip advances a step; its menu and accessibility action offer Skip All.
+  Presets and edits apply through `GLManagerBridge` immediately; finishing must
+  not reapply a preset over Custom edits. Scene and pasted setup links share its
+  validated parser. Health read access is private: report access reviewed, never
+  approval. The map enables its location dot only with existing authorization.
 - **Core stays Objective-C**: `GLManager` owns location, queueing
   (LOLDatabase/SQLite), batching, and HTTP. Don't rewrite it.
 - **Upstream integrations**: `TripModeStore` owns stable mode IDs, editable
@@ -384,13 +386,14 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   the camera projection. Give Legal a 44-point touch target, try its native
   accessibility action, and fall back to Apple's Maps legal page if unavailable.
 - **`WhereWolfLocationEngine`** uses iOS 17 `CLLocationUpdate.liveUpdates` for
-  Best accuracy with automatic pausing. An active Status or Minimal Live Activity supports
-  background updates with the indicator off. With Always access and no active
+  Best accuracy with automatic pausing. An active widget-backed tracking activity
+  (Status, Minimal, or Blank with Lock Screen Card on) supports background updates
+  with the indicator off. With Always access and no active
   supporting Live Activity, indicator-off tracking falls back to `CLLocationManager`.
   Hide While Audio Plays uses the same reconciliation when ending or restoring
   an activity; it requires Always access even when an indicator session exists.
-  Blank also uses this fallback; its app-only activity did not maintain live-update
-  delivery in the iOS 27 background route check.
+  Blank with the card off uses this fallback; its app-only activity did not
+  maintain live-update delivery in the iOS 27 background route check.
   `CLBackgroundActivitySession` is used only for live updates that request or
   require the indicator. Reconcile sessions when normal/trip indicator settings,
   authorization or Live Activity state changes; radius stopping invalidates them.
@@ -431,7 +434,7 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   workout and route end then too. The visit prompt is skipped while this is on.
 - **Optional tracking policies** live in `GLTrackingPolicy` and are configured
   through the validated `GLAdvancedTrackingOptions` dictionary in `GLManager`.
-  They default off and are independent of all five Usage Presets. Keep acquisition,
+  They default off and are independent of all six Usage Presets. Keep acquisition,
   point selection and upload scheduling separate. Adaptive tracking confirms a
   stop from fresh raw fixes before WiFi replacement, then requests coarse accuracy
   through the original engine; movement restores saved engine settings. Retain
@@ -488,10 +491,19 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   pending `reminder` notification deadline. Keep its scheduling rules in
   `GLManager`; do not drive activity staleness from another timeout. The shared ActivityAttributes
   source belongs to both the app and `WhereWolfTrackingActivity` targets. Blank is
-  the default appearance for new installs; saved choices remain. Blank uses
-  `IslandOnlyTrackingAttributes` in the app target only. Do not register it in the
-  widget extension: the unrendered activity is what avoids the Lock Screen card.
-  End and recover both activity types, and replace the type when appearance changes.
+  the default appearance for new installs; saved choices remain. Local-only
+  `LiveActivityLockScreenCard` defaults off. Blank with the card off uses
+  `IslandOnlyTrackingAttributes` in the app target only; never register that type
+  in the extension. Blank with the card on uses the widget-backed activity with
+  empty Island views. Minimal and Status always include the card; Settings shows
+  its toggle on and disabled, and hides it when tracking activities are off.
+  The shared `TrackingLockScreenCard` shows status, last fix/send, queue count and
+  Send Now. A trip adds mode, distance, live duration and End Trip; omit the trip
+  line while a separate trip activity is active. Fix, distance and queue growth
+  changes coalesce to 60 seconds; sends, queue drains, trip/status changes and
+  reminder deadlines update immediately. Observe queue, send, trip and engine
+  events without requiring a scene. End and recover both types; replace the type
+  when appearance or card selection requires it.
   Relevance remains zero. It ranks WhereWolf's own activities, not other apps;
   iOS controls which activity occupies the main Island or a detached bubble.
   Hide While Audio Plays defaults off and is local-only. Two other-audio readings
@@ -546,8 +558,11 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
 - Gate only presentation timers, replay loads and trip-map queries on scene
   visibility. Location processing, storage, uploads, reminders and Live Activity
   updates must work without an active scene. Silent audio remains opt-in.
-- Keep all five preset dictionaries and existing defaults unchanged. The new
-  engine toggle is independent of preset recognition. Automatic pauses end trips.
+- Preserve the five original preset dictionaries and saved settings. Everyday
+  Detailed (ID 6) defaults only an empty new-install preference domain: Standard,
+  Best, Other, pausing/resume/stationary stopping/visits off, indicator off,
+  minimum distance 10 m and time 5 s. The engine toggle is independent of all six
+  presets. Automatic pauses end trips.
 - LOLDatabase returns transaction success; accepted-fix and trip-finalization
   state may advance only after the queue commit. Replay is not an acknowledgment.
 - Uploads keep one request in flight, yield after 20 drain requests, persist

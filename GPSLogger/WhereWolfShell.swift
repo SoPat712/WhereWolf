@@ -11,6 +11,7 @@ final class MapDrawerGeometry {
 
 struct WhereWolfShell: UIViewControllerRepresentable {
     let drawerGeometry: MapDrawerGeometry
+    var setupPresented = false
     var selection: Int
     var activation: Int
     var controlsID: Int
@@ -25,6 +26,7 @@ struct WhereWolfShell: UIViewControllerRepresentable {
             map: map, controls: controls, settings: settings,
             selection: selection, controlsID: controlsID, onSelect: onSelect
         )
+        controller.setSetupPresented(setupPresented)
         drawerGeometry.readMap = { [weak controller] in controller?.currentMap() }
         controller.onUserLocation = { [weak geometry = drawerGeometry] in geometry?.userLocation = $0 }
         drawerGeometry.read = { [weak controller] in
@@ -34,6 +36,7 @@ struct WhereWolfShell: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ controller: WhereWolfShellController, context: Context) {
+        controller.setSetupPresented(setupPresented)
         drawerGeometry.readMap = { [weak controller] in controller?.currentMap() }
         controller.onUserLocation = { [weak geometry = drawerGeometry] in geometry?.userLocation = $0 }
         drawerGeometry.read = { [weak controller] in controller?.currentDrawerGeometry() }
@@ -57,6 +60,7 @@ final class WhereWolfShellController: UITabBarController, UITabBarControllerDele
     private let mapHost: FullScreenMapHost
     private let settingsHost: UIHostingController<AnyView>
     private let panel: MapControlPanelController
+    private var setupPresented = false
     private var currentSelection = -1
     private var renderedSelection: Int
     private var currentActivation = 0
@@ -139,6 +143,7 @@ final class WhereWolfShellController: UITabBarController, UITabBarControllerDele
 #if targetEnvironment(simulator)
         view.bringSubviewToFront(tabAudit)
 #endif
+        if setupPresented { panel.view.isHidden = true }
         updateMapClearance(panel.currentGeometry().top)
         guard !updatingBar, view.bounds.size != barLayoutSize else { return }
         barLayoutSize = view.bounds.size
@@ -149,6 +154,14 @@ final class WhereWolfShellController: UITabBarController, UITabBarControllerDele
             panel.transitionBar(toSystem: currentSelection == 2, systemGeometry: geometry,
                                 systemTabsInset: systemTabsInset, animated: true)
         }
+    }
+
+    func setSetupPresented(_ presented: Bool) {
+        guard setupPresented != presented else { return }
+        setupPresented = presented
+        mapHost.view.isUserInteractionEnabled = !presented
+        panel.view.isHidden = presented || (currentSelection == 2 && !panel.isBarTransitioning)
+        applySystemBarSuppression()
     }
 
     func update(map: AnyView, controls: AnyView, settings: AnyView,
@@ -263,8 +276,9 @@ final class WhereWolfShellController: UITabBarController, UITabBarControllerDele
     }
 
     private func applySystemBarSuppression() {
-        guard suppressSystemBar else { return }
+        guard suppressSystemBar || setupPresented else { return }
         UIView.performWithoutAnimation {
+            if setupPresented { panel.view.isHidden = true }
             tabBar.alpha = 0
             tabBar.accessibilityElementsHidden = true
             tabBar.isUserInteractionEnabled = false

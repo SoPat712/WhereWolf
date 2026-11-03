@@ -13,6 +13,7 @@
 + (NSTimeInterval)retryAfter:(NSString *)value now:(NSDate *)now;
 + (NSString *)iso8601DateStringFromDate:(NSDate *)date;
 + (NSTimeInterval)uploadBackoffForFailure:(NSUInteger)failure jitter:(double)jitter;
++ (void)initializeUsageProfileDefaults:(NSUserDefaults *)defaults domainName:(NSString *)domainName;
 - (BOOL)reminderEligible;
 - (void)scheduleLocalNotification;
 - (void)cancelLocalNotification;
@@ -888,6 +889,98 @@ static int denyCommit(void *context, int action, const char *first, const char *
     XCTAssertEqual(self.manager.desiredAccuracy, kCLLocationAccuracyBest);
 }
 
+- (void)testLegacyUsageProfileDictionariesStayUnchanged {
+    NSDictionary *highResolution = @{
+        GLSignificantLocationModeDefaultsName: @(kGLTrackingModeStandard),
+        GLDesiredAccuracyDefaultsName: @(kCLLocationAccuracyBest),
+        GLActivityTypeDefaultsName: @(CLActivityTypeOther),
+        GLPausesAutomaticallyDefaultsName: @NO,
+        GLResumesAutomaticallyDefaultsName: @-1,
+        GLStopsAutomaticallyDefaultsName: @-1,
+        GLStopsAutomaticallyAfterDefaultsName: @180,
+        GLDiscardPointsWithinDistanceDefaultsName: @-1,
+        GLDiscardPointsWithinSecondsDefaultsName: @0,
+        GLDiscardPointsOutsideAccuracyDefaultsName: @-1,
+        GLBackgroundIndicatorDefaultsName: @YES,
+        GLVisitTrackingEnabledDefaultsName: @NO
+    };
+    NSArray<NSDictionary *> *overrides = @[
+        @{},
+        @{GLSignificantLocationModeDefaultsName: @(kGLTrackingModeSignificant),
+          GLDesiredAccuracyDefaultsName: @(kCLLocationAccuracyHundredMeters),
+          GLPausesAutomaticallyDefaultsName: @YES, GLResumesAutomaticallyDefaultsName: @500,
+          GLBackgroundIndicatorDefaultsName: @NO},
+        @{GLSignificantLocationModeDefaultsName: @(kGLTrackingModeStandardAndSignificant),
+          GLDesiredAccuracyDefaultsName: @(kCLLocationAccuracyHundredMeters), GLStopsAutomaticallyDefaultsName: @50},
+        @{GLActivityTypeDefaultsName: @(CLActivityTypeFitness)},
+        @{GLDesiredAccuracyDefaultsName: @(kCLLocationAccuracyBestForNavigation),
+          GLActivityTypeDefaultsName: @(CLActivityTypeAutomotiveNavigation)}
+    ];
+    for(NSUInteger index = 0; index < overrides.count; index++) {
+        [NSUserDefaults.standardUserDefaults removePersistentDomainForName:self.defaultsSuite];
+        NSMutableDictionary *expected = highResolution.mutableCopy;
+        [expected addEntriesFromDictionary:overrides[index]];
+        [self.manager applyUsageProfile:index + 1];
+        NSMutableDictionary *actual = [[NSUserDefaults.standardUserDefaults persistentDomainForName:self.defaultsSuite] mutableCopy];
+        [actual removeObjectForKey:GLDidPauseByRadiusDefaultsName];
+        XCTAssertEqualObjects(actual, expected, @"Preset %lu", (unsigned long)index + 1);
+    }
+}
+
+- (void)testEverydayDetailedAppliesAndRecognizesItsSavedPointThresholds {
+    [self.manager applyUsageProfile:6];
+    XCTAssertEqual(self.manager.usageProfile, 6);
+    XCTAssertEqual(self.manager.trackingMode, kGLTrackingModeStandard);
+    XCTAssertEqual(self.manager.desiredAccuracy, kCLLocationAccuracyBest);
+    XCTAssertEqual(self.manager.activityType, CLActivityTypeOther);
+    XCTAssertFalse(self.manager.pausesAutomatically);
+    XCTAssertEqual(self.manager.resumesAfterDistance, -1);
+    XCTAssertEqual(self.manager.stopsAutomaticallyRadius, -1);
+    XCTAssertEqual(self.manager.stopsAutomaticallyAfterSeconds, 180);
+    XCTAssertFalse(self.manager.showBackgroundLocationIndicator);
+    XCTAssertFalse(self.manager.visitTrackingEnabled);
+    XCTAssertEqual(self.manager.discardPointsWithinDistance, 10);
+    XCTAssertEqual(self.manager.discardPointsWithinSeconds, 5);
+    XCTAssertEqual(self.manager.discardPointsOutsideAccuracy, -1);
+    XCTAssertFalse(self.manager.trackingEnabled);
+    self.manager.discardPointsWithinSeconds = 1;
+    XCTAssertEqual(self.manager.usageProfile, 0);
+    [self.manager applyUsageProfile:6];
+    self.manager.showBackgroundLocationIndicator = YES;
+    XCTAssertEqual(self.manager.usageProfile, 0);
+}
+
+- (void)testFreshPreferencesDefaultToEverydayDetailedWithoutStartingTracking {
+    [NSUserDefaults.standardUserDefaults removePersistentDomainForName:self.defaultsSuite];
+    [GLManager initializeUsageProfileDefaults:NSUserDefaults.standardUserDefaults domainName:self.defaultsSuite];
+    XCTAssertEqual(self.manager.usageProfile, 6);
+    XCTAssertEqual(self.manager.discardPointsWithinDistance, 10);
+    XCTAssertEqual(self.manager.discardPointsWithinSeconds, 5);
+    XCTAssertFalse(self.manager.trackingEnabled);
+    XCTAssertNil([NSUserDefaults.standardUserDefaults objectForKey:GLTrackingStateDefaultsName]);
+    self.manager.discardPointsWithinSeconds = 17;
+    NSDictionary *saved = [NSUserDefaults.standardUserDefaults persistentDomainForName:self.defaultsSuite];
+    [GLManager initializeUsageProfileDefaults:NSUserDefaults.standardUserDefaults domainName:self.defaultsSuite];
+    XCTAssertEqualObjects([NSUserDefaults.standardUserDefaults persistentDomainForName:self.defaultsSuite], saved);
+}
+
+- (void)testDefaultPresetInitializationPreservesExistingAndSparsePreferences {
+    for(NSInteger profile = 1; profile <= 5; profile++) {
+        [self.manager applyUsageProfile:profile];
+        NSDictionary *saved = [NSUserDefaults.standardUserDefaults persistentDomainForName:self.defaultsSuite];
+        [GLManager initializeUsageProfileDefaults:NSUserDefaults.standardUserDefaults domainName:self.defaultsSuite];
+        XCTAssertEqualObjects([NSUserDefaults.standardUserDefaults persistentDomainForName:self.defaultsSuite], saved);
+        XCTAssertEqual(self.manager.usageProfile, profile);
+    }
+    NSDictionary *sparse = @{GLAPIEndpointDefaultsName: @"https://wherewolf.test/"};
+    [NSUserDefaults.standardUserDefaults setPersistentDomain:sparse forName:self.defaultsSuite];
+    [GLManager initializeUsageProfileDefaults:NSUserDefaults.standardUserDefaults domainName:self.defaultsSuite];
+    XCTAssertEqualObjects([NSUserDefaults.standardUserDefaults persistentDomainForName:self.defaultsSuite], sparse);
+    XCTAssertEqual(self.manager.desiredAccuracy, kCLLocationAccuracyHundredMeters);
+    XCTAssertEqual(self.manager.discardPointsWithinDistance, -1);
+    XCTAssertEqual(self.manager.discardPointsWithinSeconds, 1);
+}
+
 - (void)testLowPowerAndBalancedProfileThresholds {
     [self.manager applyUsageProfile:2];
     XCTAssertEqual(self.manager.trackingMode, kGLTrackingModeSignificant);
@@ -928,7 +1021,7 @@ static int denyCommit(void *context, int action, const char *first, const char *
     NSDictionary *before = [NSUserDefaults.standardUserDefaults persistentDomainForName:self.defaultsSuite];
     [self.manager applyUsageProfile:0];
     [self.manager applyUsageProfile:-1];
-    [self.manager applyUsageProfile:6];
+    [self.manager applyUsageProfile:7];
     XCTAssertEqualObjects(before, [NSUserDefaults.standardUserDefaults persistentDomainForName:self.defaultsSuite]);
     [NSUserDefaults.standardUserDefaults setObject:NSDate.date forKey:GLTripStartTimeDefaultsName];
     [self.manager applyUsageProfile:2];
@@ -1357,7 +1450,7 @@ static int denyCommit(void *context, int action, const char *first, const char *
 }
 - (void)testNewEngineToggleDefaultsOffAndPreservesEveryPreset {
     XCTAssertFalse(self.manager.useNewLocationEngine);
-    for(NSInteger profile = 1; profile <= 5; profile++) {
+    for(NSInteger profile = 1; profile <= 6; profile++) {
         [self.manager applyUsageProfile:profile];
         NSDictionary *before = [NSUserDefaults.standardUserDefaults persistentDomainForName:self.defaultsSuite];
         self.manager.useNewLocationEngine = YES;
@@ -1394,7 +1487,7 @@ static int denyCommit(void *context, int action, const char *first, const char *
         @"background_uploads", @"connectivity_retry", @"explicit_service_session"]) XCTAssertFalse([options[key] boolValue]);
     [self.manager setAdvancedTrackingOption:@YES forKey:@"any_threshold"];
     NSDictionary *saved = self.manager.advancedTrackingOptions;
-    for(NSInteger profile = 1; profile <= 5; profile++) {
+    for(NSInteger profile = 1; profile <= 6; profile++) {
         [self.manager applyUsageProfile:profile];
         XCTAssertEqual(self.manager.usageProfile, profile);
         XCTAssertEqualObjects(self.manager.advancedTrackingOptions, saved);

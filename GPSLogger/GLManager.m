@@ -35,6 +35,7 @@
 - (void)reconcileLocationHealth;
 - (void)evaluateLocationHealth;
 - (NSTimeInterval)locationHealthUptime;
++ (void)initializeUsageProfileDefaults:(NSUserDefaults *)defaults domainName:(NSString *)domainName;
 
 @property (strong, nonatomic) CLLocationManager *locationManager;
 @property (strong, nonatomic) CMMotionActivityManager *motionActivityManager;
@@ -329,6 +330,7 @@ static dispatch_queue_t GLNotificationQueue(void) {
     @synchronized (self) {
         if (_instance == nil) {
             _instance = [[self alloc] init];
+            [self initializeUsageProfileDefaults:NSUserDefaults.standardUserDefaults domainName:NSBundle.mainBundle.bundleIdentifier];
             _instance.sendBackgroundTask = UIBackgroundTaskInvalid;
             [NSNotificationCenter.defaultCenter addObserver:_instance selector:@selector(wifiOnlySendingChanged)
                 name:GLWifiOnlySending.changedNotification object:nil];
@@ -719,9 +721,10 @@ static NSDictionary<NSString *, NSNumber *> *GLAdvancedDefaults(void) {
 #pragma mark - Usage profiles
 
 static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
-    if(profile < 1 || profile > 5) return nil;
+    if(profile < 1 || profile > 6) return nil;
     BOOL lowPower = profile == 2;
     BOOL balanced = profile == 3;
+    BOOL everyday = profile == 6;
     CLLocationAccuracy accuracy = lowPower || balanced ? kCLLocationAccuracyHundredMeters : kCLLocationAccuracyBest;
     CLActivityType activity = CLActivityTypeOther;
     if(profile == 4) activity = CLActivityTypeFitness;
@@ -737,17 +740,23 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
         GLResumesAutomaticallyDefaultsName: @(lowPower ? 500 : -1),
         GLStopsAutomaticallyDefaultsName: @(balanced ? 50 : -1),
         GLStopsAutomaticallyAfterDefaultsName: @180,
-        GLDiscardPointsWithinDistanceDefaultsName: @-1,
-        GLDiscardPointsWithinSecondsDefaultsName: @0,
+        GLDiscardPointsWithinDistanceDefaultsName: @(everyday ? 10 : -1),
+        GLDiscardPointsWithinSecondsDefaultsName: @(everyday ? 5 : 0),
         GLDiscardPointsOutsideAccuracyDefaultsName: @-1,
-        GLBackgroundIndicatorDefaultsName: @(!lowPower),
+        GLBackgroundIndicatorDefaultsName: @(!lowPower && !everyday),
         GLVisitTrackingEnabledDefaultsName: @NO
     };
 }
 
++ (void)initializeUsageProfileDefaults:(NSUserDefaults *)defaults domainName:(NSString *)domainName {
+    // Sparse saved preferences still belong to an existing installation; preserve its getter fallbacks.
+    if(domainName.length == 0 || [defaults persistentDomainForName:domainName].count != 0) return;
+    [defaults setPersistentDomain:GLUsageProfileSettings(6) forName:domainName];
+}
+
 - (NSInteger)usageProfile {
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
-    for(NSInteger profile = 1; profile <= 5; profile++) {
+    for(NSInteger profile = 1; profile <= 6; profile++) {
         NSDictionary *settings = GLUsageProfileSettings(profile);
         BOOL matches = YES;
         for(NSString *key in settings) {

@@ -11,7 +11,7 @@ final class WatchLinkTests: XCTestCase {
     func testCommandsSurviveTheTrip() {
         let commands: [WatchCommand] = [
             .refresh, .setTracking(true), .setTracking(false), .retryUpdates, .startTrip(mode: "walk"),
-            .startTrip(mode: nil), .endTrip, .sendNow, .setPreset(1), .setPreset(5)
+            .startTrip(mode: nil), .endTrip, .sendNow, .setPreset(1), .setPreset(5), .setPreset(6)
         ]
         for command in commands {
             XCTAssertEqual(WatchCommand(message: command.message), command)
@@ -26,7 +26,7 @@ final class WatchLinkTests: XCTestCase {
         XCTAssertNil(WatchCommand(message: ["command": "setTracking", "value": "yes"]))
         XCTAssertNil(WatchCommand(message: ["command": "setPreset"]))
         XCTAssertNil(WatchCommand(message: ["command": "setPreset", "value": WatchStatus.customPreset]))
-        XCTAssertNil(WatchCommand(message: ["command": "setPreset", "value": 6]))
+        XCTAssertNil(WatchCommand(message: ["command": "setPreset", "value": 7]))
     }
 
     func testStatusSurvivesTheTripWithAndWithoutOptionalValues() {
@@ -52,9 +52,9 @@ final class WatchLinkTests: XCTestCase {
     }
 
     func testPresetTagsMatchSettings() {
-        XCTAssertEqual(WatchStatus.presets.map(\.id), [1, 2, 3, 4, 5])
+        XCTAssertEqual(WatchStatus.presets.map(\.id), [6, 1, 2, 3, 4, 5])
         XCTAssertEqual(WatchStatus.presets.map(\.name),
-                       ["High Resolution", "Low Power", "Balanced", "Walking / Running", "Driving"])
+                       ["Everyday Detailed", "High Resolution", "Low Power", "Balanced", "Walking / Running", "Driving"])
     }
 
     func testRetryAppearsOnlyWhenTrackingHasGoneQuiet() {

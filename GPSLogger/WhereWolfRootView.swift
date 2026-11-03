@@ -50,12 +50,15 @@ struct WhereWolfRootView: View {
     }
 
     var body: some View {
-        Group {
-            if onboarding.completed { appContent }
-            else { Color(uiColor: .systemBackground).ignoresSafeArea() }
-        }
-        .fullScreenCover(isPresented: $onboarding.isPresented) {
-            OnboardingView(model: onboarding)
+        ZStack {
+            appContent
+                .blur(radius: onboarding.isPresented ? 1.5 : 0)
+                .allowsHitTesting(!onboarding.isPresented)
+                .accessibilityHidden(onboarding.isPresented)
+            if onboarding.isPresented {
+                Color.black.opacity(0.08).ignoresSafeArea().allowsHitTesting(false)
+                OnboardingView(model: onboarding)
+            }
         }
     }
 
@@ -63,6 +66,7 @@ struct WhereWolfRootView: View {
         GeometryReader { geometry in
             WhereWolfShell(
                 drawerGeometry: drawerGeometry,
+                setupPresented: onboarding.isPresented,
                 selection: selection,
                 activation: tabActivation,
                 controlsID: mapTab,
@@ -128,26 +132,28 @@ struct WhereWolfRootView: View {
                     .ignoresSafeArea()
             }
             .overlay(alignment: .topTrailing) {
-                HStack(alignment: .top, spacing: 8) {
-                    ReplayStatusOverlay(history: history, active: mapTab == 0, height: speedometerHeight)
-                        .allowsHitTesting(false)
-                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { replayStatusHeight = $0 }
-                    VStack(alignment: .center, spacing: 8) {
-                        TrackerSpeedometer(replaySpeed: history.payload?.speed,
-                                           isReplaying: mapTab == 0 && history.isBrowsing)
+                if !onboarding.isPresented {
+                    HStack(alignment: .top, spacing: 8) {
+                        ReplayStatusOverlay(history: history, active: mapTab == 0, height: speedometerHeight)
                             .allowsHitTesting(false)
-                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { speedometerHeight = $0 }
-                        mapControls(auditValue: cameraAuditValue(safeTop: viewport.minY + safeTop))
-                        if mapRotated {
-                            MapCompassControl(readMap: drawerGeometry.readMap, action: faceNorth)
-                                .frame(width: MapChrome.width, height: MapChrome.width)
-                                .transition(.opacity)
+                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { replayStatusHeight = $0 }
+                        VStack(alignment: .center, spacing: 8) {
+                            TrackerSpeedometer(replaySpeed: history.payload?.speed,
+                                               isReplaying: mapTab == 0 && history.isBrowsing)
+                                .allowsHitTesting(false)
+                                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { speedometerHeight = $0 }
+                            mapControls(auditValue: cameraAuditValue(safeTop: viewport.minY + safeTop))
+                            if mapRotated {
+                                MapCompassControl(readMap: drawerGeometry.readMap, action: faceNorth)
+                                    .frame(width: MapChrome.width, height: MapChrome.width)
+                                    .transition(.opacity)
+                            }
                         }
+                        .animation(.easeOut(duration: 0.2), value: mapRotated)
                     }
-                    .animation(.easeOut(duration: 0.2), value: mapRotated)
+                    .padding(.trailing, MapChrome.edge)
+                    .padding(.top, MapChrome.topInset)
                 }
-                .padding(.trailing, MapChrome.edge)
-                .padding(.top, MapChrome.topInset)
             }
     }
 
@@ -162,7 +168,7 @@ struct WhereWolfRootView: View {
 
     private var settingsPage: some View {
         NavigationStack(path: $settingsPath) {
-            SettingsView(openSetup: { onboarding.reopen() })
+            SettingsView(openSetup: { selectTab(0); onboarding.reopen() })
                 .navigationDestination(for: SettingsDestination.self) { destination in
                     switch destination {
                     case .server:

@@ -70,6 +70,7 @@ private enum TrackingActivityHandle {
 
     private enum Key {
         static let liveActivity = "WhereWolfLiveActivityEnabled"
+        static let lockScreenCard = "LiveActivityLockScreenCard"
         static let appearance = "WhereWolfLiveActivityAppearance"
         static let hideWhileAudioPlays = "WhereWolfLiveActivityHideWhileAudioPlays"
         static let askToReopenAfterAudio = "WhereWolfLiveActivityAskToReopenAfterAudio"
@@ -122,7 +123,7 @@ private enum TrackingActivityHandle {
     private override init() {
         super.init()
         UserDefaults.standard.register(defaults: [Key.liveActivity: true,
-                                                 Key.appearance: "blank", Key.silentAudio: false,
+                                                 Key.appearance: "blank", Key.lockScreenCard: false, Key.silentAudio: false,
                                                  Key.hideWhileAudioPlays: false,
                                                  Key.askToReopenAfterAudio: true])
     }
@@ -144,6 +145,21 @@ private enum TrackingActivityHandle {
             suppressed = false
             refresh()
         }
+    }
+
+    var lockScreenCard: Bool {
+        get { UserDefaults.standard.bool(forKey: Key.lockScreenCard) }
+        set {
+            UserDefaults.standard.set(newValue, forKey: Key.lockScreenCard)
+            suppressed = false
+            refresh()
+        }
+    }
+
+    var presentation: TrackingActivityPresentation {
+        .init(enabled: liveActivityEnabled,
+              appearance: TrackingActivityAttributes.Appearance(rawValue: appearance) ?? .blank,
+              lockScreenCard: lockScreenCard)
     }
 
     var silentAudioEnabled: Bool {
@@ -177,7 +193,9 @@ private enum TrackingActivityHandle {
         started = true
         let center = NotificationCenter.default
         for name in [GLTrackingStateChangedNotification, GLSettingsChangedNotification,
-                     GLAuthorizationStatusChangedNotification, GLSendingFinishedNotification] {
+                     GLAuthorizationStatusChangedNotification, GLSendingFinishedNotification,
+                     GLNewDataNotification, GLNewActivityNotification, GLUploadStateChangedNotification,
+                     "WhereWolfEngineStateChanged"] {
             observers.append(center.addObserver(forName: Notification.Name(name), object: nil, queue: .main) { [weak self] _ in
                 Task { @MainActor in self?.refresh() }
             })
@@ -382,7 +400,7 @@ private enum TrackingActivityHandle {
             activityStatus = "Live Activities are disabled in iOS Settings"
             return
         }
-        let islandOnly = appearance == "blank"
+        let islandOnly = presentation.kind == .appOnly
         let replacingCurrent = activity.map { $0.isIslandOnly != islandOnly } ?? false
         if replacingCurrent || TrackingActivityHandle.all.contains(where: { $0.isIslandOnly != islandOnly }) {
             await endActivities()
@@ -391,18 +409,11 @@ private enum TrackingActivityHandle {
         if activity == nil, let existing = TrackingActivityHandle.all.first(where: { $0.isActive }) {
             observe(existing)
         }
-        let gl = GLManager.shared()!
-        let state = TrackingActivityAttributes.ContentState(
-            isTrip: gl.tripInProgress(), lastSent: gl.lastSentDate,
-            appearance: TrackingActivityAttributes.Appearance(rawValue: appearance) ?? .minimal,
-            reminderDeadline: reminderDeadline
-        )
+        let state = cardState()
         let content = ActivityContent(state: state, staleDate: reminderDeadline, relevanceScore: 0)
         if let activity {
-            let structuralChange = lastContent?.appearance != state.appearance || lastContent?.isTrip != state.isTrip
-                || (lastContent?.reminderDeadline == nil) != (state.reminderDeadline == nil)
-            // Send Every can be one second; the status surface does not need that update rate.
-            if lastContent != state && (structuralChange || Date().timeIntervalSince(lastUpdate) >= 30) {
+            let delay = lastContent.flatMap { state.updateDelay(from: $0, elapsed: Date().timeIntervalSince(lastUpdate)) } ?? 0
+            if lastContent != state && delay == 0 {
                 await activity.update(content)
                 guard self.activity?.id == activity.id else { return }
                 lastContent = state
@@ -410,7 +421,6 @@ private enum TrackingActivityHandle {
                 delayedUpdate?.cancel()
                 delayedUpdate = nil
             } else if lastContent != state && delayedUpdate == nil {
-                let delay = max(0, 30 - Date().timeIntervalSince(lastUpdate))
                 delayedUpdate = Task { [weak self] in
                     do { try await Task.sleep(for: .seconds(delay)) } catch { return }
                     guard let self else { return }
@@ -454,6 +464,25 @@ private enum TrackingActivityHandle {
             }
         }
     }
+
+    func cardState() -> TrackingActivityAttributes.ContentState {
+        let gl = GLManager.shared()!
+        let trip = gl.tripInProgress()
+        let distance = gl.currentTripDistance()
+        let paused = gl.didPauseByRadius || WhereWolfLocationEngine.shared.state == "stationary"
+        return .init(isTrip: trip, lastSent: gl.lastSentDate,
+                     appearance: TrackingActivityAttributes.Appearance(rawValue: appearance) ?? .blank,
+                     reminderDeadline: reminderDeadline, lastFix: gl.lastLocation?.timestamp,
+                     queuedCount: max(0, Int(gl.currentPointsInQueue)),
+                     trackingStatus: !gl.trackingEnabled ? .stopped : paused ? .paused : .tracking,
+                     tripModeName: trip ? TripModeStore.name(gl.currentTripMode) : nil,
+                     tripStart: gl.currentTripStart(), tripDistance: trip && distance.isFinite ? max(0, distance) : nil,
+                     separateTripActivity: Activity<TripActivityAttributes>.activities.contains {
+                         $0.activityState == .active || $0.activityState == .stale
+                     })
+    }
+
+    func tripActivityChanged() { refresh() }
 
     private func endActivities() async {
         delayedUpdate?.cancel()

@@ -412,6 +412,14 @@ struct BackgroundSettingsView: View {
                         Text("Minimal").tag("minimal")
                         Text("Blank").tag("blank")
                     }
+                    Toggle("Lock Screen Card", isOn: Binding(
+                        get: { bridge.liveActivityPresentation.cardOn },
+                        set: { bridge.liveActivityLockScreenCard = $0 }))
+                        .disabled(!bridge.liveActivityPresentation.cardEditable)
+                    if bridge.liveActivityPresentation.cardRequired {
+                        Text("Minimal and Status always include the Lock Screen card.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
                     LabeledContent("Live Activity", value: bridge.liveActivityStatus)
                         .font(.footnote).foregroundStyle(.secondary)
                 }
@@ -441,7 +449,7 @@ struct BackgroundSettingsView: View {
             } header: {
                 SettingsSectionHeader(title: "Background Runtime", topic: .runtime)
             } footer: {
-                Text("Hide While Audio Plays needs Always location access. It reacts within about 15 seconds while WhereWolf runs in the background (moving or with Silent Audio on). While suspended, it reacts at the next location update or app open. After audio stops, iOS may require you to open WhereWolf to restore the activities. Blank is the default appearance for new installs. It keeps the Island empty and omits the Lock Screen card. With Always access and the background indicator off, it uses the original location engine. Silent audio can use more battery. Explicit Service Session requests authorization on iOS 18 and later and does not guarantee background execution. These options run only while tracking has location access.")
+                Text("Hide While Audio Plays needs Always location access. It reacts within about 15 seconds while WhereWolf runs in the background (moving or with Silent Audio on). While suspended, it reacts at the next location update or app open. After audio stops, iOS may require you to open WhereWolf to restore the activities. Blank is the default appearance for new installs. It keeps the Island empty; Lock Screen Card defaults off. With the card off and Always access, indicator-off tracking uses the original engine. With the card on, Blank supports background live updates like Minimal. Silent audio can use more battery. Explicit Service Session requests authorization on iOS 18 and later and does not guarantee background execution. These options run only while tracking has location access.")
             }
         }
         .navigationTitle("Background")

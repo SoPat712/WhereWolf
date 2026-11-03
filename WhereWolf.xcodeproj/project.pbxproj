@@ -128,6 +128,8 @@
 		C0B0A0000000000000000004 /* OnboardingServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0B0A0000000000000000003 /* OnboardingServices.swift */; };
 		C0B0A0000000000000000006 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0B0A0000000000000000005 /* OnboardingView.swift */; };
 		C0B0A0000000000000000008 /* OnboardingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0B0A0000000000000000007 /* OnboardingTests.swift */; };
+		C0B0A0000000000000000011 /* TrackingLockScreenCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0B0A0000000000000000010 /* TrackingLockScreenCard.swift */; };
+		C0B0A0000000000000000012 /* TrackingLockScreenCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0B0A0000000000000000010 /* TrackingLockScreenCard.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -313,6 +315,7 @@
 		C0B0A0000000000000000003 /* OnboardingServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/OnboardingServices.swift; sourceTree = SOURCE_ROOT; };
 		C0B0A0000000000000000005 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/OnboardingView.swift; sourceTree = SOURCE_ROOT; };
 		C0B0A0000000000000000007 /* OnboardingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/OnboardingTests.swift; sourceTree = SOURCE_ROOT; };
+		C0B0A0000000000000000010 /* TrackingLockScreenCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/TrackingLockScreenCard.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -549,6 +552,7 @@
 		B08800000000000000000014 /* TrackingActivity */ = {
 			isa = PBXGroup;
 			children = (
+				C0B0A0000000000000000010 /* TrackingLockScreenCard.swift */,
 				B08800000000000000000003 /* TrackingActivityAttributes.swift */,
 				B08800000000000000000004 /* TrackingActivityWidget.swift */,
 				B08800000000000000000006 /* Info.plist */,
@@ -784,6 +788,7 @@
 				B08800000000000000000055 /* LiveActivityReopenPrompt.swift in Sources */,
 				B0880000000000000000000C /* SilentAudioSession.swift in Sources */,
 				B0880000000000000000000D /* TrackingActivityAttributes.swift in Sources */,
+				C0B0A0000000000000000011 /* TrackingLockScreenCard.swift in Sources */,
 				0FFD315A1BAB7A34009B3A03 /* AppDelegate.m in Sources */,
 				0FAC1FEB2B255CA60007F3B1 /* NSArray+map.m in Sources */,
 				0FFD31731BAB7BEA009B3A03 /* GLManager.m in Sources */,
@@ -878,6 +883,7 @@
 			files = (
 				B0880000000000000000000E /* TrackingActivityWidget.swift in Sources */,
 				B0880000000000000000000F /* TrackingActivityAttributes.swift in Sources */,
+				C0B0A0000000000000000012 /* TrackingLockScreenCard.swift in Sources */,
 				4DCAFFAB3E2B1B18EAB3D470 /* TripModes.swift in Sources */,
 				9BFF4920951E59B5E4E7EF9B /* TripModeIcons.swift in Sources */,
 				E23F46BF79C789B08211F303 /* SharedTripState.swift in Sources */,

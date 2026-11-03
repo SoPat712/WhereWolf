@@ -4,9 +4,9 @@ import WidgetKit
 
 struct TrackingActivityWidget: Widget {
     var body: some WidgetConfiguration {
-        ActivityConfiguration(for: TrackingActivityAttributes.self) { _ in
-            EmptyView()
-                .activityBackgroundTint(.clear)
+        ActivityConfiguration(for: TrackingActivityAttributes.self) { context in
+            TrackingLockScreenCard(state: context.state, isStale: context.isStale)
+                .activityBackgroundTint(Color.black.opacity(0.15))
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.center) {

@@ -31,10 +31,10 @@ For Android, see [Colota](https://github.com/dietrichmax/colota) and its
 
 ## Setup Guide
 
-On first launch, WhereWolf walks through location access (While Using, then
-Always and Precise), optional Motion & Fitness and notifications, your data
-destination, the five tracking presets, Dynamic Island and Live Activity,
-optional Apple Health access, and background settings. Permissions are requested
+On first launch, eight glass panels float over the map: Welcome, Permissions,
+Destination, Tracking, Sending, Live Activity, Staying Active and Done. Panels
+use their content height and scroll only when the available space cannot fit it. Permissions includes While Using, Always, Precise Location,
+optional Motion & Fitness, notifications and Apple Health. Permissions are requested
 only when you tap their buttons. Denied or limited access offers Open Settings;
 returning refreshes the status. Apple Health keeps route read approval private,
 so the guide reports when access was reviewed.
@@ -43,12 +43,15 @@ Paste a `wherewolf://setup` or `overland://setup` link from your server, enter a
 HTTP(S) endpoint and token with GeoJSON or OwnTracks format, choose iCloud Drive,
 or keep records on the device. Keeping records on the device clears the server
 endpoint and disables iCloud export; queued records remain available to send later.
-Preset selection takes effect when you finish the guide.
+Preset choices and individual edits take effect immediately through the same
+settings as the main app. Everyday Detailed is preselected on new installs;
+existing settings stay saved.
 
 The final summary lets you revisit each choice. **Start Tracking** begins
 recording with your chosen preset; **Finish Without Tracking** and **Skip All**
 complete setup without starting it. Reopen the guide from the first row in
-Settings at any time. An existing recording continues when you reopen it.
+Settings at any time. Skip advances one step; touch and hold it for Skip All.
+An existing recording continues when you reopen it.
 
 ## Screenshots
 
@@ -205,8 +208,9 @@ an active trip; the new engine can pause even when the trip pause setting is off
 
 The original engine also supports automatic pausing when enabled. With Always
 location access and the background indicator off, live updates require an active
-Status or Minimal Live Activity. Blank uses the original engine: its app-only
-activity does not keep the live-update stream delivering in the background.
+Status, Minimal, or Blank with **Lock Screen Card** on. Blank with the card off
+uses the original engine: its app-only activity does not keep the live-update
+stream delivering in the background.
 Without a supporting activity, WhereWolf also uses the original engine to honor
 the indicator setting. Activity creation, dismissal and expiry update that selection
 without changing saved preferences. Trips retain their separate indicator setting.
@@ -314,16 +318,20 @@ OwnTracks HTTP contract and validation results.
 
 Settings → Background adds helpers that follow Start/Stop Tracking:
 
-- **Tracking Live Activity** defaults to Blank for new installs; saved appearance
-  choices remain. Minimal shows a location icon in the Dynamic Island. Status
-  also shows the last successful send in the expanded view. Blank starts a
-  separate app-only activity whose attributes have no registered
-  widget configuration. The compact blank Island and absence of a Lock Screen
-  card were verified on an iOS 27 simulator and a physical iPhone. Status and
-  Minimal retain the widget's empty Lock Screen view, which iOS can still display
-  as a card. Blank uses the original
-  location engine with Always access and the background indicator off. Recheck
-  presentation and background delivery on new iOS versions.
+- **Tracking Live Activity** defaults to Blank for new installs; saved choices
+  remain. Minimal shows a location icon in the Dynamic Island. Status adds the
+  last successful send in its expanded view. Blank keeps the Island empty.
+  **Lock Screen Card** defaults off. Blank with the card off uses an app-only
+  activity with no Lock Screen widget, and the original location engine with
+  Always access and the background indicator off. Turning the card on uses the
+  widget-backed activity, supporting background live updates like Minimal.
+  Minimal and Status always include the card. It shows tracking status, the last
+  fix, the last successful send, queued records and **Send Now**. During a trip
+  it adds mode, distance, live duration and **End Trip**; the trip line is omitted
+  while a separate trip Live Activity is active. Fix and queue growth changes
+  update about once a minute; sends, queue drains and trip/status changes update
+  promptly. The existing reminder deadline can show **Open WhereWolf** in orange;
+  no additional alerts are scheduled. iOS controls Live Activity presentation.
 - **Hide While Audio Plays** defaults off and needs Always location access.
   It ends tracking and trip Live Activities when two audio checks at least
   15 seconds apart find another app playing audio, freeing the Island for iOS
@@ -747,15 +755,19 @@ The presets in Settings apply these values:
 
 | Preset | Mode | Accuracy | Activity | Pausing / resume | Stationary stop |
 | --- | --- | --- | --- | --- | --- |
+| Everyday Detailed (new-install default) | Standard | Best | Other | Off / Off | Off |
 | High Resolution | Standard | Best | Other | Off / Off | Off |
 | Low Power | Significant | 100 m stored; ignored by significant-change service | Other | On / 500 m | Off |
 | Balanced | Both | 100 m | Other | Off / Off | 50 m for 180 s |
 | Walking / Running | Standard | Best | Fitness | Off / Off | Off |
 | Driving | Standard | Navigation | Automotive | Off / Off | Off |
 
-All presets disable saved-point filters and visit tracking. The background
-indicator is on except in Low Power. Each stores Stop After as 180 seconds;
-it takes effect only when the stationary radius is enabled.
+Everyday Detailed keeps points at least 10 m and 5 s apart and turns the background
+indicator off. It is the default only for new installs; existing settings and the
+five original presets remain unchanged. The other presets disable saved-point
+filters. All six disable visits, which can introduce jumps in detailed routes.
+The background indicator is on except in Low Power and Everyday Detailed. Each
+stores Stop After as 180 seconds; it applies only with a stationary radius.
 
 Presets leave server credentials, logging format, send interval, batch size,
 trip-specific settings, and queued records unchanged. They change the resume

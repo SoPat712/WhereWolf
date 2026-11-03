@@ -2,23 +2,20 @@ import Foundation
 import Observation
 
 enum OnboardingStep: CaseIterable, Identifiable, Hashable {
-    case welcome, whileUsing, always, motion, notifications, destination, preset, liveActivity, health, goodToKnow, done
+    case welcome, permissions, destination, tracking, sending, liveActivity, stayingActive, done
 
     var id: Self { self }
 
     var title: String {
         switch self {
         case .welcome: return "Welcome to WhereWolf"
-        case .whileUsing: return "Location While Using"
-        case .always: return "Background Location"
-        case .motion: return "Motion & Fitness"
-        case .notifications: return "Notifications"
-        case .destination: return "Choose a Destination"
-        case .preset: return "Tracking Preset"
-        case .liveActivity: return "Dynamic Island & Live Activity"
-        case .health: return "Apple Health"
-        case .goodToKnow: return "Good to Know"
-        case .done: return "Ready When You Are"
+        case .permissions: return "Permissions"
+        case .destination: return "Where Should It Send?"
+        case .tracking: return "Tracking"
+        case .sending: return "Sending"
+        case .liveActivity: return "Live Activity"
+        case .stayingActive: return "Staying Active"
+        case .done: return "You’re All Set"
         }
     }
 }
@@ -61,7 +58,7 @@ struct OnboardingStatus {
     var destination = "Keep on device for now"
     var cloudSelected = false
     var serverConfigured = false
-    var usagePreset = 0
+    var usagePreset = 6
     var tracking = false
     var tripActive = false
     var liveActivity = "Blank"
@@ -71,6 +68,8 @@ struct OnboardingStatus {
     var lowPower = false
     var watchPaired = false
     var silentAudio = false
+    var activeHelpers = 0
+    var sendInterval = "Manual"
 
     func permission(_ permission: OnboardingPermission) -> OnboardingPermissionStatus {
         switch permission {
@@ -118,7 +117,7 @@ final class OnboardingModel {
     private(set) var loaded = false
     private(set) var busy = false
     private(set) var error: String?
-    var selectedPreset = 0
+    private(set) var selectedPreset = 6
     private(set) var fixingSummary = false
     private(set) var alwaysRequested = false
     @ObservationIgnored private let defaults: UserDefaults
@@ -134,7 +133,7 @@ final class OnboardingModel {
     }
 
     var steps: [OnboardingStep] {
-        OnboardingStep.allCases.filter { $0 != .health || status.healthAvailable }
+        OnboardingStep.allCases
     }
     var stepNumber: Int { (steps.firstIndex(of: step) ?? 0) + 1 }
     var canRequestAlways: Bool { status.location == .whileUsing }
@@ -146,9 +145,8 @@ final class OnboardingModel {
         let latest = await actions.loadStatus()
         guard revision == refreshRevision else { return }
         status = latest
-        if !loaded { selectedPreset = latest.usagePreset }
+        selectedPreset = latest.usagePreset
         loaded = true
-        if step == .health && !status.healthAvailable { step = .goodToKnow }
     }
 
     func reopen() {
@@ -228,7 +226,6 @@ final class OnboardingModel {
     func finish(startTracking: Bool) {
         guard isPresented, step == .done, loaded, !busy else { return }
         guard !startTracking || canStartTracking else { return }
-        if !status.tripActive && (1...5).contains(selectedPreset) { actions.applyPreset(selectedPreset) }
         complete()
         if startTracking { actions.startTracking() }
     }
@@ -244,30 +241,44 @@ final class OnboardingModel {
         isPresented = false
     }
 
+    func choosePreset(_ value: Int) async {
+        guard isPresented, loaded, !busy, !status.tripActive, UsagePreset.values.contains(value) else { return }
+        actions.applyPreset(value)
+        await refresh()
+    }
+
+    func openSettings() { actions.openSettings() }
+
+    var locationSummary: String {
+        let access = status.location == .always ? "Always" : status.location == .whileUsing ? "While Using" : status.permission(.whileUsing).rawValue
+        return access + (status.location.allowed ? (status.preciseLocation ? " · Precise" : " · Reduced Accuracy") : "")
+    }
+
+    var healthSummary: String {
+        if status.healthReadReviewed { return "Access reviewed" }
+        if status.healthEnabled { return "Save workouts: " + status.healthWrite.rawValue }
+        return "Skipped"
+    }
+
     func summary(for step: OnboardingStep) -> String {
         switch step {
         case .welcome: return "Your data, your destination"
-        case .whileUsing: return status.permission(.whileUsing).rawValue
-        case .always:
-            let access = status.location == .always ? "Always" : status.location == .whileUsing ? "While Using only" : status.permission(.always).rawValue
-            return access + (status.location.allowed ? (status.preciseLocation ? " · Precise" : " · Reduced Accuracy") : "")
-        case .motion: return status.motion.rawValue
-        case .notifications: return status.notifications.rawValue + (status.notificationsEnabled ? " · App alerts on" : " · App alerts off")
-        case .destination: return status.destination
-        case .preset: return UsagePreset.name(selectedPreset)
-        case .liveActivity: return "\(status.liveActivity) · Hide for Audio \(status.hideForAudio ? "On" : "Off") · Ask to Reopen \(status.askToReopen ? "On" : "Off")"
-        case .health:
-            return "Save workouts: \(status.healthWrite.rawValue) · \(status.healthEnabled ? "On" : "Off"). Import: \(status.healthReadReviewed ? "Access reviewed" : "Not set up")."
-        case .goodToKnow: return "Background Refresh: \(status.backgroundRefresh) · Low Power Mode \(status.lowPower ? "On" : "Off")"
+        case .permissions: return locationSummary
+        case .destination: return status.destination + " · " + status.sendInterval
+        case .tracking: return UsagePreset.name(selectedPreset)
+        case .sending: return status.sendInterval
+        case .liveActivity: return status.liveActivity + (status.hideForAudio ? " · hides for music" : "")
+        case .stayingActive: return "\(status.activeHelpers) of 5 on"
         case .done: return status.tracking ? "Tracking is already on" : "Tracking is off"
         }
     }
 }
 
 enum UsagePreset {
-    static let values = Array(1...5)
+    static let values = [6, 1, 3, 2, 4, 5]
     static func name(_ value: Int) -> String {
         switch value {
+        case 6: return "Everyday Detailed"
         case 1: return "High Resolution"
         case 2: return "Low Power"
         case 3: return "Balanced"
@@ -278,12 +289,13 @@ enum UsagePreset {
     }
     static func description(_ value: Int) -> String {
         switch value {
+        case 6: return "Detailed tracks without the location arrow. Ignores points within 10 m or 5 s of the last, so standing still stays quiet. Visits off."
         case 1: return "Detailed routes: Standard, Best accuracy, no automatic pausing."
         case 2: return "Coarse history: significant changes controlled by iOS."
         case 3: return "Everyday history: Both, 100 m accuracy, stop within 50 m after 3 minutes."
         case 4: return "Walking or running: Standard, Best accuracy, Fitness activity."
         case 5: return "Detailed driving: Standard, Navigation accuracy, Automotive activity."
-        default: return "Your current combination of settings."
+        default: return "Custom · Your current combination of settings."
         }
     }
 }

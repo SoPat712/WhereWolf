@@ -36,6 +36,99 @@ final class BackgroundRuntimeTests: XCTestCase {
         }
     }
 
+    @MainActor func testLockScreenCardDefaultsOffAndPreservesSavedChoice() {
+        let defaults = UserDefaults.standard
+        let domain = Bundle.main.bundleIdentifier!
+        let saved = defaults.persistentDomain(forName: domain) ?? [:]
+        defer { defaults.setPersistentDomain(saved, forName: domain) }
+        defaults.removeObject(forKey: "LiveActivityLockScreenCard")
+        XCTAssertFalse(WhereWolfBackgroundRuntime.shared.lockScreenCard)
+        XCTAssertNil(defaults.persistentDomain(forName: domain)?["LiveActivityLockScreenCard"])
+        defaults.set(true, forKey: "LiveActivityLockScreenCard")
+        XCTAssertTrue(WhereWolfBackgroundRuntime.shared.lockScreenCard)
+    }
+
+    func testAppearanceCardMatrixControlsActivityEngineSupportAndSettings() {
+        for enabled in [false, true] {
+            for appearance in TrackingActivityAttributes.Appearance.allCases {
+                for card in [false, true] {
+                    let presentation = TrackingActivityPresentation(enabled: enabled, appearance: appearance, lockScreenCard: card)
+                    let widget = enabled && (appearance != .blank || card)
+                    XCTAssertEqual(presentation.kind, !enabled ? .off : widget ? .widget : .appOnly)
+                    XCTAssertEqual(presentation.supportsBackgroundLocation, widget)
+                    XCTAssertEqual(presentation.cardVisible, enabled)
+                    XCTAssertEqual(presentation.cardOn, widget)
+                    XCTAssertEqual(presentation.cardEditable, enabled && appearance == .blank)
+                }
+            }
+        }
+    }
+
+    func testRichCardContentRoundTripsAndDecodesOldActivityState() throws {
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let state = TrackingActivityAttributes.ContentState(isTrip: true, lastSent: date, appearance: .blank,
+            reminderDeadline: date.addingTimeInterval(120), lastFix: date.addingTimeInterval(10), queuedCount: 12,
+            trackingStatus: .paused, tripModeName: "Walk", tripStart: date, tripDistance: 1234, separateTripActivity: false)
+        XCTAssertEqual(try JSONDecoder().decode(TrackingActivityAttributes.ContentState.self, from: JSONEncoder().encode(state)), state)
+        let old = Data(#"{"isTrip":false,"appearance":"minimal"}"#.utf8)
+        let decoded = try JSONDecoder().decode(TrackingActivityAttributes.ContentState.self, from: old)
+        XCTAssertNil(decoded.lastFix); XCTAssertNil(decoded.queuedCount); XCTAssertNil(decoded.tripStart)
+        XCTAssertFalse(decoded.showsTrip)
+        XCTAssertTrue(state.showsTrip)
+        var duplicate = state; duplicate.separateTripActivity = true
+        XCTAssertFalse(duplicate.showsTrip)
+    }
+
+    func testFixAndQueueGrowthCoalesceButSendsTripsDrainsAndRemindersUpdateImmediately() {
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let old = TrackingActivityAttributes.ContentState(isTrip: false, appearance: .blank, queuedCount: 10)
+        XCTAssertNil(old.updateDelay(from: old, elapsed: 0))
+        var fix = old; fix.lastFix = date; fix.queuedCount = 11
+        XCTAssertEqual(fix.updateDelay(from: old, elapsed: 1), 59)
+        XCTAssertEqual(fix.updateDelay(from: old, elapsed: 60), 0)
+        var sent = fix; sent.lastSent = date
+        XCTAssertEqual(sent.updateDelay(from: old, elapsed: 1), 0)
+        var drained = old; drained.queuedCount = 0
+        XCTAssertEqual(drained.updateDelay(from: old, elapsed: 1), 0)
+        var trip = old; trip.isTrip = true; trip.tripStart = date
+        XCTAssertEqual(trip.updateDelay(from: old, elapsed: 1), 0)
+        var distance = trip; distance.tripDistance = 100
+        XCTAssertEqual(distance.updateDelay(from: trip, elapsed: 5), 55)
+        var separate = trip; separate.separateTripActivity = true
+        XCTAssertEqual(separate.updateDelay(from: trip, elapsed: 1), 0)
+        var reminder = old; reminder.reminderDeadline = date
+        XCTAssertEqual(reminder.updateDelay(from: old, elapsed: 1), 0)
+        var paused = old; paused.trackingStatus = .paused
+        XCTAssertEqual(paused.updateDelay(from: old, elapsed: 1), 0)
+    }
+
+    @MainActor func testBlankCardSwitchReplacesActivityAndRestoresLiveUpdateSupport() async throws {
+        try await withTrackingActivity { _ in
+            let runtime = WhereWolfBackgroundRuntime.shared
+            let manager = GLManager.shared()!
+            manager.useNewLocationEngine = true
+            manager.showBackgroundLocationIndicator = false
+            runtime.appearance = "blank"
+            try await waitUntil {
+                !Activity<IslandOnlyTrackingAttributes>.activities.isEmpty && !WhereWolfLocationEngine.shared.usingLiveUpdates
+            }
+            runtime.lockScreenCard = true
+            try await waitUntil {
+                Activity<IslandOnlyTrackingAttributes>.activities.isEmpty && WhereWolfBackgroundRuntime.hasBackgroundLocationActivity
+                    && WhereWolfLocationEngine.shared.usingLiveUpdates
+            }
+            let card = try XCTUnwrap(Activity<TrackingActivityAttributes>.activities.first)
+            XCTAssertEqual(card.content.state.appearance, .blank)
+            XCTAssertEqual(card.content.relevanceScore, 0)
+            XCTAssertEqual(card.content.state.queuedCount, Int(manager.currentPointsInQueue))
+            runtime.lockScreenCard = false
+            try await waitUntil {
+                Activity<TrackingActivityAttributes>.activities.isEmpty && !WhereWolfBackgroundRuntime.hasBackgroundLocationActivity
+                    && !WhereWolfLocationEngine.shared.usingLiveUpdates
+            }
+        }
+    }
+
     @MainActor func testSilentAudioStartsOnlyWhenEnabledAndStops() async throws {
         let audio = SilentAudioSession()
         audio.refresh()
@@ -683,6 +776,7 @@ final class BackgroundRuntimeTests: XCTestCase {
         runtime.hideWhileAudioPlays = false
         runtime.askToReopenAfterAudio = true
         runtime.appearance = "minimal"
+        runtime.lockScreenCard = false
         runtime.liveActivityEnabled = true
         do {
             manager.startAllUpdates()

@@ -3,7 +3,7 @@
 ## Optional tracking policies
 
 Acquisition settings, saved-point selection and upload scheduling remain separate. New policies are
-off by default and survive Usage Preset changes. They do not change the five
+off by default and survive Usage Preset changes. They do not change the original five
 preset dictionaries, GeoJSON/OwnTracks request shapes or acknowledgment rules.
 
 `GLTrackingPolicy` contains the deterministic stop, jump and selection rules.

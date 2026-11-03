@@ -74,6 +74,26 @@ final class LocationEngineRecoveryTests: XCTestCase {
         var pausedByRadius = false
     }
 
+    func testAppearanceCardMatrixSelectsIndicatorOffEngineWithoutIndicatorSession() {
+        for enabled in [false, true] {
+            for appearance in TrackingActivityAttributes.Appearance.allCases {
+                for card in [false, true] {
+                    let presentation = TrackingActivityPresentation(enabled: enabled, appearance: appearance, lockScreenCard: card)
+                    let session = BackgroundSession()
+                    let engine = WhereWolfLocationEngine(dependencies: .init(
+                        hasBackgroundLocationActivity: { presentation.supportsBackgroundLocation },
+                        makeBackgroundSession: { session }), authorization: .authorizedAlways)
+                    XCTAssertEqual(engine.prepareLiveUpdates(backgroundIndicator: false), presentation.kind == .widget)
+                    XCTAssertFalse(engine.hasBackgroundSession, "Indicator-off widget support must not create an indicator session")
+                    XCTAssertTrue(engine.prepareLiveUpdates(backgroundIndicator: true))
+                    XCTAssertTrue(engine.hasBackgroundSession)
+                    engine.endBackgroundSession()
+                    XCTAssertEqual(session.invalidations, 1)
+                }
+            }
+        }
+    }
+
     func testTerminalFailureLatchesAfterFourAttemptsAndNotifiesAfterCleanup() async {
         let source = StreamSource(mode: .failing)
         let recorder = RetryRecorder()
