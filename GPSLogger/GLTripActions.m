@@ -1,12 +1,12 @@
 //
 //  GLTripActions.m
-//  Where
+//  WhereWolf
 //
 
 #import <UIKit/UIKit.h>
 #import "GLTripActions.h"
 #import "GLManager.h"
-#import "Where-Swift.h"
+#import "WhereWolf-Swift.h"
 
 @interface GLQuickActionObserver : NSObject
 @end

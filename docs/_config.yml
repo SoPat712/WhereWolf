@@ -1,7 +1,7 @@
-title: Where
+title: WhereWolf
 theme: jekyll-theme-minimal
 url: https://sopat712.github.io
-baseurl: /Where
+baseurl: /WhereWolf
 exclude:
   - tracking-improvements.md
   - upstream-integration.md

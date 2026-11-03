@@ -1,8 +1,9 @@
 # Uncomment this line to define a global platform for your project
 
 platform :ios, '17.0'
+project 'WhereWolf.xcodeproj'
 
-target 'Where' do
+target 'WhereWolf' do
 	pod 'FMDB', '2.7.12'
 
 	post_install do |installer|
@@ -31,18 +32,18 @@ end
 
 post_integrate do |installer|
 	# The resource copier's manifest is a declared build output, so script sandboxing can stay on.
-	Dir.glob(File.join(installer.sandbox.root, 'Target Support Files', 'Pods-Where', '*-resources.sh')).each do |path|
+	Dir.glob(File.join(installer.sandbox.root, 'Target Support Files', 'Pods-WhereWolf', '*-resources.sh')).each do |path|
 		content = File.read(path)
 		content = content.gsub('RESOURCES_TO_COPY=${PODS_ROOT}/resources-to-copy-${TARGETNAME}.txt',
-			'RESOURCES_TO_COPY="${DERIVED_FILE_DIR}/Pods-Where-resources-to-copy.txt"')
+			'RESOURCES_TO_COPY="${DERIVED_FILE_DIR}/Pods-WhereWolf-resources-to-copy.txt"')
 		content = content.gsub('rm -f "$RESOURCES_TO_COPY"', ': # Retain the declared manifest output for incremental builds.')
 		content = content.gsub('rsync -avr --copy-links', 'rsync -avr --inplace --copy-links')
 		File.write(path, content)
 	end
 	installer.aggregate_targets.map(&:user_project).uniq.each do |project|
-		project.targets.select { |target| target.name == 'Where' }.each do |target|
+		project.targets.select { |target| target.name == 'WhereWolf' }.each do |target|
 			target.shell_script_build_phases.select { |phase| phase.name == '[CP] Copy Pods Resources' }.each do |phase|
-				output = '$(DERIVED_FILE_DIR)/Pods-Where-resources-to-copy.txt'
+				output = '$(DERIVED_FILE_DIR)/Pods-WhereWolf-resources-to-copy.txt'
 				phase.output_paths << output unless phase.output_paths.include?(output)
 				%w[Info.plist PrivacyInfo.xcprivacy].each do |name|
 					file = "${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/FMDB_Privacy.bundle/#{name}"

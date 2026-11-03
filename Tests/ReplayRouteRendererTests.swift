@@ -1,6 +1,6 @@
 import XCTest
 import MapKit
-@testable import Where
+@testable import WhereWolf
 
 @MainActor
 final class ReplayRouteRendererTests: XCTestCase {

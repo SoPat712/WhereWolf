@@ -67,7 +67,7 @@ final class WorkoutImportHealthKitClient: WorkoutImportHealthClient {
                                         sort: [NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)])
         return samples.compactMap { sample in
             guard let workout = sample as? HKWorkout,
-                  !Self.isWhereExport(bundle: workout.sourceRevision.source.bundleIdentifier,
+                  !Self.isWhereWolfExport(bundle: workout.sourceRevision.source.bundleIdentifier,
                                          syncIdentifier: workout.metadata?[HKMetadataKeySyncIdentifier] as? String),
                   workout.endDate > workout.startDate else { return nil }
             let kind = HealthWorkout.all.first { $0.activityType == workout.workoutActivityType }
@@ -80,8 +80,8 @@ final class WorkoutImportHealthKitClient: WorkoutImportHealthClient {
         }
     }
 
-    static func isWhereExport(bundle: String, syncIdentifier: String?) -> Bool {
-        bundle == Bundle.main.bundleIdentifier || syncIdentifier?.hasPrefix("where-trip-") == true
+    static func isWhereWolfExport(bundle: String, syncIdentifier: String?) -> Bool {
+        bundle == Bundle.main.bundleIdentifier || syncIdentifier?.hasPrefix("wherewolf-trip-") == true
     }
 
     func route(for workout: UUID, knownRevision: String?) async throws -> WorkoutRouteRead {

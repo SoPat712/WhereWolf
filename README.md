@@ -1,17 +1,17 @@
-Where
+WhereWolf
 =====
 
-Where records your location in the background and sends it to a server you
+WhereWolf records your location in the background and sends it to a server you
 choose. Records can include GPS coordinates, motion state, steps, and battery
 level. The app keeps data locally while offline and uploads it in batches when
 a connection is available.
 
-Where is made by [SoPat712](https://github.com/SoPat712). It started from
+WhereWolf is made by [SoPat712](https://github.com/SoPat712). It started from
 [Overland](https://github.com/aaronpk/Overland-iOS) by Aaron Parecki and keeps
 Overland's API, so services built for Overland work with it.
 
-[Support](https://sopat712.github.io/Where/) ·
-[Privacy policy](https://sopat712.github.io/Where/privacy/)
+[Support](https://sopat712.github.io/WhereWolf/) ·
+[Privacy policy](https://sopat712.github.io/WhereWolf/privacy/)
 
 You can use an existing backend or build an HTTP receiver. Supported services
 and integrations include:
@@ -36,30 +36,30 @@ directions, so the trails follow the same streets as the map.
 
 <table>
 <tr>
-<td align="center" width="33%"><img src="https://raw.githubusercontent.com/SoPat712/Where/main/docs/screenshots/tokyo-day-replay.jpg" width="250" alt="A day in Tokyo, replayed"><br>A day in Tokyo, replayed</td>
-<td align="center" width="33%"><img src="https://raw.githubusercontent.com/SoPat712/Where/main/docs/screenshots/meiji-jingu-walk.jpg" width="250" alt="Walking through Meiji Jingu"><br>Walking through Meiji Jingu</td>
-<td align="center" width="33%"><img src="https://raw.githubusercontent.com/SoPat712/Where/main/docs/screenshots/nihonbashi-drive.jpg" width="250" alt="Driving through Nihonbashi"><br>Driving through Nihonbashi</td>
+<td align="center" width="33%"><img src="https://raw.githubusercontent.com/SoPat712/WhereWolf/main/docs/screenshots/tokyo-day-replay.jpg" width="250" alt="A day in Tokyo, replayed"><br>A day in Tokyo, replayed</td>
+<td align="center" width="33%"><img src="https://raw.githubusercontent.com/SoPat712/WhereWolf/main/docs/screenshots/meiji-jingu-walk.jpg" width="250" alt="Walking through Meiji Jingu"><br>Walking through Meiji Jingu</td>
+<td align="center" width="33%"><img src="https://raw.githubusercontent.com/SoPat712/WhereWolf/main/docs/screenshots/nihonbashi-drive.jpg" width="250" alt="Driving through Nihonbashi"><br>Driving through Nihonbashi</td>
 </tr>
 <tr>
-<td align="center" width="33%"><img src="https://raw.githubusercontent.com/SoPat712/Where/main/docs/screenshots/sumida-river-satellite.jpg" width="250" alt="Satellite, over the Sumida River"><br>Satellite, over the Sumida River</td>
-<td align="center" width="33%"><img src="https://raw.githubusercontent.com/SoPat712/Where/main/docs/screenshots/imperial-palace-dark.jpg" width="250" alt="Dark mode by the Imperial Palace"><br>Dark mode by the Imperial Palace</td>
-<td align="center" width="33%"><img src="https://raw.githubusercontent.com/SoPat712/Where/main/docs/screenshots/tokyo-day-dark-closed.jpg" width="250" alt="The whole day, drawer closed"><br>The whole day, drawer closed</td>
+<td align="center" width="33%"><img src="https://raw.githubusercontent.com/SoPat712/WhereWolf/main/docs/screenshots/sumida-river-satellite.jpg" width="250" alt="Satellite, over the Sumida River"><br>Satellite, over the Sumida River</td>
+<td align="center" width="33%"><img src="https://raw.githubusercontent.com/SoPat712/WhereWolf/main/docs/screenshots/imperial-palace-dark.jpg" width="250" alt="Dark mode by the Imperial Palace"><br>Dark mode by the Imperial Palace</td>
+<td align="center" width="33%"><img src="https://raw.githubusercontent.com/SoPat712/WhereWolf/main/docs/screenshots/tokyo-day-dark-closed.jpg" width="250" alt="The whole day, drawer closed"><br>The whole day, drawer closed</td>
 </tr>
 <tr>
-<td align="center" width="33%"><img src="https://raw.githubusercontent.com/SoPat712/Where/main/docs/screenshots/trip-ueno-akihabara.jpg" width="250" alt="A bike trip from Ueno to Akihabara"><br>A bike trip from Ueno to Akihabara</td>
-<td align="center" width="33%"><img src="https://raw.githubusercontent.com/SoPat712/Where/main/docs/screenshots/trip-settings.jpg" width="250" alt="Trip Settings"><br>Trip Settings</td>
-<td align="center" width="33%"><img src="https://raw.githubusercontent.com/SoPat712/Where/main/docs/screenshots/replay-point-details.jpg" width="250" alt="Details for a recorded point"><br>Details for a recorded point</td>
+<td align="center" width="33%"><img src="https://raw.githubusercontent.com/SoPat712/WhereWolf/main/docs/screenshots/trip-ueno-akihabara.jpg" width="250" alt="A bike trip from Ueno to Akihabara"><br>A bike trip from Ueno to Akihabara</td>
+<td align="center" width="33%"><img src="https://raw.githubusercontent.com/SoPat712/WhereWolf/main/docs/screenshots/trip-settings.jpg" width="250" alt="Trip Settings"><br>Trip Settings</td>
+<td align="center" width="33%"><img src="https://raw.githubusercontent.com/SoPat712/WhereWolf/main/docs/screenshots/replay-point-details.jpg" width="250" alt="Details for a recorded point"><br>Details for a recorded point</td>
 </tr>
 <tr>
-<td align="center" width="33%"><img src="https://raw.githubusercontent.com/SoPat712/Where/main/docs/screenshots/live-details.jpg" width="250" alt="Live location details"><br>Live location details</td>
-<td align="center" width="33%"><img src="https://raw.githubusercontent.com/SoPat712/Where/main/docs/screenshots/settings.jpg" width="250" alt="Settings"><br>Settings</td>
-<td align="center" width="33%"><img src="https://raw.githubusercontent.com/SoPat712/Where/main/docs/screenshots/sending-wifi-only.jpg" width="250" alt="Send Only on Wi-Fi"><br>Send Only on Wi-Fi</td>
+<td align="center" width="33%"><img src="https://raw.githubusercontent.com/SoPat712/WhereWolf/main/docs/screenshots/live-details.jpg" width="250" alt="Live location details"><br>Live location details</td>
+<td align="center" width="33%"><img src="https://raw.githubusercontent.com/SoPat712/WhereWolf/main/docs/screenshots/settings.jpg" width="250" alt="Settings"><br>Settings</td>
+<td align="center" width="33%"><img src="https://raw.githubusercontent.com/SoPat712/WhereWolf/main/docs/screenshots/sending-wifi-only.jpg" width="250" alt="Send Only on Wi-Fi"><br>Send Only on Wi-Fi</td>
 </tr>
 </table>
 
-## About Where
+## About WhereWolf
 
-Where uses SwiftUI screens inside a UIKit shell, with Liquid
+WhereWolf uses SwiftUI screens inside a UIKit shell, with Liquid
 Glass on iOS 26 and later and material backgrounds on earlier versions. It
 requires iOS 17.
 
@@ -102,7 +102,7 @@ Drawer geometry and map-credit positioning stay in UIKit so animation frames
 do not rebuild the SwiftUI root. The tabs stay in place as the drawer resizes.
 
 Settings → Support → Tip Jar opens a SwiftUI screen with a bottom selector for
-SoPat712, who makes Where, and aaronpk, who created Overland. SoPat712's
+SoPat712, who makes WhereWolf, and aaronpk, who created Overland. SoPat712's
 page keeps the existing one-time, monthly, and yearly in-app tip products and
 Restore Purchases, using StoreKit 2. Aaron's page offers one-time $5, $10, $25,
 or custom USD tips through Cash App, PayPal, or Venmo only when StoreKit reports
@@ -110,7 +110,7 @@ the US App Store storefront; otherwise it shows his open-source credit and a
 link to Overland on GitHub. The payment links open in the browser. The legacy
 Tip Jar controller and main storyboard have been removed.
 
-Where includes PR #180's precision controls, accuracy filter, and stationary
+WhereWolf includes PR #180's precision controls, accuracy filter, and stationary
 stopping, plus its later notification, persisted pause-state, and safe-settings
 follow-ups. It also adds multiple WiFi zones with optional BSSID matching,
 custom HTTP headers, server-certificate diagnostics, and the last 50 send
@@ -123,14 +123,15 @@ stationary-point filtering, and WiFi-zone placement on a map. These use the
 app’s existing screens and glass styling. Health, iCloud, WiFi identity and
 widget sharing require the corresponding signing capabilities. See the
 [integration notes](docs/upstream-integration.md) for behavior and build options.
-Siri phrases work with or without the word "trip", such as "Start a walk in Where",
+Siri phrases work with or without the word "trip", such as "Start a walk in WhereWolf",
 and Siri learns from the trips and tracking changes you make in the app.
-Siri also accepts the app names "Where Tracker" and "Where App", such as
-"Start a walk in Where Tracker" or "Send Where App data now".
+Siri also accepts the app names "Werewolf" and "Where Wolf", such as
+"Start a walk in Werewolf" or "Send Where Wolf data now".
 The Home Screen quick actions show Stop Trip during a trip and your trip modes otherwise,
 and update whenever a trip starts or ends.
 Trip icons include Google’s [Material Symbols](https://github.com/google/material-design-icons),
-licensed under Apache License 2.0.
+licensed under Apache License 2.0. Saved or remote `where.*` icon names still resolve
+to the renamed `wherewolf.*` assets.
 
 Queue and networking fixes address empty OwnTracks sends, incorrect timestamps,
 and batch counts. The location source preserves custom accuracy and pause
@@ -185,7 +186,7 @@ The original engine also supports automatic pausing when enabled. With Always
 location access and the background indicator off, live updates require an active
 Status or Minimal Live Activity. Blank uses the original engine: its app-only
 activity does not keep the live-update stream delivering in the background.
-Without a supporting activity, Where also uses the original engine to honor
+Without a supporting activity, WhereWolf also uses the original engine to honor
 the indicator setting. Activity creation, dismissal and expiry update that selection
 without changing saved preferences. Trips retain their separate indicator setting.
 
@@ -221,7 +222,7 @@ its behavior and limits.
   access. Its End Trip action ends the trip, and its Health workout, at the time
   you stopped. Turning it on asks for notification permission; it does not need
   the Notifications setting.
-- **Sending → Send Only on Wi-Fi** holds the sends Where starts itself while
+- **Sending → Send Only on Wi-Fi** holds the sends WhereWolf starts itself while
   the phone is on cellular or a personal hotspot, and sends them once it is on
   Wi-Fi. Wi-Fi in Low Data Mode still sends, and iCloud Drive saves are not
   held. Send Now, widgets, Shortcuts, Control Center, the Live Activity and the
@@ -237,7 +238,7 @@ its behavior and limits.
 - **Background → Background Recovery Monitoring** adds significant-change
   monitoring alongside Standard tracking and trips. It defaults off and requires
   Always access and device support. This gives iOS another opportunity to relaunch
-  Where after system termination; it cannot promise a wake interval or bypass
+  WhereWolf after system termination; it cannot promise a wake interval or bypass
   force-quit. The page also shows the system Background App Refresh status.
 - **Background → Location Updates & Recovery** contains two independent,
   default-off options. **Automatically Retry Location Updates** checks for missing
@@ -272,7 +273,7 @@ tracking is a separate battery/coverage tradeoff. Measure it on the routes you
 care about before relying on it for prompt departure capture. See
 [policy details and remote keys](docs/tracking-improvements.md#optional-tracking-policies).
 
-Release builds temporarily define `WHERE_TESTFLIGHT_DIAGNOSTICS`. This
+Release builds temporarily define `WHEREWOLF_TESTFLIGHT_DIAGNOSTICS`. This
 compiles a local MetricKit collector and Settings → Diagnostics. It retains the
 latest 100 JSON reports in Application Support/Diagnostics, excluded from
 backups. Nothing is uploaded automatically; Share exports only the report you
@@ -285,7 +286,7 @@ OwnTracks HTTP contract and validation results.
 ### Before App Store release
 
 - [ ] Remove the TestFlight diagnostics collector, Diagnostics screen and launch
-  hook, and remove `WHERE_TESTFLIGHT_DIAGNOSTICS` from Swift and Objective-C
+  hook, and remove `WHEREWOLF_TESTFLIGHT_DIAGNOSTICS` from Swift and Objective-C
   Release build settings. Verify the App Store binary contains none of them.
 
 ## Background runtime options
@@ -306,10 +307,10 @@ Settings → Background adds helpers that follow Start/Stop Tracking:
   15 seconds apart find another app playing audio, freeing the Island for iOS
   to choose another app. Short sounds between checks are ignored. Checks run
   on existing location, lifecycle and activity events and received audio
-  notifications; there is no extra timer. When audio stops, Where tries once
+  notifications; there is no extra timer. When audio stops, WhereWolf tries once
   to restore each activity in the background. If iOS refuses, the activities
-  may return only when Where is next opened. Indicator-off tracking falls back
-  to the original location engine while hidden. Where's own silent audio
+  may return only when WhereWolf is next opened. Indicator-off tracking falls back
+  to the original location engine while hidden. WhereWolf's own silent audio
   does not count and keeps its existing behavior. This setting is local-only.
 - **Silent Audio (Experimental)** defaults off. It loops digital silence through
   the audio playback session and mixes with other audio. Calls can interrupt it.
@@ -319,9 +320,9 @@ Settings → Background adds helpers that follow Start/Stop Tracking:
   If playback remains paused afterward, use Retry Background Helpers. It uses
   no microphone and may increase battery use.
 
-The Live Activity uses the deadline of Where's existing ten-minute location
+The Live Activity uses the deadline of WhereWolf's existing ten-minute location
 reminder. If that deadline passes, Status and Minimal show the same request to
-open Where in the Dynamic Island; Blank stays empty. Tapping the activity
+open WhereWolf in the Dynamic Island; Blank stays empty. Tapping the activity
 opens Tracker. Rescheduling or canceling the reminder updates the
 activity's deadline. The existing notification remains enabled by its own setting.
 This is a missed-update warning, not proof that the app was killed or the server
@@ -334,16 +335,16 @@ restarts location updates and needs no watch app. It respects Stop and pauses.
 iOS generally does not relaunch an app that was force-quit.
 
 Activities can be dismissed or disabled, and expire after at most eight active
-hours. Open Where or use Retry Background Helpers to request another. The
+hours. Open WhereWolf or use Retry Background Helpers to request another. The
 app cannot update an ended activity after it has been killed; iOS controls when
 it renders the warning from the previously supplied deadline.
 
-Where uses a relevance score of zero and sends no Live Activity alerts.
+WhereWolf uses a relevance score of zero and sends no Live Activity alerts.
 [ActivityKit relevance scores](https://developer.apple.com/documentation/activitykit/activitycontent/relevancescore)
 rank activities from the same app. iOS chooses the main Island and detached
-bubble across apps, so Where cannot reserve the main Island for Music or
+bubble across apps, so WhereWolf cannot reserve the main Island for Music or
 force its own activity into the smaller presentation.
-Hide While Audio Plays instead ends Where's activities while other audio is
+Hide While Audio Plays instead ends WhereWolf's activities while other audio is
 detected using [Apple's other-audio state](https://developer.apple.com/documentation/avfaudio/avaudiosession/isotheraudioplaying).
 
 These helpers require tracking to be enabled with location access and an active
@@ -358,7 +359,7 @@ for sources and the remaining device tests.
 
 ## Apple Watch
 
-The optional watch app (watchOS 10 or later) manages Where from your wrist:
+The optional watch app (watchOS 10 or later) manages WhereWolf from your wrist:
 turn tracking on or off, retry location updates, start or end a trip, send queued
 locations and choose a Usage Preset. It controls the iPhone app and needs the iPhone
 in range. It does not record locations, and commands are not queued for later.
@@ -367,7 +368,7 @@ happens and tracking does not depend on it.
 
 ## Documentation
 
-Where can also [import saved workout routes](docs/workout-import.md) from
+WhereWolf can also [import saved workout routes](docs/workout-import.md) from
 Apple Health, including routes recorded by other apps. The feature is opt-in,
 keeps a separate local route collection, and offers an explicit action to queue
 the points for your destination. It requires a HealthKit-capable signed build.
@@ -624,7 +625,7 @@ power use; it does not guarantee background execution.
 
 #### App and system settings
 
-Where's preferences live in the app. iOS Settings manages system permissions
+WhereWolf's preferences live in the app. iOS Settings manages system permissions
 and Background App Refresh.
 
 * `Sending → Include Tracking Stats` adds tracking configuration to GeoJSON points
@@ -646,11 +647,11 @@ provide sliders and exact numeric entry.
 
 #### Configuration by custom URL
 
-A setup link opens Where and saves the endpoint, token, device ID, and
+A setup link opens WhereWolf and saves the endpoint, token, device ID, and
 unique-ID preference:
 
 ```
-where://setup?url=https%3A%2F%2Fexample.com%2Fapi&token=1234&device_id=1&unique_id=yes
+wherewolf://setup?url=https%3A%2F%2Fexample.com%2Fapi&token=1234&device_id=1&unique_id=yes
 ```
 
 Setup links that servers generate for Overland, starting with `overland://`, work the
@@ -701,7 +702,7 @@ updates; they do not control the significant-change service.
 
 This combines standard updates while moving with significant-change monitoring
 while stationary. Resume timing depends on iOS. Neither an exact resume distance
-nor a battery-saving percentage has been established for Where.
+nor a battery-saving percentage has been established for WhereWolf.
 
 ## Configuration guide
 
@@ -726,7 +727,7 @@ Finish an active trip before selecting a preset. Editing a setting covered by
 the preset changes the selector to Custom.
 
 The first three presets adapt the usage profiles above. Balanced's 50 m / 180 s
-thresholds and the Walking / Running and Driving variants are Where choices.
+thresholds and the Walking / Running and Driving variants are WhereWolf choices.
 They are not Apple-provided presets.
 
 Ordinary automatic sends keep their location-driven interval. Successful sends
@@ -740,11 +741,11 @@ Sources: [Apple desired accuracy](https://developer.apple.com/documentation/core
 [Core Location](https://developer.apple.com/documentation/corelocation), and
 [Apple engineer's iOS 16.4 background guidance](https://developer.apple.com/forums/thread/726945).
 The forum advice applies to a particular configuration. Queueing, filtering, and
-trip overrides described here are behavior implemented by Where.
+trip overrides described here are behavior implemented by WhereWolf.
 
 ## API
 
-Where posts location data to the configured endpoint in Overland's format.
+WhereWolf posts location data to the configured endpoint in Overland's format.
 
 Endpoint URL templates use values from the most recent location update:
 
@@ -846,7 +847,7 @@ Your server must reply with a JSON response containing:
 This indicates to the app that the batch was received, and it will delete those points from the local cache. If the app receives any other response, it will keep the data locally and try to send it again at the next interval.
 
 If your server cannot return this JSON, enable **Accept Any Successful HTTP Response**
-under **Settings → Server** in Where. Any successful HTTP 2xx response then
+under **Settings → Server** in WhereWolf. Any successful HTTP 2xx response then
 acknowledges the batch.
 
 
@@ -962,7 +963,7 @@ OwnTracks message; Recorder normally returns `[]`. GeoJSON records retain their
 existing format and acknowledgment rule. Only Latest preserves events and trip
 summaries while replacing older location fixes.
 
-In Where's server setup, set the "Device ID" to the Owntracks topic you want, for example "username/device". This will be appended to the string "owntracks/" for the topic URL. Use the "Access Token" field for your Home Assistant username.
+In WhereWolf's server setup, set the "Device ID" to the Owntracks topic you want, for example "username/device". This will be appended to the string "owntracks/" for the topic URL. Use the "Access Token" field for your Home Assistant username.
 
 
 
@@ -970,27 +971,27 @@ In Where's server setup, set the "Device ID" to the Owntracks topic you want, fo
 
 This assumes you have [Xcode](https://developer.apple.com/xcode/) and [Homebrew](https://brew.sh) installed. A paid Apple Developer account is not needed.
 
-* `git clone https://github.com/SoPat712/Where.git && cd Where`
+* `git clone https://github.com/SoPat712/WhereWolf.git && cd WhereWolf`
 * `brew install cocoapods`
 * `pod install`
-* `open Where.xcworkspace`
-* In Project Navigator, select *Where*, and update Project Settings:
-    * Identity → Bundle Identifier: *com.yourname.where*
+* `open WhereWolf.xcworkspace`
+* In Project Navigator, select *WhereWolf*, and update Project Settings:
+    * Identity → Bundle Identifier: *com.yourname.WhereWolf*
     * Signing → Team: *Personal Team*
-* Set the same signing team on *WhereTrackingActivity* and give it a bundle
-  identifier beneath the app identifier, such as *com.yourname.where.TrackingActivity*.
+* Set the same signing team on *WhereWolfTrackingActivity* and give it a bundle
+  identifier beneath the app identifier, such as *com.yourname.WhereWolf.TrackingActivity*.
 Personal Team builds need limited entitlements for both the app and widget
 extension. Before running, set these build settings to disable unsupported
 Health and iCloud code paths:
 
 ```text
-WHERE_APP_ENTITLEMENTS=GPSLogger/GPSLogger.entitlements
-WHERE_WIDGET_ENTITLEMENTS=GPSLogger/GPSLogger.entitlements
-WHERE_HEALTHKIT_ENABLED=NO
-WHERE_ICLOUD_ENABLED=NO
+WHEREWOLF_APP_ENTITLEMENTS=GPSLogger/GPSLogger.entitlements
+WHEREWOLF_WIDGET_ENTITLEMENTS=GPSLogger/GPSLogger.entitlements
+WHEREWOLF_HEALTHKIT_ENABLED=NO
+WHEREWOLF_ICLOUD_ENABLED=NO
 ```
 
-Set `WHERE_BUNDLE_IDENTIFIER` and `DEVELOPMENT_TEAM` to match your fork and
+Set `WHEREWOLF_BUNDLE_IDENTIFIER` and `DEVELOPMENT_TEAM` to match your fork and
 signing team. These settings do not grant WiFi or App Group access. WiFi autofill
 and automatic zone matching require a capable profile; the editor can still
 save zones. Without an App Group, widgets cannot read the app’s shared state.
@@ -998,12 +999,12 @@ Keep the default entitlement files for a team supporting those capabilities.
 
 Plug in your device, select it under Product → Destination, and choose Product
 → Run (⌘R). If iOS asks you to trust the developer, follow the prompt in Settings
-before launching Where.
+before launching WhereWolf.
 
 ### Simulated route test
 
 ```bash
-python3 ci_scripts/simulated_route_test.py /path/to/Where.app
+python3 ci_scripts/simulated_route_test.py /path/to/WhereWolf.app
 ```
 
 This test requires the iOS 27 simulator runtime and IDB. Shut down other
@@ -1016,7 +1017,7 @@ record preservation, and ID continuity after the last old point expires.
 The test also checks panel resizing, map controls, trip recording, tab switching,
 timeline selection, panning, stop confirmation, and exact numeric entry in Settings.
 It removes its simulator afterward and writes results to
-`/tmp/where-fake-route-results.json`. It takes no screenshots and uses no
+`/tmp/wherewolf-fake-route-results.json`. It takes no screenshots and uses no
 production endpoint. Pre-granted permissions and simulated movement do not test
 first-use prompts or real-device background delivery.
 
@@ -1039,13 +1040,13 @@ script builds with two concurrent operations and lower scheduling priority.
 
 ## Credits
 
-Where builds on Overland by Aaron Parecki and its contributors. It also
+WhereWolf builds on Overland by Aaron Parecki and its contributors. It also
 incorporates these pull requests from the Overland repository:
 
 - [yniverz, PR #180](https://github.com/aaronpk/Overland-iOS/pull/180): precision,
   filtering, stationary stopping, and subsequent pause/settings follow-ups.
 - [Rubeanie, PR #190](https://github.com/aaronpk/Overland-iOS/pull/190): custom HTTP
-  headers, adapted to Where's request handling and SwiftUI settings.
+  headers, adapted to WhereWolf's request handling and SwiftUI settings.
 - [dietrichmax, PR #193](https://github.com/aaronpk/Overland-iOS/pull/193): Colota link.
 - [calebgab, PR #187](https://github.com/aaronpk/Overland-iOS/pull/187): Reitti link.
 - [weltspion, PR #195](https://github.com/aaronpk/Overland-iOS/pull/195): Geomanic listing.
@@ -1058,7 +1059,7 @@ validation.
 
 ## License
 
-Where's changes from 2026 onward are copyright by SoPat712 and contributors.
+WhereWolf's changes from 2026 onward are copyright by SoPat712 and contributors.
 
 Contributions from 2017 onward are copyright by Aaron Parecki and contributors
 

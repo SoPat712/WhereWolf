@@ -14,7 +14,7 @@ struct TrackingActivityWidget: Widget {
                         emptyContent
                     } else if context.isStale {
                         VStack(spacing: 4) {
-                            Label("Open Where", systemImage: "exclamationmark.triangle.fill")
+                            Label("Open WhereWolf", systemImage: "exclamationmark.triangle.fill")
                                 .foregroundStyle(.orange)
                             Text("Location updates were stopped. Launch the app to resume.")
                                 .font(.caption)
@@ -54,7 +54,7 @@ struct TrackingActivityWidget: Widget {
                     Image(systemName: "location.fill").foregroundStyle(.blue)
                 }
             }
-            .widgetURL(URL(string: "where://tracker"))
+            .widgetURL(URL(string: "wherewolf://tracker"))
         }
     }
 
@@ -65,7 +65,7 @@ struct TrackingActivityWidget: Widget {
 }
 
 @main
-struct WhereWidgetBundle: WidgetBundle {
+struct WhereWolfWidgetBundle: WidgetBundle {
     var body: some Widget {
         TrackingActivityWidget()
         TripLiveActivityWidget()

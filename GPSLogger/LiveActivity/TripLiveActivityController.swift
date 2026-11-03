@@ -45,7 +45,7 @@ import UIKit
 
     @objc(syncWithTripStart:mode:distance:speed:)
     func sync(tripStart: Date?, mode: String, distance: Double, speed: Double) {
-        if trip?.start != tripStart { WhereBackgroundRuntime.shared.restoredAfterAudio(.trip) }
+        if trip?.start != tripStart { WhereWolfBackgroundRuntime.shared.restoredAfterAudio(.trip) }
         trip = tripStart.map { Trip(start: $0, mode: mode, distance: distance, speed: speed) }
         finalContent = nil
         requestPending = trip != nil
@@ -68,7 +68,7 @@ import UIKit
     }
 
     private func updateActivity() async {
-        let runtime = WhereBackgroundRuntime.shared
+        let runtime = WhereWolfBackgroundRuntime.shared
         let activities = Activity<TripActivityAttributes>.activities.filter { $0.activityState == .active || $0.activityState == .stale }
         let action = runtime.audioAction(for: .trip, eligible: trip != nil, hasActivity: !activities.isEmpty)
         guard let trip else {

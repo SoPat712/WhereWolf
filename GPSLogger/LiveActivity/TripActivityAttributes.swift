@@ -1,8 +1,8 @@
 //
 //  TripActivityAttributes.swift
-//  Where
+//  WhereWolf
 //
-//  Shared by the app and the WhereTrackingActivity widget extension.
+//  Shared by the app and the WhereWolfTrackingActivity widget extension.
 //
 
 import ActivityKit

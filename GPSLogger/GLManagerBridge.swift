@@ -194,8 +194,8 @@ final class GLManagerBridge {
         for name in [GLNewDataNotification, GLSendingStartedNotification, GLSendingFinishedNotification,
                      GLSettingsChangedNotification, GLAuthorizationStatusChangedNotification, GLNewActivityNotification,
                      GLTrackingStateChangedNotification, GLUploadStateChangedNotification,
-                     "WhereEngineStateChanged", "WhereLiveUpdatesFailed", "WhereUploadSchedulerStateChanged",
-                     "WhereLocationHealthChanged"] {
+                     "WhereWolfEngineStateChanged", "WhereWolfLiveUpdatesFailed", "WhereWolfUploadSchedulerStateChanged",
+                     "WhereWolfLocationHealthChanged"] {
             observers.append(nc.addObserver(forName: Notification.Name(name), object: nil, queue: .main) { [weak self] _ in
                 guard let self, !self.activeScenes.isEmpty else { return }
                 self.refresh()
@@ -515,37 +515,37 @@ final class GLManagerBridge {
     @MainActor var liveActivityEnabled: Bool {
         get {
             _ = tick
-            return WhereBackgroundRuntime.shared.liveActivityEnabled
+            return WhereWolfBackgroundRuntime.shared.liveActivityEnabled
         }
-        set { WhereBackgroundRuntime.shared.liveActivityEnabled = newValue; refresh() }
+        set { WhereWolfBackgroundRuntime.shared.liveActivityEnabled = newValue; refresh() }
     }
 
     @MainActor var liveActivityAppearance: String {
         get {
             _ = tick
-            return WhereBackgroundRuntime.shared.appearance
+            return WhereWolfBackgroundRuntime.shared.appearance
         }
-        set { WhereBackgroundRuntime.shared.appearance = newValue; refresh() }
+        set { WhereWolfBackgroundRuntime.shared.appearance = newValue; refresh() }
     }
 
     @MainActor var hideLiveActivityWhileAudioPlays: Bool {
         get {
             _ = tick
-            return WhereBackgroundRuntime.shared.hideWhileAudioPlays
+            return WhereWolfBackgroundRuntime.shared.hideWhileAudioPlays
         }
-        set { WhereBackgroundRuntime.shared.hideWhileAudioPlays = newValue; refresh() }
+        set { WhereWolfBackgroundRuntime.shared.hideWhileAudioPlays = newValue; refresh() }
     }
 
     @MainActor var silentAudioEnabled: Bool {
         get {
             _ = tick
-            return WhereBackgroundRuntime.shared.silentAudioEnabled
+            return WhereWolfBackgroundRuntime.shared.silentAudioEnabled
         }
-        set { WhereBackgroundRuntime.shared.silentAudioEnabled = newValue; refresh() }
+        set { WhereWolfBackgroundRuntime.shared.silentAudioEnabled = newValue; refresh() }
     }
 
-    @MainActor var liveActivityStatus: String { WhereBackgroundRuntime.shared.activityStatus }
-    @MainActor var silentAudioStatus: String { WhereBackgroundRuntime.shared.audioStatus }
+    @MainActor var liveActivityStatus: String { WhereWolfBackgroundRuntime.shared.activityStatus }
+    @MainActor var silentAudioStatus: String { WhereWolfBackgroundRuntime.shared.audioStatus }
 
     @MainActor var actualLocationEngine: String {
         _ = tick
@@ -555,7 +555,7 @@ final class GLManagerBridge {
         guard authorization == .authorizedAlways || authorization == .authorizedWhenInUse else { return "Waiting for location access" }
         if gl.didPauseByRadius { return "Paused within radius" }
         if !gl.hasContinuousUpdates { return "Event-based updates" }
-        return WhereLocationEngine.shared.usingLiveUpdates ? "New · live updates" : "Original · location manager"
+        return WhereWolfLocationEngine.shared.usingLiveUpdates ? "New · live updates" : "Original · location manager"
     }
 
     @MainActor var locationEngineReason: String {
@@ -566,19 +566,19 @@ final class GLManagerBridge {
         guard authorization == .authorizedAlways || authorization == .authorizedWhenInUse else {
             return "Allow location access to resume tracking."
         }
-        if WhereLocationEngine.shared.liveUpdatesFailed {
+        if WhereWolfLocationEngine.shared.liveUpdatesFailed {
             return "The new location engine stopped after repeated failures; the original location manager is collecting fixes. Tap Retry Background Helpers to try the new engine again."
         }
         let adaptiveStatus = gl.adaptiveTrackingStatus.lowercased()
         if adaptiveStatus.contains("quiet") || adaptiveStatus.contains("stationary") || adaptiveStatus.contains("lower accuracy") {
             return "Adaptive tracking is quiet after a confirmed stop; it is using a coarser request while watching for movement."
         }
-        if WhereLocationEngine.shared.usingLiveUpdates { return "iOS chooses accuracy and automatic pause timing." }
+        if WhereWolfLocationEngine.shared.usingLiveUpdates { return "iOS chooses accuracy and automatic pause timing." }
         let indicator = gl.tripInProgress() ? gl.showBackgroundLocationIndicatorDuringTrip : gl.showBackgroundLocationIndicator
         if !indicator, gl.locationManager.authorizationStatus == .authorizedAlways,
-           !WhereBackgroundRuntime.hasBackgroundLocationActivity {
-            return WhereBackgroundRuntime.shared.appearance == "blank"
-                && WhereBackgroundRuntime.hasActiveTrackingActivity
+           !WhereWolfBackgroundRuntime.hasBackgroundLocationActivity {
+            return WhereWolfBackgroundRuntime.shared.appearance == "blank"
+                && WhereWolfBackgroundRuntime.hasActiveTrackingActivity
                 ? "Blank Island with the indicator off uses the original engine for background tracking."
                 : "The original engine keeps background tracking available without a supporting Live Activity."
         }
@@ -586,15 +586,15 @@ final class GLManagerBridge {
     }
 
     @MainActor func retryBackgroundRuntime() {
-        WhereLocationEngine.shared.resetLiveUpdatesFailure()
+        WhereWolfLocationEngine.shared.resetLiveUpdatesFailure()
         GLManager.shared()?.updateLocationEngine()
-        WhereBackgroundRuntime.shared.retry()
+        WhereWolfBackgroundRuntime.shared.retry()
         refresh()
     }
 
     @MainActor var uploadSchedulerStatus: String {
         _ = tick
-        return WhereUploadScheduler.shared.status
+        return WhereWolfUploadScheduler.shared.status
     }
 
     func requestMotionPermission() {

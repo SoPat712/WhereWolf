@@ -120,7 +120,7 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
 #if targetEnvironment(simulator)
     private var dragSamples: [[String: Double]] = []
     private var settleSamples: [[String: Double]] = []
-    private let usesAuditClock = ProcessInfo.processInfo.environment["WHERE_UI_AUDIT"] == "1"
+    private let usesAuditClock = ProcessInfo.processInfo.environment["WHEREWOLF_UI_AUDIT"] == "1"
     private var auditTime: CFTimeInterval = 0
 #endif
     private var isDragging = false
@@ -333,7 +333,7 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
         grabber.isAccessibilityElement = true
         grabber.accessibilityLabel = "Controls panel"
         grabber.accessibilityHint = "Swipe up or down to resize."
-        grabber.accessibilityIdentifier = "where.panel.grabber"
+        grabber.accessibilityIdentifier = "wherewolf.panel.grabber"
         grabber.accessibilityTraits = [.adjustable, .button]
         grabber.accessibilityValue = position.rawValue
         grabber.onIncrement = { [weak self] in self?.settle(to: .expanded) }
@@ -345,7 +345,7 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
         grabberMark.backgroundColor = .tertiaryLabel
         grabberMark.layer.cornerRadius = 2.5
         grabberMark.isUserInteractionEnabled = false
-        grabberMark.accessibilityIdentifier = "where.panel.grabber-mark"
+        grabberMark.accessibilityIdentifier = "wherewolf.panel.grabber-mark"
         grabber.addSubview(grabberMark)
 
         scrollView.translatesAutoresizingMaskIntoConstraints = false
@@ -358,7 +358,7 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
         content.addSubview(scrollView)
 
         tabsContainer.translatesAutoresizingMaskIntoConstraints = false
-        tabsContainer.accessibilityIdentifier = "where.panel.tabs"
+        tabsContainer.accessibilityIdentifier = "wherewolf.panel.tabs"
         content.addSubview(tabsContainer)
 
         grabberHeightConstraint = grabber.heightAnchor.constraint(equalToConstant: grabberHeight)
@@ -894,7 +894,7 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
         sample["tabsOpacity"] = tabsContainer.alpha
         sample["drawerHidden"] = view.isHidden ? 1 : 0
         func collectIcons(_ candidate: UIView) {
-            if let identifier = candidate.accessibilityIdentifier, identifier.hasPrefix("where.drawer.icon.") {
+            if let identifier = candidate.accessibilityIdentifier, identifier.hasPrefix("wherewolf.drawer.icon.") {
                 let frame = candidate.convert(candidate.bounds, to: view)
                 sample[identifier + ".x"] = frame.midX
                 sample[identifier + ".y"] = frame.midY
@@ -928,7 +928,7 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
         let target = newPosition == .expanded ? values.expanded : values.collapsed
         var frequency: CGFloat = 22
 #if targetEnvironment(simulator)
-        if ProcessInfo.processInfo.environment["WHERE_UI_AUDIT"] == "1" { frequency = 4.5 }
+        if ProcessInfo.processInfo.environment["WHEREWOLF_UI_AUDIT"] == "1" { frequency = 4.5 }
         settleSamples.removeAll(keepingCapacity: true)
 #endif
         let reduceMotion = UIAccessibility.isReduceMotionEnabled
@@ -1079,7 +1079,7 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
         ]
         func collect(_ candidate: UIView) {
             if let identifier = candidate.accessibilityIdentifier,
-               identifier.hasPrefix("where.drawer.icon.") {
+               identifier.hasPrefix("wherewolf.drawer.icon.") {
                 let frame = candidate.convert(candidate.bounds, to: view)
                 sample[identifier] = frame.midX
             }

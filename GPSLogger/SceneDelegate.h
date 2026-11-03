@@ -1,6 +1,6 @@
 //
 //  SceneDelegate.h
-//  Where
+//  WhereWolf
 //
 //  Created by Aaron Parecki on 12/10/23.
 //  Copyright © 2023 Aaron Parecki. All rights reserved.

@@ -20,7 +20,7 @@ import time
 
 from ui_accessibility import read_state, user_location
 
-BUNDLE = "me.joshpatra.where"
+BUNDLE = "me.joshpatra.WhereWolf"
 
 
 def run(*args, timeout=60):
@@ -76,7 +76,7 @@ def main():
     parser.add_argument("app", type=Path)
     parser.add_argument("--simulator-id", help="Reuse Overland Regression or a disposable Overland Fake Route / Overland UI Audit simulator; app data is reset")
     parser.add_argument("--keep-on-failure", action="store_true", help="Keep the stopped disposable simulator for diagnosis if a check fails")
-    parser.add_argument("--output", type=Path, default=Path("/tmp/where-fake-route-results.json"))
+    parser.add_argument("--output", type=Path, default=Path("/tmp/wherewolf-fake-route-results.json"))
     args = parser.parse_args()
     if not args.app.is_dir():
         parser.error("Supply a built simulator .app directory")
@@ -130,7 +130,7 @@ def main():
         runtime_log = args.output.with_suffix(".runtime.log").open("w")
         runtime_stream = subprocess.Popen(
             ["xcrun", "simctl", "spawn", udid, "log", "stream", "--style", "compact",
-             "--level", "default", "--predicate", 'process == "Where"'],
+             "--level", "default", "--predicate", 'process == "WhereWolf"'],
             stdout=runtime_log, stderr=subprocess.STDOUT)
         if existing:
             run("xcrun", "simctl", "uninstall", udid, BUNDLE)

@@ -52,7 +52,7 @@ Recovery reuses a saved workout before attaching a missing route.
 
 The normal app entitlements include HealthKit, iCloud, WiFi information, Siri
 and an App Group. The extension needs the same App Group. Their identifiers
-derive from `WHERE_BUNDLE_IDENTIFIER` so an installed fork can be updated
+derive from `WHEREWOLF_BUNDLE_IDENTIFIER` so an installed fork can be updated
 in place.
 
 A limited signing profile can still build the core app and ActivityKit features.
@@ -60,10 +60,10 @@ When using the existing empty entitlement file, also disable the unsupported
 Health/iCloud code paths explicitly:
 
 ```text
-WHERE_APP_ENTITLEMENTS=GPSLogger/GPSLogger.entitlements
-WHERE_WIDGET_ENTITLEMENTS=GPSLogger/GPSLogger.entitlements
-WHERE_HEALTHKIT_ENABLED=NO
-WHERE_ICLOUD_ENABLED=NO
+WHEREWOLF_APP_ENTITLEMENTS=GPSLogger/GPSLogger.entitlements
+WHEREWOLF_WIDGET_ENTITLEMENTS=GPSLogger/GPSLogger.entitlements
+WHEREWOLF_HEALTHKIT_ENABLED=NO
+WHEREWOLF_ICLOUD_ENABLED=NO
 ```
 
 Without an App Group, the app keeps its trip catalog in its own preferences;

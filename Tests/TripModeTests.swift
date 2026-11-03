@@ -1,14 +1,14 @@
 import Foundation
 import UIKit
 import XCTest
-@testable import Where
+@testable import WhereWolf
 
 final class TripModeTests: XCTestCase {
     private var defaults: UserDefaults!
 
     override func setUp() {
         super.setUp()
-        let suite = "Where.TripModeTests.\(UUID().uuidString)"
+        let suite = "WhereWolf.TripModeTests.\(UUID().uuidString)"
         defaults = UserDefaults(suiteName: suite)
         TripModeStore.setUserDefaults(defaults)
     }
@@ -46,13 +46,13 @@ final class TripModeTests: XCTestCase {
     func testMigrationTranslatesOldSymbolsAndAppendsOnlyNewDefaults() throws {
         let saved = [
             TripMode(id: "walk", name: "On Foot", symbol: "figure.walk", closeZoom: false),
-            TripMode(id: "kayak", name: "Kayak", symbol: "where.kayak", closeZoom: true),
+            TripMode(id: "kayak", name: "Kayak", symbol: "wherewolf.kayak", closeZoom: true),
         ]
         defaults.set(try JSONEncoder().encode(saved), forKey: TripModeStore.modesKey)
         defaults.set(Array(TripMode.originalIDs), forKey: TripModeStore.builtInIDsKey)
 
         let modes = TripModeStore.modes
-        XCTAssertEqual(modes.first(where: { $0.id == "walk" })?.symbol, "where.walk")
+        XCTAssertEqual(modes.first(where: { $0.id == "walk" })?.symbol, "wherewolf.walk")
         XCTAssertTrue(modes.contains { $0.id == "kayak" })
         XCTAssertTrue(modes.contains { $0.id == "hike" })
         XCTAssertTrue(modes.contains { $0.id == "funicular" })
@@ -104,7 +104,7 @@ final class TripModeTests: XCTestCase {
     }
 
     func testIconPayloadDistinguishesAppOwnedSVGFromSFSymbol() {
-        let custom = TripMode(id: "kayak", name: "Kayak", symbol: "where.kayak", closeZoom: true)
+        let custom = TripMode(id: "kayak", name: "Kayak", symbol: "wherewolf.kayak", closeZoom: true)
         let apple = TripMode(id: "row", name: "Row", symbol: "figure.rower", closeZoom: true)
         XCTAssertTrue(TripModeStore.save([custom, apple]))
 
@@ -116,5 +116,27 @@ final class TripModeTests: XCTestCase {
         let sfPayload = TripModeStore.iconProperties("row")
         XCTAssertEqual(sfPayload["sf_symbol"], "figure.rower")
         XCTAssertNil(sfPayload["icon"])
+    }
+
+    func testPreviousAssetPrefixResolvesForSavedAndRemoteModes() {
+        for symbol in TripModeStore.customSymbols {
+            let previous = "where." + String(symbol.dropFirst("wherewolf.".count))
+            XCTAssertEqual(TripModeStore.resolvedSymbol(previous), symbol)
+            XCTAssertTrue(TripModeStore.isCustomSymbol(previous))
+            XCTAssertNotNil(TripModeStore.image(symbol: previous))
+            XCTAssertEqual(TripModeStore.iconDataURI(symbol: previous), TripModeStore.iconDataURI(symbol: symbol))
+        }
+        let saved = TripMode(id: "kayak", name: "Kayak", symbol: "where.kayak", closeZoom: true)
+        XCTAssertTrue(TripModeStore.save([saved]))
+        XCTAssertEqual(TripModeStore.symbol("kayak"), "wherewolf.kayak")
+        XCTAssertEqual(TripModeStore.iconProperties("kayak")["icon"], TripModeStore.iconDataURI(symbol: "wherewolf.kayak"))
+        XCTAssertEqual(TripModeStore.modes.first?.symbol, "where.kayak")
+
+        let unknown = TripMode(id: "custom", name: "Custom", symbol: "where.unknown", closeZoom: true)
+        XCTAssertTrue(TripModeStore.save([unknown]))
+        XCTAssertFalse(TripModeStore.isCustomSymbol(unknown.symbol))
+        XCTAssertEqual(TripModeStore.symbol("custom"), unknown.symbol)
+        XCTAssertEqual(TripModeStore.iconProperties("custom"), ["sf_symbol": unknown.symbol])
+        XCTAssertNil(TripModeStore.iconDataURI(symbol: unknown.symbol))
     }
 }

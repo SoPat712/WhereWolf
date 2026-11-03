@@ -1,6 +1,6 @@
 //
 //  GLCloudFileWriter.m
-//  Where
+//  WhereWolf
 //
 //  Atomic FeatureCollection writes retain queued records on failure. Stable record IDs make
 //  retries safe when a batch spans several files or the queue acknowledgement fails.
@@ -35,7 +35,7 @@
 - (instancetype)init {
     self = [super init];
     if (self) {
-        _queue = dispatch_queue_create("me.joshpatra.where.cloudfiles", DISPATCH_QUEUE_SERIAL);
+        _queue = dispatch_queue_create("me.joshpatra.WhereWolf.cloudfiles", DISPATCH_QUEUE_SERIAL);
 
         _dailyPathFormatter = [[NSDateFormatter alloc] init];
         _dailyPathFormatter.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
@@ -48,11 +48,11 @@
 }
 
 + (NSString *)setupInstructions {
-    return @"In the Settings app, tap your name, then iCloud. Make sure iCloud Drive is turned on, and that Where is turned on in the list of apps using iCloud.";
+    return @"In the Settings app, tap your name, then iCloud. Make sure iCloud Drive is turned on, and that WhereWolf is turned on in the list of apps using iCloud.";
 }
 
 + (BOOL)isAvailable {
-    id enabled = [NSBundle.mainBundle objectForInfoDictionaryKey:@"WhereICloudEnabled"];
+    id enabled = [NSBundle.mainBundle objectForInfoDictionaryKey:@"WhereWolfICloudEnabled"];
     return (!enabled || [enabled boolValue]) && [NSFileManager defaultManager].ubiquityIdentityToken != nil;
 }
 
@@ -67,13 +67,13 @@
 
 #pragma mark - Private, on the writer's queue
 
-// The Documents folder of the app's iCloud container, which appears in iCloud Drive as "Where".
+// The Documents folder of the app's iCloud container, which appears in iCloud Drive as "WhereWolf".
 // Looking up the container can block, so this runs on the writer's queue.
 - (NSURL *)documentsURL {
     if (_documentsURL == nil) {
-        id enabled = [NSBundle.mainBundle objectForInfoDictionaryKey:@"WhereICloudEnabled"];
+        id enabled = [NSBundle.mainBundle objectForInfoDictionaryKey:@"WhereWolfICloudEnabled"];
         if(enabled && ![enabled boolValue]) return nil;
-        NSURL *container = [[NSFileManager defaultManager] URLForUbiquityContainerIdentifier:([NSBundle.mainBundle objectForInfoDictionaryKey:@"WhereCloudContainer"] ?: @"iCloud.me.joshpatra.where")];
+        NSURL *container = [[NSFileManager defaultManager] URLForUbiquityContainerIdentifier:([NSBundle.mainBundle objectForInfoDictionaryKey:@"WhereWolfCloudContainer"] ?: @"iCloud.me.joshpatra.WhereWolf")];
         if (container) {
             _documentsURL = [container URLByAppendingPathComponent:@"Documents" isDirectory:YES];
         }

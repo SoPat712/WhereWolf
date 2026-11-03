@@ -16,7 +16,7 @@ enum TipFrequency: String, CaseIterable, Identifiable {
     }
 
     func productID(_ name: String) -> String {
-        "me.joshpatra.where.\(self == .once ? "" : rawValue + ".")\(name)"
+        "me.joshpatra.WhereWolf.\(self == .once ? "" : rawValue + ".")\(name)"
     }
 
     var detail: String {
@@ -118,7 +118,7 @@ final class TipStore {
         }) else { return }
         await transaction.finish()
         if transaction.revocationDate == nil {
-            notice = Notice(title: "Thank You!", message: "Your support helps keep Where moving.")
+            notice = Notice(title: "Thank You!", message: "Your support helps keep WhereWolf moving.")
         }
     }
 }

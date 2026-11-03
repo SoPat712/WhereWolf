@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>Where</string>
+	<string>WhereWolf</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -15,7 +15,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>$(PRODUCT_NAME)</string>
+	<string>WhereWolf</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -26,10 +26,10 @@
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>CFBundleURLName</key>
-			<string>me.joshpatra.where</string>
+			<string>me.joshpatra.WhereWolf</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>where</string>
+				<string>wherewolf</string>
 				<string>overland</string>
 			</array>
 		</dict>
@@ -40,11 +40,11 @@
 	<array>
 		<dict>
 			<key>INAlternativeAppName</key>
-			<string>Where Tracker</string>
+			<string>Werewolf</string>
 		</dict>
 		<dict>
 			<key>INAlternativeAppName</key>
-			<string>Where App</string>
+			<string>Where Wolf</string>
 		</dict>
 	</array>
 	<key>ITSAppUsesNonExemptEncryption</key>
@@ -65,12 +65,12 @@
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Please enable location services to allow the app to track in the background</string>
 	<key>NSMotionUsageDescription</key>
-	<string>Where uses motion activity to identify walking, cycling, driving and stops, support optional adaptive tracking, and count trip steps.</string>
+	<string>WhereWolf uses motion activity to identify walking, cycling, driving and stops, support optional adaptive tracking, and count trip steps.</string>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>$(PRODUCT_BUNDLE_IDENTIFIER).upload</string>
 	</array>
-	<key>WhereBackgroundUploadIdentifier</key>
+	<key>WhereWolfBackgroundUploadIdentifier</key>
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER).upload</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
@@ -139,29 +139,29 @@
 	</array>
 	<key>UIUserInterfaceStyle</key>
 	<string>Automatic</string>
-	<key>WhereAppGroup</key>
-	<string>group.$(WHERE_BUNDLE_IDENTIFIER)</string>
-	<key>WhereCloudContainer</key>
-	<string>iCloud.$(WHERE_BUNDLE_IDENTIFIER)</string>
+	<key>WhereWolfAppGroup</key>
+	<string>group.$(WHEREWOLF_BUNDLE_IDENTIFIER)</string>
+	<key>WhereWolfCloudContainer</key>
+	<string>iCloud.$(WHEREWOLF_BUNDLE_IDENTIFIER)</string>
 	<key>NSHealthShareUsageDescription</key>
-	<string>Import saved workout routes from Apple Health when you choose, and find previous Where workouts to avoid duplicate exports.</string>
+	<string>Import saved workout routes from Apple Health when you choose, and find previous WhereWolf workouts to avoid duplicate exports.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Save selected trips and their routes to Apple Health when you enable workout export.</string>
 	<key>NSUbiquitousContainers</key>
 	<dict>
-		<key>iCloud.$(WHERE_BUNDLE_IDENTIFIER)</key>
+		<key>iCloud.$(WHEREWOLF_BUNDLE_IDENTIFIER)</key>
 		<dict>
 			<key>NSUbiquitousContainerIsDocumentScopePublic</key>
 			<true/>
 			<key>NSUbiquitousContainerName</key>
-			<string>Where</string>
+			<string>WhereWolf</string>
 			<key>NSUbiquitousContainerSupportedFolderLevels</key>
 			<string>Any</string>
 		</dict>
 	</dict>
-	<key>WhereHealthKitEnabled</key>
-	<string>$(WHERE_HEALTHKIT_ENABLED)</string>
-	<key>WhereICloudEnabled</key>
-	<string>$(WHERE_ICLOUD_ENABLED)</string>
+	<key>WhereWolfHealthKitEnabled</key>
+	<string>$(WHEREWOLF_HEALTHKIT_ENABLED)</string>
+	<key>WhereWolfICloudEnabled</key>
+	<string>$(WHEREWOLF_ICLOUD_ENABLED)</string>
 </dict>
 </plist>

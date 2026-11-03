@@ -1,13 +1,13 @@
 // TESTFLIGHT ONLY — REMOVE BEFORE APP STORE RELEASE
-#if WHERE_TESTFLIGHT_DIAGNOSTICS
+#if WHEREWOLF_TESTFLIGHT_DIAGNOSTICS
 import Foundation
 import MetricKit
 
 // TESTFLIGHT ONLY — REMOVE BEFORE APP STORE RELEASE
 @objc final class TestFlightDiagnostics: NSObject, MXMetricManagerSubscriber {
     static let shared = TestFlightDiagnostics()
-    static let reportsChanged = Notification.Name("WhereDiagnosticReportsChanged")
-    private let queue = DispatchQueue(label: "me.joshpatra.where.diagnostics")
+    static let reportsChanged = Notification.Name("WhereWolfDiagnosticReportsChanged")
+    private let queue = DispatchQueue(label: "me.joshpatra.WhereWolf.diagnostics")
     private var modern: AnyObject?
     private var started = false
 

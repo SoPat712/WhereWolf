@@ -1,6 +1,6 @@
 //
 //  TripModesView.swift
-//  Where
+//  WhereWolf
 //
 //  SwiftUI editor for the trip-mode catalog. GLManagerBridge remains the write boundary so a
 //  successful save updates GLManager and the shared snapshot together.
@@ -71,7 +71,7 @@ extension TripModeStore {
         defaults.set(data, forKey: modesKey)
         defaults.set(TripMode.defaults.map(\.id), forKey: builtInIDsKey)
         NotificationCenter.default.post(name: Notification.Name(GLSettingsChangedNotification), object: nil)
-        WhereShortcuts.updateAppShortcutParameters()
+        WhereWolfShortcuts.updateAppShortcutParameters()
         WidgetCenter.shared.reloadAllTimelines()
         if #available(iOS 18.0, *) {
             ControlCenter.shared.reloadAllControls()
@@ -273,7 +273,7 @@ private struct TripModeEditor: View {
         original = mode
         self.onSave = onSave
         _name = State(initialValue: mode?.name ?? "")
-        _symbol = State(initialValue: mode?.symbol ?? "where.walk")
+        _symbol = State(initialValue: TripModeStore.resolvedSymbol(mode?.symbol ?? "wherewolf.walk"))
         _synonymsText = State(initialValue: mode?.synonyms.joined(separator: ", ") ?? "")
         _healthWorkout = State(initialValue: mode?.healthWorkout)
         _closeZoom = State(initialValue: mode?.closeZoom ?? true)
@@ -314,7 +314,7 @@ private struct TripModeEditor: View {
                             Text(symbol).tag(symbol)
                         }
                         ForEach(TripModeStore.customSymbols, id: \.self) { value in
-                            Text(value.replacingOccurrences(of: "where.", with: "").capitalized)
+                            Text(value.replacingOccurrences(of: "wherewolf.", with: "").capitalized)
                                 .tag(value)
                         }
                     }
@@ -325,7 +325,7 @@ private struct TripModeEditor: View {
                 } header: {
                     Text("Icon")
                 } footer: {
-                    Text("Choose a Where icon or enter an SF Symbol name. App-owned icons can be included in trip records; SF Symbols are sent by name for Apple platforms.")
+                    Text("Choose a WhereWolf icon or enter an SF Symbol name. App-owned icons can be included in trip records; SF Symbols are sent by name for Apple platforms.")
                 }
 
                 Section {
@@ -348,7 +348,7 @@ private struct TripModeEditor: View {
                 } header: {
                     Text("Trip Behavior")
                 } footer: {
-                    Text("A selected workout lets Where save this mode's trips to Apple Health. Closer zoom is useful for slower travel.")
+                    Text("A selected workout lets WhereWolf save this mode's trips to Apple Health. Closer zoom is useful for slower travel.")
                 }
 
                 Section {

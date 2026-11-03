@@ -1,6 +1,6 @@
 //
 //  SharedStateObserver.swift
-//  Where
+//  WhereWolf
 //
 //  Keeps SharedTripState up to date for the widgets and controls. It only watches what GLManager
 //  already broadcasts, its notifications and the settings it saves, so GLManager doesn't need to

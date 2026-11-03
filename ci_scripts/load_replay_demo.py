@@ -9,7 +9,7 @@ import sqlite3
 import subprocess
 
 
-BUNDLE = "me.joshpatra.where"
+BUNDLE = "me.joshpatra.WhereWolf"
 DEMO_DEVICE = "Simulator demo · not sent"
 ROUTE = Path(__file__).parent / "fixtures" / "portland_salem_route.json"
 
@@ -47,7 +47,7 @@ def main():
     container = Path(simctl("get_app_container", args.udid, BUNDLE, "data"))
     database = container / "Library" / "Application Support" / "Recent Locations" / "history.sqlite"
     if not database.is_file():
-        parser.error("Launch Where once to create its replay history database")
+        parser.error("Launch WhereWolf once to create its replay history database")
 
     end = datetime.now(timezone.utc) - timedelta(minutes=5)
     start = end - timedelta(seconds=route["duration_seconds"])

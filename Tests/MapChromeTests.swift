@@ -1,14 +1,14 @@
 import MapKit
 import SwiftUI
 import XCTest
-@testable import Where
+@testable import WhereWolf
 
 @MainActor
 final class MapChromeTests: XCTestCase {
     func testLegalTouchTargetStaysAboveMapControls() async throws {
         try await withMap { _, _, map in
             @MainActor func findLegalControl(in view: UIView) -> UIView? {
-                if view.accessibilityIdentifier == "where.map.legal" { return view }
+                if view.accessibilityIdentifier == "wherewolf.map.legal" { return view }
                 return view.subviews.lazy.compactMap { findLegalControl(in: $0) }.first
             }
             let legal = try XCTUnwrap(findLegalControl(in: map))
@@ -501,7 +501,7 @@ final class MapChromeTests: XCTestCase {
         host.view.layoutIfNeeded()
         try await Task.sleep(for: .milliseconds(200))
         @MainActor func findCompass(in view: UIView) -> UIControl? {
-            if view.accessibilityIdentifier == "where.map.compass" { return view as? UIControl }
+            if view.accessibilityIdentifier == "wherewolf.map.compass" { return view as? UIControl }
             return view.subviews.lazy.compactMap { findCompass(in: $0) }.first
         }
         let compass = try XCTUnwrap(findCompass(in: host.view))

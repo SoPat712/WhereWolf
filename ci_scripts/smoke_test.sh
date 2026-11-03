@@ -6,7 +6,7 @@ APP_PATH="${1:-}"
 SIM="${SIM:-Overland Regression}"
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
 SHOTS="$DIR/Screenshots"
-DERIVED_DATA="${DERIVED_DATA:-/tmp/where-smoke-build}"
+DERIVED_DATA="${DERIVED_DATA:-/tmp/wherewolf-smoke-build}"
 BUILD_JOBS="${BUILD_JOBS:-1}"
 if [ "$BUILD_JOBS" != "1" ] && [ "$BUILD_JOBS" != "2" ]; then
     echo "Use BUILD_JOBS=1 (preferred) or 2 to keep build concurrency within the project limit." >&2
@@ -30,14 +30,14 @@ xcrun simctl bootstatus "$UDID" -b
 
 if [ -z "$APP_PATH" ]; then
     python3 "$DIR/ci_scripts/resource_guard.py" --work-root "$DERIVED_DATA" --target 70 --resume 55 -- \
-        nice -n 10 xcodebuild -jobs "$BUILD_JOBS" -workspace "$DIR/Where.xcworkspace" -scheme Where \
+        nice -n 10 xcodebuild -jobs "$BUILD_JOBS" -workspace "$DIR/WhereWolf.xcworkspace" -scheme WhereWolf \
         -destination "platform=iOS Simulator,id=$UDID" -derivedDataPath "$DERIVED_DATA" build
-    APP_PATH="$DERIVED_DATA/Build/Products/Debug-iphonesimulator/Where.app"
+    APP_PATH="$DERIVED_DATA/Build/Products/Debug-iphonesimulator/WhereWolf.app"
 fi
 
 xcrun simctl install "$UDID" "$APP_PATH"
-xcrun simctl terminate "$UDID" me.joshpatra.where 2>/dev/null || true
-xcrun simctl launch "$UDID" me.joshpatra.where
+xcrun simctl terminate "$UDID" me.joshpatra.WhereWolf 2>/dev/null || true
+xcrun simctl launch "$UDID" me.joshpatra.WhereWolf
 if [ "${CAPTURE_SCREENSHOTS:-0}" = "1" ]; then
     mkdir -p "$SHOTS"
     sleep 3

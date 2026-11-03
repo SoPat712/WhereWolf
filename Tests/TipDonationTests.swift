@@ -1,5 +1,5 @@
 import XCTest
-@testable import Where
+@testable import WhereWolf
 
 final class TipDonationTests: XCTestCase {
     private let locale = Locale(identifier: "en_US")
@@ -41,13 +41,13 @@ final class TipDonationTests: XCTestCase {
 
     func testLegacyProductIDsArePreserved() {
         XCTAssertEqual(TipFrequency.once.names.map { TipFrequency.once.productID($0) }, [
-            "me.joshpatra.where.Wanderer", "me.joshpatra.where.Trailblazer", "me.joshpatra.where.Explorer",
-            "me.joshpatra.where.Adventurer", "me.joshpatra.where.Cosmonaut"
+            "me.joshpatra.WhereWolf.Wanderer", "me.joshpatra.WhereWolf.Trailblazer", "me.joshpatra.WhereWolf.Explorer",
+            "me.joshpatra.WhereWolf.Adventurer", "me.joshpatra.WhereWolf.Cosmonaut"
         ])
         for frequency in [TipFrequency.monthly, .yearly] {
             XCTAssertEqual(frequency.names.map { frequency.productID($0) }, [
-                "me.joshpatra.where.\(frequency.rawValue).Commuter", "me.joshpatra.where.\(frequency.rawValue).Mariner",
-                "me.joshpatra.where.\(frequency.rawValue).Aviator", "me.joshpatra.where.\(frequency.rawValue).Globetrotter"
+                "me.joshpatra.WhereWolf.\(frequency.rawValue).Commuter", "me.joshpatra.WhereWolf.\(frequency.rawValue).Mariner",
+                "me.joshpatra.WhereWolf.\(frequency.rawValue).Aviator", "me.joshpatra.WhereWolf.\(frequency.rawValue).Globetrotter"
             ])
         }
     }

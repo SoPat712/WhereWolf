@@ -3,7 +3,7 @@ import AVFoundation
 import CoreLocation
 import UserNotifications
 import XCTest
-@testable import Where
+@testable import WhereWolf
 
 final class BackgroundRuntimeTests: XCTestCase {
     @MainActor func testSilentAudioStartsOnlyWhenEnabledAndStops() async throws {
@@ -88,7 +88,7 @@ final class BackgroundRuntimeTests: XCTestCase {
 
     @MainActor func testLiveActivityAndAudioFollowTracking() async throws {
         try await withTrackingActivity { activity in
-            let runtime = WhereBackgroundRuntime.shared
+            let runtime = WhereWolfBackgroundRuntime.shared
             runtime.appearance = "blank"
             try await waitUntil {
                 Activity<IslandOnlyTrackingAttributes>.activities.contains {
@@ -120,8 +120,8 @@ final class BackgroundRuntimeTests: XCTestCase {
     @MainActor func testBlankActivityUsesLegacyUntilWidgetAppearanceIsRestored() async throws {
         try await withTrackingActivity { _ in
             let manager = GLManager.shared()!
-            let runtime = WhereBackgroundRuntime.shared
-            let engine = WhereLocationEngine.shared
+            let runtime = WhereWolfBackgroundRuntime.shared
+            let engine = WhereWolfLocationEngine.shared
             manager.showBackgroundLocationIndicator = false
             manager.useNewLocationEngine = true
             runtime.appearance = "blank"
@@ -130,8 +130,8 @@ final class BackgroundRuntimeTests: XCTestCase {
                     && Activity<TrackingActivityAttributes>.activities.isEmpty
                     && !engine.usingLiveUpdates && !engine.hasBackgroundSession
             }
-            XCTAssertTrue(WhereBackgroundRuntime.hasActiveTrackingActivity)
-            XCTAssertFalse(WhereBackgroundRuntime.hasBackgroundLocationActivity)
+            XCTAssertTrue(WhereWolfBackgroundRuntime.hasActiveTrackingActivity)
+            XCTAssertFalse(WhereWolfBackgroundRuntime.hasBackgroundLocationActivity)
             runtime.appearance = "status"
             try await waitUntil {
                 Activity<IslandOnlyTrackingAttributes>.activities.isEmpty
@@ -145,8 +145,8 @@ final class BackgroundRuntimeTests: XCTestCase {
     @MainActor func testIndicatorToggleAndLiveActivityControlBackgroundSession() async throws {
         try await withTrackingActivity { _ in
             let manager = GLManager.shared()!
-            let runtime = WhereBackgroundRuntime.shared
-            let engine = WhereLocationEngine.shared
+            let runtime = WhereWolfBackgroundRuntime.shared
+            let engine = WhereWolfLocationEngine.shared
             manager.pausesAutomatically = false
             manager.showBackgroundLocationIndicator = false
             manager.useNewLocationEngine = true
@@ -181,7 +181,7 @@ final class BackgroundRuntimeTests: XCTestCase {
     @MainActor func testEndedActivityFallsBackWithoutEnablingIndicator() async throws {
         try await withTrackingActivity { activity in
             let manager = GLManager.shared()!
-            let engine = WhereLocationEngine.shared
+            let engine = WhereWolfLocationEngine.shared
             manager.showBackgroundLocationIndicator = false
             manager.useNewLocationEngine = true
             try await waitUntil { engine.usingLiveUpdates && !engine.hasBackgroundSession }
@@ -196,17 +196,17 @@ final class BackgroundRuntimeTests: XCTestCase {
     @MainActor func testEndedBlankActivityFallsBackWithoutEnablingIndicator() async throws {
         try await withTrackingActivity { _ in
             let manager = GLManager.shared()!
-            let engine = WhereLocationEngine.shared
+            let engine = WhereWolfLocationEngine.shared
             manager.showBackgroundLocationIndicator = false
             manager.useNewLocationEngine = true
-            WhereBackgroundRuntime.shared.appearance = "blank"
+            WhereWolfBackgroundRuntime.shared.appearance = "blank"
             try await waitUntil {
                 Activity<IslandOnlyTrackingAttributes>.activities.contains { $0.activityState == .active }
                     && !engine.usingLiveUpdates && !engine.hasBackgroundSession
             }
             let activity = try XCTUnwrap(Activity<IslandOnlyTrackingAttributes>.activities.first)
             await activity.end(nil, dismissalPolicy: .immediate)
-            try await waitUntil { !engine.usingLiveUpdates && !WhereBackgroundRuntime.hasActiveTrackingActivity }
+            try await waitUntil { !engine.usingLiveUpdates && !WhereWolfBackgroundRuntime.hasActiveTrackingActivity }
             XCTAssertFalse(engine.hasBackgroundSession)
             XCTAssertFalse(manager.locationManager.showsBackgroundLocationIndicator)
             XCTAssertTrue(manager.trackingEnabled)
@@ -215,14 +215,14 @@ final class BackgroundRuntimeTests: XCTestCase {
 
     @MainActor func testAudioHidingReconcilesEngineAndRestoresEveryTrackingAppearance() async throws {
         try await withTrackingActivity { _ in
-            let runtime = WhereBackgroundRuntime.shared
+            let runtime = WhereWolfBackgroundRuntime.shared
             let saved = runtime.audioDependencies
             var playing = false
             var uptime: TimeInterval = 0
             runtime.audioDependencies = .init(otherAudioPlaying: { playing }, uptime: { uptime })
             defer { runtime.audioDependencies = saved; runtime.hideWhileAudioPlays = false }
             let manager = GLManager.shared()!
-            let engine = WhereLocationEngine.shared
+            let engine = WhereWolfLocationEngine.shared
             manager.showBackgroundLocationIndicator = false
             manager.useNewLocationEngine = true
             for appearance in ["status", "minimal", "blank"] {
@@ -242,7 +242,7 @@ final class BackgroundRuntimeTests: XCTestCase {
                 uptime += 15
                 runtime.checkAudioFromLocation()
                 try await waitUntil { runtime.activityStatus == "Hidden while other audio plays" }
-                XCTAssertFalse(WhereBackgroundRuntime.hasActiveTrackingActivity)
+                XCTAssertFalse(WhereWolfBackgroundRuntime.hasActiveTrackingActivity)
                 XCTAssertFalse(engine.usingLiveUpdates)
                 XCTAssertFalse(engine.hasBackgroundSession)
                 XCTAssertTrue(manager.trackingEnabled)
@@ -251,7 +251,7 @@ final class BackgroundRuntimeTests: XCTestCase {
                 uptime += 15
                 runtime.checkAudioFromLocation()
                 try await waitUntil {
-                    runtime.activityStatus == "Active" && WhereBackgroundRuntime.hasActiveTrackingActivity
+                    runtime.activityStatus == "Active" && WhereWolfBackgroundRuntime.hasActiveTrackingActivity
                         && engine.usingLiveUpdates == (appearance != "blank")
                 }
                 XCTAssertFalse(engine.hasBackgroundSession)
@@ -262,7 +262,7 @@ final class BackgroundRuntimeTests: XCTestCase {
 
     @MainActor func testOwnSilentAudioDoesNotHideActivityOrStopWhenHidden() async throws {
         try await withTrackingActivity { _ in
-            let runtime = WhereBackgroundRuntime.shared
+            let runtime = WhereWolfBackgroundRuntime.shared
             runtime.silentAudioEnabled = true
             try await waitUntil { runtime.audioStatus == "Silent audio active" }
             XCTAssertFalse(AVAudioSession.sharedInstance().isOtherAudioPlaying)
@@ -275,7 +275,7 @@ final class BackgroundRuntimeTests: XCTestCase {
             uptime = 15
             runtime.checkAudioFromLocation()
             try await Task.sleep(for: .milliseconds(100))
-            XCTAssertTrue(WhereBackgroundRuntime.hasActiveTrackingActivity)
+            XCTAssertTrue(WhereWolfBackgroundRuntime.hasActiveTrackingActivity)
             playing = true
             uptime = 30
             runtime.checkAudioFromLocation()
@@ -284,14 +284,14 @@ final class BackgroundRuntimeTests: XCTestCase {
             try await waitUntil { runtime.activityStatus == "Hidden while other audio plays" }
             XCTAssertEqual(runtime.audioStatus, "Silent audio active")
             runtime.hideWhileAudioPlays = false
-            try await waitUntil { WhereBackgroundRuntime.hasActiveTrackingActivity }
+            try await waitUntil { WhereWolfBackgroundRuntime.hasActiveTrackingActivity }
             XCTAssertEqual(runtime.audioStatus, "Silent audio active")
         }
     }
 
     @MainActor func testAudioHidesAndRestoresSeparateTripActivityWithoutEndingTrip() async throws {
         try await withTrackingActivity { _ in
-            let runtime = WhereBackgroundRuntime.shared
+            let runtime = WhereWolfBackgroundRuntime.shared
             let saved = runtime.audioDependencies
             let manager = GLManager.shared()!
             let defaults = UserDefaults.standard
@@ -312,7 +312,7 @@ final class BackgroundRuntimeTests: XCTestCase {
             uptime = 15
             runtime.checkAudioFromLocation()
             try await waitUntil {
-                Activity<TripActivityAttributes>.activities.isEmpty && !WhereBackgroundRuntime.hasActiveTrackingActivity
+                Activity<TripActivityAttributes>.activities.isEmpty && !WhereWolfBackgroundRuntime.hasActiveTrackingActivity
             }
             XCTAssertEqual(manager.currentTripStart(), start)
             XCTAssertTrue(manager.trackingEnabled)
@@ -321,7 +321,7 @@ final class BackgroundRuntimeTests: XCTestCase {
             runtime.checkAudioFromLocation()
             try await waitUntil {
                 Activity<TripActivityAttributes>.activities.contains { $0.activityState == .active }
-                    && WhereBackgroundRuntime.hasActiveTrackingActivity
+                    && WhereWolfBackgroundRuntime.hasActiveTrackingActivity
             }
             XCTAssertEqual(manager.currentTripStart(), start)
             defaults.removeObject(forKey: GLTripStartTimeDefaultsName)
@@ -331,8 +331,8 @@ final class BackgroundRuntimeTests: XCTestCase {
     }
 
     @MainActor func testLiveActivityFollowsScheduledReminder() async throws {
-        guard ProcessInfo.processInfo.environment["WHERE_NOTIFICATION_INTEGRATION"] == "1" else {
-            throw XCTSkip("Enable WHERE_NOTIFICATION_INTEGRATION with notifications approved to test the system reminder service.")
+        guard ProcessInfo.processInfo.environment["WHEREWOLF_NOTIFICATION_INTEGRATION"] == "1" else {
+            throw XCTSkip("Enable WHEREWOLF_NOTIFICATION_INTEGRATION with notifications approved to test the system reminder service.")
         }
         try await withTrackingActivity { activity in
             let center = UNUserNotificationCenter.current()
@@ -358,7 +358,7 @@ final class BackgroundRuntimeTests: XCTestCase {
         let domain = Bundle.main.bundleIdentifier!
         let saved = defaults.persistentDomain(forName: domain) ?? [:]
         let manager = GLManager.shared()!
-        let runtime = WhereBackgroundRuntime.shared
+        let runtime = WhereWolfBackgroundRuntime.shared
         manager.stopAllUpdates()
         defer {
             manager.stopAllUpdates()

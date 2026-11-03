@@ -1,6 +1,6 @@
 //
 //  SharedTripState.swift
-//  Where
+//  WhereWolf
 //
 //  A snapshot of the app's state for the widgets and controls. They run in the extension's
 //  process and can't read the app's settings, so the app writes this to the App Group and the
@@ -11,7 +11,7 @@ import Foundation
 
 struct SharedTripState: Codable, Equatable {
     static var appGroup: String {
-        Bundle.main.object(forInfoDictionaryKey: "WhereAppGroup") as? String ?? "group.me.joshpatra.where"
+        Bundle.main.object(forInfoDictionaryKey: "WhereWolfAppGroup") as? String ?? "group.me.joshpatra.WhereWolf"
     }
     private static let defaultsKey = "SharedTripState"
 

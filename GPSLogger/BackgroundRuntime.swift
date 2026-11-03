@@ -59,8 +59,8 @@ private enum TrackingActivityHandle {
 
 @Observable
 @MainActor
-@objc final class WhereBackgroundRuntime: NSObject {
-    @objc static let shared = WhereBackgroundRuntime()
+@objc final class WhereWolfBackgroundRuntime: NSObject {
+    @objc static let shared = WhereWolfBackgroundRuntime()
 
     static var hasActiveTrackingActivity: Bool { TrackingActivityHandle.all.contains { $0.isActive } }
 
@@ -69,10 +69,10 @@ private enum TrackingActivityHandle {
     }
 
     private enum Key {
-        static let liveActivity = "WhereLiveActivityEnabled"
-        static let appearance = "WhereLiveActivityAppearance"
-        static let hideWhileAudioPlays = "WhereLiveActivityHideWhileAudioPlays"
-        static let silentAudio = "WhereSilentAudioEnabled"
+        static let liveActivity = "WhereWolfLiveActivityEnabled"
+        static let appearance = "WhereWolfLiveActivityAppearance"
+        static let hideWhileAudioPlays = "WhereWolfLiveActivityHideWhileAudioPlays"
+        static let silentAudio = "WhereWolfSilentAudioEnabled"
     }
 
     struct AudioDependencies {
@@ -282,7 +282,7 @@ private enum TrackingActivityHandle {
             return
         }
         if audioAction == .waitForForeground {
-            activityStatus = "Open Where to restore the Live Activity"
+            activityStatus = "Open WhereWolf to restore the Live Activity"
             return
         }
         guard ActivityAuthorizationInfo().areActivitiesEnabled else {
@@ -334,7 +334,7 @@ private enum TrackingActivityHandle {
             return
         }
         guard UIApplication.shared.applicationState == .active || audioAction == .restore else {
-            activityStatus = "Open Where to start the Live Activity"
+            activityStatus = "Open WhereWolf to start the Live Activity"
             return
         }
         if audioAction == .restore { willRestoreAfterAudio(kind) }
@@ -354,7 +354,7 @@ private enum TrackingActivityHandle {
             restoredAfterAudio(kind)
         } catch {
             if audioAction == .restore {
-                activityStatus = "Open Where to restore the Live Activity"
+                activityStatus = "Open WhereWolf to restore the Live Activity"
             } else {
                 suppressed = true
                 activityStatus = "Could not start: \(error.localizedDescription)"

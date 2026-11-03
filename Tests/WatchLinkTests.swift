@@ -1,5 +1,5 @@
 import XCTest
-@testable import Where
+@testable import WhereWolf
 
 final class WatchLinkTests: XCTestCase {
     private let status = WatchStatus(
@@ -42,7 +42,7 @@ final class WatchLinkTests: XCTestCase {
     func testEmbeddedWatchAppBelongsToThisPhoneApp() throws {
         let phone = Bundle.main
         let identifier = try XCTUnwrap(phone.bundleIdentifier)
-        let watch = try XCTUnwrap(Bundle(url: phone.bundleURL.appendingPathComponent("Watch/WhereWatch.app")))
+        let watch = try XCTUnwrap(Bundle(url: phone.bundleURL.appendingPathComponent("Watch/WhereWolfWatch.app")))
         XCTAssertEqual(watch.bundleIdentifier, identifier + ".watchkitapp")
         XCTAssertEqual(watch.object(forInfoDictionaryKey: "WKCompanionAppBundleIdentifier") as? String, identifier)
         for key in ["CFBundleShortVersionString", "CFBundleVersion"] {
@@ -72,7 +72,7 @@ final class WatchLinkTests: XCTestCase {
     func testCommandsReachThePhonesOwnControls() {
         var calls: [String] = []
         var inTrip = false
-        var actions = WhereWatchLink.Actions()
+        var actions = WhereWolfWatchLink.Actions()
         actions.setTracking = { calls.append("tracking \($0)") }
         actions.retryUpdates = { calls.append("retry") }
         actions.startTrip = { calls.append("start \($0 ?? "current")") }
@@ -80,7 +80,7 @@ final class WatchLinkTests: XCTestCase {
         actions.sendNow = { calls.append("send") }
         actions.setPreset = { calls.append("preset \($0)") }
         actions.tripInProgress = { inTrip }
-        let link = WhereWatchLink(actions: actions)
+        let link = WhereWolfWatchLink(actions: actions)
 
         link.perform(.refresh)
         XCTAssertEqual(calls, [], "Reading status must not change anything")

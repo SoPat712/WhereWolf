@@ -16,7 +16,7 @@ struct WorkoutImportView: View {
                     Task { await importer.connect() }
                 }
                 .disabled(importer.busy || !importer.available)
-                Toggle("Import When Where Opens", isOn: Binding(
+                Toggle("Import When WhereWolf Opens", isOn: Binding(
                     get: { importer.automatic }, set: { bridge.setAutomaticWorkoutImport($0) }))
                     .disabled(!importer.connected || !importer.available)
                 Picker("Look Back", selection: Binding(
@@ -36,7 +36,7 @@ struct WorkoutImportView: View {
             } header: {
                 Text("Workout Import")
             } footer: {
-                Text("Reads saved workout routes from Apple Workouts and apps that share routes with Health. Your watch may need time to sync. Import does not start a workout or write to Health. Automatic checks run when Where opens; they do not upload routes.")
+                Text("Reads saved workout routes from Apple Workouts and apps that share routes with Health. Your watch may need time to sync. Import does not start a workout or write to Health. Automatic checks run when WhereWolf opens; they do not upload routes.")
             }
 
             Section {
@@ -86,7 +86,7 @@ struct WorkoutImportView: View {
                 } header: {
                     Text("Recent Workouts · Up to 100")
                 } footer: {
-                    Text("Workouts without routes remain available to retry after syncing. Where’s own Health exports are excluded.")
+                    Text("Workouts without routes remain available to retry after syncing. WhereWolf’s own Health exports are excluded.")
                 }
             }
         }
@@ -169,7 +169,7 @@ private struct ImportedWorkoutView: View {
                 if !Task.isCancelled { self.error = error.localizedDescription }
             }
         }
-        .confirmationDialog("Remove this imported route from Where?", isPresented: $confirmRemoval, titleVisibility: .visible) {
+        .confirmationDialog("Remove this imported route from WhereWolf?", isPresented: $confirmRemoval, titleVisibility: .visible) {
             Button("Remove Local Route", role: .destructive) {
                 Task { await importer.remove(id); if !importer.imported.contains(where: { $0.id == id }) { dismiss() } }
             }

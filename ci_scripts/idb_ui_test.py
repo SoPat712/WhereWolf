@@ -40,7 +40,7 @@ def wait_for_app():
         buttons = {e.get("AXLabel") for e in state() if e.get("type") == "Button"}
         if {"Tracker", "Trip", "Settings"} <= buttons:
             return
-    raise AssertionError("Where did not finish presenting its drawer tabs")
+    raise AssertionError("WhereWolf did not finish presenting its drawer tabs")
 
 
 def element(label, kind=None):
@@ -64,8 +64,8 @@ def shot(name):
         run("screenshot", str(shots / name))
 
 
-subprocess.run(["xcrun", "simctl", "terminate", udid, "me.joshpatra.where"], capture_output=True)
-subprocess.check_call(["xcrun", "simctl", "launch", udid, "me.joshpatra.where"])
+subprocess.run(["xcrun", "simctl", "terminate", udid, "me.joshpatra.WhereWolf"], capture_output=True)
+subprocess.check_call(["xcrun", "simctl", "launch", udid, "me.joshpatra.WhereWolf"])
 wait_for_app()
 if os.environ.get("IDB_FOCUS_SIMULATOR") == "1":
     run("focus")
@@ -92,8 +92,8 @@ tap("Server")
 element("Add Header", "Button")
 shot("verified_server.png")
 # Reset navigation without touching preferences or recording state.
-subprocess.check_call(["xcrun", "simctl", "terminate", udid, "me.joshpatra.where"])
-subprocess.check_call(["xcrun", "simctl", "launch", udid, "me.joshpatra.where"])
+subprocess.check_call(["xcrun", "simctl", "terminate", udid, "me.joshpatra.WhereWolf"])
+subprocess.check_call(["xcrun", "simctl", "launch", udid, "me.joshpatra.WhereWolf"])
 wait_for_app()
 tap("Settings")
 for _ in range(8):

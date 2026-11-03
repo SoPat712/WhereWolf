@@ -1,6 +1,6 @@
 import CoreLocation
 import XCTest
-@testable import Where
+@testable import WhereWolf
 
 final class TripEndPromptTests: XCTestCase {
     private let origin = Date(timeIntervalSince1970: 1_000_000)

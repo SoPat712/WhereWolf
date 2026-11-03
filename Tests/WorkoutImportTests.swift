@@ -1,7 +1,7 @@
 import CoreLocation
 import Foundation
 import XCTest
-@testable import Where
+@testable import WhereWolf
 
 @MainActor
 final class WorkoutImportTests: XCTestCase {
@@ -29,7 +29,7 @@ final class WorkoutImportTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        suite = "Where.WorkoutImportTests.\(UUID().uuidString)"
+        suite = "WhereWolf.WorkoutImportTests.\(UUID().uuidString)"
         directory = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
         defaults = UserDefaults(suiteName: suite)!
     }
@@ -148,10 +148,10 @@ final class WorkoutImportTests: XCTestCase {
         XCTAssertEqual(model.imported.count, 1)
     }
 
-    func testWhereExportsAreExcludedWithoutExcludingOtherWorkoutApps() {
-        XCTAssertTrue(WorkoutImportHealthKitClient.isWhereExport(bundle: "old.where.fork", syncIdentifier: "where-trip-1700"))
-        XCTAssertTrue(WorkoutImportHealthKitClient.isWhereExport(bundle: Bundle.main.bundleIdentifier!, syncIdentifier: nil))
-        XCTAssertFalse(WorkoutImportHealthKitClient.isWhereExport(bundle: "com.apple.workout", syncIdentifier: "a-workout"))
+    func testWhereWolfExportsAreExcludedWithoutExcludingOtherWorkoutApps() {
+        XCTAssertTrue(WorkoutImportHealthKitClient.isWhereWolfExport(bundle: "old.wherewolf.fork", syncIdentifier: "wherewolf-trip-1700"))
+        XCTAssertTrue(WorkoutImportHealthKitClient.isWhereWolfExport(bundle: Bundle.main.bundleIdentifier!, syncIdentifier: nil))
+        XCTAssertFalse(WorkoutImportHealthKitClient.isWhereWolfExport(bundle: "com.apple.workout", syncIdentifier: "a-workout"))
     }
 
     func testFailedLocalSaveDoesNotMarkRouteImported() async throws {

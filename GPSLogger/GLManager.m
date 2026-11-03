@@ -17,7 +17,7 @@
 #import "SystemConfiguration/CaptiveNetwork.h"
 #import <Security/Security.h>
 #import <sqlite3.h>
-#import "Where-Swift.h"
+#import "WhereWolf-Swift.h"
 @import UserNotifications;
 @import NetworkExtension;
 
@@ -297,14 +297,14 @@ static NSString *GLWifiCoordinateString(id value) {
 static dispatch_queue_t GLNotificationQueue(void) {
     static dispatch_queue_t queue;
     static dispatch_once_t once;
-    dispatch_once(&once, ^{ queue = dispatch_queue_create("me.joshpatra.where.notifications", DISPATCH_QUEUE_SERIAL); });
+    dispatch_once(&once, ^{ queue = dispatch_queue_create("me.joshpatra.WhereWolf.notifications", DISPATCH_QUEUE_SERIAL); });
     return queue;
 }
 
 - (instancetype)init {
     if((self = [super init])) {
         [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(liveUpdatesFailed:)
-            name:@"WhereLiveUpdatesFailed" object:nil];
+            name:@"WhereWolfLiveUpdatesFailed" object:nil];
         [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(locationHealthWake)
             name:UIApplicationDidBecomeActiveNotification object:nil];
     }
@@ -318,7 +318,7 @@ static dispatch_queue_t GLNotificationQueue(void) {
 }
 
 - (void)liveUpdatesFailed:(NSNotification *)notification {
-    if(notification.object != WhereLocationEngine.shared || !self.trackingEnabled
+    if(notification.object != WhereWolfLocationEngine.shared || !self.trackingEnabled
        || !self.hasContinuousUpdates || self.didPauseByRadius) return;
     [self runEngineStandardUpdates];
 }
@@ -800,9 +800,9 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     }
     [self.locationHealthPolicy resetAtUptime:[self locationHealthUptime]];
     [self recordLocationHealthEvent:@{@"kind": @"manual_retry"}];
-    [WhereLocationEngine.shared resetLiveUpdatesFailure];
+    [WhereWolfLocationEngine.shared resetLiveUpdatesFailure];
     self.runningConfiguration = nil;
-    [[WhereLocationEngine shared] stopLiveUpdates];
+    [[WhereWolfLocationEngine shared] stopLiveUpdates];
     [self performSelector:@selector(runEngineStandardUpdates) withObject:nil afterDelay:1.0];
 }
 
@@ -813,7 +813,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
 - (void)setUseNewLocationEngine:(BOOL)enabled {
     if(enabled == self.useNewLocationEngine) return;
     [NSUserDefaults.standardUserDefaults setBool:enabled forKey:GLUseNewLocationEngineDefaultsName];
-    [WhereLocationEngine.shared resetLiveUpdatesFailure];
+    [WhereWolfLocationEngine.shared resetLiveUpdatesFailure];
     if(self.trackingEnabled && !self.didPauseByRadius) [self runEngineStandardUpdates];
     [[NSNotificationCenter defaultCenter] postNotificationName:GLSettingsChangedNotification object:self];
 }
@@ -831,20 +831,20 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
 
 - (BOOL)prepareLiveUpdates {
     if(!self.shouldUseLiveUpdates) {
-        [WhereLocationEngine.shared endBackgroundSession];
+        [WhereWolfLocationEngine.shared endBackgroundSession];
         return NO;
     }
     BOOL indicator = self.tripInProgress ? self.showBackgroundLocationIndicatorDuringTrip : self.showBackgroundLocationIndicator;
-    return [WhereLocationEngine.shared prepareLiveUpdatesWithBackgroundIndicator:indicator];
+    return [WhereWolfLocationEngine.shared prepareLiveUpdatesWithBackgroundIndicator:indicator];
 }
 
 - (void)updateLocationEngine {
     if(!self.trackingEnabled || !self.hasContinuousUpdates || self.didPauseByRadius) {
-        [WhereLocationEngine.shared endBackgroundSession];
+        [WhereWolfLocationEngine.shared endBackgroundSession];
         return;
     }
     BOOL live = [self prepareLiveUpdates];
-    if(live != WhereLocationEngine.shared.usingLiveUpdates) [self runEngineStandardUpdates];
+    if(live != WhereWolfLocationEngine.shared.usingLiveUpdates) [self runEngineStandardUpdates];
 }
 
 - (void)runEngineStandardUpdates {
@@ -874,11 +874,11 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
 
     // liveUpdates has no custom accuracy or pause-policy parameter.
     if(!live) {
-        [[WhereLocationEngine shared] stopLiveUpdates];
+        [[WhereWolfLocationEngine shared] stopLiveUpdates];
         [self.locationManager startUpdatingLocation];
     } else {
         [self.locationManager stopUpdatingLocation];
-        [[WhereLocationEngine shared] runLiveUpdatesWithActivityType:activity];
+        [[WhereWolfLocationEngine shared] runLiveUpdatesWithActivityType:activity];
     }
     [self reconcileLocationHealth];
 }
@@ -931,9 +931,9 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     if(![self.advancedTrackingOptions[@"location_health_log"] boolValue]) return;
     NSMutableDictionary *entry = [event mutableCopy];
     if(!entry[@"time"]) entry[@"time"] = @(NSDate.date.timeIntervalSince1970);
-    entry[@"engine"] = WhereLocationEngine.shared.usingLiveUpdates ? @"new" : @"original";
+    entry[@"engine"] = WhereWolfLocationEngine.shared.usingLiveUpdates ? @"new" : @"original";
     [self.locationHealthLog append:entry];
-    [NSNotificationCenter.defaultCenter postNotificationName:@"WhereLocationHealthChanged" object:self];
+    [NSNotificationCenter.defaultCenter postNotificationName:@"WhereWolfLocationHealthChanged" object:self];
 }
 
 - (void)drainLocationHealthEvents {
@@ -974,7 +974,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     [self drainLocationHealthEvents];
     if(!retry || [self locationHealthPauseReason]) return;
     // Preserve the failed-stream latch: automatic recovery must not re-enter its retry loop.
-    [WhereLocationEngine.shared stopLiveUpdates];
+    [WhereWolfLocationEngine.shared stopLiveUpdates];
     [self.locationManager stopUpdatingLocation];
     self.runningConfiguration = nil;
     [self runEngineStandardUpdates];
@@ -1377,7 +1377,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
             self.batchInProgress = NO;
             [self recordSendResult:GLSendStatusServerError];
             [self notifyUploadError:errorMessage title:@"iCloud Drive"];
-            [self deferUploadForResponse:nil error:[NSError errorWithDomain:@"WhereCloud" code:1 userInfo:nil]];
+            [self deferUploadForResponse:nil error:[NSError errorWithDomain:@"WhereWolfCloud" code:1 userInfo:nil]];
             [self sendingFinished];
             return;
         }
@@ -1410,7 +1410,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
         dispatch_async(dispatch_get_main_queue(), ^{
             NSError *resultError = transportError;
             if(!resultError && (!http || http.statusCode < 200 || http.statusCode >= 300)) {
-                resultError = [NSError errorWithDomain:@"WhereHTTP" code:http.statusCode userInfo:@{
+                resultError = [NSError errorWithDomain:@"WhereWolfHTTP" code:http.statusCode userInfo:@{
                     NSLocalizedDescriptionKey: [NSHTTPURLResponse localizedStringForStatusCode:http.statusCode]
                 }];
             }
@@ -2045,20 +2045,20 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
 }
 
 - (NSString *)engineState {
-    return WhereLocationEngine.shared.state;
+    return WhereWolfLocationEngine.shared.state;
 }
 
 - (void)locationManagerDidChangeAuthorization:(CLLocationManager *)manager {
     NSNumber *authorization = @(manager.authorizationStatus);
     if(self.lastAuthorization && ![self.lastAuthorization isEqual:authorization]
        && (manager.authorizationStatus == kCLAuthorizationStatusAuthorizedAlways || manager.authorizationStatus == kCLAuthorizationStatusAuthorizedWhenInUse)) {
-        [WhereLocationEngine.shared resetLiveUpdatesFailure];
+        [WhereWolfLocationEngine.shared resetLiveUpdatesFailure];
     }
     self.lastAuthorization = authorization;
-    [WhereLocationEngine.shared updateAuthorization:manager];
+    [WhereWolfLocationEngine.shared updateAuthorization:manager];
     if(manager.authorizationStatus == kCLAuthorizationStatusDenied || manager.authorizationStatus == kCLAuthorizationStatusRestricted) {
-        [WhereLocationEngine.shared stopLiveUpdates];
-        [WhereLocationEngine.shared endBackgroundSession];
+        [WhereWolfLocationEngine.shared stopLiveUpdates];
+        [WhereWolfLocationEngine.shared endBackgroundSession];
         [self.locationManager stopUpdatingLocation];
         self.runningConfiguration = nil;
     }
@@ -2077,7 +2077,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     self.qualityObservation = nil;
     self.trackingEnabled = YES;
     [self.locationHealthPolicy resetAtUptime:[self locationHealthUptime]];
-    [WhereLocationEngine.shared resetLiveUpdatesFailure];
+    [WhereWolfLocationEngine.shared resetLiveUpdatesFailure];
     self.runningConfiguration = nil;
     [self applyTrackingConfiguration];
 }
@@ -2087,8 +2087,8 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     BOOL recovery = [self.advancedTrackingOptions[@"background_recovery"] boolValue]
         && self.locationManager.authorizationStatus == kCLAuthorizationStatusAuthorizedAlways
         && [self.locationManager.class significantLocationChangeMonitoringAvailable];
-    [WhereLocationEngine.shared updateAuthorization:self.locationManager];
-    [WhereLocationEngine.shared configureAuthorizationSessionWithEnabled:[self.advancedTrackingOptions[@"explicit_service_session"] boolValue]
+    [WhereWolfLocationEngine.shared updateAuthorization:self.locationManager];
+    [WhereWolfLocationEngine.shared configureAuthorizationSessionWithEnabled:[self.advancedTrackingOptions[@"explicit_service_session"] boolValue]
         tracking:self.hasContinuousUpdates];
     if(!self.hasContinuousUpdates) {
         self.runningConfiguration = nil;
@@ -2103,9 +2103,9 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
 
     if(self.didPauseByRadius && self.stopsAutomaticallyActive && !self.tripInProgress) {
         self.engineStationary = YES;
-        [WhereLocationEngine.shared stopLiveUpdates];
-        [WhereLocationEngine.shared endBackgroundSession];
-        [WhereLocationEngine.shared recordStationary:YES];
+        [WhereWolfLocationEngine.shared stopLiveUpdates];
+        [WhereWolfLocationEngine.shared endBackgroundSession];
+        [WhereWolfLocationEngine.shared recordStationary:YES];
         [self.locationManager stopUpdatingLocation];
         [self.locationManager startMonitoringSignificantLocationChanges];
     } else if(self.tripInProgress) {
@@ -2117,8 +2117,8 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
         switch(self.trackingMode) {
             case kGLTrackingModeOff:
                 NSLog(@"Not monitoring continuous location");
-                [[WhereLocationEngine shared] stopLiveUpdates];
-                [[WhereLocationEngine shared] endBackgroundSession];
+                [[WhereWolfLocationEngine shared] stopLiveUpdates];
+                [[WhereWolfLocationEngine shared] endBackgroundSession];
                 [self.locationManager stopUpdatingLocation];
                 [self.locationManager stopUpdatingHeading];
                 [self.locationManager stopMonitoringSignificantLocationChanges];
@@ -2132,8 +2132,8 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
             case kGLTrackingModeSignificant:
                 NSLog(@"Monitoring significant location changes");
                 [self.locationManager startMonitoringSignificantLocationChanges];
-                [[WhereLocationEngine shared] stopLiveUpdates];
-                [[WhereLocationEngine shared] endBackgroundSession];
+                [[WhereWolfLocationEngine shared] stopLiveUpdates];
+                [[WhereWolfLocationEngine shared] endBackgroundSession];
                 [self.locationManager stopUpdatingLocation];
                 [self.locationManager stopUpdatingHeading];
                 break;
@@ -2174,7 +2174,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     self.motionGeneration++;
     self.motionQueryInProgress = NO;
     self.motionTrackingStarted = NO;
-    [WhereLocationEngine.shared configureAuthorizationSessionWithEnabled:NO tracking:NO];
+    [WhereWolfLocationEngine.shared configureAuthorizationSessionWithEnabled:NO tracking:NO];
     self.didPauseByRadius = NO;
     [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(runEngineStandardUpdates) object:nil];
     for(CLRegion *region in self.locationManager.monitoredRegions) {
@@ -2182,8 +2182,8 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     }
     [self.locationManager stopUpdatingLocation];
     [UIDevice currentDevice].batteryMonitoringEnabled = NO;
-    [[WhereLocationEngine shared] stopLiveUpdates];
-    [[WhereLocationEngine shared] endBackgroundSession];
+    [[WhereWolfLocationEngine shared] stopLiveUpdates];
+    [[WhereWolfLocationEngine shared] endBackgroundSession];
     [self.locationManager stopMonitoringVisits];
     [self.locationManager stopUpdatingHeading];
     [self.locationManager stopMonitoringSignificantLocationChanges];
@@ -2290,7 +2290,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
 
 - (UNMutableNotificationContent *)reminderContent {
     UNMutableNotificationContent *content = [[UNMutableNotificationContent alloc] init];
-    content.title = [NSString localizedUserNotificationStringForKey:@"Where" arguments:nil];
+    content.title = [NSString localizedUserNotificationStringForKey:@"WhereWolf" arguments:nil];
     content.body = [NSString localizedUserNotificationStringForKey:@"Location updates were stopped. Resume tracking or open the app." arguments:nil];
     content.sound = [UNNotificationSound defaultSound];
     content.categoryIdentifier = GLNotificationCategoryReminderName;
@@ -3374,7 +3374,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
 }
 
 - (void)locationManager:(CLLocationManager *)manager didFailWithError:(NSError *)error {
-    [WhereLocationEngine.shared recordFailure:error];
+    [WhereWolfLocationEngine.shared recordFailure:error];
 }
 
 - (NSDate *)queuedLocationDate:(NSDictionary *)record {
@@ -3433,7 +3433,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
 }
 
 - (void)processLocations:(NSArray *)locations {
-    [[WhereBackgroundRuntime shared] checkAudioFromLocation];
+    [[WhereWolfBackgroundRuntime shared] checkAudioFromLocation];
     if(!self.trackingEnabled || (!self.tripInProgress && self.trackingMode == kGLTrackingModeOff)) {
         return;
     }
@@ -3474,7 +3474,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
         }
         if(fabs(location.timestamp.timeIntervalSinceNow) <= 20) {
             usefulFix = YES;
-            [WhereLocationEngine.shared recordStandardLocation];
+            [WhereWolfLocationEngine.shared recordStandardLocation];
         }
         if([options[@"reject_jumps"] boolValue]) {
             if(self.discardPointsOutsideAccuracy > 0 && location.horizontalAccuracy > self.discardPointsOutsideAccuracy) { GLCountLocationRejection(rejected, @"accuracy"); continue; }
@@ -3487,7 +3487,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
             self.qualityObservation = location;
         }
         [usable addObject:location];
-        if((self.engineStationary || (self.shouldUseLiveUpdates && [WhereLocationEngine.shared.state isEqualToString:@"failed"]))
+        if((self.engineStationary || (self.shouldUseLiveUpdates && [WhereWolfLocationEngine.shared.state isEqualToString:@"failed"]))
            && !self.tripInProgress && self.trackingMode == kGLTrackingModeStandardAndSignificant
            && [self isValidLocation:location] && fabs(location.timestamp.timeIntervalSinceNow) <= 20) {
             self.engineStationary = NO;
@@ -3554,7 +3554,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
         if(lastLocationSeen && [loc.timestamp compare:lastLocationSeen.timestamp] == NSOrderedAscending) { GLCountLocationRejection(rejected, @"order"); continue; }
         if(fabs(loc.timestamp.timeIntervalSinceNow) <= 20) {
             usefulFix = YES;
-            [WhereLocationEngine.shared recordStandardLocation];
+            [WhereWolfLocationEngine.shared recordStandardLocation];
         }
 
         BOOL stationaryFilter = self.discardPointsWhileStationaryCurrentValue && [self.motionAuthorizationStatus isEqual:@"Allowed"];
@@ -3647,8 +3647,8 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     
     if(movementFix && !self.didPauseByRadius && self.lastTimeMovedBeyondStopThreshold
        && -self.lastTimeMovedBeyondStopThreshold.timeIntervalSinceNow > self.stopsAutomaticallyAfterSeconds) {
-        [[WhereLocationEngine shared] stopLiveUpdates];
-        [[WhereLocationEngine shared] endBackgroundSession];
+        [[WhereWolfLocationEngine shared] stopLiveUpdates];
+        [[WhereWolfLocationEngine shared] endBackgroundSession];
         [self.locationManager stopUpdatingLocation];
         self.runningConfiguration = nil;
         [self.locationManager stopUpdatingHeading];
@@ -3658,7 +3658,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
         self.radiusPauseDate = NSDate.date;
         [self.adaptivePolicy reset];
         [self removeAdaptiveRegion];
-        [WhereLocationEngine.shared recordStationary:YES];
+        [WhereWolfLocationEngine.shared recordStationary:YES];
         [self cancelLocalNotification];
         
         NSLog(@"Stopping loc updates");
@@ -3768,7 +3768,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     self.engineStationary = YES;
     self.runningConfiguration = nil;
     [self reconcileLocationHealth];
-    [WhereLocationEngine.shared recordStationary:YES];
+    [WhereWolfLocationEngine.shared recordStationary:YES];
     [self cancelLocalNotification];
     [self logAction:@"paused_location_updates"];
     
@@ -3815,7 +3815,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     if(!self.trackingEnabled) return;
     self.engineStationary = NO;
     [self reconcileLocationHealth];
-    [WhereLocationEngine.shared recordStationary:NO];
+    [WhereWolfLocationEngine.shared recordStationary:NO];
     for(CLRegion *region in self.locationManager.monitoredRegions) {
         if([region.identifier isEqualToString:@"resume-from-pause"]) [self.locationManager stopMonitoringForRegion:region];
     }

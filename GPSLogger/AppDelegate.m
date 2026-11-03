@@ -9,7 +9,7 @@
 #import "AppDelegate.h"
 #import "GLManager.h"
 #import "GLTripActions.h"
-#import "Where-Swift.h"
+#import "WhereWolf-Swift.h"
 #import "NSArray+map.h"
 
 @interface AppDelegate ()
@@ -42,17 +42,17 @@
 
     [GLManager sharedManager];
     [[GLManager sharedManager] noteLocationLaunch:launchOptions[UIApplicationLaunchOptionsLocationKey] != nil];
-    [[WhereBackgroundRuntime shared] start];
+    [[WhereWolfBackgroundRuntime shared] start];
     [[SharedStateObserver shared] start];
     [[HealthTripRecorder shared] start];
     [[WorkoutRouteImporter shared] start];
     [[GLManager sharedManager] syncTripLiveActivity];
-    [[WhereUploadScheduler shared] start];
-    [[WhereWatchLink shared] start];
+    [[WhereWolfUploadScheduler shared] start];
+    [[WhereWolfWatchLink shared] start];
     [[GLTripEndPrompt shared] start];
     [AppShortcutParameters update];
     [GLTripActions startUpdatingQuickActions];
-#if WHERE_TESTFLIGHT_DIAGNOSTICS
+#if WHEREWOLF_TESTFLIGHT_DIAGNOSTICS
     // TESTFLIGHT ONLY — REMOVE BEFORE APP STORE RELEASE
     [TestFlightDiagnostics start];
 #endif

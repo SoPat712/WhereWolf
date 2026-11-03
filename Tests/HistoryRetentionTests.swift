@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import Where
+@testable import WhereWolf
 
 final class HistoryRetentionTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 2_000_000_000)
@@ -123,7 +123,7 @@ final class HistoryRetentionTests: XCTestCase {
     }
 
     private func makeDefaults() -> UserDefaults {
-        let suite = "Where.HistoryRetentionTests.\(UUID().uuidString)"
+        let suite = "WhereWolf.HistoryRetentionTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defaults.set(suite, forKey: suiteNameKey)
         return defaults
@@ -131,7 +131,7 @@ final class HistoryRetentionTests: XCTestCase {
 
     private func makeDirectory() -> URL {
         FileManager.default.temporaryDirectory
-            .appendingPathComponent("Where.HistoryRetentionTests.\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("WhereWolf.HistoryRetentionTests.\(UUID().uuidString)", isDirectory: true)
     }
 
     private func record(_ store: RecentLocationHistory, timestamp: Date) {

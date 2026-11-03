@@ -32,7 +32,7 @@ not, by itself, reduce the GPS work used to obtain them.
 
 Status and Minimal have a widget-backed Live Activity. Blank uses app-only
 ActivityAttributes absent from the extension. It produced a short blank Island
-without a Where Lock Screen card in the owner's device check. Its unrendered
+without a WhereWolf Lock Screen card in the owner's device check. Its unrendered
 activity did not maintain live-update delivery in the iOS 27 background route
 check, so indicator-off tracking with Always access uses the original engine.
 This presentation is version-dependent and needs rechecking after system updates.
@@ -57,7 +57,7 @@ Its energy cost remains unmeasured.
 
 Notifications remain an independent, opt-in warning mechanism. Problems Only
 hides routine status while retaining existing missed-update and upload-error
-messages. A notification does not keep Where running. A missed deadline does
+messages. A notification does not keep WhereWolf running. A missed deadline does
 not identify whether suspension, missing fixes or termination caused the gap.
 
 ## What still needs measurement
@@ -95,7 +95,7 @@ the option, the system Background App Refresh status, and the limitations in
 its info sheet. Existing point-quality filters still apply to delivered fixes.
 
 Apple documents relaunch through significant-change events. Its modern location
-session guidance also requires prompt restoration after launch; Where already
+session guidance also requires prompt restoration after launch; WhereWolf already
 restores its saved acquisition state during `GLManager` initialization. Neither
 route guarantees continuous process execution or a fixed recording interval.
 See [significant-change monitoring](https://developer.apple.com/documentation/corelocation/cllocationmanager/startmonitoringsignificantlocationchanges())
@@ -110,7 +110,7 @@ significant-change and region mechanisms rather than promising fixed wakeups.
 
 [LocoKit2](https://github.com/sobri909/LocoKit2/blob/main/Sources/LocoKit2/Managers/LocomotionManager.swift)
 currently uses a second, low-accuracy manager alongside its recording manager
-in one operating mode. Where's classic manager already requests unrestricted
+in one operating mode. WhereWolf's classic manager already requests unrestricted
 distance delivery, background updates and the user's accuracy. With accuracy
 better than 1 km, that matches [Apple DTS's documented conditions](https://developer.apple.com/forums/thread/726945)
 for indicator-off continuous tracking. A second manager has no measured benefit

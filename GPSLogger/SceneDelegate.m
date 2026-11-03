@@ -1,6 +1,6 @@
 //
 //  SceneDelegate.m
-//  Where
+//  WhereWolf
 //
 //  Created by Aaron Parecki on 12/10/23.
 //  Copyright © 2023 Aaron Parecki. All rights reserved.
@@ -12,7 +12,7 @@
 #import "GLManager.h"
 #import "GLTripActions.h"
 #import "NSArray+map.h"
-#import "Where-Swift.h"
+#import "WhereWolf-Swift.h"
 @import SwiftUI;
 
 @implementation SceneDelegate
@@ -40,7 +40,7 @@
     NSURL *url = context.URL;
     
     if([[url host] isEqualToString:@"tracker"]) {
-        [[NSNotificationCenter defaultCenter] postNotificationName:@"WhereOpenTracker" object:nil];
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"WhereWolfOpenTracker" object:nil];
     }
     if([[url host] isEqualToString:@"setup"]) {
         NSURLComponents *urlComponents = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
@@ -87,7 +87,7 @@
 
     UIWindowScene *windowScene = (UIWindowScene *)scene;
     self.window = [[UIWindow alloc] initWithWindowScene:windowScene];
-    self.window.rootViewController = [WhereRootHosting makeRoot];
+    self.window.rootViewController = [WhereWolfRootHosting makeRoot];
     [self.window makeKeyAndVisible];
 
     if(connectionOptions.URLContexts.count > 0) {

@@ -242,7 +242,7 @@ struct TrackerSpeedometer: View {
         .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(isReplaying ? "Recorded" : "Current") speed \(displayedSpeed) \(bridge.speedUnit)")
-        .accessibilityIdentifier("where.map.speed")
+        .accessibilityIdentifier("wherewolf.map.speed")
     }
 }
 
@@ -297,7 +297,7 @@ struct ReplayStatusOverlay: View {
         .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityText(status))
-        .accessibilityIdentifier("where.map.replay-status")
+        .accessibilityIdentifier("wherewolf.map.replay-status")
     }
 
     private func title(_ status: ReplayStatus) -> some View {

@@ -3,14 +3,14 @@ import MapKit
 import SwiftUI
 import UIKit
 import XCTest
-@testable import Where
+@testable import WhereWolf
 
 @MainActor
 final class DrawerLayoutTests: XCTestCase {
     func testTabControlsMatchFindMyOpenAndClosed() async throws {
         try await withDrawer(tabs: AnyView(DrawerTabStrip(selection: 0, onSelect: { _ in }))) { panel, _ in
             @MainActor func findTabs(_ view: UIView) -> UIView? {
-                if view.accessibilityIdentifier == "where.panel.tabs" { return view }
+                if view.accessibilityIdentifier == "wherewolf.panel.tabs" { return view }
                 return view.subviews.lazy.compactMap(findTabs).first
             }
             let tabs = try XCTUnwrap(findTabs(panel.view))
@@ -358,7 +358,7 @@ private final class DrawerAnimationClock: NSObject {
 }
 
 @MainActor
-final class WhereTabRoutingTests: XCTestCase {
+final class WhereWolfTabRoutingTests: XCTestCase {
     func testExternalSelectionRoutesBetweenBothMapTabsAndSettings() async throws {
         try await withShell(settleDrawer: false) { shell, _, map in
             var callbacks: [Int] = []
@@ -668,7 +668,7 @@ final class WhereTabRoutingTests: XCTestCase {
         }
     }
 
-    private func update(_ shell: WhereShellController, selection: Int, activation: Int = 0, map: MKMapView? = nil,
+    private func update(_ shell: WhereWolfShellController, selection: Int, activation: Int = 0, map: MKMapView? = nil,
                         completeTransition: Bool = true) {
         let map = map ?? shell.currentMap() ?? MKMapView()
         shell.update(map: AnyView(ShellTestMap(map: map)), controls: AnyView(Text("Controls").frame(height: 100)),
@@ -681,11 +681,11 @@ final class WhereTabRoutingTests: XCTestCase {
     }
 
     private func withShell(settleDrawer: Bool = true,
-                           _ run: (WhereShellController, MapControlPanelController, MKMapView) async throws -> Void) async throws {
+                           _ run: (WhereWolfShellController, MapControlPanelController, MKMapView) async throws -> Void) async throws {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.first as? UIWindowScene)
         let previous = scene.windows.first(where: \.isKeyWindow)
         let map = MKMapView()
-        let shell = WhereShellController(
+        let shell = WhereWolfShellController(
             map: AnyView(ShellTestMap(map: map)), controls: AnyView(Text("Controls").frame(height: 100)),
             settings: AnyView(NavigationStack { Text("Settings") }), selection: 0, controlsID: 0, onSelect: { _ in }
         )
@@ -719,7 +719,7 @@ final class WhereTabRoutingTests: XCTestCase {
         observer.start()
         defer { observer.stop() }
         await fulfillment(of: [settled], timeout: 15)
-        guard observer.completed else { throw NSError(domain: "WhereTabRoutingTests", code: 1) }
+        guard observer.completed else { throw NSError(domain: "WhereWolfTabRoutingTests", code: 1) }
     }
 
     private func assertGeometry(_ actual: DrawerBarGeometry, equals expected: DrawerBarGeometry,
@@ -731,11 +731,11 @@ final class WhereTabRoutingTests: XCTestCase {
         XCTAssertEqual(actual.radius, expected.radius, accuracy: 1, file: file, line: line)
     }
 
-    private func panelController(in shell: WhereShellController) -> MapControlPanelController? {
+    private func panelController(in shell: WhereWolfShellController) -> MapControlPanelController? {
         shell.view.subviews.lazy.compactMap { $0.next as? MapControlPanelController }.first
     }
 
-    private func mapChildren(_ shell: WhereShellController) -> [UIViewController] {
+    private func mapChildren(_ shell: WhereWolfShellController) -> [UIViewController] {
         var visited: Set<ObjectIdentifier> = []
         var result: [UIViewController] = []
         @MainActor func visit(_ controller: UIViewController) {

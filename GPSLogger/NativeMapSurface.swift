@@ -181,7 +181,7 @@ private final class AttributionMapView: MKMapView {
 
     private func configureLegalButton() {
         legalButton.accessibilityLabel = NSLocalizedString("Legal", comment: "Apple Maps legal information")
-        legalButton.accessibilityIdentifier = "where.map.legal"
+        legalButton.accessibilityIdentifier = "wherewolf.map.legal"
         legalButton.accessibilityTraits = .link
         legalButton.addTarget(self, action: #selector(openLegal), for: .touchUpInside)
         legalButton.isHidden = true
@@ -1355,7 +1355,7 @@ struct NativeMapSurface: UIViewRepresentable {
 
         func mapView(_ mapView: MKMapView, didAdd views: [MKAnnotationView]) {
             for view in views where view.annotation is MKUserLocation {
-                view.accessibilityIdentifier = "where.map.user-location"
+                view.accessibilityIdentifier = "wherewolf.map.user-location"
             }
             alignMarkers(on: mapView)
         }
@@ -1366,7 +1366,7 @@ struct NativeMapSurface: UIViewRepresentable {
                     ?? PresentedUserLocationView(annotation: annotation, reuseIdentifier: "LiveLocation")
                 view.presentedCenter = nil
                 view.annotation = annotation
-                view.accessibilityIdentifier = "where.map.user-location"
+                view.accessibilityIdentifier = "wherewolf.map.user-location"
                 return view
             }
             if parent.replayRoute != nil {
@@ -1381,7 +1381,7 @@ struct NativeMapSurface: UIViewRepresentable {
                 view.animatesWhenAdded = false
                 view.isAccessibilityElement = true
                 view.accessibilityLabel = parent.selectedTitle
-                view.accessibilityIdentifier = "where.map.replay-marker"
+                view.accessibilityIdentifier = "wherewolf.map.replay-marker"
                 view.displayPriority = .required
                 view.canShowCallout = false
                 return view

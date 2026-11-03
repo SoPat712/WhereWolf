@@ -1,6 +1,6 @@
 //
 //  HealthTripRecorder.swift
-//  Where
+//  WhereWolf
 //
 //  Optional Apple Health export for trip modes that have a Health workout type. Route points are
 //  copied only after GLManager commits an accepted location, and the copy is independent of the
@@ -142,7 +142,7 @@ enum HealthRouteCodec {
         guard let object = try? JSONSerialization.jsonObject(with: data),
               let values = object as? [String: Any],
               let mode = values["mode"] as? String else { return nil }
-        let tripID = fallbackTripID ?? "where-trip-\(Int((fallbackStart ?? Date.distantPast).timeIntervalSince1970))"
+        let tripID = fallbackTripID ?? "wherewolf-trip-\(Int((fallbackStart ?? Date.distantPast).timeIntervalSince1970))"
         let start = finiteDouble(values["start"]).map(Date.init(timeIntervalSince1970:)) ?? fallbackStart
         guard let start else { return nil }
         let end = finiteDouble(values["end"]).map(Date.init(timeIntervalSince1970:))
@@ -253,7 +253,7 @@ private enum HealthTripRecorderError: LocalizedError {
 
 enum HealthBuildSupport {
     static var enabled: Bool {
-        guard let value = Bundle.main.object(forInfoDictionaryKey: "WhereHealthKitEnabled") else { return true }
+        guard let value = Bundle.main.object(forInfoDictionaryKey: "WhereWolfHealthKitEnabled") else { return true }
         if let number = value as? NSNumber { return number.boolValue }
         return (value as? NSString)?.boolValue ?? false
     }
@@ -282,7 +282,7 @@ private final class HealthKitTripHealthClient: HealthTripHealthClient {
                 if let error {
                     completion(error.localizedDescription)
                 } else if store.authorizationStatus(for: HKObjectType.workoutType()) != .sharingAuthorized {
-                    completion("Where isn't allowed to save workouts. You can allow it in the Health app, under Profile → Apps → Where.")
+                    completion("WhereWolf isn't allowed to save workouts. You can allow it in the Health app, under Profile → Apps → WhereWolf.")
                 } else {
                     completion(nil)
                 }
@@ -430,7 +430,7 @@ struct HealthTripRecorderDependencies {
 
     init(dependencies: HealthTripRecorderDependencies) {
         self.dependencies = dependencies
-        self.queue = DispatchQueue(label: "me.joshpatra.where.healthtrips", qos: .utility)
+        self.queue = DispatchQueue(label: "me.joshpatra.WhereWolf.healthtrips", qos: .utility)
         super.init()
     }
 
@@ -801,7 +801,7 @@ struct HealthTripRecorderDependencies {
     }
 
     private static func tripID(start: Date) -> String {
-        "where-trip-\(Int(start.timeIntervalSince1970))"
+        "wherewolf-trip-\(Int(start.timeIntervalSince1970))"
     }
 
     private func distance(of locations: [CLLocation]) -> CLLocationDistance {

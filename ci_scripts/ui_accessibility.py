@@ -26,8 +26,8 @@ def read_state(ui):
             if e.get("type") == "NavigationBar" and e.get("pid") == app_pid
             and e["frame"]["height"] > 0][-1:]
     has_tabs = any(e.get("AXLabel") == "Tab Bar" or e.get("type") == "TabBar"
-                   or e.get("AXUniqueId") == "where.system.tabs"
-                   or e.get("AXIdentifier") == "where.system.tabs" for e in elements)
+                   or e.get("AXUniqueId") == "wherewolf.system.tabs"
+                   or e.get("AXIdentifier") == "wherewolf.system.tabs" for e in elements)
     present = {(e.get("type"), e.get("AXLabel")) for e in elements}
 
     # The alternate reader includes clipped content; merge only native navigation.
@@ -51,5 +51,5 @@ def read_state(ui):
 def user_location(elements):
     """Find MapKit's system annotation without depending on its localized label or AX type."""
     return next((e for e in elements
-                 if e.get("AXUniqueId") == "where.map.user-location"
-                 or e.get("AXIdentifier") == "where.map.user-location"), None)
+                 if e.get("AXUniqueId") == "wherewolf.map.user-location"
+                 or e.get("AXIdentifier") == "wherewolf.map.user-location"), None)

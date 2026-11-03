@@ -49,7 +49,7 @@ struct SettingsView: View {
             } header: {
                 SettingsSectionHeader(title: "Connection", topic: .permissions)
             } footer: {
-                Text("Always access lets Where record locations in the background.")
+                Text("Always access lets WhereWolf record locations in the background.")
             }
 
             Section {
@@ -133,7 +133,7 @@ struct SettingsView: View {
                 Text("Optional alerts for interrupted tracking and upload errors. Problems Only hides routine pause, resume, and trip messages. Notifications do not keep the app running.")
             }
 
-#if WHERE_TESTFLIGHT_DIAGNOSTICS
+#if WHEREWOLF_TESTFLIGHT_DIAGNOSTICS
             // TESTFLIGHT ONLY — REMOVE BEFORE APP STORE RELEASE
             Section {
                 NavigationLink(destination: DiagnosticsView()) {
@@ -147,11 +147,11 @@ struct SettingsView: View {
                     SettingsRowLabel(title: "Tip Jar", symbol: "heart.fill", color: .pink)
                 }
                 .foregroundStyle(.primary)
-                Link(destination: URL(string: "https://sopat712.github.io/Where/")!) {
+                Link(destination: URL(string: "https://sopat712.github.io/WhereWolf/")!) {
                     SettingsRowLabel(title: "Support", symbol: "questionmark.circle.fill", color: .blue)
                 }
                 .foregroundStyle(.primary)
-                Link(destination: URL(string: "https://sopat712.github.io/Where/privacy/")!) {
+                Link(destination: URL(string: "https://sopat712.github.io/WhereWolf/privacy/")!) {
                     SettingsRowLabel(title: "Privacy Policy", symbol: "hand.raised.fill", color: .gray)
                 }
                 .foregroundStyle(.primary)
@@ -410,7 +410,7 @@ struct BackgroundSettingsView: View {
                     SettingsRowLabel(title: "Location Updates & Recovery", symbol: "location.magnifyingglass", color: .blue)
                 }
                 LabeledContent("Background App Refresh", value: bridge.backgroundRefreshStatus)
-                Text("Recovery monitoring keeps significant-change location monitoring alongside Standard tracking, including trips. It requires Always location access and can help iOS relaunch Where after system termination. Events are coarse and may be delayed; Background App Refresh restrictions can limit relaunch. More wakeups can use additional battery.")
+                Text("Recovery monitoring keeps significant-change location monitoring alongside Standard tracking, including trips. It requires Always location access and can help iOS relaunch WhereWolf after system termination. Events are coarse and may be delayed; Background App Refresh restrictions can limit relaunch. More wakeups can use additional battery.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                 Button("Retry Background Helpers") { bridge.retryBackgroundRuntime() }
@@ -418,7 +418,7 @@ struct BackgroundSettingsView: View {
             } header: {
                 SettingsSectionHeader(title: "Background Runtime", topic: .runtime)
             } footer: {
-                Text("Hide While Audio Plays needs Always location access. It ends tracking and trip Live Activities after two audio checks at least 15 seconds apart. They may return only when Where is next opened. Blank keeps the Island empty and omits the Lock Screen card. With Always access and the background indicator off, it uses the original location engine. Silent audio can use more battery. Explicit Service Session requests authorization on iOS 18 and later and does not guarantee background execution. These options run only while tracking has location access.")
+                Text("Hide While Audio Plays needs Always location access. It ends tracking and trip Live Activities after two audio checks at least 15 seconds apart. They may return only when WhereWolf is next opened. Blank keeps the Island empty and omits the Lock Screen card. With Always access and the background indicator off, it uses the original location engine. Silent audio can use more battery. Explicit Service Session requests authorization on iOS 18 and later and does not guarantee background execution. These options run only while tracking has location access.")
             }
         }
         .navigationTitle("Background")

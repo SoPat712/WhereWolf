@@ -1,5 +1,5 @@
 import XCTest
-@testable import Where
+@testable import WhereWolf
 
 final class SettingsReliabilityTests: XCTestCase {
     func testWifiSelectionTreatsBSSIDSpellingsAsOneNetwork() throws {

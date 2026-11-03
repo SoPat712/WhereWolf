@@ -1,7 +1,7 @@
 import CoreLocation
 import Foundation
 import XCTest
-@testable import Where
+@testable import WhereWolf
 
 @MainActor
 final class LocationEngineRecoveryTests: XCTestCase {
@@ -60,7 +60,7 @@ final class LocationEngineRecoveryTests: XCTestCase {
     }
 
     @MainActor
-    private final class BackgroundSession: _WhereLocationBackgroundSession {
+    private final class BackgroundSession: _WhereWolfLocationBackgroundSession {
         private(set) var invalidations = 0
 
         func invalidate() {
@@ -82,7 +82,7 @@ final class LocationEngineRecoveryTests: XCTestCase {
         var notifications = 0
         var observedCleanup = false
         let observer = NotificationCenter.default.addObserver(
-            forName: Notification.Name("WhereLiveUpdatesFailed"), object: engine, queue: .main
+            forName: Notification.Name("WhereWolfLiveUpdatesFailed"), object: engine, queue: .main
         ) { _ in
             notifications += 1
             observedCleanup = !engine.usingLiveUpdates
@@ -129,7 +129,7 @@ final class LocationEngineRecoveryTests: XCTestCase {
         let engine = makeEngine(source: source, recorder: recorder)
         var notifications = 0
         let observer = NotificationCenter.default.addObserver(
-            forName: Notification.Name("WhereLiveUpdatesFailed"), object: engine, queue: .main
+            forName: Notification.Name("WhereWolfLiveUpdatesFailed"), object: engine, queue: .main
         ) { _ in notifications += 1 }
         defer { NotificationCenter.default.removeObserver(observer) }
 
@@ -152,7 +152,7 @@ final class LocationEngineRecoveryTests: XCTestCase {
         let engine = makeEngine(source: source, recorder: recorder)
         var notifications = 0
         let observer = NotificationCenter.default.addObserver(
-            forName: Notification.Name("WhereLiveUpdatesFailed"), object: engine, queue: .main
+            forName: Notification.Name("WhereWolfLiveUpdatesFailed"), object: engine, queue: .main
         ) { _ in notifications += 1 }
         defer { NotificationCenter.default.removeObserver(observer) }
 
@@ -248,10 +248,10 @@ final class LocationEngineRecoveryTests: XCTestCase {
         session: BackgroundSession? = nil,
         state: EngineState? = nil,
         authorization: CLAuthorizationStatus = .authorizedAlways
-    ) -> WhereLocationEngine {
+    ) -> WhereWolfLocationEngine {
         let state = state ?? EngineState()
         let session = session ?? BackgroundSession()
-        let dependencies = WhereLocationEngine.Dependencies(
+        let dependencies = WhereWolfLocationEngine.Dependencies(
             liveUpdates: source.make,
             sleep: recorder.sleep,
             trackingEnabled: { state.trackingEnabled },
@@ -261,7 +261,7 @@ final class LocationEngineRecoveryTests: XCTestCase {
             processStationary: { _ in },
             makeBackgroundSession: { session }
         )
-        return WhereLocationEngine(dependencies: dependencies, authorization: authorization)
+        return WhereWolfLocationEngine(dependencies: dependencies, authorization: authorization)
     }
 
     private func waitUntil(_ predicate: () -> Bool) async {

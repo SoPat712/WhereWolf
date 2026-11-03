@@ -1,6 +1,6 @@
 import CoreLocation
 import XCTest
-@testable import Where
+@testable import WhereWolf
 
 final class LiveActivityAudioPolicyTests: XCTestCase {
     func testOtherAudioHidesEveryActivityType() {
