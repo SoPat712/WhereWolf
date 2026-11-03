@@ -8,6 +8,17 @@ import WatchConnectivity
 
 enum WhereWolfLinks {
     static let privacy = URL(string: "https://sopat712.github.io/WhereWolf/privacy/")!
+    static let health = URL(string: "x-apple-health://")!
+}
+
+extension OnboardingPermissionStatus {
+    init(healthRequestStatus: HKAuthorizationRequestStatus) {
+        switch healthRequestStatus {
+        case .unnecessary: self = .reviewed
+        case .shouldRequest, .unknown: self = .notDetermined
+        @unknown default: self = .notDetermined
+        }
+    }
 }
 
 extension GLManagerBridge {
@@ -36,12 +47,6 @@ extension GLManagerBridge {
         await withCheckedContinuation { continuation in
             setHealthEnabled(true) { continuation.resume(returning: $0) }
         }
-    }
-
-    @MainActor func requestWorkoutImportAccess() async -> String? {
-        await workoutImporter.connect()
-        refresh()
-        return workoutImporter.error
     }
 
     func applySetupURL(_ url: URL) -> Bool {
@@ -87,7 +92,7 @@ extension GLManagerBridge {
         return true
     }
 
-    @MainActor func onboardingStatus() async -> OnboardingStatus {
+    @MainActor func onboardingStatus(canOpenURL: @MainActor (URL) -> Bool) async -> OnboardingStatus {
         refresh()
         let gl = GLManager.shared()!
         var result = OnboardingStatus()
@@ -122,20 +127,23 @@ extension GLManagerBridge {
         result.notificationsEnabled = notifications
         result.healthAvailable = healthAvailable
         if healthAvailable {
-            switch HKHealthStore().authorizationStatus(for: HKObjectType.workoutType()) {
-            case .notDetermined: result.healthWrite = .notDetermined
-            case .sharingAuthorized: result.healthWrite = .granted
-            case .sharingDenied: result.healthWrite = .denied
-            @unknown default: result.healthWrite = .unavailable
+            let requestStatus = await withCheckedContinuation { continuation in
+                HKHealthStore().getRequestStatusForAuthorization(toShare: HealthAuthorizationTypes.share,
+                                                                read: HealthAuthorizationTypes.read) { status, _ in
+                    continuation.resume(returning: status)
+                }
             }
-            result.healthEnabled = healthEnabled
-            result.healthReadReviewed = workoutImporter.connected
-        } else { result.healthWrite = .unavailable }
+            result.health = OnboardingPermissionStatus(healthRequestStatus: requestStatus)
+            result.healthAppAvailable = canOpenURL(WhereWolfLinks.health)
+        }
         result.cloudSelected = savesToICloudDrive
         result.serverConfigured = endpointSet
         result.destination = savesToICloudDrive ? (cloudAvailable ? "iCloud Drive" : "iCloud Drive · Unavailable")
             : endpointSet ? (URL(string: gl.apiEndpointURL() ?? "")?.host ?? "Your server") : "This iPhone"
         result.usagePreset = usageProfile
+        result.requestedAccuracy = accuracyPreset == 1 ? "Best" : accuracyPreset == 2 ? "Navigation" : SettingFormat.meters(accuracyMeters)
+        result.minimumDistance = discardDistanceMeters < 1 ? "Off" : SettingFormat.meters(discardDistanceMeters)
+        result.minimumTime = discardSecondsValue < 1 ? "Off" : SettingFormat.seconds(discardSecondsValue)
         result.tracking = trackingOn
         result.tripActive = tripInProgress
         result.liveActivity = liveActivityEnabled ? liveActivityAppearance.capitalized : "Off"
@@ -157,22 +165,23 @@ extension GLManagerBridge {
 }
 
 extension OnboardingModel {
-    static func live() -> OnboardingModel {
+    static func live(openURL: @escaping @MainActor (URL) -> Void = { UIApplication.shared.open($0) },
+                     canOpenURL: @escaping @MainActor (URL) -> Bool = { UIApplication.shared.canOpenURL($0) }) -> OnboardingModel {
         let bridge = GLManagerBridge.shared
         return OnboardingModel(defaults: .standard, actions: OnboardingActions(
-            loadStatus: { await bridge.onboardingStatus() },
+            loadStatus: { await bridge.onboardingStatus(canOpenURL: canOpenURL) },
             request: { permission in
                 switch permission {
                 case .whileUsing: bridge.requestWhenInUsePermission()
                 case .always: bridge.requestAlwaysPermission()
                 case .motion: bridge.requestMotionPermission()
                 case .notifications: await bridge.requestOnboardingNotifications()
-                case .healthWrite: return await bridge.requestOnboardingHealth()
-                case .healthRead: return await bridge.requestWorkoutImportAccess()
+                case .health: return await bridge.requestOnboardingHealth()
                 }
                 return nil
             },
-            openSettings: { UIApplication.shared.open(URL(string: UIApplication.openSettingsURLString)!) },
+            openSettings: { openURL(URL(string: UIApplication.openSettingsURLString)!) },
+            openHealth: { if canOpenURL(WhereWolfLinks.health) { openURL(WhereWolfLinks.health) } },
             applyDestination: { bridge.applyOnboardingDestination($0) },
             applyPreset: { bridge.usageProfile = $0 },
             startTracking: { bridge.trackingOn = true }

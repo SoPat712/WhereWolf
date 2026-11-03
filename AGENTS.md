@@ -127,17 +127,24 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
 
 ## Architecture
 
-- **Onboarding**: eight native glass panels float over the existing, non-interactive
-  map: Welcome, Permissions, Destination, Tracking, Sending, Live Activity,
-  Staying Active and Done. Use `ViewThatFits`; scroll only for content that cannot
-  fit. `OnboardingModel` owns order, live status and injected actions; permissions
+- **Onboarding**: nine native glass panels float over the existing, non-interactive
+  map: Welcome, Permissions, Destination, Tracking, Fine-Tune, Sending, Live Activity,
+  Staying Active and Done. Tracking is a six-row native inset preset list; Fine-Tune
+  owns accuracy, distance/time menus and pause/visit toggles. Default text never
+  scrolls on 390/402-point phones; use `ViewThatFits` for larger text only.
+  Summary preset edits return to Tracking; accuracy/filter edits to Fine-Tune.
+  `OnboardingModel` owns order, live status and injected actions; permissions
   run only from buttons. Settings' first row reopens it. Done and Skip All set
   `WhereWolfOnboardingCompleted`; only Done's Start Tracking starts recording.
   Skip advances a step; its menu and accessibility action offer Skip All.
   Presets and edits apply through `GLManagerBridge` immediately; finishing must
   not reapply a preset over Custom edits. Scene and pasted setup links share its
-  validated parser. Health read access is private: report access reviewed, never
-  approval. The map enables its location dot only with existing authorization.
+  validated parser. Health uses the export/import request types with
+  `getRequestStatusForAuthorization`: Allow before review, Reviewed afterward,
+  never read approval or Open Settings. Manage in Health uses a checked
+  `x-apple-health://` URL; hide its button if unavailable and the row without HealthKit.
+  Other permission Settings actions use the injected main-actor URL opener.
+  The map enables its location dot only with existing authorization.
 - **Core stays Objective-C**: `GLManager` owns location, queueing
   (LOLDatabase/SQLite), batching, and HTTP. Don't rewrite it.
 - **Upstream integrations**: `TripModeStore` owns stable mode IDs, editable

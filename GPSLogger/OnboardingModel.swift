@@ -2,7 +2,7 @@ import Foundation
 import Observation
 
 enum OnboardingStep: CaseIterable, Identifiable, Hashable {
-    case welcome, permissions, destination, tracking, sending, liveActivity, stayingActive, done
+    case welcome, permissions, destination, tracking, fineTune, sending, liveActivity, stayingActive, done
 
     var id: Self { self }
 
@@ -12,6 +12,7 @@ enum OnboardingStep: CaseIterable, Identifiable, Hashable {
         case .permissions: return "Permissions"
         case .destination: return "Where Should It Send?"
         case .tracking: return "Tracking"
+        case .fineTune: return "Fine-Tune"
         case .sending: return "Sending"
         case .liveActivity: return "Live Activity"
         case .stayingActive: return "Staying Active"
@@ -21,7 +22,7 @@ enum OnboardingStep: CaseIterable, Identifiable, Hashable {
 }
 
 enum OnboardingPermission: CaseIterable, Equatable {
-    case whileUsing, always, motion, notifications, healthWrite, healthRead
+    case whileUsing, always, motion, notifications, health
 }
 
 enum OnboardingPermissionStatus: String {
@@ -29,6 +30,7 @@ enum OnboardingPermissionStatus: String {
     case granted = "Granted"
     case denied = "Denied"
     case limited = "Limited"
+    case reviewed = "Reviewed"
     case unavailable = "Unavailable"
 }
 
@@ -51,14 +53,16 @@ struct OnboardingStatus {
     var notifications = OnboardingPermissionStatus.notDetermined
     var notificationsEnabled = false
     var healthAvailable = false
-    var healthWrite = OnboardingPermissionStatus.notDetermined
-    var healthEnabled = false
-    // HealthKit deliberately does not reveal read authorization.
-    var healthReadReviewed = false
+    // This describes whether Health's request was answered, never read approval.
+    var health = OnboardingPermissionStatus.notDetermined
+    var healthAppAvailable = false
     var destination = "Keep on device for now"
     var cloudSelected = false
     var serverConfigured = false
     var usagePreset = 6
+    var requestedAccuracy = "Best"
+    var minimumDistance = "10 m"
+    var minimumTime = "5 s"
     var tracking = false
     var tripActive = false
     var liveActivity = "Blank"
@@ -90,8 +94,7 @@ struct OnboardingStatus {
             }
         case .motion: return motion
         case .notifications: return notifications
-        case .healthWrite: return healthAvailable ? healthWrite : .unavailable
-        case .healthRead: return healthAvailable ? .notDetermined : .unavailable
+        case .health: return healthAvailable ? health : .unavailable
         }
     }
 }
@@ -101,6 +104,7 @@ struct OnboardingActions {
     var loadStatus: @MainActor () async -> OnboardingStatus
     var request: @MainActor (OnboardingPermission) async -> String?
     var openSettings: @MainActor () -> Void
+    var openHealth: @MainActor () -> Void
     var applyDestination: @MainActor (OnboardingDestination) -> Bool
     var applyPreset: @MainActor (Int) -> Void
     var startTracking: @MainActor () -> Void
@@ -185,6 +189,7 @@ final class OnboardingModel {
     }
 
     func opensSettings(for permission: OnboardingPermission) -> Bool {
+        guard permission != .health else { return false }
         let value = status.permission(permission)
         return value == .denied || value == .limited
             || (permission == .always && alwaysRequested && status.location == .whileUsing)
@@ -192,6 +197,10 @@ final class OnboardingModel {
 
     func request(_ permission: OnboardingPermission) async {
         guard isPresented, loaded, !busy else { return }
+        if permission == .health && status.permission(.health) == .reviewed {
+            if status.healthAppAvailable { actions.openHealth() }
+            return
+        }
         if opensSettings(for: permission) {
             actions.openSettings()
             return
@@ -200,7 +209,7 @@ final class OnboardingModel {
         if permission == .always && !status.location.allowed { return }
         let value = status.permission(permission)
         guard value != .unavailable else { return }
-        guard value != .granted || permission == .notifications || permission == .healthWrite else { return }
+        guard value != .granted || permission == .notifications else { return }
         if permission == .always {
             guard canRequestAlways else { return }
             alwaysRequested = true
@@ -255,9 +264,15 @@ final class OnboardingModel {
     }
 
     var healthSummary: String {
-        if status.healthReadReviewed { return "Access reviewed" }
-        if status.healthEnabled { return "Save workouts: " + status.healthWrite.rawValue }
-        return "Skipped"
+        status.permission(.health).rawValue
+    }
+
+    var healthActionTitle: String? {
+        switch status.permission(.health) {
+        case .notDetermined: return "Allow"
+        case .reviewed: return status.healthAppAvailable ? "Manage in Health" : nil
+        default: return nil
+        }
     }
 
     func summary(for step: OnboardingStep) -> String {
@@ -266,6 +281,7 @@ final class OnboardingModel {
         case .permissions: return locationSummary
         case .destination: return status.destination + " · " + status.sendInterval
         case .tracking: return UsagePreset.name(selectedPreset)
+        case .fineTune: return status.requestedAccuracy + " · " + status.minimumDistance + " · " + status.minimumTime
         case .sending: return status.sendInterval
         case .liveActivity: return status.liveActivity + (status.hideForAudio ? " · hides for music" : "")
         case .stayingActive: return "\(status.activeHelpers) of 5 on"
@@ -296,6 +312,17 @@ enum UsagePreset {
         case 4: return "Walking or running: Standard, Best accuracy, Fitness activity."
         case 5: return "Detailed driving: Standard, Navigation accuracy, Automotive activity."
         default: return "Custom · Your current combination of settings."
+        }
+    }
+    static func setupDescription(_ value: Int) -> String {
+        switch value {
+        case 6: return "Detailed tracks, quiet when still"
+        case 1: return "Every GPS point, no automatic pausing"
+        case 3: return "Everyday history, stops when still"
+        case 2: return "Coarse history, lower battery use"
+        case 4: return "Detailed routes for outdoor exercise"
+        case 5: return "Navigation accuracy for driving"
+        default: return "Your current settings"
         }
     }
 }

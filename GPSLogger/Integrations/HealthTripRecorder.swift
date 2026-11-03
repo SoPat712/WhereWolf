@@ -259,6 +259,19 @@ enum HealthBuildSupport {
     }
 }
 
+enum HealthAuthorizationTypes {
+    static var share: Set<HKSampleType> {
+        var types: Set<HKSampleType> = [HKObjectType.workoutType(), HKSeriesType.workoutRoute()]
+        for case let distanceType? in HealthWorkout.all.map(\.distanceType) {
+            types.insert(HKQuantityType(distanceType))
+        }
+        return types
+    }
+
+    // Includes import's workout/route reads and export recovery's distance reads.
+    static var read: Set<HKObjectType> { Set(share.map { $0 as HKObjectType }) }
+}
+
 private final class HealthKitTripHealthClient: HealthTripHealthClient {
     private lazy var store = HKHealthStore()
 
@@ -270,14 +283,9 @@ private final class HealthKitTripHealthClient: HealthTripHealthClient {
 
     func requestAuthorization(completion: @escaping (String?) -> Void) {
         guard isAvailable else { completion("Apple Health is unavailable in this build."); return }
-        var types: Set<HKSampleType> = [HKObjectType.workoutType(), HKSeriesType.workoutRoute()]
-        for case let distanceType? in HealthWorkout.all.map(\.distanceType) {
-            types.insert(HKQuantityType(distanceType))
-        }
-        let readTypes: Set<HKObjectType> = Set(types.map { $0 as HKObjectType })
         // Read access lets recovery find a workout created just before a crash and attach its route
         // instead of creating a duplicate.
-        store.requestAuthorization(toShare: types, read: readTypes) { [store = self.store] _, error in
+        store.requestAuthorization(toShare: HealthAuthorizationTypes.share, read: HealthAuthorizationTypes.read) { [store = self.store] _, error in
             DispatchQueue.main.async {
                 if let error {
                     completion(error.localizedDescription)

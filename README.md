@@ -31,24 +31,30 @@ For Android, see [Colota](https://github.com/dietrichmax/colota) and its
 
 ## Setup Guide
 
-On first launch, eight glass panels float over the map: Welcome, Permissions,
-Destination, Tracking, Sending, Live Activity, Staying Active and Done. Panels
-use their content height and scroll only when the available space cannot fit it. Permissions includes While Using, Always, Precise Location,
+On first launch, nine glass panels float over the map: Welcome, Permissions,
+Destination, Tracking, Fine-Tune, Sending, Live Activity, Staying Active and Done.
+Panels fit without scrolling at the default text size on 390/402-point phones;
+larger text can scroll when needed. Permissions includes While Using, Always, Precise Location,
 optional Motion & Fitness, notifications and Apple Health. Permissions are requested
-only when you tap their buttons. Denied or limited access offers Open Settings;
-returning refreshes the status. Apple Health keeps route read approval private,
-so the guide reports when access was reviewed.
+only when you tap their buttons. Denied or limited location, motion or notification
+access offers Open Settings; returning refreshes the status. Apple Health offers
+Allow until its request is answered, then shows Reviewed and Manage in Health
+when the Health app can open. Change access in the Health app; read approval stays
+private. The row is hidden when HealthKit is unavailable.
 
 Paste a `wherewolf://setup` or `overland://setup` link from your server, enter an
 HTTP(S) endpoint and token with GeoJSON or OwnTracks format, choose iCloud Drive,
 or keep records on the device. Keeping records on the device clears the server
 endpoint and disables iCloud export; queued records remain available to send later.
-Preset choices and individual edits take effect immediately through the same
-settings as the main app. Everyday Detailed is preselected on new installs;
-existing settings stay saved.
+Tracking lists six presets with descriptions and a checkmark. Everyday Detailed
+is preselected on new installs; existing settings stay saved. Fine-Tune adjusts
+requested accuracy, minimum distance and time between points, automatic pausing
+and visit tracking. Edits take effect immediately through the main app's settings
+and change the preset to Custom. All Tracking Settings opens the full controls.
 
-The final summary lets you revisit each choice. **Start Tracking** begins
-recording with your chosen preset; **Finish Without Tracking** and **Skip All**
+The final summary opens Tracking for preset changes and Fine-Tune for accuracy
+or point filters. **Start Tracking** begins recording with your current settings;
+**Finish Without Tracking** and **Skip All**
 complete setup without starting it. Reopen the guide from the first row in
 Settings at any time. Skip advances one step; touch and hold it for Skip All.
 An existing recording continues when you reopen it.

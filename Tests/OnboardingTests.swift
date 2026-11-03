@@ -1,4 +1,7 @@
 import XCTest
+import CoreLocation
+import HealthKit
+import UIKit
 @testable import WhereWolf
 
 @MainActor
@@ -11,6 +14,7 @@ final class OnboardingTests: XCTestCase {
         var destinations: [OnboardingDestination] = []
         var events: [String] = []
         var settingsOpened = 0
+        var healthOpened = 0
         var destinationValid = true
         var onRequest: (@MainActor (OnboardingPermission) async -> Void)?
 
@@ -21,6 +25,7 @@ final class OnboardingTests: XCTestCase {
                 loadStatus: { self.status },
                 request: { self.requests.append($0); await self.onRequest?($0); return nil },
                 openSettings: { self.settingsOpened += 1 },
+                openHealth: { self.healthOpened += 1 },
                 applyDestination: { self.destinations.append($0); return self.destinationValid },
                 applyPreset: { self.events.append("preset:\($0)"); self.status.usagePreset = $0 },
                 startTracking: {
@@ -31,14 +36,14 @@ final class OnboardingTests: XCTestCase {
         }
     }
 
-    func testEightStepsStayInMockupOrderWithOrWithoutHealth() async {
+    func testNineStepsKeepFineTuneAfterTrackingWithOrWithoutHealth() async {
         let h = Harness(); defer { h.clean() }
         for health in [false, true] {
             h.status.healthAvailable = health
             let model = h.model(); await model.refresh()
-            XCTAssertEqual(model.steps, [.welcome, .permissions, .destination, .tracking, .sending, .liveActivity, .stayingActive, .done])
+            XCTAssertEqual(model.steps, [.welcome, .permissions, .destination, .tracking, .fineTune, .sending, .liveActivity, .stayingActive, .done])
             for step in model.steps { XCTAssertEqual(model.step, step); model.next() }
-            XCTAssertEqual(model.stepNumber, 8)
+            XCTAssertEqual(model.stepNumber, 9)
             model.back(); XCTAssertEqual(model.step, .stayingActive)
         }
     }
@@ -75,11 +80,13 @@ final class OnboardingTests: XCTestCase {
     func testDeniedLimitedAndReducedAccuracyOfferSettings() async {
         let h = Harness(); defer { h.clean() }
         h.status.location = .denied; h.status.motion = .limited; h.status.notifications = .denied
-        h.status.healthAvailable = true; h.status.healthWrite = .denied
         let model = h.model(); await model.refresh()
-        for permission in [OnboardingPermission.whileUsing, .always, .motion, .notifications, .healthWrite] {
+        for permission in [OnboardingPermission.whileUsing, .always, .motion, .notifications] {
+            XCTAssertTrue(model.opensSettings(for: permission))
             await model.request(permission)
         }
+        XCTAssertEqual(h.settingsOpened, 4)
+        model.openSettings() // The separate Precise Location button uses this action.
         XCTAssertEqual(h.settingsOpened, 5)
         h.status.location = .always; h.status.preciseLocation = false
         await model.refresh(); await model.request(.always)
@@ -88,27 +95,122 @@ final class OnboardingTests: XCTestCase {
         XCTAssertTrue(h.requests.isEmpty)
     }
 
-    func testOptionalAccessUsesInjectedActionsAndHealthReadStaysPrivate() async {
+    func testOptionalAccessUsesInjectedActions() async {
         let h = Harness(); defer { h.clean() }
         h.status.healthAvailable = true
         let model = h.model(); await model.refresh()
-        for permission in [OnboardingPermission.motion, .notifications, .healthWrite, .healthRead] {
+        for permission in [OnboardingPermission.motion, .notifications, .health] {
             await model.request(permission)
         }
-        XCTAssertEqual(h.requests, [.motion, .notifications, .healthWrite, .healthRead])
-        h.status.healthReadReviewed = true
-        await model.refresh()
-        XCTAssertEqual(model.healthSummary, "Access reviewed")
-        XCTAssertEqual(model.status.permission(.healthRead), .notDetermined)
+        XCTAssertEqual(h.requests, [.motion, .notifications, .health])
         XCTAssertTrue(h.events.isEmpty)
+    }
+
+    func testHealthRequestStatusOffersAllowUntilAnswered() async {
+        let h = Harness(); defer { h.clean() }
+        h.status.healthAvailable = true
+        let model = h.model()
+        for status in [HKAuthorizationRequestStatus.shouldRequest, .unknown] {
+            h.status.health = OnboardingPermissionStatus(healthRequestStatus: status)
+            await model.refresh()
+            XCTAssertEqual(model.status.permission(.health), .notDetermined)
+            XCTAssertEqual(model.healthActionTitle, "Allow")
+            XCTAssertFalse(model.opensSettings(for: .health))
+            await model.request(.health)
+        }
+        XCTAssertEqual(h.requests, [.health, .health])
+        XCTAssertEqual(h.settingsOpened, 0)
+        XCTAssertEqual(h.healthOpened, 0)
+    }
+
+    func testAnsweredHealthRequestIsReviewedAndOpensHealthWhenAvailable() async {
+        let h = Harness(); defer { h.clean() }
+        h.status.healthAvailable = true
+        h.status.healthAppAvailable = true
+        h.status.health = OnboardingPermissionStatus(healthRequestStatus: .unnecessary)
+        let model = h.model(); await model.refresh()
+        XCTAssertEqual(model.healthSummary, "Reviewed")
+        XCTAssertEqual(model.healthActionTitle, "Manage in Health")
+        XCTAssertFalse(model.opensSettings(for: .health))
+        await model.request(.health)
+        XCTAssertEqual(h.healthOpened, 1)
+        XCTAssertEqual(h.settingsOpened, 0)
+        XCTAssertTrue(h.requests.isEmpty)
+    }
+
+    func testReviewedHealthKeepsStatusWhenHealthCannotOpen() async {
+        let h = Harness(); defer { h.clean() }
+        h.status.healthAvailable = true
+        h.status.health = .reviewed
+        let model = h.model(); await model.refresh()
+        XCTAssertEqual(model.healthSummary, "Reviewed")
+        XCTAssertNil(model.healthActionTitle)
+        await model.request(.health)
+        XCTAssertEqual(h.healthOpened, 0)
+        XCTAssertEqual(h.settingsOpened, 0)
+        XCTAssertTrue(h.requests.isEmpty)
+    }
+
+    func testHealthNeverOffersSettingsForAnyPermissionStatus() async {
+        let h = Harness(); defer { h.clean() }
+        h.status.healthAvailable = true
+        let model = h.model()
+        for status in [OnboardingPermissionStatus.notDetermined, .granted, .denied, .limited, .reviewed, .unavailable] {
+            h.status.health = status; await model.refresh()
+            XCTAssertFalse(model.opensSettings(for: .health))
+            XCTAssertNotEqual(model.healthActionTitle, "Open Settings")
+            await model.request(.health)
+        }
+        XCTAssertEqual(h.settingsOpened, 0)
+    }
+
+    func testHealthRequestFinishesAsReviewedWithoutClaimingReadApproval() async {
+        let h = Harness(); defer { h.clean() }
+        h.status.healthAvailable = true
+        h.onRequest = { permission in
+            if permission == .health { h.status.health = .reviewed }
+        }
+        let model = h.model(); await model.refresh()
+        await model.request(.health)
+        XCTAssertEqual(model.healthSummary, "Reviewed")
+        XCTAssertNotEqual(model.status.permission(.health), .granted)
+        XCTAssertEqual(h.requests, [.health])
+    }
+
+    func testHealthRequestTypesCoverExportAndImport() {
+        let share = HealthAuthorizationTypes.share
+        let read = HealthAuthorizationTypes.read
+        XCTAssertTrue(share.contains(HKObjectType.workoutType()))
+        XCTAssertTrue(share.contains(HKSeriesType.workoutRoute()))
+        XCTAssertTrue(read.contains(HKObjectType.workoutType()))
+        XCTAssertTrue(read.contains(HKSeriesType.workoutRoute()))
+        for case let distance? in HealthWorkout.all.map(\.distanceType) {
+            XCTAssertTrue(share.contains(HKQuantityType(distance)))
+            XCTAssertTrue(read.contains(HKQuantityType(distance)))
+        }
+    }
+
+    func testLiveSettingsActionUsesInjectedURLOpenerOnMainActor() {
+        var opened: [URL] = []
+        let model = OnboardingModel.live(openURL: {
+            XCTAssertTrue(Thread.isMainThread)
+            opened.append($0)
+        }, canOpenURL: { _ in false })
+        model.openSettings()
+        XCTAssertEqual(opened, [URL(string: UIApplication.openSettingsURLString)!])
     }
 
     func testUnavailablePermissionsDoNotRequest() async {
         let h = Harness(); defer { h.clean() }
         h.status.motion = .unavailable
         let model = h.model(); await model.refresh()
-        for permission in [OnboardingPermission.motion, .healthWrite, .healthRead] { await model.request(permission) }
+        h.status.health = .reviewed; h.status.healthAppAvailable = true
+        await model.refresh()
+        XCTAssertEqual(model.status.permission(.health), .unavailable)
+        XCTAssertNil(model.healthActionTitle)
+        for permission in [OnboardingPermission.motion, .health] { await model.request(permission) }
         XCTAssertTrue(h.requests.isEmpty)
+        XCTAssertEqual(h.healthOpened, 0)
     }
 
     func testPresetAppliesThroughBridgeActionAndEditsRefreshToCustom() async {
@@ -181,6 +283,9 @@ final class OnboardingTests: XCTestCase {
         XCTAssertEqual(model.summary(for: .destination), "wherewolf.test · 1 min")
         XCTAssertEqual(model.summary(for: .stayingActive), "3 of 5 on")
         XCTAssertEqual(model.summary(for: .liveActivity), "Blank · hides for music")
+        h.status.requestedAccuracy = "Navigation"; h.status.minimumDistance = "25 m"; h.status.minimumTime = "30 s"
+        await model.refresh()
+        XCTAssertEqual(model.summary(for: .fineTune), "Navigation · 25 m · 30 s")
         for step in model.steps where step != .done && step != .welcome {
             model.go(to: .done); model.go(to: step)
             XCTAssertTrue(model.fixingSummary); model.next()
@@ -231,6 +336,26 @@ final class OnboardingDestinationTests: XCTestCase {
             GLManagerBridge.shared.refresh()
         }
         action(GLManagerBridge.shared, GLManager.shared())
+    }
+
+    func testEveryFineTuneBindingSwitchesThePresetToCustom() {
+        preservingSettings { bridge, manager in
+            let bindings = OnboardingTrackingBindings(bridge: bridge)
+            let edits: [(OnboardingTrackingBindings) -> Void] = [
+                { $0.accuracy.wrappedValue = 2; XCTAssertEqual(manager.desiredAccuracy, kCLLocationAccuracyBestForNavigation) },
+                { $0.accuracy.wrappedValue = 0; XCTAssertEqual(manager.desiredAccuracy, 100) },
+                { $0.distance.wrappedValue = 25; XCTAssertEqual(manager.discardPointsWithinDistance, 25) },
+                { $0.time.wrappedValue = 30; XCTAssertEqual(manager.discardPointsWithinSeconds, 30) },
+                { $0.pause.wrappedValue = true; XCTAssertTrue(manager.pausesAutomatically) },
+                { $0.visits.wrappedValue = true; XCTAssertTrue(manager.visitTrackingEnabled) }
+            ]
+            for edit in edits {
+                bridge.usageProfile = 6
+                XCTAssertEqual(bridge.usageProfile, 6)
+                edit(bindings)
+                XCTAssertEqual(bridge.usageProfile, 0)
+            }
+        }
     }
 
     func testBridgeSavesManualServerAndFormatWithoutStartingTracking() {

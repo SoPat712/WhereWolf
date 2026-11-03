@@ -51,6 +51,10 @@
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>x-apple-health</string>
+	</array>
 	<key>MKDirectionsApplicationSupportedModes</key>
 	<array/>
 	<key>NSAppTransportSecurity</key>

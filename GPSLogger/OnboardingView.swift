@@ -10,6 +10,7 @@ struct OnboardingView: View {
     @State private var token = ""
     @State private var ownTracks = false
     @State private var useSetupLink = false
+    @State private var presetRowHeights: [Int: CGFloat] = [:]
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -18,10 +19,11 @@ struct OnboardingView: View {
     @ScaledMetric(relativeTo: .body) private var rowSize = 16
     @ScaledMetric(relativeTo: .subheadline) private var bodySize = 15
     @ScaledMetric(relativeTo: .caption) private var captionSize = 13
+    @ScaledMetric(relativeTo: .body) private var presetRowHeight: CGFloat = 68
 
     private enum Destination: CaseIterable { case server, cloud, device }
     private enum Editor: String, Identifiable {
-        case server, tracking, accuracy, distance, time, health
+        case server, tracking, accuracy
         var id: Self { self }
     }
 
@@ -29,11 +31,17 @@ struct OnboardingView: View {
         VStack(spacing: 12) {
             topBar.padding(.horizontal, 16)
             Spacer(minLength: 0)
-            ViewThatFits(in: .vertical) {
-                panel.fixedSize(horizontal: false, vertical: true)
-                ScrollView { panel }
-                    .scrollBounceBehavior(.basedOnSize)
-                    .accessibilityIdentifier("wherewolf.setup.scroll")
+            Group {
+                if dynamicTypeSize > .large {
+                    ViewThatFits(in: .vertical) {
+                        panel.fixedSize(horizontal: false, vertical: true)
+                        ScrollView { panel }
+                            .scrollBounceBehavior(.basedOnSize)
+                            .accessibilityIdentifier("wherewolf.setup.scroll")
+                    }
+                } else {
+                    panel.fixedSize(horizontal: false, vertical: true)
+                }
             }
             .padding(.horizontal, 8)
         }
@@ -49,6 +57,7 @@ struct OnboardingView: View {
         .onChange(of: bridge.usageProfile) { _, _ in
             Task { await model.refresh() }
         }
+        .onChange(of: dynamicTypeSize) { _, _ in presetRowHeights = [:] }
         .onChange(of: model.step) { _, _ in
             titleFocused = true
             Task {
@@ -172,7 +181,8 @@ struct OnboardingView: View {
         case .welcome: return "A quiet location logger that keeps your history and sends it where you choose."
         case .permissions: return "iOS asks only when you tap. Choose Always so WhereWolf keeps recording after you close it."
         case .destination: return "You can change this any time in Settings."
-        case .tracking: return "Start from a preset. Changing a setting makes it Custom."
+        case .tracking: return "Choose a starting point for your tracks."
+        case .fineTune: return "Adjust your preset. Changes make it Custom."
         case .sending:
             if bridge.savesToICloudDrive { return "How points reach your iCloud Drive" }
             if model.status.serverConfigured { return "How points reach \(model.status.destination)" }
@@ -188,6 +198,7 @@ struct OnboardingView: View {
         case .permissions: permissions
         case .destination: destinations
         case .tracking: tracking
+        case .fineTune: fineTune
         case .sending: sending
         case .liveActivity: liveActivity
         case .stayingActive: stayingActive
@@ -231,10 +242,16 @@ struct OnboardingView: View {
                 separator(icon: true)
                 row {
                     SettingsIcon(symbol: "heart.fill", color: .pink)
-                    rowText("Apple Health", "Optional · trips as workouts, imports")
-                    smallButton(model.status.healthWrite == .denied ? "Open Settings" : model.healthSummary == "Skipped" ? "Set Up" : "Review") {
-                        if model.status.healthWrite == .denied { model.openSettings() }
-                        else { sheet = .health }
+                    rowText("Apple Health", model.status.health == .reviewed
+                            ? "Change access in the Health app." : "Optional · trips as workouts, imports")
+                    VStack(alignment: .trailing, spacing: 4) {
+                        if model.status.health == .reviewed {
+                            Text("Reviewed").font(.system(size: captionSize)).foregroundStyle(.secondary)
+                        }
+                        if let title = model.healthActionTitle {
+                            smallButton(title) { Task { await model.request(.health) } }
+                                .accessibilityIdentifier("wherewolf.setup.health")
+                        }
                     }
                 }
             }
@@ -299,39 +316,106 @@ struct OnboardingView: View {
     }
 
     private var tracking: some View {
-        VStack(spacing: 6) {
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+        List {
+            Section {
                 ForEach(UsagePreset.values, id: \.self) { value in
                     Button { Task { await model.choosePreset(value) } } label: {
-                        Text(UsagePreset.name(value)).font(.system(size: bodySize, weight: model.selectedPreset == value ? .semibold : .regular))
-                            .frame(maxWidth: .infinity, minHeight: 40)
-                            .background(model.selectedPreset == value ? Color.blue.opacity(0.22) : sectionColor,
-                                        in: RoundedRectangle(cornerRadius: 14))
-                            .overlay { if model.selectedPreset == value { RoundedRectangle(cornerRadius: 14).stroke(.blue, lineWidth: 1.5) } }
+                        HStack(spacing: 12) {
+                            rowText(UsagePreset.name(value), UsagePreset.setupDescription(value))
+                            Image(systemName: "checkmark").font(.body.weight(.semibold)).foregroundStyle(.blue)
+                                .opacity(model.selectedPreset == value ? 1 : 0).accessibilityHidden(true)
+                        }
+                        .padding(.vertical, 12)
+                        .frame(maxWidth: .infinity, minHeight: presetRowHeight, alignment: .leading)
+                        .contentShape(Rectangle())
+                        .background {
+                            GeometryReader { geometry in
+                                Color.clear.preference(key: OnboardingPresetHeights.self, value: [value: geometry.size.height])
+                            }
+                        }
                     }
                     .buttonStyle(.plain).accessibilityAddTraits(model.selectedPreset == value ? .isSelected : [])
+                    .accessibilityIdentifier("wherewolf.setup.preset.\(value)")
+                    .disabled(model.status.tripActive || model.busy || !model.loaded)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 14, bottom: 0, trailing: 14))
+                    .listRowBackground(sectionColor)
                 }
             }
-            Text(UsagePreset.description(model.selectedPreset)).font(.system(size: captionSize))
-                .foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 4)
+        }
+        .listStyle(.insetGrouped).listSectionSpacing(0)
+        .contentMargins(.all, 0, for: .scrollContent)
+        .scrollContentBackground(.hidden).scrollDisabled(true)
+        .frame(height: UsagePreset.values.reduce(CGFloat.zero) { $0 + max(presetRowHeight, presetRowHeights[$1] ?? 0) })
+        .onPreferenceChange(OnboardingPresetHeights.self) { presetRowHeights.merge($0) { _, new in new } }
+        .accessibilityIdentifier("wherewolf.setup.presets")
+    }
+
+    private var trackingBindings: OnboardingTrackingBindings { OnboardingTrackingBindings(bridge: bridge) }
+
+    private var fineTune: some View {
+        VStack(spacing: 10) {
             group {
-                editRow("Requested Accuracy", bridge.accuracyPreset == 1 ? "Best" : bridge.accuracyPreset == 2 ? "Navigation" : SettingFormat.meters(bridge.accuracyMeters), .accuracy)
+                tuningRow("Best uses GPS; lower saves battery") {
+                    HStack {
+                        Text("Requested Accuracy")
+                        Spacer(minLength: 0)
+                        Picker("Requested Accuracy", selection: trackingBindings.accuracy) {
+                            Text("Custom · \(SettingFormat.meters(bridge.accuracyMeters))").tag(0)
+                            Text("Best").tag(1)
+                            Text("Navigation").tag(2)
+                        }
+                        .labelsHidden().pickerStyle(.menu)
+                        .accessibilityIdentifier("wherewolf.setup.accuracy")
+                        .onChange(of: bridge.accuracyPreset) { _, value in
+                            if value == 0 && model.step == .fineTune { sheet = .accuracy }
+                        }
+                    }
+                }
                 separator()
-                editRow("Min Distance Between Points", bridge.discardDistanceMeters < 1 ? "Off" : "\(Int(bridge.discardDistanceMeters)) m", .distance)
+                tuningRow("Skips points closer than this to the last") {
+                    tuningPicker("Min Distance Between Points", selection: trackingBindings.distance,
+                                 choices: SliderDetents(range: 0...1000, unit: "meters").values, format: SettingFormat.meters)
+                }
                 separator()
-                editRow("Min Time Between Points", bridge.discardSecondsValue < 1 ? "Off" : "\(Int(bridge.discardSecondsValue)) s", .time)
+                tuningRow("Skips points sooner than this after the last") {
+                    tuningPicker("Min Time Between Points", selection: trackingBindings.time,
+                                 choices: SliderDetents(range: 0...600, unit: "seconds").values, format: SettingFormat.seconds)
+                }
                 separator()
-                toggleRow("Pause Updates Automatically", isOn: $bridge.pausesAutomatically, verticalPadding: 7)
+                tuningRow("Lets iOS pause updates when you stop. Can end trips.") {
+                    Toggle("Pause Updates Automatically", isOn: trackingBindings.pause)
+                }
                 separator()
-                toggleRow("Visit Tracking", isOn: $bridge.visitTracking, verticalPadding: 7)
+                tuningRow("Adds arrival and departure points. Can cause jumps.") {
+                    Toggle("Visit Tracking", isOn: trackingBindings.visits)
+                }
             }
             Button("All Tracking Settings") { sheet = .tracking }.font(.system(size: captionSize))
-            if model.status.tripActive {
-                Text("The current trip keeps its settings. Finish it before changing presets.")
-                    .font(.footnote).foregroundStyle(.secondary)
-            }
         }
         .disabled(model.status.tripActive)
+    }
+
+    private func tuningRow<Content: View>(_ subtitle: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            content()
+            Text(subtitle).font(.system(size: captionSize)).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 10)
+    }
+
+    private func tuningPicker(_ title: String, selection: Binding<Double>, choices: [Double],
+                              format: @escaping (Double) -> String) -> some View {
+        HStack {
+            Text(title)
+            Spacer(minLength: 0)
+            Picker(title, selection: selection) {
+                ForEach(choices.contains(selection.wrappedValue) ? choices : (choices + [selection.wrappedValue]).sorted(), id: \.self) { value in
+                    Text(value < 1 ? "Off" : format(value)).tag(value)
+                }
+            }
+            .labelsHidden().pickerStyle(.menu)
+        }
     }
 
     private var sending: some View {
@@ -441,6 +525,10 @@ struct OnboardingView: View {
             separator()
             summaryRow("Preset", model.summary(for: .tracking), .tracking)
             separator()
+            summaryRow("Accuracy", model.status.requestedAccuracy, .fineTune)
+            separator()
+            summaryRow("Point Filters", model.status.minimumDistance + " · " + model.status.minimumTime, .fineTune)
+            separator()
             summaryRow("Dynamic Island", model.summary(for: .liveActivity), .liveActivity)
             separator()
             summaryRow("Staying Active", model.summary(for: .stayingActive), .stayingActive)
@@ -498,22 +586,6 @@ struct OnboardingView: View {
                             SliderRow(title: "Target Accuracy", value: $bridge.accuracyMeters, range: 5...3000, unit: "meters", format: SettingFormat.meters)
                         }
                     }.navigationTitle("Requested Accuracy")
-                case .distance:
-                    Form { SliderRow(title: "Min Distance Between Points", value: $bridge.discardDistanceMeters, range: 0...1000, offBelow: 1, unit: "meters", format: SettingFormat.meters) }
-                        .navigationTitle("Minimum Distance")
-                case .time:
-                    Form { SliderRow(title: "Min Time Between Points", value: $bridge.discardSecondsValue, range: 0...600, offBelow: 1, unit: "seconds", format: SettingFormat.seconds) }
-                        .navigationTitle("Minimum Time")
-                case .health:
-                    Form {
-                        Section {
-                            Button("Set Up Saving Trips as Workouts") { Task { await model.request(.healthWrite) } }
-                            Text("Save workouts: \(model.status.healthWrite.rawValue)")
-                            Button("Review Workout Route Import Access") { Task { await model.request(.healthRead) } }
-                        } footer: {
-                            Text("Health keeps read approval private. \(model.status.healthReadReviewed ? "Access reviewed." : "Review access in Health.") Imported routes never upload automatically.")
-                        }
-                    }.navigationTitle("Apple Health")
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
@@ -619,15 +691,6 @@ struct OnboardingView: View {
         Button(title, action: action).font(.system(size: bodySize, weight: .semibold))
             .buttonBorderShape(.capsule).glassButtonStyle(prominent: true, tint: .blue).disabled(model.busy || !model.loaded)
     }
-    private func editRow(_ title: String, _ value: String, _ editor: Editor) -> some View {
-        Button { sheet = editor } label: {
-            row(verticalPadding: 7) {
-                Text(title).frame(maxWidth: .infinity, alignment: .leading)
-                Text(value).font(.system(size: bodySize)).foregroundStyle(.secondary)
-                Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
-            }
-        }.buttonStyle(.plain)
-    }
     private func toggleRow(_ title: String, _ subtitle: String? = nil, isOn: Binding<Bool>, verticalPadding: CGFloat = 10) -> some View {
         row(verticalPadding: verticalPadding) {
             Toggle(isOn: isOn) {
@@ -648,6 +711,23 @@ struct OnboardingView: View {
         }
         .buttonStyle(.plain).accessibilityHint("Review this setup step")
         .accessibilityIdentifier("wherewolf.setup.summary.\(title)")
+    }
+}
+
+@MainActor
+struct OnboardingTrackingBindings {
+    let bridge: GLManagerBridge
+    var accuracy: Binding<Int> { Binding(get: { bridge.accuracyPreset }, set: { bridge.accuracyPreset = $0 }) }
+    var distance: Binding<Double> { Binding(get: { bridge.discardDistanceMeters }, set: { bridge.discardDistanceMeters = $0 }) }
+    var time: Binding<Double> { Binding(get: { bridge.discardSecondsValue }, set: { bridge.discardSecondsValue = $0 }) }
+    var pause: Binding<Bool> { Binding(get: { bridge.pausesAutomatically }, set: { bridge.pausesAutomatically = $0 }) }
+    var visits: Binding<Bool> { Binding(get: { bridge.visitTracking }, set: { bridge.visitTracking = $0 }) }
+}
+
+private struct OnboardingPresetHeights: PreferenceKey {
+    static var defaultValue: [Int: CGFloat] = [:]
+    static func reduce(value: inout [Int: CGFloat], nextValue: () -> [Int: CGFloat]) {
+        value.merge(nextValue()) { _, new in new }
     }
 }
 
