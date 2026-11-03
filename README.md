@@ -53,6 +53,42 @@ complete setup without starting it. Reopen the guide from the first row in
 Settings at any time. Skip advances one step; touch and hold it for Skip All.
 An existing recording continues when you reopen it.
 
+## Backup, connection tests and coverage
+
+Settings → **Backup & Sync** exports one JSON settings file and imports it after a
+validated change preview. **Include Server URL and Token** defaults on; that file
+also includes custom headers and contains your server credential. Keep it private.
+Turn it off to omit all three. Backups contain configuration, Wi-Fi zones and trip
+modes, without locations, queues, trips, imported workouts or Health records.
+Import preserves tracking on/off and waits until the current trip ends. Permissions
+must be configured separately on each iPhone.
+
+Optional iCloud settings sync defaults off. It merges the latest change per setting;
+server URL, token and custom headers use iCloud Keychain, while other settings use
+Apple's key-value storage. Device ID stays on each device but is included in file
+backups. Incoming changes wait until a trip ends. Turning sync off stops further
+syncing on this iPhone; already synchronized values remain in iCloud. The installed
+build needs the iCloud key-value entitlement. Credential delivery depends on iCloud
+Keychain and is checked when the app becomes active.
+
+**Test Connection**, in Settings → Server and the setup guide's server sheet, saves
+your edits and immediately sends one current location as a real point. It uses a
+fix from the last 30 seconds or requests one with a 15-second timeout. GeoJSON adds
+`test: true`; OwnTracks uses its usual plain location object. The test uses your
+headers and token, works on cellular even with Send Only on Wi-Fi enabled, and
+leaves the queue, history, trips and send statistics unchanged. Its inline result
+shows the HTTP status and acknowledgement or a specific fix hint.
+
+Settings → **Coverage**, beside Local History & Replay, shows the last 24 hours or
+7 days, bounded by history retention. Recorded, paused and gap spans distinguish
+intentional pauses from more than 10 minutes without an accepted fix while tracking
+was expected. Tap a gap for its times and duration. Reception and filters can also
+cause gaps; a gap alone does not prove iOS terminated the app. The screen includes
+hourly point counts, send totals and the last error, queued points, and
+links to keep-alive settings. Earlier sessions retain error categories. Its protected local state log starts with this version;
+earlier periods are unknown. It keeps at most 2,000 transitions and 20,000 send
+attempts within the history window, contains no coordinates and never uploads.
+
 ## Screenshots
 
 A simulated day in Tokyo, recorded in the iOS Simulator. The routes come from Apple Maps
@@ -344,7 +380,7 @@ Settings → Background adds helpers that follow Start/Stop Tracking:
   WhereWolf try once to restore each activity in the background. If iOS refuses,
   the activities may return only when WhereWolf is next opened. Indicator-off
   tracking falls back to the original location engine while hidden. WhereWolf's own silent audio
-  does not count and keeps its existing behavior. This setting is local-only.
+  does not count and keeps its existing behavior. This setting is included in optional settings sync.
 - **Ask to Reopen When Audio Stops** appears under Hide While Audio Plays and
   defaults on. After audio has stopped for 15 seconds, if restoring an activity
   is refused or must wait for the foreground, it schedules one notification
@@ -353,7 +389,7 @@ Settings → Background adds helpers that follow Start/Stop Tracking:
   lets the activity return. The prompt is removed when audio resumes, you open
   WhereWolf or tap Retry, an activity returns, either switch turns off, Always
   access is lost, tracking stops, or no activity remains to restore. It is
-  local-only and needs existing notification permission. Use its inline Allow
+  included in optional settings sync and needs existing notification permission. Use its inline Allow
   button to request permission; it never asks from the background. It works
   independently of Notifications and Problems Only and leaves the missed-update
   reminder's deadline unchanged.

@@ -282,19 +282,27 @@ final class GLManagerBridge {
 
     }
 
-    func saveServer(url: String, token: String, deviceId: String, uniqueId: Bool, acceptHTTP: Bool, headers: [String: String]) {
-        guard let gl = GLManager.shared() else { return }
-        gl.saveNewDeviceId(deviceId)
-        gl.customHTTPHeaders = headers
-        UserDefaults.standard.set(uniqueId, forKey: GLIncludeUniqueIdDefaultsName)
-        UserDefaults.standard.set(acceptHTTP, forKey: GLConsiderHTTP200SuccessDefaultsName)
-        gl.saveNewAPIEndpoint(url, andAccessToken: token)
+    @discardableResult
+    func saveServer(url: String, token: String, deviceId: String, uniqueId: Bool, acceptHTTP: Bool, headers: [String: String]) -> Bool {
+        guard let gl = GLManager.shared(), GLManager.isValidEndpoint(url),
+              SettingsSchema.validHeaders(headers) != nil else { return false }
+        var saved = false
+        gl.performSettingsBatch {
+            saved = gl.saveNewAPIEndpoint(url, andAccessToken: token)
+            guard saved else { return }
+            gl.saveNewDeviceId(deviceId)
+            gl.customHTTPHeaders = headers
+            UserDefaults.standard.set(uniqueId, forKey: GLIncludeUniqueIdDefaultsName)
+            UserDefaults.standard.set(acceptHTTP, forKey: GLConsiderHTTP200SuccessDefaultsName)
+        }
         refresh()
+        return saved
     }
 
-    func clearServer() {
-        GLManager.shared().saveNewAPIEndpoint(nil, andAccessToken: nil)
+    @discardableResult func clearServer() -> Bool {
+        let saved = GLManager.shared().saveNewAPIEndpoint(nil, andAccessToken: nil)
         refresh()
+        return saved
     }
 
     var wifiZones: [[String: String]] {

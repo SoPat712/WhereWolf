@@ -50,6 +50,7 @@
     [[WhereWolfUploadScheduler shared] start];
     [[WhereWolfWatchLink shared] start];
     [[GLTripEndPrompt shared] start];
+    [[WhereWolfSettingsSync shared] start];
     [AppShortcutParameters update];
     [GLTripActions startUpdatingQuickActions];
 #if WHEREWOLF_TESTFLIGHT_DIAGNOSTICS

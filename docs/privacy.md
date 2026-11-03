@@ -6,7 +6,7 @@ permalink: /privacy/
 
 # WhereWolf Privacy Policy
 
-Effective November 2, 2026
+Effective November 3, 2026
 
 WhereWolf is developed by Josh Patra ([SoPat712](https://github.com/SoPat712)).
 This policy describes the WhereWolf iOS app and its companion watch app.
@@ -35,7 +35,8 @@ geometry, and imported workout routes on the device. Trip summaries wait in the
 upload queue after a trip ends. Recent history defaults to 24 hours;
 you can choose a retention period from 24 to 168 hours. That limit applies to
 recent history, not to the upload queue, trips, or imported workouts. Server
-settings, credentials, Wi-Fi zones, and other preferences are also saved locally.
+settings, Wi-Fi zones, and other preferences are also saved locally. The server
+URL and token are saved in a local Keychain item.
 Successful delivery removes acknowledged records from the upload queue without
 deleting recent history. Active trip geometry is cleared when the trip ends;
 its queued summary and any Health export have separate lifetimes.
@@ -85,6 +86,36 @@ your own iCloud Drive container instead of sending the queue to an HTTP server.
 Apple handles iCloud storage and synchronization. You control these files and
 Health records through Apple's apps and settings; Josh Patra cannot access them
 through WhereWolf.
+
+## Settings backup and optional iCloud sync
+
+Backup & Sync exports configuration as a JSON file only when you choose Export
+Settings. Include Server URL and Token defaults on and includes custom HTTP headers;
+that file contains your server credential. Turning the option off omits the URL,
+token and custom headers. The file can include Wi-Fi zone names, identifiers and
+configured coordinates, trip modes, notification choices and other preferences.
+It does not include recorded history, the upload queue, trip records, imported
+workouts or Health records. The app or recipient you choose receives the file;
+protect it as you would your server credential. Import requires a validated change
+preview and confirmation, including any credential replacement.
+
+Settings sync through iCloud is optional and off by default. When enabled,
+configuration, including Wi-Fi zones and trip modes, uses Apple's ubiquitous
+key-value storage. The server URL, token and custom HTTP headers instead use a
+synchronizable Keychain item managed by iCloud Keychain. They are never written to
+the key-value store. Local modification metadata excludes credential values.
+Permissions, tracking on/off, active trips, device identifiers, activity IDs,
+queues, recorded history, imports and Health records are not synchronized by this
+feature. Apple handles iCloud synchronization; Josh Patra cannot access those
+settings through WhereWolf. Turning sync off stops further settings synchronization
+on this iPhone; previously synchronized values remain in iCloud. Keychain items can
+persist separately from the app's local files.
+
+Test Connection sends one current location immediately to your configured server,
+using your format, token and headers, including over cellular. It uses a recent fix
+or requests a fresh one. A GeoJSON point includes a test flag; an OwnTracks point
+uses the normal format without that flag. The server can store it as a real point.
+WhereWolf does not add the test to its queue, history, trips or send statistics.
 
 ## Motion, Wi-Fi, and notifications
 
@@ -139,8 +170,13 @@ the [GitHub Privacy Statement](https://docs.github.com/en/site-policy/privacy-po
 
 Optional location-health logs stay on your device. They contain a limited set
 of technical events, without coordinates, server addresses, or credentials,
-and retain at most 200 events for seven days. Send outcomes for the current app
-session are also available locally.
+and retain at most 200 events for seven days. Coverage keeps a separate protected
+local log of tracking starts, stops, pauses and resumes, plus send outcomes and
+error categories. It contains no coordinates, server addresses or credentials,
+is excluded from device backups, and is never uploaded. It follows the history
+retention window, bounded to 2,000 transitions and 20,000 send attempts. Coverage
+reads recorded timestamps and queue counts on the device. Send outcomes for the
+current app session also remain available locally.
 
 Builds with diagnostic collection, including TestFlight betas, can keep more
 detailed reports on the device, excluded from device backups, until you choose

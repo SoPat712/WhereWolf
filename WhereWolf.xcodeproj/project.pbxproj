@@ -130,6 +130,17 @@
 		C0B0A0000000000000000008 /* OnboardingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0B0A0000000000000000007 /* OnboardingTests.swift */; };
 		C0B0A0000000000000000011 /* TrackingLockScreenCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0B0A0000000000000000010 /* TrackingLockScreenCard.swift */; };
 		C0B0A0000000000000000012 /* TrackingLockScreenCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0B0A0000000000000000010 /* TrackingLockScreenCard.swift */; };
+		C0F000000000000000000101 /* SettingsBackup.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0F000000000000000000100 /* SettingsBackup.swift */; };
+		C0F000000000000000000103 /* SettingsSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0F000000000000000000102 /* SettingsSync.swift */; };
+		C0F000000000000000000105 /* SettingsBackupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0F000000000000000000104 /* SettingsBackupView.swift */; };
+		C0F000000000000000000107 /* ConnectionTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0F000000000000000000106 /* ConnectionTest.swift */; };
+		C0F000000000000000000109 /* ConnectionTestSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0F000000000000000000108 /* ConnectionTestSection.swift */; };
+		C0F00000000000000000010B /* CoverageReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0F00000000000000000010A /* CoverageReport.swift */; };
+		C0F00000000000000000010D /* CoverageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0F00000000000000000010C /* CoverageView.swift */; };
+		C0F00000000000000000010F /* SettingsBackupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0F00000000000000000010E /* SettingsBackupTests.swift */; };
+		C0F000000000000000000111 /* ConnectionTestTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0F000000000000000000110 /* ConnectionTestTests.swift */; };
+		C0F000000000000000000113 /* CoverageReportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0F000000000000000000112 /* CoverageReportTests.swift */; };
+		C0F000000000000000000115 /* SettingsImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0F000000000000000000114 /* SettingsImportView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -316,6 +327,17 @@
 		C0B0A0000000000000000005 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/OnboardingView.swift; sourceTree = SOURCE_ROOT; };
 		C0B0A0000000000000000007 /* OnboardingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/OnboardingTests.swift; sourceTree = SOURCE_ROOT; };
 		C0B0A0000000000000000010 /* TrackingLockScreenCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/TrackingLockScreenCard.swift; sourceTree = SOURCE_ROOT; };
+		C0F000000000000000000100 /* SettingsBackup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/SettingsBackup.swift; sourceTree = SOURCE_ROOT; };
+		C0F000000000000000000102 /* SettingsSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/SettingsSync.swift; sourceTree = SOURCE_ROOT; };
+		C0F000000000000000000104 /* SettingsBackupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/SettingsBackupView.swift; sourceTree = SOURCE_ROOT; };
+		C0F000000000000000000106 /* ConnectionTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/ConnectionTest.swift; sourceTree = SOURCE_ROOT; };
+		C0F000000000000000000108 /* ConnectionTestSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/ConnectionTestSection.swift; sourceTree = SOURCE_ROOT; };
+		C0F00000000000000000010A /* CoverageReport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/CoverageReport.swift; sourceTree = SOURCE_ROOT; };
+		C0F00000000000000000010C /* CoverageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/CoverageView.swift; sourceTree = SOURCE_ROOT; };
+		C0F00000000000000000010E /* SettingsBackupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/SettingsBackupTests.swift; sourceTree = SOURCE_ROOT; };
+		C0F000000000000000000110 /* ConnectionTestTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/ConnectionTestTests.swift; sourceTree = SOURCE_ROOT; };
+		C0F000000000000000000112 /* CoverageReportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/CoverageReportTests.swift; sourceTree = SOURCE_ROOT; };
+		C0F000000000000000000114 /* SettingsImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/SettingsImportView.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -393,6 +415,9 @@
 				C0A7C4000000000000000022 /* WhereWolfWatch */,
 				A01100000000000000000001 /* WhereWolfTests.m */,
 				C0B0A0000000000000000007 /* OnboardingTests.swift */,
+				C0F000000000000000000112 /* CoverageReportTests.swift */,
+				C0F000000000000000000110 /* ConnectionTestTests.swift */,
+				C0F00000000000000000010E /* SettingsBackupTests.swift */,
 				A0CC00000000000000000001 /* HistoryPlaybackTests.swift */,
 				C0A7C4000000000000000008 /* WatchLinkTests.swift */,
 				00D3E0000000000000000001 /* TripEndPromptTests.swift */,
@@ -481,6 +506,14 @@
 				C0B0A0000000000000000005 /* OnboardingView.swift */,
 				C0B0A0000000000000000003 /* OnboardingServices.swift */,
 				C0B0A0000000000000000001 /* OnboardingModel.swift */,
+				C0F000000000000000000114 /* SettingsImportView.swift */,
+				C0F00000000000000000010C /* CoverageView.swift */,
+				C0F00000000000000000010A /* CoverageReport.swift */,
+				C0F000000000000000000108 /* ConnectionTestSection.swift */,
+				C0F000000000000000000106 /* ConnectionTest.swift */,
+				C0F000000000000000000104 /* SettingsBackupView.swift */,
+				C0F000000000000000000102 /* SettingsSync.swift */,
+				C0F000000000000000000100 /* SettingsBackup.swift */,
 				C0A7C4000000000000000007 /* WhereWolfWatchLink.swift */,
 				0FCAFE00F00D0000000000E2 /* WhereWolfRootView.swift */,
 				0FCAFE00F00D0000000000E3 /* TrackerView.swift */,
@@ -798,6 +831,14 @@
 				C0B0A0000000000000000006 /* OnboardingView.swift in Sources */,
 				C0B0A0000000000000000004 /* OnboardingServices.swift in Sources */,
 				C0B0A0000000000000000002 /* OnboardingModel.swift in Sources */,
+				C0F000000000000000000115 /* SettingsImportView.swift in Sources */,
+				C0F00000000000000000010D /* CoverageView.swift in Sources */,
+				C0F00000000000000000010B /* CoverageReport.swift in Sources */,
+				C0F000000000000000000109 /* ConnectionTestSection.swift in Sources */,
+				C0F000000000000000000107 /* ConnectionTest.swift in Sources */,
+				C0F000000000000000000105 /* SettingsBackupView.swift in Sources */,
+				C0F000000000000000000103 /* SettingsSync.swift in Sources */,
+				C0F000000000000000000101 /* SettingsBackup.swift in Sources */,
 				C0A7C4000000000000000017 /* WhereWolfWatchLink.swift in Sources */,
 				C0A7C4000000000000000016 /* WatchLink.swift in Sources */,
 				0FCAFE00F00D0000000000F2 /* WhereWolfRootView.swift in Sources */,
@@ -854,6 +895,9 @@
 			files = (
 				A01100000000000000000002 /* WhereWolfTests.m in Sources */,
 				C0B0A0000000000000000008 /* OnboardingTests.swift in Sources */,
+				C0F000000000000000000113 /* CoverageReportTests.swift in Sources */,
+				C0F000000000000000000111 /* ConnectionTestTests.swift in Sources */,
+				C0F00000000000000000010F /* SettingsBackupTests.swift in Sources */,
 				C0A100000000000000000007 /* TrackingPolicyTests.m in Sources */,
 				D0F100000000000000000007 /* LocationHealthTests.m in Sources */,
 				D0F200000000000000000002 /* MapChromeTests.swift in Sources */,

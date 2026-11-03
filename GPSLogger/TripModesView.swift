@@ -12,7 +12,7 @@ import WidgetKit
 // MARK: - Persistence
 
 extension TripModeStore {
-    private static func normalized(_ modes: [TripMode]) -> [TripMode]? {
+    static func normalized(_ modes: [TripMode]) -> [TripMode]? {
         guard !modes.isEmpty else { return nil }
 
         var ids = Set<String>()

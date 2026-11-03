@@ -55,11 +55,10 @@ extension GLManagerBridge {
         for item in items where item.name.hasPrefix("header_") && item.name.count > 7 {
             if let value = item.value { headers[String(item.name.dropFirst(7))] = value }
         }
-        saveServer(url: endpoint, token: value("token") ?? "", deviceId: value("device_id") ?? "",
+        return saveServer(url: endpoint, token: value("token") ?? "", deviceId: value("device_id") ?? "",
                    uniqueId: value("unique_id") == "yes",
                    acceptHTTP: UserDefaults.standard.bool(forKey: GLConsiderHTTP200SuccessDefaultsName),
                    headers: headers.isEmpty ? gl.customHTTPHeaders : headers)
-        return true
     }
 
     func applyOnboardingDestination(_ destination: OnboardingDestination) -> Bool {
@@ -72,17 +71,17 @@ extension GLManagerBridge {
             let endpoint = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
             guard GLManager.isValidEndpoint(endpoint) else { return false }
             let gl = GLManager.shared()!
-            saveServer(url: endpoint, token: token, deviceId: gl.deviceId() ?? "",
+            guard saveServer(url: endpoint, token: token, deviceId: gl.deviceId() ?? "",
                        uniqueId: UserDefaults.standard.bool(forKey: GLIncludeUniqueIdDefaultsName),
                        acceptHTTP: ownTracks || UserDefaults.standard.bool(forKey: GLConsiderHTTP200SuccessDefaultsName),
-                       headers: gl.customHTTPHeaders)
+                       headers: gl.customHTTPHeaders) else { return false }
             loggingModeIndex = ownTracks ? 2 : (loggingModeIndex == 2 ? 0 : loggingModeIndex)
             savesToICloudDrive = false
         case .iCloud:
             savesToICloudDrive = true
         case .device:
+            guard clearServer() else { return false }
             savesToICloudDrive = false
-            clearServer()
         }
         refresh()
         return true

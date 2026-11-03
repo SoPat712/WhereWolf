@@ -167,6 +167,7 @@ final class RecentLocationHistory: NSObject {
         let previous = (defaults.object(forKey: HistoryRetention.userDefaultsKey) as? NSNumber)?.intValue
         defaults.set(validated, forKey: HistoryRetention.userDefaultsKey)
         guard previous != validated else { return }
+        TrackingTransitionLog.prune()
 
         retentionLock.lock()
         retentionGeneration &+= 1
@@ -180,6 +181,23 @@ final class RecentLocationHistory: NSObject {
                 guard self.isCurrentRetentionRequest(generation, hours: validated) else { return }
                 NotificationCenter.default.post(name: .recentLocationHistoryRetentionChanged, object: nil)
             }
+        }
+    }
+
+    func loadTimestamps(completion: @escaping ([Date]) -> Void) {
+        queue.async(qos: .utility) {
+            var timestamps: [Date] = []
+            if let database = self.open() {
+                var statement: OpaquePointer?
+                if sqlite3_prepare_v2(database, "SELECT timestamp FROM points WHERE timestamp >= ? ORDER BY timestamp, id", -1, &statement, nil) == SQLITE_OK {
+                    sqlite3_bind_double(statement, 1, self.clock().timeIntervalSince1970 - self.retentionDuration())
+                    while sqlite3_step(statement) == SQLITE_ROW {
+                        timestamps.append(Date(timeIntervalSince1970: sqlite3_column_double(statement, 0)))
+                    }
+                }
+                sqlite3_finalize(statement)
+            }
+            DispatchQueue.main.async { completion(timestamps) }
         }
     }
 

@@ -26,6 +26,7 @@ struct SettingsView: View {
                     }
                 }
                 .accessibilityLabel("Server")
+                .accessibilityIdentifier("wherewolf.settings.server")
                 .accessibilityValue(bridge.endpointSet ? "Configured" : "Not Set")
                 LabeledContent {
                     Text(bridge.locationPermission)
@@ -98,6 +99,16 @@ struct SettingsView: View {
                 } label: {
                     SettingsRowLabel(title: "Local History & Replay", symbol: "clock.arrow.circlepath", color: .blue)
                 }
+                NavigationLink { CoverageView() } label: {
+                    SettingsRowLabel(title: "Coverage", symbol: "chart.bar.xaxis", color: .green)
+                }
+                .accessibilityLabel("Coverage")
+                .accessibilityIdentifier("wherewolf.settings.coverage")
+                NavigationLink { SettingsBackupView() } label: {
+                    SettingsRowLabel(title: "Backup & Sync", symbol: "icloud", color: .blue)
+                }
+                .accessibilityLabel("Backup & Sync")
+                .accessibilityIdentifier("wherewolf.settings.backup")
                 NavigationLink(value: SettingsDestination.tracking) {
                     SettingsRowLabel(title: "Tracking & Precision", symbol: "scope", color: .blue)
                 }

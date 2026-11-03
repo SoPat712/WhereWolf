@@ -92,7 +92,14 @@ before establishing connection". That result says nothing about the tests. Run
 the suite in-process with a standalone XCTest runner instead, and keep the
 XCTestSuite hierarchy intact: flattening it skips class setup, including the
 mocked URLSession configuration.
-Tests use an in-memory queue and mocked `wherewolf.test` requests.
+`python3 ~/.local/share/agent-coord/overland/wherewolf/verify.py` builds for testing,
+runs the standalone suite twice and checks native Forms, tabs and setup accessibility
+without screenshots. Its build log and `full-1.json` / `full-2.json` stay in that
+`wherewolf` folder; its DerivedData is isolated under `overland/three-features`.
+
+Tests use an in-memory queue and mocked `wherewolf.test` requests. Objective-C tests
+reach app Swift types through protocols and `NSClassFromString`; never import the
+app's generated Swift header into the test target.
 Background-runtime integration tests require location access on the disposable
 simulator. The system-reminder integration test also requires notification
 permission and `WHEREWOLF_NOTIFICATION_INTEGRATION=1` in the test scheme
@@ -231,6 +238,35 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   storyboard remains.
 - **`GLManagerBridge`** (`@Observable`) is the only bridge: views read live
   status from it and write settings through it so GLManager side effects run.
+- **Settings portability**: Backup & Sync uses native Forms. `SettingsSchema` is the
+  allowlist for JSON and optional, default-off iCloud sync. Export includes schema/app
+  versions and optionally the URL, token and custom headers; warn about credentials.
+  Import validates the whole file, previews changes and requires confirmation. Never
+  restore tracking on/off, permissions, active trips or device state. Import waits for
+  a trip to end; sync defers incoming changes during trips. Apply through the bridge
+  and GLManager's batch so acquisition and HTTP reconfigure once, without permission
+  prompts. Merge per key by modification time, breaking ties by writer ID. The URL,
+  token and headers never enter ubiquitous key-value storage; sync them through a
+  synchronizable Keychain item. URL/token stay in a local Keychain item when sync is
+  off; migrate old defaults only after a successful save. Device ID is backup-only.
+- **Connection test**: Server and the guide's glass Destination sheet share one native
+  section. Save edits through the bridge, then use a valid fix at most 30 seconds old
+  or a separate one-shot location manager with a 15-second deadline. GLManager reuses
+  the upload payload builders, URL templates, headers and authentication; GeoJSON
+  marks `test: true`, OwnTracks stays plain. Send directly with a 15-second timeout,
+  including on cellular. Never queue, acknowledge, archive, apply response settings,
+  update trips or count send statistics. Show HTTP status, acknowledgement and a fix
+  hint; disclose that the server receives a real current-location point.
+- **Coverage**: native Form and Swift Charts use archive timestamps, current queue count
+  and local send outcomes. A gap exceeds ten minutes between accepted fixes while
+  recording is expected; pause/off spans and time before the state log began are
+  separate. Gaps can also reflect reception or filters, not only system suspension.
+  `TrackingTransitionLog` writes coordinate-free start/stop/pause/resume transitions
+  and send categories on a serial queue with protected atomic writes and backup
+  exclusion. Retain the history window, at most 2,000 transitions and 20,000 sends;
+  preserve one state at the cutoff. Keep all location acquisition and storage active
+  without a scene. Status reads use an already-created location manager and never
+  initialize acquisition. Read timestamps without loading route geometry. Nothing uploads.
 - **Route replay**: `RecentLocationHistory` archives each accepted upload record
   in a separate SQLite store, with a validated 24–168 hour retention window that
   defaults to 24 hours. `GLManager` calls it only after a successful queue commit;
@@ -491,8 +527,7 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   pending `reminder` notification deadline. Keep its scheduling rules in
   `GLManager`; do not drive activity staleness from another timeout. The shared ActivityAttributes
   source belongs to both the app and `WhereWolfTrackingActivity` targets. Blank is
-  the default appearance for new installs; saved choices remain. Local-only
-  `LiveActivityLockScreenCard` defaults off. Blank with the card off uses
+  the default appearance for new installs; saved choices remain. `LiveActivityLockScreenCard` defaults off. Blank with the card off uses
   `IslandOnlyTrackingAttributes` in the app target only; never register that type
   in the extension. Blank with the card on uses the widget-backed activity with
   empty Island views. Minimal and Status always include the card; Settings shows
@@ -506,7 +541,7 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   when appearance or card selection requires it.
   Relevance remains zero. It ranks WhereWolf's own activities, not other apps;
   iOS controls which activity occupies the main Island or a detached bubble.
-  Hide While Audio Plays defaults off and is local-only. Two other-audio readings
+  Hide While Audio Plays defaults off. Two other-audio readings
   at least 15 seconds apart hide Status, Minimal, Blank and separate trip activities,
   only with Always location access. Sample on existing lifecycle/activity/audio
   events and location callbacks (at most once per 15 seconds). A pending audio
@@ -519,7 +554,7 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   background restore attempt per activity family, then waits for
   foreground or explicit Retry after a refusal. Hiding is not a failure. Preserve
   Stop, pauses, trip state and the reminder deadline.
-  Ask to Reopen When Audio Stops defaults on, is local-only and appears under
+  Ask to Reopen When Audio Stops defaults on and appears under
   Hide While Audio Plays. After confirmed audio ending, a refused or deferred
   restore schedules one authorized local prompt 45 seconds later with the fixed
   `WhereWolfLiveActivityAudioReopen` identifier. Withdraw pending and delivered

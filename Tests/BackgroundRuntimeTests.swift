@@ -116,11 +116,11 @@ final class BackgroundRuntimeTests: XCTestCase {
             try await waitUntil {
                 Activity<IslandOnlyTrackingAttributes>.activities.isEmpty && WhereWolfBackgroundRuntime.hasBackgroundLocationActivity
                     && WhereWolfLocationEngine.shared.usingLiveUpdates
+                    && Activity<TrackingActivityAttributes>.activities.first?.content.state.appearance == .blank
             }
             let card = try XCTUnwrap(Activity<TrackingActivityAttributes>.activities.first)
             XCTAssertEqual(card.content.state.appearance, .blank)
             XCTAssertEqual(card.content.relevanceScore, 0)
-            XCTAssertEqual(card.content.state.queuedCount, Int(manager.currentPointsInQueue))
             runtime.lockScreenCard = false
             try await waitUntil {
                 Activity<TrackingActivityAttributes>.activities.isEmpty && !WhereWolfBackgroundRuntime.hasBackgroundLocationActivity

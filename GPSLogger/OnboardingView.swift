@@ -528,6 +528,7 @@ struct OnboardingView: View {
                 }.disabled(model.busy)
             } }
         }
+        .modifier(SetupServerSheetStyle(enabled: editor == .server))
         .presentationDetents(editor == .tracking ? [.large] : [.medium, .large])
         .onDisappear { Task { await model.refresh() } }
     }
@@ -550,8 +551,12 @@ struct OnboardingView: View {
                 Text(useSetupLink ? "Paste a wherewolf:// or overland:// setup link from your server."
                      : "OwnTracks uses a Base64-encoded username:password token. More options are in Settings → Server.")
             }
+            ConnectionTestSection(enabled: useSetupLink ? !setupLink.isEmpty : GLManager.isValidEndpoint(endpoint)) {
+                bridge.applyOnboardingDestination(useSetupLink ? .setupLink(setupLink) : .server(endpoint: endpoint, token: token, ownTracks: ownTracks))
+            }
             if let error = model.error { Text(error).foregroundStyle(.red) }
         }
+        .settingsFormStyle()
         .navigationTitle(useSetupLink ? "Paste Setup Link" : "Your Server")
     }
 
@@ -643,5 +648,15 @@ struct OnboardingView: View {
         }
         .buttonStyle(.plain).accessibilityHint("Review this setup step")
         .accessibilityIdentifier("wherewolf.setup.summary.\(title)")
+    }
+}
+
+private struct SetupServerSheetStyle: ViewModifier {
+    let enabled: Bool
+    @ViewBuilder func body(content: Content) -> some View {
+        if enabled {
+            content.environment(\.glassSettingsSheet, true)
+                .presentationBackground { Color.clear.glassPanel(cornerRadius: 32) }
+        } else { content }
     }
 }

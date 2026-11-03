@@ -18,6 +18,8 @@
 	<array>
 		<string>CloudDocuments</string>
 	</array>
+	<key>com.apple.developer.ubiquity-kvstore-identifier</key>
+	<string>$(TeamIdentifierPrefix)$(WHEREWOLF_BUNDLE_IDENTIFIER)</string>
 	<key>com.apple.developer.ubiquity-container-identifiers</key>
 	<array>
 		<string>iCloud.$(WHEREWOLF_BUNDLE_IDENTIFIER)</string>

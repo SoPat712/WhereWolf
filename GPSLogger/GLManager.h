@@ -202,6 +202,7 @@ typedef void (^CaseBlock)(void);
 @property (nonatomic) GLTrackingMode trackingMode;
 @property BOOL visitTrackingEnabled;
 @property (nonatomic) GLLoggingMode loggingMode;
+@property (nonatomic, readonly) GLLoggingMode loggingModeCurrentValue;
 @property (nonatomic) BOOL showBackgroundLocationIndicator;
 @property (nonatomic) CLActivityType activityType;
 @property (nonatomic) CLLocationAccuracy desiredAccuracy;
@@ -245,7 +246,7 @@ typedef void (^CaseBlock)(void);
 - (NSInteger)usageProfile;
 - (void)applyUsageProfile:(NSInteger)profile;
 
-- (void)saveNewAPIEndpoint:(NSString *)endpoint andAccessToken:(NSString *)accessToken;
+- (BOOL)saveNewAPIEndpoint:(NSString *)endpoint andAccessToken:(NSString *)accessToken;
 - (NSString *)apiEndpointURL;
 - (NSString *)apiAccessToken;
 - (void)saveNewDeviceId:(NSString *)deviceId;
@@ -289,6 +290,14 @@ typedef NS_ENUM(NSInteger, GLSendStatus) {
 - (void)updateLocationEngine;
 + (BOOL)isValidEndpoint:(NSString *)endpoint;
 @property (nonatomic, copy) NSDictionary<NSString *, NSString *> *customHTTPHeaders;
+- (void)reloadServerCredentials;
+- (void)performSettingsBatch:(void (^)(void))changes;
++ (NSDictionary *)normalizedTrackingOptions:(NSDictionary *)options;
++ (NSArray<NSDictionary *> *)validatedWifiZones:(NSArray *)zones;
+- (void)replaceWifiZones:(NSArray<NSDictionary *> *)zones;
+- (NSURLRequest *)connectionTestRequestForLocation:(CLLocation *)location;
+- (NSURLSessionDataTask *)testConnectionAtLocation:(CLLocation *)location
+    completion:(void (^)(NSInteger status, BOOL acknowledged, NSError *error))completion NS_SWIFT_NAME(testConnection(at:completion:));
 
 #pragma mark - Trips
 

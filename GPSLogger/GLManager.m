@@ -103,6 +103,7 @@
 @property (strong, nonatomic) NSDictionary *runningConfiguration;
 @property NSUInteger settingsChangeDepth;
 @property BOOL trackingReconfigurationPending;
+@property BOOL httpReconfigurationPending;
 @property (strong, nonatomic) NSNumber *lastAuthorization;
 @property (strong, nonatomic) GLLocationHealthPolicy *locationHealthPolicy;
 @property (strong, nonatomic) GLLocationHealthLog *locationHealthLog;
@@ -405,20 +406,64 @@ static dispatch_queue_t GLNotificationQueue(void) {
     [[NSNotificationCenter defaultCenter] postNotificationName:GLSettingsChangedNotification object:self];
 }
 
-- (void)saveNewAPIEndpoint:(NSString *)endpoint andAccessToken:(NSString *)accessToken {
-    if(endpoint.length > 0 && ![GLManager isValidEndpoint:endpoint]) return;
-    [[NSUserDefaults standardUserDefaults] setObject:endpoint.length > 0 ? endpoint : nil forKey:GLAPIEndpointDefaultsName];
-    [[NSUserDefaults standardUserDefaults] setObject:accessToken forKey:GLAPIAccessTokenDefaultsName];
+- (BOOL)saveNewAPIEndpoint:(NSString *)endpoint andAccessToken:(NSString *)accessToken {
+    if(endpoint.length > 0 && ![GLManager isValidEndpoint:endpoint]) return NO;
+    if(![GLServerCredentials saveEndpoint:endpoint ?: @"" token:accessToken ?: @""]) return NO;
+    [self reloadServerCredentials];
+    return YES;
+}
+
+- (void)reloadServerCredentials {
     [self resetUploadRetry];
     [self setupHTTPClient];
 }
 
 - (NSString *)apiEndpointURL {
-    return [[NSUserDefaults standardUserDefaults] stringForKey:GLAPIEndpointDefaultsName];
+    return [GLServerCredentials endpoint];
 }
 
 - (NSString *)apiAccessToken {
-    return [[NSUserDefaults standardUserDefaults] stringForKey:GLAPIAccessTokenDefaultsName];
+    return [GLServerCredentials token];
+}
+
+- (void)performSettingsBatch:(void (^)(void))changes {
+    self.settingsChangeDepth++;
+    @try { changes(); }
+    @finally {
+        self.settingsChangeDepth--;
+        if(self.settingsChangeDepth == 0) {
+            if(self.httpReconfigurationPending) {
+                self.httpReconfigurationPending = NO;
+                [self setupHTTPClient];
+            }
+            if(self.trackingReconfigurationPending) {
+                self.trackingReconfigurationPending = NO;
+                [self requestTrackingReconfiguration];
+            }
+            [self scheduleLocalNotification];
+            [[NSNotificationCenter defaultCenter] postNotificationName:GLSettingsChangedNotification object:self];
+        }
+    }
+}
+
++ (NSArray<NSDictionary *> *)validatedWifiZones:(NSArray *)zones {
+    if(![zones isKindOfClass:NSArray.class] || zones.count > 256) return nil;
+    NSMutableArray *safe = [NSMutableArray array];
+    for(id zone in zones) {
+        NSDictionary *valid = GLNormalizedWifiZone(zone);
+        if(!valid) return nil;
+        NSMutableDictionary *entry = [NSMutableDictionary dictionary];
+        for(NSString *key in @[@"name", @"latitude", @"longitude", @"bssid"]) if(valid[key]) entry[key] = valid[key];
+        [safe addObject:entry];
+    }
+    return GLNormalizedWifiZones(safe);
+}
+
+- (void)replaceWifiZones:(NSArray<NSDictionary *> *)zones {
+    NSArray *valid = [GLManager validatedWifiZones:zones];
+    if(!valid) return;
+    [NSUserDefaults.standardUserDefaults setObject:valid forKey:GLWifiZonesDefaultsName];
+    [[NSNotificationCenter defaultCenter] postNotificationName:GLSettingsChangedNotification object:self];
 }
 
 - (void)saveNewDeviceId:(NSString *)deviceId {
@@ -823,7 +868,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     if(enabled == self.useNewLocationEngine) return;
     [NSUserDefaults.standardUserDefaults setBool:enabled forKey:GLUseNewLocationEngineDefaultsName];
     [WhereWolfLocationEngine.shared resetLiveUpdatesFailure];
-    if(self.trackingEnabled && !self.didPauseByRadius) [self runEngineStandardUpdates];
+    if(self.trackingEnabled && !self.didPauseByRadius) [self requestTrackingReconfiguration];
     [[NSNotificationCenter defaultCenter] postNotificationName:GLSettingsChangedNotification object:self];
 }
 
@@ -848,6 +893,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
 }
 
 - (void)updateLocationEngine {
+    if(self.settingsChangeDepth > 0) { self.trackingReconfigurationPending = YES; return; }
     if(!self.trackingEnabled || !self.hasContinuousUpdates || self.didPauseByRadius) {
         [WhereWolfLocationEngine.shared endBackgroundSession];
         return;
@@ -915,7 +961,8 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
 - (NSString *)locationHealthPauseReason {
     if(!self.trackingEnabled) return @"tracking_off";
     if(!self.hasContinuousUpdates) return @"event_mode";
-    CLAuthorizationStatus authorization = self.locationManager.authorizationStatus;
+    // Status reads must not create a manager whose authorization callback starts acquisition.
+    CLAuthorizationStatus authorization = _locationManager ? _locationManager.authorizationStatus : kCLAuthorizationStatusNotDetermined;
     if(authorization != kCLAuthorizationStatusAuthorizedAlways && authorization != kCLAuthorizationStatusAuthorizedWhenInUse) return @"permission";
     if(self.didPauseByRadius) return @"radius_pause";
     if(self.adaptiveEnabled && self.adaptivePolicy.stationary) return @"adaptive_pause";
@@ -950,6 +997,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
 }
 
 - (void)reconcileLocationHealth {
+    [TrackingTransitionLog recordTracking:self.trackingEnabled paused:[self locationHealthPauseReason] != nil || self.inStationaryStop];
     BOOL enabled = self.locationHealthEnabled;
     BOOL expected = enabled && ![self locationHealthPauseReason];
     if(enabled && !self.locationHealthPolicy) self.locationHealthPolicy = [GLLocationHealthPolicy new];
@@ -1115,7 +1163,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     NSMutableArray *syncedUpdates = [NSMutableArray array];
     NSMutableArray *locationUpdates = [NSMutableArray array];
     
-    NSString *endpoint = [[NSUserDefaults standardUserDefaults] stringForKey:GLAPIEndpointDefaultsName];
+    NSString *endpoint = self.apiEndpointURL;
     
     if(!self.savesToICloudDrive && ![GLManager isValidEndpoint:endpoint]) {
         NSLog(@"No API endpoint is set, not sending data");
@@ -1204,29 +1252,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
         return;
     }
 
-    NSMutableString *endpointURL = [endpoint mutableCopy];
-    [endpointURL replaceOccurrencesOfString:@"%TS"
-                                 withString:[self stringForProperty:kGLLocationPropertyTimestamp ofLocation:self.lastLocation] options:NSLiteralSearch
-                                      range:NSMakeRange(0, endpointURL.length)];
-    [endpointURL replaceOccurrencesOfString:@"%LAT"
-                                 withString:[self stringForProperty:kGLLocationPropertyLatitude ofLocation:self.lastLocation] options:NSLiteralSearch
-                                      range:NSMakeRange(0, endpointURL.length)];
-    [endpointURL replaceOccurrencesOfString:@"%LON"
-                                 withString:[self stringForProperty:kGLLocationPropertyLongitude ofLocation:self.lastLocation] options:NSLiteralSearch
-                                      range:NSMakeRange(0, endpointURL.length)];
-    [endpointURL replaceOccurrencesOfString:@"%ACC"
-                                 withString:[self stringForProperty:kGLLocationPropertyAccuracy ofLocation:self.lastLocation] options:NSLiteralSearch
-                                      range:NSMakeRange(0, endpointURL.length)];
-    [endpointURL replaceOccurrencesOfString:@"%SPD"
-                                 withString:[self stringForProperty:kGLLocationPropertySpeed ofLocation:self.lastLocation] options:NSLiteralSearch
-                                      range:NSMakeRange(0, endpointURL.length)];
-    [endpointURL replaceOccurrencesOfString:@"%ALT"
-                                 withString:[self stringForProperty:kGLLocationPropertyAltitude ofLocation:self.lastLocation] options:NSLiteralSearch
-                                      range:NSMakeRange(0, endpointURL.length)];
-    [endpointURL replaceOccurrencesOfString:@"%BAT"
-                                 withString:[self stringForProperty:kGLLocationPropertyBattery ofLocation:self.lastLocation] options:NSLiteralSearch
-                                      range:NSMakeRange(0, endpointURL.length)];
-
+    NSString *endpointURL = [self endpoint:endpoint forLocation:self.lastLocation];
     
     NSLog(@"Updates in post: %lu", (unsigned long)locationUpdates.count);
     
@@ -1534,6 +1560,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
 }
 
 - (void)notifyUploadError:(NSString *)message title:(NSString *)title {
+    [TrackingTransitionLog recordErrorCategory:title];
     self.lastSendErrorTitle = title;
     self.lastSendErrorMessage = message;
     if(self.lastUploadErrorNotification && -self.lastUploadErrorNotification.timeIntervalSinceNow < 300) return;
@@ -1628,8 +1655,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     
 
     
-    self.settingsChangeDepth++;
-    @try {
+    [self performSettingsBatch:^{
     NSDictionary *sendIntervalBlocks = @{
         @"1s": ^{ self.sendingInterval = @1; },
         @"5s": ^{ self.sendingInterval = @5; },
@@ -1865,13 +1891,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     }
     [UIApplication sharedApplication].idleTimerDisabled = self.tripInProgress && [[NSUserDefaults standardUserDefaults] boolForKey:GLScreenLockEnabledDefaultsName];
     [[NSNotificationCenter defaultCenter] postNotificationName:GLSettingsChangedNotification object:self];
-    } @finally {
-        self.settingsChangeDepth--;
-        if(self.settingsChangeDepth == 0 && self.trackingReconfigurationPending) {
-            self.trackingReconfigurationPending = NO;
-            [self requestTrackingReconfiguration];
-        }
-    }
+    }];
 }
 
 - (void)runBlock:(NSDictionary *)blocks fromDictionary:(NSDictionary *)dictionary forKey:(NSString *)key {
@@ -1940,6 +1960,79 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
         }
         [accessor setDictionary:update forKey:[NSString stringWithFormat:@"%@-log-%@", timestamp, NSUUID.UUID.UUIDString]];
     }];
+}
+
+#pragma mark - Connection test
+
+- (NSString *)endpoint:(NSString *)endpoint forLocation:(CLLocation *)location {
+    NSMutableString *endpointURL = [endpoint mutableCopy];
+    [endpointURL replaceOccurrencesOfString:@"%TS"
+                                 withString:[self stringForProperty:kGLLocationPropertyTimestamp ofLocation:location] options:NSLiteralSearch
+                                      range:NSMakeRange(0, endpointURL.length)];
+    [endpointURL replaceOccurrencesOfString:@"%LAT"
+                                 withString:[self stringForProperty:kGLLocationPropertyLatitude ofLocation:location] options:NSLiteralSearch
+                                      range:NSMakeRange(0, endpointURL.length)];
+    [endpointURL replaceOccurrencesOfString:@"%LON"
+                                 withString:[self stringForProperty:kGLLocationPropertyLongitude ofLocation:location] options:NSLiteralSearch
+                                      range:NSMakeRange(0, endpointURL.length)];
+    [endpointURL replaceOccurrencesOfString:@"%ACC"
+                                 withString:[self stringForProperty:kGLLocationPropertyAccuracy ofLocation:location] options:NSLiteralSearch
+                                      range:NSMakeRange(0, endpointURL.length)];
+    [endpointURL replaceOccurrencesOfString:@"%SPD"
+                                 withString:[self stringForProperty:kGLLocationPropertySpeed ofLocation:location] options:NSLiteralSearch
+                                      range:NSMakeRange(0, endpointURL.length)];
+    [endpointURL replaceOccurrencesOfString:@"%ALT"
+                                 withString:[self stringForProperty:kGLLocationPropertyAltitude ofLocation:location] options:NSLiteralSearch
+                                      range:NSMakeRange(0, endpointURL.length)];
+    [endpointURL replaceOccurrencesOfString:@"%BAT"
+                                 withString:[self stringForProperty:kGLLocationPropertyBattery ofLocation:location] options:NSLiteralSearch
+                                      range:NSMakeRange(0, endpointURL.length)];
+
+
+    return endpointURL;
+}
+
+- (NSURLRequest *)connectionTestRequestForLocation:(CLLocation *)location {
+    if(!location || ![GLManager isValidEndpoint:self.apiEndpointURL] || ![self isValidLocation:location]) return nil;
+    BOOL owntracks = self.loggingModeCurrentValue == kGLLoggingModeOwntracks;
+    NSMutableDictionary *point = [(owntracks ? [self owntracksDictionaryFromLocation:location]
+        : [self currentDictionaryFromLocation:location rememberWifi:NO]) mutableCopy];
+    if(!owntracks) {
+        NSMutableDictionary *properties = [point[@"properties"] mutableCopy];
+        properties[@"test"] = @YES;
+        properties[@"locations_in_payload"] = @1;
+        point[@"properties"] = properties;
+    }
+    NSDictionary *payload = owntracks ? point : @{@"locations": @[point]};
+    NSData *data = [GLManager dataWithJSONObject:payload error:NULL];
+    NSURL *url = [NSURL URLWithString:[self endpoint:self.apiEndpointURL forLocation:location]];
+    if(!data || !url) return nil;
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+    request.HTTPMethod = @"POST";
+    request.HTTPBody = data;
+    request.timeoutInterval = 15;
+    [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+    [request setValue:@"application/json" forHTTPHeaderField:@"Accept"];
+    NSDictionary *headers = [self requestHeadersForOwntracks:owntracks];
+    for(NSString *key in headers) [request setValue:headers[key] forHTTPHeaderField:key];
+    return request;
+}
+
+- (NSURLSessionDataTask *)testConnectionAtLocation:(CLLocation *)location
+    completion:(void (^)(NSInteger status, BOOL acknowledged, NSError *error))completion {
+    NSURLRequest *request = [self connectionTestRequestForLocation:location];
+    if(!request) {
+        completion(0, NO, [NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorBadURL userInfo:nil]);
+        return nil;
+    }
+    NSURLSessionDataTask *task = [self.httpSession dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        NSInteger status = [response isKindOfClass:NSHTTPURLResponse.class] ? ((NSHTTPURLResponse *)response).statusCode : 0;
+        id body = data ? [GLManager objectFromJSONData:data error:NULL] : nil;
+        BOOL acknowledged = [body isKindOfClass:NSDictionary.class] && [body[@"result"] isEqual:@"ok"];
+        dispatch_async(dispatch_get_main_queue(), ^{ completion(status, acknowledged, error); });
+    }];
+    [task resume];
+    return task;
 }
 
 - (NSDictionary *)requestHeadersForOwntracks:(BOOL)owntracks {
@@ -2013,6 +2106,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
 #pragma mark - GLManager control (private)
 
 - (void)setupHTTPClient {
+    if(self.settingsChangeDepth > 0) { self.httpReconfigurationPending = YES; return; }
     [self.uploadTimer invalidate];
     self.uploadTimer = nil;
     self.sendGeneration++;
@@ -2076,6 +2170,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     if(self.trackingEnabled && (manager.authorizationStatus == kCLAuthorizationStatusAuthorizedAlways || manager.authorizationStatus == kCLAuthorizationStatusAuthorizedWhenInUse)) {
         [self requestTrackingReconfiguration];
     }
+    [self reconcileLocationHealth];
 }
 
 - (void)enableTracking {
@@ -2247,6 +2342,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
 #pragma mark - Send results log
 
 - (void)recordSendResult:(GLSendStatus)status {
+    [TrackingTransitionLog recordSend:status];
     if(!self.sendResultsLog) {
         self.sendResultsLog = [NSMutableArray array];
     }
@@ -2856,7 +2952,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     BOOL wasPaused = self.didPauseByRadius;
     [[NSUserDefaults standardUserDefaults] setDouble:distance forKey:GLStopsAutomaticallyDefaultsName];
     [self resetStationaryAnchors];
-    if(wasPaused && self.trackingEnabled) [self runEngineStandardUpdates];
+    if(wasPaused && self.trackingEnabled) [self requestTrackingReconfiguration];
     [self scheduleLocalNotification];
 }
 
@@ -3359,6 +3455,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
         [self askToEndTrip];
     }
     
+    [self reconcileLocationHealth];
     [self sendQueueIfTimeElapsed];
 }
 
@@ -3693,16 +3790,21 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     }
     self.batchWifiInfo = nil;
     [self.locationHealthPolicy recordSaved:saved rejected:rejected uptime:[self locationHealthUptime] date:NSDate.date];
+    [self reconcileLocationHealth];
     return didAddData;
 }
 
 - (void)addMetadataToUpdate:(NSDictionary *) update {
+    [self addMetadataToUpdate:update rememberWifi:YES];
+}
+
+- (void)addMetadataToUpdate:(NSDictionary *)update rememberWifi:(BOOL)remember {
     NSMutableDictionary *properties = [update objectForKey:@"properties"];
     if(_deviceId && _deviceId.length > 0) {
         [properties setValue:_deviceId forKey:@"device_id"];
     }
     NSDictionary *wifiInfo = self.batchWifiInfo ?: [GLManager currentWifiNetworkInfo];
-    [self rememberWifiNetworkInfo:wifiInfo];
+    if(remember) [self rememberWifiNetworkInfo:wifiInfo];
     [properties setValue:wifiInfo[@"SSID"] forKey:@"wifi"];
     [properties setValue:[self currentBatteryState] forKey:@"battery_state"];
     [properties setValue:[self currentBatteryLevel] forKey:@"battery_level"];
@@ -3713,6 +3815,10 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
 }
 
 - (NSDictionary *)currentDictionaryFromLocation:(CLLocation *)loc {
+    return [self currentDictionaryFromLocation:loc rememberWifi:YES];
+}
+
+- (NSDictionary *)currentDictionaryFromLocation:(CLLocation *)loc rememberWifi:(BOOL)remember {
     NSString *timestamp = [GLManager iso8601DateStringFromDate:loc.timestamp];
     NSDictionary *update = @{
              @"type": @"Feature",
@@ -3736,7 +3842,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
                      }]
              };
     if(self.tripInProgress) [update[@"properties"] setObject:[GLTripModeStore serverValueForModeID:self.currentTripMode] forKey:@"trip_mode"];
-    [self addMetadataToUpdate:update];
+    [self addMetadataToUpdate:update rememberWifi:remember];
     return update;
 }
 
@@ -3864,6 +3970,11 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
 }
 - (void)setNotificationsEnabled:(BOOL)enabled {
     self.notificationPermissionRevision++;
+    if(self.settingsChangeDepth > 0) {
+        [NSUserDefaults.standardUserDefaults setBool:enabled forKey:GLNotificationsEnabledDefaultsName];
+        if(!enabled) [self cancelLocalNotification];
+        return;
+    }
     if(enabled) {
         [self requestNotificationPermission];
     } else {

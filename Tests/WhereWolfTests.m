@@ -40,7 +40,13 @@
 - (void)scheduleUploadAfter:(NSTimeInterval)delay;
 - (void)rememberWifiNetworkInfo:(NSDictionary *)info;
 - (void)evaluateLocationHealth;
+- (void)reconcileLocationHealth;
 - (BOOL)processLocationBatch:(NSArray *)locations;
+@end
+
+@protocol GLServerCredentialsTesting <NSObject>
++ (void)beginTesting;
++ (void)endTesting;
 @end
 
 @protocol GLWifiOnlySendingTesting <NSObject>
@@ -55,6 +61,16 @@
 - (void)scheduleUploadAfter:(NSTimeInterval)delay {
     self.scheduledUploadDelay = delay;
     [super scheduleUploadAfter:delay];
+}
+@end
+
+@interface TestCoverageStatusManager : GLManager
+@property NSUInteger locationManagerReadCount;
+@end
+@implementation TestCoverageStatusManager
+- (CLLocationManager *)locationManager {
+    self.locationManagerReadCount++;
+    return [super locationManager];
 }
 @end
 
@@ -213,10 +229,12 @@ static int denyCommit(void *context, int action, const char *first, const char *
 @implementation WhereWolfTests
 + (void)setUp {
     [super setUp];
+    [(Class<GLServerCredentialsTesting>)NSClassFromString(@"GLServerCredentials") beginTesting];
     method_exchangeImplementations(class_getClassMethod(NSUserDefaults.class, @selector(standardUserDefaults)), class_getClassMethod(NSUserDefaults.class, @selector(wherewolf_testDefaults)));
     method_exchangeImplementations(class_getClassMethod(NSURLSessionConfiguration.class, @selector(defaultSessionConfiguration)), class_getClassMethod(NSURLSessionConfiguration.class, @selector(wherewolf_testConfiguration)));
 }
 + (void)tearDown {
+    [(Class<GLServerCredentialsTesting>)NSClassFromString(@"GLServerCredentials") endTesting];
     method_exchangeImplementations(class_getClassMethod(NSURLSessionConfiguration.class, @selector(defaultSessionConfiguration)), class_getClassMethod(NSURLSessionConfiguration.class, @selector(wherewolf_testConfiguration)));
     method_exchangeImplementations(class_getClassMethod(NSUserDefaults.class, @selector(standardUserDefaults)), class_getClassMethod(NSUserDefaults.class, @selector(wherewolf_testDefaults)));
     [super tearDown];
@@ -1006,7 +1024,8 @@ static int denyCommit(void *context, int action, const char *first, const char *
     [self queue:@{@"saved": @YES} key:@"saved"];
     [self.manager applyUsageProfile:1];
     XCTAssertEqualObjects(self.manager.apiEndpointURL, @"https://wherewolf.test/");
-    XCTAssertEqualObjects([NSUserDefaults.standardUserDefaults objectForKey:GLAPIAccessTokenDefaultsName], @"test-token");
+    XCTAssertEqualObjects(self.manager.apiAccessToken, @"test-token");
+    XCTAssertNil([NSUserDefaults.standardUserDefaults objectForKey:GLAPIAccessTokenDefaultsName]);
     XCTAssertEqual(self.manager.loggingMode, kGLLoggingModeOwntracks);
     XCTAssertEqualObjects(self.manager.sendingInterval, @900);
     XCTAssertEqual(self.manager.pointsPerBatch, 37);
@@ -1417,6 +1436,14 @@ static int denyCommit(void *context, int action, const char *first, const char *
     }] evaluatedWithObject:self.manager handler:nil];
     [self waitForExpectationsWithTimeout:5 handler:nil];
     XCTAssertEqual(requests, 3);
+}
+- (void)testCoverageStatusDoesNotInitializeLocationAcquisition {
+    TestCoverageStatusManager *manager = [TestCoverageStatusManager new];
+    [manager setValue:@YES forKey:@"trackingEnabled"];
+    [manager reconcileLocationHealth];
+    [manager reconcileLocationHealth];
+    XCTAssertEqual(manager.locationManagerReadCount, 0);
+    XCTAssertTrue(manager.trackingEnabled);
 }
 - (void)testOwntracksAcceptsEmpty204AndKeepsRecordsOnServerFailure {
     [self queue:@{@"_type": @"location", @"tst": @1000} key:@"one"];
@@ -1889,6 +1916,72 @@ static int denyCommit(void *context, int action, const char *first, const char *
     writer.finish(nil);
     writer.finish = nil;
     XCTAssertEqual(self.count, 0);
+}
+
+- (void)testConnectionRequestMatchesGeoJSONAndOnlyLatestShapes {
+    [self.manager saveNewAPIEndpoint:@"https://wherewolf.test/" andAccessToken:@"test-token"];
+    self.manager.customHTTPHeaders = @{@"X-API-Key": @"key"};
+    for(NSNumber *mode in @[@(kGLLoggingModeAllData), @(kGLLoggingModeOnlyLatest)]) {
+        self.manager.loggingMode = mode.intValue;
+        NSURLRequest *request = [self.manager connectionTestRequestForLocation:[self location:45.5 time:1000]];
+        NSDictionary *body = [NSJSONSerialization JSONObjectWithData:request.HTTPBody options:0 error:nil];
+        XCTAssertEqualObjects(request.HTTPMethod, @"POST");
+        XCTAssertEqualObjects([request valueForHTTPHeaderField:@"Content-Type"], @"application/json");
+        XCTAssertEqualObjects([request valueForHTTPHeaderField:@"Authorization"], @"Bearer test-token");
+        XCTAssertEqualObjects([request valueForHTTPHeaderField:@"X-API-Key"], @"key");
+        XCTAssertEqual([body[@"locations"] count], 1);
+        NSDictionary *point = body[@"locations"][0];
+        XCTAssertEqualObjects(point[@"type"], @"Feature");
+        XCTAssertEqualObjects(point[@"geometry"][@"type"], @"Point");
+        XCTAssertEqualObjects(point[@"properties"][@"test"], @YES);
+        XCTAssertEqualObjects(point[@"properties"][@"locations_in_payload"], @1);
+        XCTAssertNil(body[@"trip"]);
+        XCTAssertEqual(request.timeoutInterval, 15);
+    }
+    XCTAssertEqual(self.count, 0);
+    XCTAssertEqual(self.manager.recentSendResults.count, 0);
+}
+
+- (void)testConnectionRequestMatchesOwnTracksWithoutExtraProperties {
+    [self.manager saveNewAPIEndpoint:@"https://wherewolf.test/" andAccessToken:@"encoded"];
+    self.manager.loggingMode = kGLLoggingModeOwntracks;
+    [self.manager saveNewDeviceId:@"phone"];
+    NSURLRequest *request = [self.manager connectionTestRequestForLocation:[self location:45.5 time:1000]];
+    NSDictionary *body = [NSJSONSerialization JSONObjectWithData:request.HTTPBody options:0 error:nil];
+    XCTAssertEqualObjects(body[@"_type"], @"location");
+    XCTAssertEqualObjects(body[@"tst"], @1000);
+    XCTAssertEqualObjects(body[@"topic"], @"owntracks/phone");
+    XCTAssertNil(body[@"locations"]); XCTAssertNil(body[@"test"]); XCTAssertNil(body[@"properties"]);
+    XCTAssertEqualObjects([request valueForHTTPHeaderField:@"Authorization"], @"Basic encoded");
+}
+
+- (void)testConnectionSendsImmediatelyWithoutChangingQueueHistoryTripOrStats {
+    [self queue:@{@"properties": @{}} key:@"keep"];
+    [self.manager saveNewAPIEndpoint:@"https://wherewolf.test/" andAccessToken:nil];
+    self.manager.sendingInterval = @-1;
+    [self wifiOnlyOnCellular];
+    NSDate *trip = [NSDate dateWithTimeIntervalSince1970:900];
+    [NSUserDefaults.standardUserDefaults setObject:trip forKey:GLTripStartTimeDefaultsName];
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    id tracking = [defaults objectForKey:GLTrackingStateDefaultsName];
+    id retry = [defaults objectForKey:@"GLUploadRetryState"];
+    id sentDate = [defaults objectForKey:GLLastSentDateDefaultsName];
+    CLLocation *last = self.manager.lastLocation;
+    XCTestExpectation *sent = [self expectationWithDescription:@"Probe completion"];
+    requestHandler = ^(WhereWolfTestProtocol *request) { [request respond:@"{\"result\":\"ok\"}" status:201]; };
+    [self.manager testConnectionAtLocation:[self location:45.5 time:1000] completion:^(NSInteger status, BOOL acknowledged, NSError *error) {
+        XCTAssertEqual(status, 201); XCTAssertTrue(acknowledged); XCTAssertNil(error);
+        [sent fulfill];
+    }];
+    [self waitForExpectationsWithTimeout:5 handler:nil];
+    XCTAssertEqual(self.count, 1);
+    XCTAssertEqualObjects(self.manager.lastLocation, last);
+    XCTAssertEqualObjects(self.manager.currentTripStart, trip);
+    XCTAssertEqual(self.manager.recentSendResults.count, 0);
+    XCTAssertFalse(self.manager.sendInProgress);
+    XCTAssertEqualObjects([defaults objectForKey:GLTrackingStateDefaultsName], tracking);
+    XCTAssertEqualObjects([defaults objectForKey:@"GLUploadRetryState"], retry);
+    XCTAssertEqualObjects([defaults objectForKey:GLLastSentDateDefaultsName], sentDate);
 }
 
 @end

@@ -223,7 +223,13 @@ final class OnboardingDestinationTests: XCTestCase {
         let defaults = UserDefaults.standard
         let domain = Bundle.main.bundleIdentifier!
         let saved = defaults.persistentDomain(forName: domain) ?? [:]
-        defer { defaults.setPersistentDomain(saved, forName: domain); GLManagerBridge.shared.refresh() }
+        let credentialStore = GLServerCredentials.store
+        GLServerCredentials.store = MemorySettingsCredentialStore()
+        defer {
+            GLServerCredentials.store = credentialStore
+            defaults.setPersistentDomain(saved, forName: domain)
+            GLManagerBridge.shared.refresh()
+        }
         action(GLManagerBridge.shared, GLManager.shared())
     }
 

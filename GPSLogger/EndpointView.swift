@@ -6,6 +6,7 @@ struct EndpointView: View {
     @State private var deviceId = ""
     @State private var uniqueId = false
     @State private var saved = false
+    @State private var saveFailed = false
     @State private var acceptHTTP = false
     @State private var headers: [HeaderField] = []
     @State private var bridge = GLManagerBridge.shared
@@ -98,22 +99,29 @@ struct EndpointView: View {
                 Text("Enable for OwnTracks or servers that return an empty response. Otherwise, the server must acknowledge the upload with a JSON result of ok.")
             }
 
+            ConnectionTestSection(enabled: validURL && headersValid) {
+                saved = bridge.saveServer(url: url, token: token, deviceId: deviceId, uniqueId: uniqueId,
+                                          acceptHTTP: acceptHTTP, headers: Dictionary(uniqueKeysWithValues: headers.map { ($0.name, $0.value) }))
+                saveFailed = !saved
+                return saved
+            }
+
             Section {
                 Button("Save") {
-                    bridge.saveServer(url: url, token: token, deviceId: deviceId, uniqueId: uniqueId,
-                                      acceptHTTP: acceptHTTP, headers: Dictionary(uniqueKeysWithValues: headers.map { ($0.name, $0.value) }))
-                    saved = true
+                    saved = bridge.saveServer(url: url, token: token, deviceId: deviceId, uniqueId: uniqueId,
+                                              acceptHTTP: acceptHTTP, headers: Dictionary(uniqueKeysWithValues: headers.map { ($0.name, $0.value) }))
+                    saveFailed = !saved
                 }
                 .disabled(!validURL || !headersValid)
                 .frame(maxWidth: .infinity)
                 Button("Clear Server URL", role: .destructive) {
-                    bridge.clearServer()
-                    url = ""
-                    token = ""
-                    saved = true
+                    saved = bridge.clearServer()
+                    saveFailed = !saved
+                    if saved { url = ""; token = "" }
                 }
                 .frame(maxWidth: .infinity)
             }
+            if saveFailed { Section { Text("Couldn’t save the server credential. Unlock this iPhone and try again.").foregroundStyle(.orange) } }
             if saved {
                 Section { Text("Saved").foregroundStyle(.secondary) }
             }
