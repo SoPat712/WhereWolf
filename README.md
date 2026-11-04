@@ -64,7 +64,7 @@ An existing recording continues when you reopen it.
 Settings → **Backup & Sync** exports one JSON settings file and imports it after a
 validated change preview. **Include Server URL and Token** defaults on; that file
 also includes custom headers and contains your server credential. Keep it private.
-Turn it off to omit all three. Backups contain configuration, Wi-Fi zones and trip
+Turn it off to omit all three. Backups contain configuration, Wi-Fi places and trip
 modes, without locations, queues, trips, imported workouts or Health records.
 Import preserves tracking on/off and waits until the current trip ends. Permissions
 must be configured separately on each iPhone.
@@ -178,15 +178,15 @@ Tip Jar controller and main storyboard have been removed.
 
 WhereWolf includes PR #180's precision controls, accuracy filter, and stationary
 stopping, plus its later notification, persisted pause-state, and safe-settings
-follow-ups. It also adds multiple WiFi zones with optional BSSID matching,
+follow-ups. It also adds Wi-Fi Places with network names and geographic radii,
 custom HTTP headers, server-certificate diagnostics, and the last 50 send
 outcomes for the current app session.
 
 Overland features through October 28, 2026 include editable trip modes,
 Shortcuts and Siri actions, widgets and Control Center controls, an optional
 trip Live Activity, iCloud Drive exports, Apple Health workouts and routes,
-stationary-point filtering, and WiFi-zone placement on a map. These use the
-app’s existing screens and glass styling. Health, iCloud, WiFi identity and
+stationary-point filtering, and Wi-Fi place editing on a map. These use the
+app’s existing screens and glass styling. Health, iCloud, Wi-Fi identity and
 widget sharing require the corresponding signing capabilities. See the
 [integration notes](docs/upstream-integration.md) for behavior and build options.
 Siri phrases work with or without the word "trip", such as "Start a walk in WhereWolf",
@@ -214,9 +214,12 @@ recording, uploads, reminders and Live Activity updates remain independent of
 scene visibility. Replay catches up when Tracker becomes visible; the trip map
 loads when Trip becomes visible.
 
-WiFi zones replace only a fresh current fix, keep its timestamp, and use the
-zone radius or 50 m accuracy. Historical fixes in a delivered batch remain
-intact. Future-dated fixes and repeated identical fixes
+Wi-Fi Places match a connected network name inside a saved radius, allowing
+up to 200 m of reported uncertainty. Place’s Point replaces only the fresh current
+fix, preserving its timestamp. Its accuracy is the place’s radius or the fix’s own,
+whichever is smaller, so Max Saved-Point Error keeps it whenever it would keep the fix. Nothing
+skips fixes inside the matched circle without stopping location services.
+Historical fixes remain unchanged when recording a place’s point. Future-dated fixes and repeated identical fixes
 are rejected; delayed history has no blanket age cutoff. Radius pausing uses
 validated raw fixes before recording filters and resets on tracking, preset
 and trip transitions. Automatic pausing still ends a trip.
@@ -622,7 +625,7 @@ Settings is also listed in Settings.
 
 Open Settings from the drawer tabs. The first page shows connection status,
 the tracking switch, and the Usage Preset selector, then links to Tracking &
-Precision, Stationary Pause, Sending, Trip Settings, Background, and WiFi Zones.
+Precision, Stationary Pause, Sending, Trip Settings, Background, and Wi-Fi Places.
 The Usage Preset selector applies a set of tracking preferences. Section info
 buttons explain the controls and link to their sources.
 
@@ -689,18 +692,18 @@ These controls configure [Core Location](https://developer.apple.com/reference/c
 * `Notifications` controls local tracking and send notifications. iOS notification
   permission is also required. Problems Only keeps upload errors and the existing
   missed-update reminder while suppressing routine pause, resume and trip messages.
-* `WiFi Zones` assigns fixed coordinates to a network name. BSSID can distinguish
-  access points with the same name. Select several networks in Add Zone to give
-  them one coordinate pair, or tap a saved network to edit its location. Saving
-  the same SSID/BSSID identity updates its existing assignment. SSID-only entries
-  match any access point; a matching BSSID takes precedence. BSSIDs are normalized
-  so capitalization and omitted leading zeroes do not create duplicates.
-  The connected network is selected automatically when iOS exposes it. The picker
-  also includes saved entries and up to 64 locally observed network identities;
-  it does not scan nearby networks or read iOS's saved-network list. Manual entries
-  remain available. Autofill and matching both require location access and an app
-  signed with Access WiFi Information. A sideloading profile without that entitlement
-  can store zone settings but cannot identify a connected network to apply them.
+* `Wi-Fi Places` groups network names under a named point and a 25 m–2 km radius.
+  Match requires both a connected network name and a fix inside the circle, allowing
+  for uncertainty up to 200 m. The nearer place wins when names are shared.
+  Record the place’s point or save nothing inside its circle. Drag the map to move
+  the point and its circle’s handle to resize. Frequent Networks suggests up to
+  three unassigned names used for at least an hour in the past seven days.
+  The device keeps up to 64 observed network names, without access-point addresses.
+  The picker supports manual names; iOS exposes only the connected network and
+  does not scan or reveal its saved-network list. Identification requires location
+  authorization and Access WiFi Information in the signing profile. Existing zones
+  at the same coordinates migrate to one place. Observed networks stay on this device;
+  places are included in Backup & Sync.
 
 Distance, time, and accuracy filters act on points after iOS delivers them.
 They do not set the GPS sampling rate. Set a filter to Off to disable it.

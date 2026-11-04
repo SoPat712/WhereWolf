@@ -20,7 +20,7 @@
 - (BOOL)observeMovementLocation:(CLLocation *)location;
 - (void)resetStationaryAnchors;
 - (void)setupHTTPClient;
-- (NSArray<CLLocation *> *)locationsByApplyingWifiZone:(NSArray<CLLocation *> *)locations networkInfo:(NSDictionary *)info;
+- (NSArray<CLLocation *> *)locationsByApplyingWifiPlace:(NSArray<CLLocation *> *)locations networkInfo:(NSDictionary *)info;
 - (void)sendQueueIfTimeElapsed;
 - (void)sendQueueIfNotInProgress;
 - (void)sendTimeExpired;
@@ -39,6 +39,10 @@
 - (void)deferUploadForResponse:(NSHTTPURLResponse *)response error:(NSError *)error;
 - (void)scheduleUploadAfter:(NSTimeInterval)delay;
 - (void)rememberWifiNetworkInfo:(NSDictionary *)info;
+- (void)rememberWifiNetworkInfo:(NSDictionary *)info location:(CLLocation *)fix date:(NSDate *)now;
+- (NSDictionary *)wifiNetworkInfoForBatch;
++ (NSArray<NSDictionary *> *)knownWifiNetworksAtDate:(NSDate *)now;
++ (NSArray<NSDictionary *> *)frequentWifiNetworksAtDate:(NSDate *)now places:(NSArray<NSDictionary *> *)places;
 - (void)evaluateLocationHealth;
 - (void)reconcileLocationHealth;
 - (BOOL)processLocationBatch:(NSArray *)locations;
@@ -111,8 +115,10 @@
 @property BOOL protectedDuringProcessing;
 @property NSUInteger allowanceEndCount;
 @property NSURL *healthDirectory;
+@property NSDictionary *wifiInfo;
 @end
 @implementation TestLocationHealthManager
+- (NSDictionary *)wifiNetworkInfoForBatch { return self.wifiInfo ?: [super wifiNetworkInfoForBatch]; }
 - (NSTimeInterval)locationHealthUptime { return self.healthUptime; }
 - (GLLocationSaveAllowance *)newLocationSaveAllowance {
     __weak typeof(self) weakSelf = self;
@@ -212,6 +218,18 @@ static NSUserDefaults *fixtureDefaults;
 @implementation NSUserDefaults (WhereWolfTests)
 + (NSUserDefaults *)wherewolf_testDefaults {
     return fixtureDefaults ?: [self wherewolf_testDefaults];
+}
+@end
+
+@interface TestWifiDefaults : NSUserDefaults
+@property BOOL rejectPlaces;
+@property NSUInteger catalogWrites;
+@end
+@implementation TestWifiDefaults
+- (void)setObject:(id)value forKey:(NSString *)key {
+    if(self.rejectPlaces && [key isEqual:GLWifiPlacesDefaultsName]) return;
+    if([key isEqual:GLWifiKnownNetworksDefaultsName]) self.catalogWrites++;
+    [super setObject:value forKey:key];
 }
 @end
 
@@ -776,117 +794,297 @@ static int denyCommit(void *context, int action, const char *first, const char *
     [self waitForSend];
     XCTAssertEqual(self.count, 0);
 }
-- (void)testWifiBSSIDDisambiguatesSameSSID {
-    [self.manager addWifiZoneWithName:@"Home" latitude:@"1" longitude:@"2" bssid:nil];
-    [self.manager addWifiZoneWithName:@"Home" latitude:@"3" longitude:@"4" bssid:@"aa:bb:cc:dd:ee:ff"];
-    XCTAssertEqual(self.manager.wifiZones.count, 2);
-    CLLocation *exact = [self.manager currentLocationFromWifiName:@"Home" bssid:@"AA:BB:CC:DD:EE:FF"];
-    XCTAssertEqual(exact.coordinate.latitude, 3);
-    CLLocation *fallback = [self.manager currentLocationFromWifiName:@"Home" bssid:nil];
-    XCTAssertEqual(fallback.coordinate.latitude, 1);
-    XCTAssertNil([self.manager currentLocationFromWifiName:@"Other" bssid:@"aa:bb:cc:dd:ee:ff"]);
+- (NSMutableDictionary *)wifiPlace:(NSString *)name latitude:(double)latitude radius:(double)radius {
+    return [@{@"id": NSUUID.UUID.UUIDString, @"name": name, @"latitude": @(latitude), @"longitude": @(-122.67),
+        @"radius": @(radius), @"networks": @[name], @"symbol": @"mappin", @"color": @"blue", @"record": @"point"} mutableCopy];
 }
-- (void)testWifiZonePreservesDeliveredHistoryAndCurrentTimestamp {
-    [self.manager addWifiZoneWithName:@"Home" latitude:@"1" longitude:@"2" bssid:nil];
-    CLLocation *old = [self location:45.5 time:NSDate.date.timeIntervalSince1970 - 300];
-    CLLocation *current = [self location:45.6 time:NSDate.date.timeIntervalSince1970 - 1];
-    NSArray<CLLocation *> *result = [self.manager locationsByApplyingWifiZone:@[old, current] networkInfo:@{@"SSID": @"Home"}];
+- (CLLocation *)wifiFixAtDistance:(double)meters accuracy:(double)accuracy date:(NSDate *)date {
+    return [[CLLocation alloc] initWithCoordinate:CLLocationCoordinate2DMake(45.5 + meters / 111132, -122.67)
+        altitude:10 horizontalAccuracy:accuracy verticalAccuracy:5 course:0 speed:2 timestamp:date];
+}
+- (void)testWifiPlacesMigrationGroupsCoordinatesDeduplicatesAndDropsBSSIDs {
+    [fixtureDefaults setObject:@[
+        @{@"name": @"Home", @"latitude": @"45.5", @"longitude": @"-122.67", @"bssid": @"a:b:c:d:e:f"},
+        @{@"name": @"Home 5G", @"latitude": @45.5, @"longitude": @(-122.67), @"BSSID": @"different"},
+        @{@"name": @"Home", @"latitude": @45.5, @"longitude": @(-122.67), @"bssid": @"third"},
+        @{@"name": @"Office", @"latitude": @46, @"longitude": @(-122.67)}] forKey:GLWifiZonesDefaultsName];
+    NSArray *places = self.manager.wifiPlaces;
+    XCTAssertEqual(places.count, 2);
+    NSDictionary *home = places.firstObject;
+    XCTAssertEqualObjects(home[@"name"], @"Home");
+    XCTAssertEqualObjects(home[@"networks"], (@[@"Home", @"Home 5G"]));
+    XCTAssertEqualObjects(home[@"radius"], @100);
+    XCTAssertEqualObjects(home[@"symbol"], @"house.fill");
+    XCTAssertEqualObjects(home[@"record"], @"point");
+    XCTAssertNotNil([[NSUUID alloc] initWithUUIDString:home[@"id"]]);
+    XCTAssertNil(home[@"bssid"]); XCTAssertNil(home[@"BSSID"]);
+    XCTAssertNil([fixtureDefaults objectForKey:GLWifiZonesDefaultsName]);
+    XCTAssertEqualObjects(places, self.manager.wifiPlaces);
+}
+- (void)testWifiPlacesMigrationPreservesLegacySingleZone {
+    [fixtureDefaults setObject:@"Office" forKey:@"WifiZoneName"];
+    [fixtureDefaults setObject:@"45.5" forKey:@"WifiZoneLatitude"];
+    [fixtureDefaults setObject:@"-122.67" forKey:@"WifiZoneLongitude"];
+    NSDictionary *place = self.manager.wifiPlaces.firstObject;
+    XCTAssertEqualObjects(place[@"name"], @"Office");
+    XCTAssertEqualObjects(place[@"networks"], (@[@"Office"]));
+    XCTAssertEqualObjects(place[@"symbol"], @"building.2.fill");
+    XCTAssertEqualObjects(place[@"latitude"], @45.5);
+    XCTAssertNil([fixtureDefaults objectForKey:@"WifiZoneName"]);
+    XCTAssertNil([fixtureDefaults objectForKey:@"WifiZoneLatitude"]);
+    XCTAssertNil([fixtureDefaults objectForKey:@"WifiZoneLongitude"]);
+}
+- (void)testWifiPlacesMigrationRetainsOldKeysWhenNewSaveFails {
+    TestWifiDefaults *failing = [[TestWifiDefaults alloc] initWithSuiteName:self.defaultsSuite];
+    fixtureDefaults = failing;
+    failing.rejectPlaces = YES;
+    NSArray *zones = @[@{@"name": @"Home", @"latitude": @45.5, @"longitude": @(-122.67)}];
+    [failing setObject:zones forKey:GLWifiZonesDefaultsName];
+    XCTAssertEqual(self.manager.wifiPlaces.count, 1);
+    XCTAssertNil([failing objectForKey:GLWifiPlacesDefaultsName]);
+    XCTAssertEqualObjects([failing objectForKey:GLWifiZonesDefaultsName], zones);
+    [failing removeObjectForKey:GLWifiZonesDefaultsName];
+    [failing setObject:@"Home" forKey:@"WifiZoneName"];
+    [failing setObject:@45.5 forKey:@"WifiZoneLatitude"];
+    [failing setObject:@(-122.67) forKey:@"WifiZoneLongitude"];
+    XCTAssertEqual(self.manager.wifiPlaces.count, 1);
+    XCTAssertEqualObjects([failing objectForKey:@"WifiZoneName"], @"Home");
+    failing.rejectPlaces = NO;
+    XCTAssertEqual(self.manager.wifiPlaces.count, 1);
+    XCTAssertNotNil([failing objectForKey:GLWifiPlacesDefaultsName]);
+    XCTAssertNil([failing objectForKey:@"WifiZoneName"]);
+}
+- (void)testWifiPlaceMatchingUsesRadiusPlusCappedAccuracy {
+    [self.manager replaceWifiPlaces:@[[self wifiPlace:@"Shared" latitude:45.5 radius:100]]];
+    NSDate *now = [NSDate dateWithTimeIntervalSinceNow:-1];
+    XCTAssertNotNil([self.manager matchingWifiPlaceForSSID:@"Shared" location:[self wifiFixAtDistance:140 accuracy:50 date:now]]);
+    XCTAssertNil([self.manager matchingWifiPlaceForSSID:@"Shared" location:[self wifiFixAtDistance:170 accuracy:50 date:now]]);
+    XCTAssertNotNil([self.manager matchingWifiPlaceForSSID:@"Shared" location:[self wifiFixAtDistance:280 accuracy:500 date:now]]);
+    XCTAssertNil([self.manager matchingWifiPlaceForSSID:@"Shared" location:[self wifiFixAtDistance:330 accuracy:500 date:now]]);
+    XCTAssertNil([self.manager matchingWifiPlaceForSSID:@"Shared" location:[self wifiFixAtDistance:0 accuracy:-1 date:now]]);
+    XCTAssertNil([self.manager matchingWifiPlaceForSSID:@"Shared" location:[self wifiFixAtDistance:0 accuracy:NAN date:now]]);
+    XCTAssertNil([self.manager matchingWifiPlaceForSSID:@"Shared" location:[self wifiFixAtDistance:0 accuracy:INFINITY date:now]]);
+    XCTAssertNil([self.manager matchingWifiPlaceForSSID:nil location:[self wifiFixAtDistance:0 accuracy:5 date:now]]);
+    XCTAssertNil([self.manager matchingWifiPlaceForSSID:@"Other" location:[self wifiFixAtDistance:0 accuracy:5 date:now]]);
+}
+- (void)testWifiPlacesSharingSSIDChooseNearestCenter {
+    NSMutableDictionary *first = [self wifiPlace:@"Home" latitude:45.5 radius:200];
+    NSMutableDictionary *second = [self wifiPlace:@"Work" latitude:45.501 radius:200];
+    first[@"networks"] = @[@"eduroam"]; second[@"networks"] = @[@"eduroam"];
+    XCTAssertTrue(([self.manager replaceWifiPlaces:@[first, second]]));
+    CLLocation *fix = [self wifiFixAtDistance:100 accuracy:5 date:NSDate.date];
+    XCTAssertEqualObjects([self.manager matchingWifiPlaceForSSID:@"eduroam" location:fix][@"id"], second[@"id"]);
+    XCTAssertNil([self.manager matchingWifiPlaceForSSID:@"eduroam" location:[self wifiFixAtDistance:1000 accuracy:5 date:NSDate.date]]);
+}
+- (void)testWifiPlacePointPreservesHistoryAndCurrentTimestampAndRadius {
+    [self.manager replaceWifiPlaces:@[[self wifiPlace:@"Home" latitude:45.5 radius:125]]];
+    CLLocation *old = [self location:46 time:NSDate.date.timeIntervalSince1970 - 300];
+    CLLocation *current = [self location:45.5001 time:NSDate.date.timeIntervalSince1970 - 1];
+    NSArray<CLLocation *> *result = [self.manager locationsByApplyingWifiPlace:@[old, current] networkInfo:@{@"SSID": @"Home"}];
     XCTAssertEqual(result.count, 2);
     XCTAssertEqual(result[0], old);
-    XCTAssertEqual(result[1].coordinate.latitude, 1);
+    XCTAssertEqual(result[1].coordinate.latitude, 45.5);
     XCTAssertEqualObjects(result[1].timestamp, current.timestamp);
-    XCTAssertEqual(result[1].horizontalAccuracy, 1);
-    XCTAssertEqualObjects([self.manager locationsByApplyingWifiZone:@[old] networkInfo:@{@"SSID": @"Home"}], @[old]);
+    XCTAssertEqual(result[1].horizontalAccuracy, 5);
+    XCTAssertEqual(result[1].verticalAccuracy, -1);
+    CLLocation *coarse = [[CLLocation alloc] initWithCoordinate:current.coordinate altitude:10 horizontalAccuracy:150
+        verticalAccuracy:5 course:0 speed:2 timestamp:current.timestamp];
+    XCTAssertEqual([self.manager locationsByApplyingWifiPlace:@[coarse] networkInfo:@{@"SSID": @"Home"}].lastObject.horizontalAccuracy, 125);
+    XCTAssertEqualObjects([self.manager locationsByApplyingWifiPlace:@[old] networkInfo:@{@"SSID": @"Home"}], @[old]);
+    XCTAssertEqualObjects([self.manager locationsByApplyingWifiPlace:@[current] networkInfo:@{}], @[current]);
 }
-- (void)testWifiZoneUsesConfiguredRadius {
-    [NSUserDefaults.standardUserDefaults setObject:@[@{@"name": @"Home", @"latitude": @1, @"longitude": @2, @"radius": @125}] forKey:@"WifiZones"];
-    CLLocation *zone = [self.manager currentLocationFromWifiName:@"Home" bssid:nil];
-    XCTAssertEqual(zone.horizontalAccuracy, 125);
-    XCTAssertTrue([self.manager addWifiNetworks:@[@{@"name": @"Home"}] latitude:@"3" longitude:@"4"]);
-    zone = [self.manager currentLocationFromWifiName:@"Home" bssid:nil];
-    XCTAssertEqual(zone.horizontalAccuracy, 125);
-    XCTAssertEqual(zone.coordinate.latitude, 3);
-}
-- (void)testWifiBSSIDNormalizationAndLegacyDuplicateReadUsesLastEntry {
-    XCTAssertEqualObjects([GLManager normalizedWifiBSSID:@"A:B:C:D:E:F"], @"0a:0b:0c:0d:0e:0f");
-    XCTAssertEqualObjects([GLManager normalizedWifiBSSID:@"AA-bb-CC-dd-EE-ff"], @"aa:bb:cc:dd:ee:ff");
-    XCTAssertEqualObjects([GLManager normalizedWifiBSSID:@"aabbccddeeff"], @"aa:bb:cc:dd:ee:ff");
-    XCTAssertNil([GLManager normalizedWifiBSSID:@"aa:bb:cc:dd:ee"]);
-
-    [NSUserDefaults.standardUserDefaults setObject:@[
-        @{@"name": @"Home", @"latitude": @"1", @"longitude": @"2", @"bssid": @"0A:0B:0C:0D:0E:0F"},
-        @{@"name": @"Home", @"latitude": @"3", @"longitude": @"4", @"bssid": @"a:b:c:d:e:f"},
-    ] forKey:GLWifiZonesDefaultsName];
-    XCTAssertEqual(self.manager.wifiZones.count, 1);
-    XCTAssertEqualObjects(self.manager.wifiZones.firstObject[@"bssid"], @"0a:0b:0c:0d:0e:0f");
-    XCTAssertEqualObjects(self.manager.wifiZones.firstObject[@"latitude"], @"3");
-    CLLocation *normalized = [self.manager currentLocationFromWifiName:@"Home" bssid:@"A:B:C:D:E:F"];
-    XCTAssertEqual(normalized.coordinate.latitude, 3);
-}
-- (void)testWifiBatchUpsertsIdentityAtomicallyAndAllowsSameSSIDDifferentBSSID {
-    XCTAssertTrue(([self.manager addWifiNetworks:@[
-        @{@"name": @"Home", @"bssid": @"aa:bb:cc:dd:ee:ff"},
-        @{@"name": @"Home", @"bssid": @"11:22:33:44:55:66"},
-        @{@"name": @"Office"},
-    ] latitude:@"1" longitude:@"2"]));
-    XCTAssertEqual(self.manager.wifiZones.count, 3);
-    XCTAssertTrue(([self.manager addWifiNetworks:@[@{@"name": @"Home", @"bssid": @"AABBCCDDEEFF"}]
-        latitude:@"3" longitude:@"4"]));
-    XCTAssertEqual(self.manager.wifiZones.count, 3);
-    CLLocation *updated = [self.manager currentLocationFromWifiName:@"Home" bssid:@"aa:bb:cc:dd:ee:ff"];
-    XCTAssertEqual(updated.coordinate.latitude, 3);
-
-    NSArray *before = self.manager.wifiZones;
-    XCTAssertFalse(([self.manager addWifiNetworks:@[
-        @{@"name": @"New", @"bssid": @"aa:bb:cc:dd:ee:ff"},
-        @{@"name": @"Invalid", @"bssid": @"not-a-bssid"},
-    ] latitude:@"8" longitude:@"9"]));
-    XCTAssertEqualObjects(self.manager.wifiZones, before);
-    XCTAssertFalse(([self.manager addWifiNetworks:@[@{@"name": @"Invalid", @"bssid": @123}]
-        latitude:@"8" longitude:@"9"]));
-    XCTAssertEqualObjects(self.manager.wifiZones, before);
-}
-- (void)testWifiReadDropsMalformedEntriesWithoutCreatingWildcards {
-    [NSUserDefaults.standardUserDefaults setObject:@[
-        @"not-a-zone",
-        @{@"name": @"BadCoordinate", @"latitude": @"not-a-number", @"longitude": @"2"},
-        @{@"name": @"BadBSSID", @"latitude": @"1", @"longitude": @"2", @"bssid": @"not-an-address"},
-        @{@"name": @"Valid", @"latitude": @1, @"longitude": @2, @"radius": @125},
-    ] forKey:GLWifiZonesDefaultsName];
-    NSArray *zones = self.manager.wifiZones;
-    XCTAssertEqual(zones.count, 1);
-    XCTAssertEqualObjects(zones.firstObject[@"name"], @"Valid");
-    XCTAssertEqualObjects(zones.firstObject[@"latitude"], @"1");
-    XCTAssertEqualObjects(zones.firstObject[@"radius"], @125);
-    XCTAssertNil([self.manager currentLocationFromWifiName:@"BadBSSID" bssid:nil]);
-}
-- (void)testKnownWifiCatalogIsBoundedRedactsInvalidIdentityAndAvoidsRepeatedWrites {
-    [NSUserDefaults.standardUserDefaults setObject:@[@"malformed", @{@"SSID": @"Stored", @"BSSID": @"A:B:C:D:E:F"}]
-        forKey:GLWifiKnownNetworksDefaultsName];
-    XCTAssertNoThrow([GLManager knownWifiNetworks]);
-    [self.manager rememberWifiNetworkInfo:@{@"SSID": @"", @"BSSID": @"aa:bb:cc:dd:ee:ff"}];
-    [self.manager rememberWifiNetworkInfo:@{@"SSID": @"Hidden", @"BSSID": @"not-a-bssid"}];
-    [self.manager rememberWifiNetworkInfo:@{@"SSID": @"Wi-Fi", @"BSSID": @"00:00:00:00:00:00"}];
-    [self.manager rememberWifiNetworkInfo:@{@"SSID": @"WLAN", @"BSSID": @"00:00:00:00:00:00"}];
-    for(NSUInteger i = 0; i < 65; i++) {
-        NSString *bssid = [NSString stringWithFormat:@"%x:%x:%x:%x:%x:%x", (unsigned int)i, 1u, 2u, 3u, 4u, 5u];
-        [self.manager rememberWifiNetworkInfo:@{@"SSID": [NSString stringWithFormat:@"Network-%lu", (unsigned long)i], @"BSSID": bssid}];
+- (void)testWifiPlaceNothingDropsOnlyInsideFixesWithoutChangingAcceptedState {
+    TestLocationHealthManager *manager = [self healthManager];
+    manager.wifiInfo = @{@"SSID": @"Home"};
+    [manager setAdvancedTrackingOption:@YES forKey:@"automatic_location_retry"];
+    manager.discardPointsWithinDistance = -1; manager.discardPointsWithinSeconds = 0;
+    manager.discardPointsOutsideAccuracy = -1;
+    manager.discardPointsWithinDistanceDuringTrip = -1; manager.discardPointsWithinSecondsDuringTrip = 0;
+    [manager startAllUpdates];
+    NSMutableDictionary *place = [self wifiPlace:@"Home" latitude:45.5 radius:100]; place[@"record"] = @"nothing";
+    [manager replaceWifiPlaces:@[place]];
+    CLLocation *outside = [self location:45.51 time:NSDate.date.timeIntervalSince1970 - 300];
+    CLLocation *inside = [self location:45.5 time:NSDate.date.timeIntervalSince1970 - 1];
+    [manager processLocations:@[outside, inside]];
+    XCTAssertEqual(self.count, 1);
+    XCTAssertEqualObjects(manager.lastLocation, outside);
+    XCTAssertEqualObjects(manager.lastReceivedLocation, inside);
+    NSDictionary *accepted = [manager valueForKey:@"lastLocationDictionary"];
+    FMDatabase *trip = [FMDatabase databaseWithPath:@":memory:"]; [trip open];
+    [trip executeUpdate:@"CREATE TABLE trips (id INTEGER PRIMARY KEY, timestamp REAL, latitude REAL, longitude REAL)"];
+    [manager setValue:trip forKey:@"tripdb"];
+    [fixtureDefaults setObject:[NSDate dateWithTimeIntervalSinceNow:-600] forKey:GLTripStartTimeDefaultsName];
+    TestLocationManager *location = (TestLocationManager *)manager.locationManager;
+    NSUInteger starts = location.startCount, stops = location.stopCount;
+    for(int t = 100; t <= 250; t += 10) {
+        manager.healthUptime = t;
+        [manager processLocations:@[[self location:45.5 time:NSDate.date.timeIntervalSince1970 - 1]]];
     }
-    NSArray *known = [GLManager knownWifiNetworks];
+    XCTAssertEqual(self.count, 1);
+    XCTAssertEqualObjects(manager.lastLocation, outside);
+    XCTAssertEqualObjects([manager valueForKey:@"lastLocationDictionary"], accepted);
+    XCTAssertEqual(manager.currentTripPoints.count, 0);
+    XCTAssertEqual(manager.currentTripDistance, 0);
+    XCTAssertEqual(location.startCount, starts); XCTAssertEqual(location.stopCount, stops);
+    XCTAssertEqual([manager.locationUpdateHealth[@"attempts"] intValue], 0);
+    XCTAssertEqualObjects(manager.locationUpdateHealth[@"state"], @"points_skipped");
+    XCTAssertGreaterThan([manager.locationUpdateHealth[@"rejected"][@"wifi_place"] intValue], 0);
+    manager.wifiInfo = @{};
+    [manager processLocations:@[[self location:45.5 time:NSDate.date.timeIntervalSince1970 - 1]]];
+    XCTAssertEqual(self.count, 2);
+}
+- (void)testWifiPlaceNothingDoesNotWriteHealthOrReplay {
+    TestLocationHealthManager *manager = [self healthManager];
+    manager.wifiInfo = @{@"SSID": @"Home"};
+    [manager setValue:@YES forKey:@"trackingEnabled"];
+    NSMutableDictionary *place = [self wifiPlace:@"Home" latitude:45.5 radius:100]; place[@"record"] = @"nothing";
+    [manager replaceWifiPlaces:@[place]];
+    Class healthClass = NSClassFromString(@"WhereWolf.HealthTripRecorder") ?: NSClassFromString(@"HealthTripRecorder");
+    Method health = class_getInstanceMethod(healthClass, NSSelectorFromString(@"recordAcceptedLocation:"));
+    Method replay = class_getClassMethod(NSClassFromString(@"RecentLocationHistory"), NSSelectorFromString(@"recordUpdate:"));
+    XCTAssertTrue(health != NULL && replay != NULL);
+    if(!health || !replay) return;
+    __block NSUInteger healthWrites = 0, replayWrites = 0;
+    IMP healthSpy = imp_implementationWithBlock(^(id receiver, CLLocation *fix) { healthWrites++; });
+    IMP replaySpy = imp_implementationWithBlock(^(id receiver, NSDictionary *update) { replayWrites++; });
+    IMP originalHealth = method_setImplementation(health, healthSpy);
+    IMP originalReplay = method_setImplementation(replay, replaySpy);
+    @try {
+        [manager processLocations:@[[self location:45.5 time:NSDate.date.timeIntervalSince1970 - 1]]];
+    } @finally {
+        method_setImplementation(health, originalHealth); method_setImplementation(replay, originalReplay);
+        imp_removeBlock(healthSpy); imp_removeBlock(replaySpy);
+    }
+    XCTAssertEqual(healthWrites, 0); XCTAssertEqual(replayWrites, 0);
+    XCTAssertNil(manager.lastLocation);
+    XCTAssertEqual(self.count, 0);
+}
+- (void)testWifiPlaceNothingUsesEachFixAccuracyWithTheSameCap {
+    TestLocationHealthManager *manager = [self healthManager];
+    manager.wifiInfo = @{@"SSID": @"Home"};
+    manager.discardPointsWithinDistance = -1; manager.discardPointsWithinSeconds = 0;
+    manager.discardPointsOutsideAccuracy = -1;
+    [manager setValue:@YES forKey:@"trackingEnabled"];
+    NSMutableDictionary *place = [self wifiPlace:@"Home" latitude:45.5 radius:100]; place[@"record"] = @"nothing";
+    [manager replaceWifiPlaces:@[place]];
+    CLLocation *allowed = [self wifiFixAtDistance:350 accuracy:500 date:[NSDate dateWithTimeIntervalSinceNow:-2]];
+    [manager processLocations:@[
+        [self wifiFixAtDistance:280 accuracy:500 date:[NSDate dateWithTimeIntervalSinceNow:-3]], allowed,
+        [self wifiFixAtDistance:0 accuracy:5 date:[NSDate dateWithTimeIntervalSinceNow:-1]]]];
+    XCTAssertEqual(self.count, 1);
+    XCTAssertEqualObjects(manager.lastLocation, allowed);
+}
+- (void)testWifiPlaceNothingRequiresFreshCurrentMatchAndAllowsOutsideCurrentFix {
+    TestLocationHealthManager *manager = [self healthManager];
+    manager.wifiInfo = @{@"SSID": @"Home"};
+    manager.discardPointsWithinDistance = -1; manager.discardPointsWithinSeconds = 0;
+    manager.discardPointsOutsideAccuracy = -1;
+    [manager setValue:@YES forKey:@"trackingEnabled"];
+    NSMutableDictionary *place = [self wifiPlace:@"Home" latitude:45.5 radius:100]; place[@"record"] = @"nothing";
+    [manager replaceWifiPlaces:@[place]];
+    [manager processLocations:@[[self location:45.5 time:NSDate.date.timeIntervalSince1970 - 300]]];
+    XCTAssertEqual(self.count, 1);
+    [manager processLocations:@[[self location:45.5 time:NSDate.date.timeIntervalSince1970 - 2], [self location:45.51 time:NSDate.date.timeIntervalSince1970 - 1]]];
+    XCTAssertEqual(self.count, 3);
+}
+- (void)testWifiCatalogMigratesBySSIDAndEnforces64MostRecent {
+    [fixtureDefaults setObject:@[
+        @{@"SSID": @"CorpNet", @"BSSID": @"one"}, @{@"name": @"CorpNet", @"bssid": @"two"}, @{@"name": @"Guest"}]
+        forKey:GLWifiKnownNetworksDefaultsName];
+    NSArray *migrated = [GLManager knownWifiNetworks];
+    XCTAssertEqual(migrated.count, 2);
+    for(NSDictionary *entry in migrated) { XCTAssertNil(entry[@"bssid"]); XCTAssertNil(entry[@"BSSID"]); XCTAssertNotNil(entry[@"days"]); }
+    NSDate *now = NSDate.date;
+    for(NSUInteger i = 0; i < 65; i++) {
+        [self.manager rememberWifiNetworkInfo:@{@"SSID": [NSString stringWithFormat:@"Network-%lu", (unsigned long)i]}
+            location:nil date:[now dateByAddingTimeInterval:i]];
+    }
+    NSArray *known = [GLManager knownWifiNetworksAtDate:[now dateByAddingTimeInterval:65]];
     XCTAssertEqual(known.count, 64);
-    XCTAssertNil([known filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NSDictionary *network, NSDictionary *bindings) {
-        return [network[@"name"] isEqualToString:@"Network-0"];
-    }]].firstObject);
-    NSDictionary *latest = known.lastObject;
-    XCTAssertEqualObjects(latest[@"name"], @"Network-64");
-    XCTAssertEqualObjects(latest[@"bssid"], @"40:01:02:03:04:05");
-    NSArray *snapshot = [GLManager knownWifiNetworks];
-    [self.manager rememberWifiNetworkInfo:@{@"SSID": @"Network-64", @"BSSID": @"40:01:02:03:04:05"}];
-    XCTAssertEqualObjects([GLManager knownWifiNetworks], snapshot);
-    [self.manager addWifiZoneWithName:@"Saved" latitude:@"1" longitude:@"2" bssid:@"A:B:C:D:E:F"];
-    NSArray *merged = [self.manager knownWifiNetworksIncludingSavedZones:YES];
-    XCTAssertTrue(merged.count > known.count);
-    XCTAssertTrue(([merged containsObject:@{@"name": @"Saved", @"bssid": @"0a:0b:0c:0d:0e:0f"}]));
+    XCTAssertEqualObjects(known.firstObject[@"name"], @"Network-64");
+    XCTAssertFalse([[known valueForKey:@"name"] containsObject:@"Network-0"]);
+    [self.manager rememberWifiNetworkInfo:@{@"SSID": @"Network-64", @"BSSID": @"third"} location:nil date:[now dateByAddingTimeInterval:66]];
+    XCTAssertEqual([GLManager knownWifiNetworksAtDate:[now dateByAddingTimeInterval:66]].count, 64);
+}
+- (void)testWifiCatalogCountsConsecutiveGapsUpToTenMinutesAndSplitsDays {
+    NSDate *midnight = [NSDate dateWithTimeIntervalSince1970:1793750400]; // 2026-11-04 UTC
+    NSDate *first = [midnight dateByAddingTimeInterval:-300];
+    [self.manager rememberWifiNetworkInfo:@{@"SSID": @"Home"} location:nil date:first];
+    [self.manager rememberWifiNetworkInfo:@{@"SSID": @"Home"} location:nil date:[midnight dateByAddingTimeInterval:300]];
+    NSDictionary *entry = [GLManager knownWifiNetworksAtDate:midnight].firstObject;
+    NSArray *values = [entry[@"days"] allValues];
+    XCTAssertEqual(values.count, 2);
+    for(NSNumber *seconds in values) XCTAssertEqual(seconds.doubleValue, 300);
+    NSDate *late = [midnight dateByAddingTimeInterval:901];
+    [self.manager rememberWifiNetworkInfo:@{@"SSID": @"Home"} location:nil date:late];
+    entry = [GLManager knownWifiNetworksAtDate:late].firstObject;
+    XCTAssertEqualObjects(entry[@"days"], (@{@"2026-11-03": @300, @"2026-11-04": @300}));
+    [self.manager rememberWifiNetworkInfo:@{} location:nil date:[late dateByAddingTimeInterval:1]];
+    [self.manager rememberWifiNetworkInfo:@{@"SSID": @"Home"} location:nil date:[late dateByAddingTimeInterval:2]];
+    XCTAssertEqualObjects([GLManager knownWifiNetworksAtDate:late].firstObject[@"days"], entry[@"days"]);
+    NSArray *sixDays = [GLManager knownWifiNetworksAtDate:[midnight dateByAddingTimeInterval:6 * 86400]];
+    XCTAssertEqualObjects(sixDays.firstObject[@"days"], (@{@"2026-11-04": @300}));
+    NSArray *pruned = [GLManager knownWifiNetworksAtDate:[midnight dateByAddingTimeInterval:7 * 86400]];
+    XCTAssertEqual([pruned.firstObject[@"days"] count], 0);
+}
+- (void)testWifiCatalogKeepsLastAccurateCoordinateAndWritesOnlyChanges {
+    TestWifiDefaults *defaults = [[TestWifiDefaults alloc] initWithSuiteName:self.defaultsSuite]; fixtureDefaults = defaults;
+    NSDate *now = NSDate.date;
+    CLLocation *good = [self wifiFixAtDistance:0 accuracy:100 date:now];
+    [self.manager rememberWifiNetworkInfo:@{@"SSID": @"Home"} location:good date:now];
+    NSUInteger writes = defaults.catalogWrites;
+    [self.manager rememberWifiNetworkInfo:@{@"SSID": @"Home"} location:good date:now];
+    XCTAssertEqual(defaults.catalogWrites, writes);
+    [GLManager knownWifiNetworksAtDate:now]; XCTAssertEqual(defaults.catalogWrites, writes);
+    for(NSNumber *accuracy in @[@101, @(-1), @(NAN)]) {
+        [self.manager rememberWifiNetworkInfo:@{@"SSID": @"Home"}
+            location:[self wifiFixAtDistance:500 accuracy:accuracy.doubleValue date:now] date:now];
+    }
+    NSDictionary *entry = [GLManager knownWifiNetworksAtDate:now].firstObject;
+    XCTAssertEqualObjects(entry[@"latitude"], @45.5);
+    XCTAssertEqualObjects(entry[@"longitude"], @(-122.67));
+    XCTAssertEqual(defaults.catalogWrites, writes);
+    [self.manager rememberWifiNetworkInfo:@{@"SSID": @"New"} location:[self wifiFixAtDistance:0 accuracy:101 date:now] date:now];
+    entry = [[GLManager knownWifiNetworksAtDate:now] filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"name == 'New'"]].firstObject;
+    XCTAssertNil(entry[@"latitude"]);
+}
+- (void)testFrequentWifiNetworksThresholdExclusionOrderingAndTopThree {
+    NSDate *now = [NSDate dateWithTimeIntervalSince1970:1793750400];
+    NSMutableArray *catalog = [NSMutableArray array];
+    NSArray *names = @[@"Assigned", @"First", @"Second", @"Third", @"Fourth", @"Short"];
+    NSArray *seconds = @[@25000, @20000, @10000, @7200, @3600, @3599];
+    for(NSUInteger i = 0; i < names.count; i++) [catalog addObject:@{@"name": names[i], @"lastSeen": @(now.timeIntervalSince1970), @"days": @{@"2026-11-04": seconds[i]}}];
+    [fixtureDefaults setObject:catalog forKey:GLWifiKnownNetworksDefaultsName];
+    NSArray *frequent = [GLManager frequentWifiNetworksAtDate:now places:@[[self wifiPlace:@"Assigned" latitude:45.5 radius:100]]];
+    XCTAssertEqualObjects([frequent valueForKey:@"name"], (@[@"First", @"Second", @"Third"]));
+    NSArray *threshold = [GLManager frequentWifiNetworksAtDate:now places:@[@{@"networks": @[@"Assigned", @"First", @"Second", @"Third"]}]];
+    XCTAssertEqualObjects([threshold valueForKey:@"name"], (@[@"Fourth"]));
+    XCTAssertEqualObjects(threshold.firstObject[@"connectedSeconds"], @3600);
+    XCTAssertEqual([GLManager frequentWifiNetworksAtDate:[now dateByAddingTimeInterval:7 * 86400] places:@[]].count, 0);
+}
+- (void)testWifiPlaceValidationIsAtomicClampsRadiusAndAllowsSharedSSID {
+    NSMutableDictionary *place = [self wifiPlace:@"Home" latitude:45.5 radius:1];
+    place[@"networks"] = @[@"Home", @"Home", @" Home "];
+    NSArray *valid = [GLManager validatedWifiPlaces:@[place]];
+    XCTAssertEqualObjects(valid.firstObject[@"radius"], @25);
+    XCTAssertEqualObjects(valid.firstObject[@"networks"], (@[@"Home", @" Home "]));
+    place[@"radius"] = @3000; XCTAssertEqualObjects([GLManager validatedWifiPlaces:@[place]].firstObject[@"radius"], @2000);
+    XCTAssertTrue([self.manager replaceWifiPlaces:@[place]]);
+    NSArray *before = self.manager.wifiPlaces;
+    for(NSDictionary *change in @[@{@"id": @"bad"}, @{@"id": @""}, @{@"id": NSNull.null}, @{@"symbol": @"trash"}, @{@"color": @"black"}, @{@"record": @"stop"},
+        @{@"networks": @[]}, @{@"networks": @[@""]}, @{@"networks": @[[@"é" stringByPaddingToLength:17 withString:@"é" startingAtIndex:0]]},
+        @{@"latitude": @91}, @{@"radius": @(NAN)}, @{@"radius": @YES}]) {
+        NSMutableDictionary *invalid = [place mutableCopy]; invalid[@"id"] = NSUUID.UUID.UUIDString; [invalid addEntriesFromDictionary:change];
+        XCTAssertNil([GLManager validatedWifiPlaces:@[invalid]]);
+        XCTAssertFalse(([self.manager replaceWifiPlaces:@[place, invalid]]));
+        XCTAssertEqualObjects(self.manager.wifiPlaces, before);
+    }
+    NSMutableDictionary *sameID = [place mutableCopy];
+    XCTAssertNil(([GLManager validatedWifiPlaces:@[place, sameID]]));
+    sameID[@"id"] = NSUUID.UUID.UUIDString;
+    XCTAssertNotNil(([GLManager validatedWifiPlaces:@[place, sameID]]));
+    place[@"networks"] = @[[ @"é" stringByPaddingToLength:16 withString:@"é" startingAtIndex:0]];
+    XCTAssertNotNil([GLManager validatedWifiPlaces:@[place]]);
 }
 - (void)testUsageProfilesApplyAndRecognizeCustomEdits {
     for(NSInteger profile = 1; profile <= 5; profile++) {

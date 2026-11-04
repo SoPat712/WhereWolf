@@ -237,7 +237,7 @@ enum SettingsHelpTopic: String {
             ]
         case .automation:
             return [
-                .init("WiFi Zones", "Select several networks to share one coordinate pair. Saving an existing SSID/BSSID updates its location instead of creating a duplicate. Different BSSIDs under the same name may have different locations; an entry without a BSSID matches any access point. The picker includes connected, observed and configured networks, with manual entry. iOS does not expose a general nearby-network scan. Autofill and matching need location permission and Access WiFi Information in the app's signing profile. Use the actual network location.", .implementation),
+                .init("Wi-Fi Places", "Give a place a point, a radius and one or more network names. While connected inside its circle, record the place’s point or save nothing. Each fix’s uncertainty is allowed up to 200 m; the nearer place wins when places share a network. The picker shows connected, observed and configured names, with manual entry. iOS reveals only the connected network; it does not scan. Identification needs location permission and Access WiFi Information in the signing profile.", .implementation),
                 .init("Notifications", "Controls WhereWolf's local tracking and send-related notifications. Problems Only keeps the existing missed-update reminder and upload errors, while hiding routine pause, resume and trip messages. iOS notification permission is also required. Notifications do not turn location tracking or background execution on. They are separate from the blank Island's presentation.", .implementation)
             ]
         case .backup:

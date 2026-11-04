@@ -591,18 +591,29 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   messages while retaining upload errors and the existing missed-update reminder.
   The trip-end and audio-reopen prompts use their own switches and existing
   notification permission, independently of Notifications and Problems Only.
-- Current WiFi identity tries `CNCopyCurrentNetworkInfo`, which is deprecated and can be empty
-  on current iOS, then a cached `NEHotspotNetwork.fetchCurrent` result under two minutes old;
-  each miss refreshes that cache in the background, and Choose Networks waits for a fresh fetch.
-- WiFi zones: `WifiZones` defaults key, array of `{name, latitude, longitude[,
-  bssid]}` dicts; legacy single-zone keys migrate on first access. Matching is
-  SSID-first, BSSID tiebreaker. Canonical SSID/BSSID identity has one coordinate
-  pair; upsert it when reassigned and permit different BSSIDs under one SSID.
-  Batch saves validate every network before changing preferences. Keep the flat
-  schema. The multi-select editor uses connected, observed and configured networks,
-  with manual entry; do not imply nearby scanning or access to iOS's saved networks.
-  Observed identities are bounded to 64 and persisted only when changed. WiFi
-  identification requires a capable signing profile and location authorization.
+- Current Wi-Fi identity uses only the connected SSID. Try `CNCopyCurrentNetworkInfo`,
+  then a cached `NEHotspotNetwork.fetchCurrent` result under two minutes old; a miss
+  refreshes the cache. Add Networks refreshes on appear and scene activation.
+- **Wi-Fi Places**: `WifiPlaces` is a flat plist-safe array of `{id, name, latitude,
+  longitude, radius, networks, symbol, color, record}` dictionaries, with optional
+  `symbolChosen` to preserve manual icons on rename. Validate each whole place;
+  radius clamps to 25–2,000 m, SSIDs are ordered, unique and 1–32 UTF-8 bytes.
+  Migrate `WifiZones` and single-zone keys by equal coordinates, keeping the first
+  network’s name, dropping BSSIDs and removing old keys only after a successful save.
+  Match SSID plus raw-fix distance within radius + min(accuracy, 200); invalid accuracy
+  never matches and the nearest center wins. Point replaces only a <=20-second current
+  fix, reporting the lesser of the radius and the fix's accuracy so Max Saved-Point
+  Error never drops a point it would have kept. Nothing rejects inside-circle fixes through `wifi_place`
+  before accepted-fix, trip, Health or replay updates; keep acquisition and uploads active.
+  Native Forms, navigation and sheets own the list, editor, network and icon pickers.
+  The radius map has a fixed pin and an accessible east-edge resize handle. Never imply
+  scanning or access to iOS’s saved networks. `WifiKnownNetworks` is device-only state,
+  bounded to 64 SSIDs by recency: lastSeen, last <=100 m fix coordinate and seven UTC
+  day buckets of connected seconds. Count only consecutive same-SSID gaps <=10 minutes,
+  split at midnight and persist only changes. Frequent suggestions exclude assigned
+  names, require an hour and show the top three. Identification needs location access
+  and a capable signing profile. Backup & Sync uses `wifiPlaces`; imports accept old
+  `wifiZones` by conversion. Never export or sync the observed catalog.
 
 ## Tracking constraints
 

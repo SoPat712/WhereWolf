@@ -92,6 +92,7 @@ static NSString *const GLTripStartTimeDefaultsName = @"GLTripStartTimeDefaults";
 static NSString *const GLTripStartLocationDefaultsName = @"GLTripStartLocationDefaults";
 static NSString *const GLUseNewLocationEngineDefaultsName = @"GLUseNewLocationEngine";
 static NSString *const GLWifiZonesDefaultsName = @"WifiZones";
+static NSString *const GLWifiPlacesDefaultsName = @"WifiPlaces";
 static NSString *const GLWifiKnownNetworksDefaultsName = @"WifiKnownNetworks";
 
 static NSString *const GLTripModeWalk = @"walk";
@@ -158,8 +159,8 @@ typedef void (^CaseBlock)(void);
 + (NSString *)currentWifiHotSpotName;
 + (NSDictionary *)currentWifiNetworkInfo;
 + (void)refreshCurrentWifiNetwork:(void (^)(NSDictionary *network))completion;
-+ (NSString *)normalizedWifiBSSID:(NSString *)bssid;
-+ (NSArray<NSDictionary<NSString *, NSString *> *> *)knownWifiNetworks;
++ (NSArray<NSDictionary<NSString *, id> *> *)knownWifiNetworks;
++ (NSArray<NSDictionary<NSString *, id> *> *)frequentWifiNetworks;
 
 @property (strong, nonatomic, readonly) CLLocationManager *locationManager;
 @property (strong, nonatomic, readonly) CMMotionActivityManager *motionActivityManager;
@@ -273,16 +274,9 @@ typedef NS_ENUM(NSInteger, GLSendStatus) {
 
 - (void)requestNotificationPermission;
 
-@property (strong, nonatomic, readonly) NSString *wifiZoneName;
-@property (strong, nonatomic, readonly) NSString *wifiZoneLatitude;
-@property (strong, nonatomic, readonly) NSString *wifiZoneLongitude;
-@property (strong, nonatomic, readonly) NSArray<NSDictionary<NSString *, id> *> *wifiZones;
-- (NSArray<NSDictionary<NSString *, NSString *> *> *)knownWifiNetworksIncludingSavedZones:(BOOL)includeSavedZones NS_SWIFT_NAME(knownWifiNetworks(includingSavedZones:));
-- (BOOL)addWifiNetworks:(NSArray<NSDictionary<NSString *, NSString *> *> *)networks latitude:(NSString *)latitude longitude:(NSString *)longitude;
-- (void)saveNewWifiZone:(NSString *)name withLatitude:(NSString *)latitude andLongitude:(NSString *)longitude;
-- (void)addWifiZoneWithName:(NSString *)name latitude:(NSString *)latitude longitude:(NSString *)longitude bssid:(NSString *)bssid;
-- (void)removeWifiZoneAtIndex:(NSInteger)index;
-- (CLLocation *)currentLocationFromWifiName:(NSString *)wifi bssid:(NSString *)bssid;
+@property (strong, nonatomic, readonly) NSArray<NSDictionary<NSString *, id> *> *wifiPlaces;
+- (NSDictionary<NSString *, id> *)matchingWifiPlaceForSSID:(NSString *)ssid location:(CLLocation *)fix NS_SWIFT_NAME(matchingWifiPlace(forSSID:location:));
++ (NSString *)autoWifiPlaceSymbolForName:(NSString *)name NS_SWIFT_NAME(autoWifiPlaceSymbol(for:));
 - (void)processEngineLocation:(CLLocation *)location;
 - (void)enqueueWorkoutImportRecords:(NSArray<NSDictionary *> *)records
                         completion:(void (^)(NSUInteger inserted, NSString *error))completion;
@@ -293,8 +287,9 @@ typedef NS_ENUM(NSInteger, GLSendStatus) {
 - (void)reloadServerCredentials;
 - (void)performSettingsBatch:(void (^)(void))changes;
 + (NSDictionary *)normalizedTrackingOptions:(NSDictionary *)options;
-+ (NSArray<NSDictionary *> *)validatedWifiZones:(NSArray *)zones;
-- (void)replaceWifiZones:(NSArray<NSDictionary *> *)zones;
++ (NSArray<NSDictionary *> *)validatedWifiPlaces:(NSArray *)places NS_SWIFT_NAME(validatedWifiPlaces(_:));
++ (NSArray<NSDictionary *> *)placesFromLegacyWifiZones:(NSArray *)zones NS_SWIFT_NAME(places(fromLegacyWifiZones:));
+- (BOOL)replaceWifiPlaces:(NSArray<NSDictionary *> *)places NS_SWIFT_NAME(replaceWifiPlaces(_:));
 - (NSURLRequest *)connectionTestRequestForLocation:(CLLocation *)location;
 - (NSURLSessionDataTask *)testConnectionAtLocation:(CLLocation *)location
     completion:(void (^)(NSInteger status, BOOL acknowledged, NSError *error))completion NS_SWIFT_NAME(testConnection(at:completion:));

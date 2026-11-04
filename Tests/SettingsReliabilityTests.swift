@@ -2,31 +2,61 @@ import XCTest
 @testable import WhereWolf
 
 final class SettingsReliabilityTests: XCTestCase {
-    func testWifiSelectionTreatsBSSIDSpellingsAsOneNetwork() throws {
-        let first = try XCTUnwrap(WifiZoneNetwork(name: "Home", bssid: "A:B:C:D:E:F"))
-        let second = try XCTUnwrap(WifiZoneNetwork(name: "Home", bssid: "0a:0b:0c:0d:0e:0f"))
-        XCTAssertEqual(Set([first, second]).count, 1)
-        XCTAssertEqual(first.dictionary["bssid"], "0a:0b:0c:0d:0e:0f")
+    func testWifiNetworksUseExactSSIDAndUTF8Limit() throws {
+        XCTAssertNotNil(WifiObservedNetwork(name: "Home"))
+        XCTAssertNotNil(WifiObservedNetwork(name: " Home "))
+        XCTAssertNil(WifiObservedNetwork(name: ""))
+        XCTAssertNotNil(WifiObservedNetwork(name: String(repeating: "é", count: 16)))
+        XCTAssertNil(WifiObservedNetwork(name: String(repeating: "é", count: 17)))
+        let network = try XCTUnwrap(WifiObservedNetwork(["name": "Home", "bssid": "ignored", "lastSeen": 100]))
+        XCTAssertEqual(network.id, "Home")
     }
 
-    func testWifiSelectionDistinguishesAccessPointsAndExactNetworkNames() throws {
-        let names = try [
-            XCTUnwrap(WifiZoneNetwork(name: "Home")),
-            XCTUnwrap(WifiZoneNetwork(name: "Home", bssid: "aa:bb:cc:dd:ee:01")),
-            XCTUnwrap(WifiZoneNetwork(name: "Home", bssid: "aa:bb:cc:dd:ee:02")),
-            XCTUnwrap(WifiZoneNetwork(name: " Home "))
-        ]
-        XCTAssertEqual(Set(names).count, 4)
-        XCTAssertEqual(names.last?.dictionary["name"], " Home ")
+    func testWifiRadiusStepperSnapsCustomValuesAndStopsAtBounds() {
+        XCTAssertEqual(WifiPlace.radii, [25, 50, 75, 100, 150, 200, 250, 300, 400, 500, 750, 1000, 1500, 2000])
+        XCTAssertEqual(WifiPlace.steppedRadius(125, increasing: true), 150)
+        XCTAssertEqual(WifiPlace.steppedRadius(125, increasing: false), 100)
+        XCTAssertEqual(WifiPlace.steppedRadius(100, increasing: true), 150)
+        XCTAssertEqual(WifiPlace.steppedRadius(100, increasing: false), 75)
+        XCTAssertEqual(WifiPlace.steppedRadius(25, increasing: false), 25)
+        XCTAssertEqual(WifiPlace.steppedRadius(2000, increasing: true), 2000)
+        XCTAssertEqual(WifiPlace.steppedRadius(.nan, increasing: true), 100)
     }
 
-    func testWifiSelectionRejectsInvalidIdentifiers() {
-        XCTAssertNil(WifiZoneNetwork(name: ""))
-        XCTAssertNil(WifiZoneNetwork(name: String(repeating: "é", count: 17)))
-        XCTAssertNil(WifiZoneNetwork(name: "Home", bssid: "not-an-address"))
-        XCTAssertNil(WifiZoneNetwork(name: "Wi-Fi", bssid: "00:00:00:00:00:00"))
-        XCTAssertNil(WifiZoneNetwork(name: "WLAN", bssid: "00:00:00:00:00:00"))
-        XCTAssertNotNil(WifiZoneNetwork(name: "Home", bssid: "  "))
+    func testWifiPlaceAutoIconUsesWholeWordsWithoutCaseOrDiacritics() {
+        let rules = [
+            ("HOME", "house.fill"), ("My House", "house.fill"), ("Office", "building.2.fill"), ("Work", "building.2.fill"),
+            ("School", "graduationcap.fill"), ("Campus", "graduationcap.fill"), ("University", "graduationcap.fill"), ("College", "graduationcap.fill"),
+            ("Gym", "dumbbell.fill"), ("Fitness", "dumbbell.fill"), ("Corner CAFÉ", "cup.and.saucer.fill"), ("Cafe", "cup.and.saucer.fill"), ("Coffee", "cup.and.saucer.fill"),
+            ("Shop", "cart.fill"), ("Store", "cart.fill"), ("Market", "cart.fill"), ("Restaurant", "fork.knife"), ("Hotel", "bed.double.fill"),
+            ("Mom’s", "heart.fill"), ("Dad", "heart.fill"), ("Family", "heart.fill"), ("Parents", "heart.fill"),
+            ("Park", "tree.fill"), ("Airport", "airplane"), ("Library", "books.vertical.fill"), ("Hospital", "cross.case.fill"), ("Clinic", "cross.case.fill"),
+            ("Homework", "mappin"), ("Workshop", "mappin"), ("Parking", "mappin"), ("homework cafeine", "mappin"), ("Unknown", "mappin")]
+        for (name, symbol) in rules { XCTAssertEqual(WifiPlace.autoSymbol(for: name), symbol, name) }
+    }
+
+    func testWifiPlaceValidationRoundTripsManualIconChoice() throws {
+        let place = WifiPlace(name: "Home", latitude: 45.5, longitude: -122.6, networks: ["Home"],
+                              symbol: "star.fill", color: "orange", record: .nothing, symbolChosen: true)
+        let restored = try XCTUnwrap(WifiPlace(place.dictionary))
+        XCTAssertEqual(restored, place)
+        XCTAssertTrue(restored.symbolChosen)
+        XCTAssertEqual(WifiPlace(name: "Office").symbol, "building.2.fill")
+        XCTAssertEqual(WifiPlace(name: "Home").color, "blue")
+        XCTAssertEqual(WifiPlace(name: "Home").radius, 100)
+        XCTAssertEqual(WifiPlace(name: "Home").record, .point)
+        XCTAssertFalse(WifiPlace(name: "Home").isValid)
+    }
+
+    func testWifiPlaceRenamePicksIconUntilUserChoosesOne() throws {
+        var place = WifiPlace(name: "Home", latitude: 45.5, longitude: -122.6, networks: ["SSID"])
+        place.rename(to: "Work")
+        XCTAssertEqual(place.symbol, "building.2.fill")
+        place.symbol = "building.2.fill"
+        place.symbolChosen = true
+        place = try XCTUnwrap(WifiPlace(place.dictionary))
+        place.rename(to: "Home")
+        XCTAssertEqual(place.symbol, "building.2.fill")
     }
 
     func testTimeDetentsIncludeCommonSettingsAndOff() {

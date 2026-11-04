@@ -35,7 +35,7 @@ geometry, and imported workout routes on the device. Trip summaries wait in the
 upload queue after a trip ends. Recent history defaults to 24 hours;
 you can choose a retention period from 24 to 168 hours. That limit applies to
 recent history, not to the upload queue, trips, or imported workouts. Server
-settings, Wi-Fi zones, and other preferences are also saved locally. The server
+settings, Wi-Fi places, and other preferences are also saved locally. The server
 URL and token are saved in a local Keychain item.
 Successful delivery removes acknowledged records from the upload queue without
 deleting recent history. Active trip geometry is cleared when the trip ends;
@@ -100,7 +100,7 @@ protect it as you would your server credential. Import requires a validated chan
 preview and confirmation, including any credential replacement.
 
 Settings sync through iCloud is optional and off by default. When enabled,
-configuration, including Wi-Fi zones and trip modes, uses Apple's ubiquitous
+configuration, including Wi-Fi places and trip modes, uses Apple's ubiquitous
 key-value storage. The server URL, token and custom HTTP headers instead use a
 synchronizable Keychain item managed by iCloud Keychain. They are never written to
 the key-value store. Local modification metadata excludes credential values.
@@ -124,11 +124,15 @@ stops, support optional adaptive tracking, and count trip steps. Processing
 happens on the device, but motion labels and step counts can be included in
 records sent to your configured destination.
 
-WhereWolf uses connected Wi-Fi names and access-point identifiers (BSSIDs) to match
-Wi-Fi zones you configure. Zone settings and a bounded list of observed networks
-are stored on the device. BSSIDs are not included in location uploads; the
-network name can be included in GeoJSON records as described above. Matching a
-zone can replace a recorded coordinate with that zone's configured location.
+WhereWolf matches connected Wi-Fi names to places you configure, using each
+place’s point and radius. It does not store access-point identifiers (BSSIDs).
+Place settings are saved locally and are included in optional settings backups
+and sync. A device-only catalog keeps up to 64 network names, their last-seen time,
+the coordinate of the last fix with accuracy of 100 m or better, and connected
+seconds for the last seven calendar days. This catalog is never exported or synced.
+The network name can be included in GeoJSON records as described above. A matching
+place can replace the current recorded coordinate with its configured point, or
+skip recording fixes inside its circle. Location services continue in either case.
 WhereWolf can also check the connection type to support Wi-Fi-only sending and
 connection-return retries.
 

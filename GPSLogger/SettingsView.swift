@@ -133,9 +133,10 @@ struct SettingsView: View {
             }
 
             Section {
-                NavigationLink(value: SettingsDestination.wifiZones) {
-                    SettingsRowLabel(title: "WiFi Zones", symbol: "wifi", color: .blue)
+                NavigationLink(value: SettingsDestination.wifiPlaces) {
+                    SettingsRowLabel(title: "Wi-Fi Places", symbol: "wifi", color: .blue)
                 }
+                .accessibilityIdentifier("wherewolf.settings.wifiPlaces")
                 Toggle(isOn: $bridge.notifications) {
                     SettingsRowLabel(title: "Notifications", symbol: "bell.badge.fill", color: .red)
                 }

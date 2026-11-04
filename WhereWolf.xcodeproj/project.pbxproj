@@ -20,7 +20,7 @@
 		0FAC1FEB2B255CA60007F3B1 /* NSArray+map.m in Sources */ = {isa = PBXBuildFile; fileRef = 0FAC1FEA2B255CA60007F3B1 /* NSArray+map.m */; };
 		0FAC1FEE2B25FBB50007F3B1 /* SceneDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 0FAC1FED2B25FBB50007F3B1 /* SceneDelegate.m */; };
 		0FB85AC01BE0151800F25126 /* ExternalAccessory.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0FB85ABF1BE0151800F25126 /* ExternalAccessory.framework */; };
-		0FCAFE00F00D0000000000B1 /* WifiZoneListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D0000000000A1 /* WifiZoneListView.swift */; };
+		0FCAFE00F00D0000000000B1 /* WifiPlaceListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D0000000000A1 /* WifiPlaceListView.swift */; };
 		0FCAFE00F00D0000000000D1 /* WhereWolfLocationEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D0000000000C1 /* WhereWolfLocationEngine.swift */; };
 		0FCAFE00F00D0000000000F1 /* GLManagerBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D0000000000E1 /* GLManagerBridge.swift */; };
 		0FCAFE00F00D0000000000F2 /* WhereWolfRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D0000000000E2 /* WhereWolfRootView.swift */; };
@@ -143,6 +143,10 @@
 		C0F000000000000000000111 /* ConnectionTestTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0F000000000000000000110 /* ConnectionTestTests.swift */; };
 		C0F000000000000000000113 /* CoverageReportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0F000000000000000000112 /* CoverageReportTests.swift */; };
 		C0F000000000000000000115 /* SettingsImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0F000000000000000000114 /* SettingsImportView.swift */; };
+		BB7151AC0000000000000002 /* WifiPlace.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7151AC0000000000000002 /* WifiPlace.swift */; };
+		BB7151AC0000000000000003 /* WifiPlaceEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7151AC0000000000000003 /* WifiPlaceEditorView.swift */; };
+		BB7151AC0000000000000004 /* WifiPlaceNetworksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7151AC0000000000000004 /* WifiPlaceNetworksView.swift */; };
+		BB7151AC0000000000000005 /* WifiPlaceIconView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7151AC0000000000000005 /* WifiPlaceIconView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -213,7 +217,7 @@
 		0FAC1FEF2B25FBC10007F3B1 /* SceneDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SceneDelegate.h; sourceTree = "<group>"; };
 		0FB85ABD1BE0151300F25126 /* CoreBluetooth.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreBluetooth.framework; path = System/Library/Frameworks/CoreBluetooth.framework; sourceTree = SDKROOT; };
 		0FB85ABF1BE0151800F25126 /* ExternalAccessory.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ExternalAccessory.framework; path = System/Library/Frameworks/ExternalAccessory.framework; sourceTree = SDKROOT; };
-		0FCAFE00F00D0000000000A1 /* WifiZoneListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WifiZoneListView.swift; sourceTree = "<group>"; };
+		0FCAFE00F00D0000000000A1 /* WifiPlaceListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WifiPlaceListView.swift; sourceTree = "<group>"; };
 		0FCAFE00F00D0000000000C1 /* WhereWolfLocationEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhereWolfLocationEngine.swift; sourceTree = "<group>"; };
 		0FCAFE00F00D0000000000E1 /* GLManagerBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GLManagerBridge.swift; sourceTree = "<group>"; };
 		0FCAFE00F00D0000000000E2 /* WhereWolfRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhereWolfRootView.swift; sourceTree = "<group>"; };
@@ -342,6 +346,10 @@
 		C0F000000000000000000110 /* ConnectionTestTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/ConnectionTestTests.swift; sourceTree = SOURCE_ROOT; };
 		C0F000000000000000000112 /* CoverageReportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/CoverageReportTests.swift; sourceTree = SOURCE_ROOT; };
 		C0F000000000000000000114 /* SettingsImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/SettingsImportView.swift; sourceTree = SOURCE_ROOT; };
+		AA7151AC0000000000000002 /* WifiPlace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WifiPlace.swift; sourceTree = "<group>"; };
+		AA7151AC0000000000000003 /* WifiPlaceEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WifiPlaceEditorView.swift; sourceTree = "<group>"; };
+		AA7151AC0000000000000004 /* WifiPlaceNetworksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WifiPlaceNetworksView.swift; sourceTree = "<group>"; };
+		AA7151AC0000000000000005 /* WifiPlaceIconView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WifiPlaceIconView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -505,7 +513,11 @@
 				0FAC1FED2B25FBB50007F3B1 /* SceneDelegate.m */,
 				0FFD31711BAB7BEA009B3A03 /* GLManager.h */,
 				0FFD31721BAB7BEA009B3A03 /* GLManager.m */,
-				0FCAFE00F00D0000000000A1 /* WifiZoneListView.swift */,
+				0FCAFE00F00D0000000000A1 /* WifiPlaceListView.swift */,
+				AA7151AC0000000000000005 /* WifiPlaceIconView.swift */,
+				AA7151AC0000000000000004 /* WifiPlaceNetworksView.swift */,
+				AA7151AC0000000000000003 /* WifiPlaceEditorView.swift */,
+				AA7151AC0000000000000002 /* WifiPlace.swift */,
 				0FCAFE00F00D0000000000C1 /* WhereWolfLocationEngine.swift */,
 				0FCAFE00F00D0000000000E1 /* GLManagerBridge.swift */,
 				C0B0A0000000000000000005 /* OnboardingView.swift */,
@@ -831,7 +843,11 @@
 				0FFD315A1BAB7A34009B3A03 /* AppDelegate.m in Sources */,
 				0FAC1FEB2B255CA60007F3B1 /* NSArray+map.m in Sources */,
 				0FFD31731BAB7BEA009B3A03 /* GLManager.m in Sources */,
-				0FCAFE00F00D0000000000B1 /* WifiZoneListView.swift in Sources */,
+				0FCAFE00F00D0000000000B1 /* WifiPlaceListView.swift in Sources */,
+				BB7151AC0000000000000005 /* WifiPlaceIconView.swift in Sources */,
+				BB7151AC0000000000000004 /* WifiPlaceNetworksView.swift in Sources */,
+				BB7151AC0000000000000003 /* WifiPlaceEditorView.swift in Sources */,
+				BB7151AC0000000000000002 /* WifiPlace.swift in Sources */,
 				0FCAFE00F00D0000000000D1 /* WhereWolfLocationEngine.swift in Sources */,
 				0FCAFE00F00D0000000000F1 /* GLManagerBridge.swift in Sources */,
 				C0B0A0000000000000000006 /* OnboardingView.swift in Sources */,

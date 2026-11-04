@@ -3,7 +3,7 @@ import MapKit
 
 enum SettingsDestination: Hashable {
     case server
-    case wifiZones
+    case wifiPlaces
     case trip
     case tracking
     case stationary
@@ -173,8 +173,8 @@ struct WhereWolfRootView: View {
                     switch destination {
                     case .server:
                         EndpointView()
-                    case .wifiZones:
-                        WifiZoneListView()
+                    case .wifiPlaces:
+                        WifiPlaceListView()
                     case .trip:
                         TripSettingsView()
                     case .tracking:

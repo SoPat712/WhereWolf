@@ -29,7 +29,7 @@ enum SettingsBackupError: LocalizedError {
 
 // This allowlist is also the boundary for iCloud. Runtime state never enters a backup.
 enum SettingsSchema {
-    static let version = 1
+    static let version = 2
     static let secrets: Set<String> = ["serverURL", "serverToken", "customHTTPHeaders"]
     static let deviceOnly: Set<String> = ["deviceId"]
     static let managerBools = ["pausesAutomatically", "useNewLocationEngine", "visitTrackingEnabled",
@@ -57,11 +57,11 @@ enum SettingsSchema {
     static var managerKeys: Set<String> { Set(managerBools).union(managerNumbers.keys) }
     static var keys: Set<String> {
         managerKeys.union(preferences.keys).union(secrets).union(deviceOnly)
-            .union(["historyRetentionHours", "wifiZones", "tripModes", "advancedTracking", "sendOnlyOnWifi", "workoutImportDays"])
+            .union(["historyRetentionHours", "wifiPlaces", "tripModes", "advancedTracking", "sendOnlyOnWifi", "workoutImportDays"])
     }
     static var syncKeys: Set<String> { keys.subtracting(secrets).subtracting(deviceOnly) }
     static let labels = ["serverURL": "Server URL", "serverToken": "Server Token", "customHTTPHeaders": "Custom HTTP Headers",
-        "wifiZones": "Wi-Fi Zones", "tripModes": "Trip Modes", "historyRetentionHours": "History Retention",
+        "wifiPlaces": "Wi-Fi Places", "tripModes": "Trip Modes", "historyRetentionHours": "History Retention",
         "advancedTracking": "Advanced Tracking", "acceptHTTP": "Accept Any Successful HTTP Response",
         "deviceId": "Device ID", "sendOnlyOnWifi": "Send Only on Wi-Fi"]
     static func title(_ key: String) -> String {
@@ -98,7 +98,13 @@ enum SettingsSchema {
         }
         return result
     }
-    static func validate(_ values: [String: Any]) throws -> [String: Any] {
+    static func validate(_ input: [String: Any]) throws -> [String: Any] {
+        var values = input
+        if let legacy = values.removeValue(forKey: "wifiZones") {
+            guard let zones = legacy as? [[String: Any]],
+                  let places = GLManager.places(fromLegacyWifiZones: zones) else { throw SettingsBackupError.invalid("wifiPlaces") }
+            if values["wifiPlaces"] == nil { values["wifiPlaces"] = places }
+        }
         var result: [String: Any] = [:]
         for (key, value) in values where keys.contains(key) {
             func require(_ valid: Bool) throws { if !valid { throw SettingsBackupError.invalid(key) } }
@@ -135,8 +141,8 @@ enum SettingsSchema {
                 case "customHTTPHeaders":
                     guard let dict = value as? [String: Any], let valid = validHeaders(dict) else { throw SettingsBackupError.invalid(key) }
                     result[key] = valid
-                case "wifiZones":
-                    guard let zones = value as? [[String: Any]], let valid = GLManager.validatedWifiZones(zones) else { throw SettingsBackupError.invalid(key) }
+                case "wifiPlaces":
+                    guard let zones = value as? [[String: Any]], let valid = GLManager.validatedWifiPlaces(zones) else { throw SettingsBackupError.invalid(key) }
                     result[key] = valid
                 case "tripModes":
                     guard let entries = value as? [[String: Any]] else { throw SettingsBackupError.invalid(key) }
@@ -191,7 +197,7 @@ enum SettingsBackup {
             }
         }
         return SettingsImport(values: values, changes: changes, newerSchema: schema.intValue > SettingsSchema.version,
-            ignoredKeys: input.keys.filter { !SettingsSchema.keys.contains($0) }.sorted())
+            ignoredKeys: input.keys.filter { !SettingsSchema.keys.contains($0) && $0 != "wifiZones" }.sorted())
     }
 }
 
@@ -208,7 +214,7 @@ extension GLManagerBridge {
         result["serverToken"] = gl.apiAccessToken() ?? ""
         result["deviceId"] = gl.deviceId() ?? ""
         result["customHTTPHeaders"] = gl.customHTTPHeaders ?? [:]
-        result["wifiZones"] = gl.wifiZones ?? []
+        result["wifiPlaces"] = gl.wifiPlaces ?? []
         result["tripModes"] = (try? JSONSerialization.jsonObject(with: JSONEncoder().encode(TripModeStore.modes))) ?? []
         result["advancedTracking"] = gl.advancedTrackingOptions
         result["sendOnlyOnWifi"] = sendOnlyOnWifi
@@ -235,7 +241,7 @@ extension GLManagerBridge {
             if values["serverURL"] != nil || values["serverToken"] != nil { gl.reloadServerCredentials() }
             if let headers = values["customHTTPHeaders"] as? [String: String] { gl.customHTTPHeaders = headers }
             if let id = values["deviceId"] as? String { gl.saveNewDeviceId(id) }
-            if let zones = values["wifiZones"] as? [[String: Any]] { gl.replaceWifiZones(zones) }
+            if let zones = values["wifiPlaces"] as? [[String: Any]] { gl.replaceWifiPlaces(zones) }
             if let options = values["advancedTracking"] as? [String: NSNumber] { gl.advancedTrackingOptions = options }
             if let hours = values["historyRetentionHours"] as? Int { self.historyRetentionHours = Double(hours) }
             if let enabled = values["sendOnlyOnWifi"] as? Bool { self.sendOnlyOnWifi = enabled }

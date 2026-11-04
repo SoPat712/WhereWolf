@@ -184,24 +184,28 @@ tracking, rejected fixes, failed queue commits, background-task expiration,
 log retention and metadata exclusion. File-protection attributes need physical
 device verification because the simulator does not expose them.
 
-## WiFi network assignments
+## Wi-Fi Places
 
-The WiFi editor selects several connected, observed, configured or manually
-entered network identities and saves one coordinate pair for the entire
-selection. SSIDs retain their exact spelling, including spaces and case.
-BSSIDs use a canonical six-octet form. Each SSID/BSSID pair has one assignment;
-reassigning it updates the existing entry. The same SSID with another BSSID
-remains distinct. An SSID-only entry is a fallback for any access point, while
-an exact BSSID wins. Batch validation completes before preferences change.
-Legacy duplicate identities use the last valid entry, and malformed explicit
-BSSIDs cannot silently turn into broad SSID matches. Coordinate updates retain
-an existing configured error radius.
+Places group exact network names under one named point and a 25 m–2 km radius.
+Matching requires the connected SSID and a raw fix within the radius plus its
+reported uncertainty, capped at 200 m. Invalid accuracy never matches; the nearer
+center wins when places share a name. Place’s Point replaces only the fresh current
+fix and preserves its timestamp. Nothing rejects inside-circle fixes before queue
+acceptance, trips, Health or replay, without stopping acquisition or uploads.
 
-The local observed catalog retains at most 64 identities and writes only when
-its contents change. It records networks actually reported during tracking;
-it does not scan nearby networks or read iOS's saved-network list. The editor
-selects the connected network on opening when iOS exposes it, preserves drafts
-across a switch to iOS Settings, and accepts only a fresh location for autofill.
+The native editor moves the point by dragging a map, resizes its circle with an
+accessible handle or Stepper, and accepts multiple observed or manually entered
+network names. Old zones at equal coordinates become one place and lose BSSIDs.
+The old keys remain until the new value saves successfully. Places are included
+in Backup & Sync, including imports of older zone backups.
+
+The device-only catalog keeps up to 64 SSIDs by recency, their last accurate
+coordinate and seven daily buckets of connected time. Only consecutive same-SSID
+gaps of at most ten minutes count. Frequent suggestions show the top three
+unassigned names used for at least an hour. The catalog persists only changes;
+it never enters a backup or sync. iOS reveals only the connected network, so the
+picker does not scan or read iOS’s saved networks. It refreshes on appearance and
+scene activation while preserving drafts.
 
 Apple's [WiFi API overview](https://developer.apple.com/documentation/technotes/tn3111-ios-wifi-api-overview)
 describes the scanning limitations. Both autofill and automatic matching require

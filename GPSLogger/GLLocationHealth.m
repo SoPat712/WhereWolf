@@ -173,7 +173,7 @@
     }
     NSDictionary *counts = [input[@"rejected"] isKindOfClass:NSDictionary.class] ? input[@"rejected"] : @{};
     NSMutableDictionary *rejected = [NSMutableDictionary dictionary];
-    for(NSString *key in @[@"invalid", @"accuracy", @"jump", @"order", @"duplicate", @"stationary", @"gps", @"threshold", @"storage"]) {
+    for(NSString *key in @[@"invalid", @"accuracy", @"jump", @"order", @"duplicate", @"stationary", @"gps", @"threshold", @"storage", @"wifi_place"]) {
         if([counts[key] isKindOfClass:NSNumber.class] && isfinite([counts[key] doubleValue])) rejected[key] = @(MIN(1000000, MAX(0, [counts[key] integerValue])));
     }
     if(rejected.count) event[@"rejected"] = rejected;

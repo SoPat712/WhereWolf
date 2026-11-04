@@ -13,7 +13,7 @@ final class SettingsBackupTests: XCTestCase {
         ["desiredAccuracy": -1, "sendingInterval": 60, "pointsPerBatch": 200, "notificationsEnabled": true,
          "historyRetentionHours": 168, "serverURL": "https://wherewolf.test/api", "serverToken": "secret",
          "customHTTPHeaders": ["X-API-Key": "other-secret"], "deviceId": "Phone",
-         "wifiZones": [["name": "Home", "latitude": "45.5", "longitude": "-122.6"]],
+         "wifiPlaces": [WifiPlace(id: "B34764B9-0F12-44EE-AC47-F2F956E72714", name: "Home", latitude: 45.5, longitude: -122.6, networks: ["Home"]).dictionary],
          "tripModes": try JSONSerialization.jsonObject(with: JSONEncoder().encode(TripMode.defaults))]
     }
     func testBackupRoundTripWithCredentials() throws {
@@ -23,8 +23,27 @@ final class SettingsBackupTests: XCTestCase {
         XCTAssertTrue(decoded.includesCredentials)
         XCTAssertTrue(SettingsSchema.equal(decoded.values, try SettingsSchema.validate(input)))
         let envelope = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        XCTAssertEqual(envelope["schemaVersion"] as? Int, 1)
+        XCTAssertEqual(envelope["schemaVersion"] as? Int, SettingsSchema.version)
         XCTAssertEqual(envelope["appVersion"] as? String, "1.2")
+    }
+    func testLegacyWifiZonesBackupImportConvertsToPlaces() throws {
+        let data = try JSONSerialization.data(withJSONObject: ["schemaVersion": 1, "settings": [
+            "wifiZones": [
+                ["name": "Home", "latitude": "45.5", "longitude": "-122.6", "bssid": "one"],
+                ["name": "Home 5G", "latitude": "45.5", "longitude": "-122.6", "bssid": "two"],
+                ["name": "Home", "latitude": "45.5", "longitude": "-122.6", "bssid": "three"]]]])
+        let preview = try SettingsBackup.preview(data, current: [:])
+        let places = try XCTUnwrap(preview.values["wifiPlaces"] as? [[String: Any]])
+        XCTAssertEqual(places.count, 1)
+        XCTAssertEqual(places[0]["networks"] as? [String], ["Home", "Home 5G"])
+        XCTAssertNil(places[0]["bssid"])
+        XCTAssertNil(preview.values["wifiZones"])
+        XCTAssertTrue(preview.ignoredKeys.isEmpty)
+        XCTAssertEqual(preview.changes.first?.title, "Wi-Fi Places")
+        XCTAssertTrue(SettingsSchema.syncKeys.contains("wifiPlaces"))
+        XCTAssertFalse(SettingsSchema.syncKeys.contains("wifiZones"))
+        let newData = try SettingsBackup.encode(preview.values, credentials: false, appVersion: "1")
+        XCTAssertTrue(SettingsSchema.equal(try SettingsBackup.preview(newData, current: [:]).values, preview.values))
     }
     func testBackupWithoutCredentialsOmitsHeadersToo() throws {
         let data = try SettingsBackup.encode(fixture(), credentials: false, appVersion: "1")
@@ -32,7 +51,7 @@ final class SettingsBackupTests: XCTestCase {
         XCTAssertFalse(preview.includesCredentials)
         for key in SettingsSchema.secrets { XCTAssertNil(preview.values[key]) }
         XCTAssertNotNil(preview.values["deviceId"])
-        XCTAssertNotNil(preview.values["wifiZones"])
+        XCTAssertNotNil(preview.values["wifiPlaces"])
     }
     func testRejectsInvalidValuesBeforeAnyApply() {
         let invalid: [[String: Any]] = [
@@ -58,7 +77,8 @@ final class SettingsBackupTests: XCTestCase {
     func testDeviceStateNeverEntersBackups() throws {
         let state: [String: Any] = [GLTrackingStateDefaultsName: true, GLTripStartTimeDefaultsName: 123,
             "LiveActivityID": "id", "HistoryArchivePath": "/private/route", "WorkoutImportReadRequested": true,
-            "authorization": "always", "queue": [1, 2], "pointsPerBatch": 100]
+            "authorization": "always", "queue": [1, 2], "WifiKnownNetworks": [["name": "Private"]],
+            "observedWifiNetworks": [["name": "Private"]], "pointsPerBatch": 100]
         let preview = try SettingsBackup.preview(SettingsBackup.encode(state, credentials: true, appVersion: "1"), current: [:])
         XCTAssertEqual(Set(preview.values.keys), ["pointsPerBatch"])
     }

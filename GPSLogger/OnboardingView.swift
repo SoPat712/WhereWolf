@@ -230,7 +230,7 @@ struct OnboardingView: View {
             separator(icon: true)
             row {
                 SettingsIcon(symbol: "scope", color: .green)
-                rowText("Precise Location", "Good tracks and Wi-Fi zones")
+                rowText("Precise Location", "Good tracks and Wi-Fi places")
                 if model.status.location.allowed && model.status.preciseLocation { approved("On") }
                 else { smallButton("Open Settings") { model.openSettings() } }
             }

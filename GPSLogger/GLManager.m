@@ -17,6 +17,7 @@
 #import "SystemConfiguration/CaptiveNetwork.h"
 #import <Security/Security.h>
 #import <sqlite3.h>
+#import <float.h>
 #import "WhereWolf-Swift.h"
 @import UserNotifications;
 @import NetworkExtension;
@@ -32,6 +33,12 @@
 - (NSArray *)motionArrayForDate:(NSDate *)date;
 - (void)queryMotionHistoryRequestingPermission:(BOOL)request;
 - (void)rememberWifiNetworkInfo:(NSDictionary *)info;
+- (void)rememberWifiNetworkInfo:(NSDictionary *)info location:(CLLocation *)fix date:(NSDate *)now;
+- (NSDictionary *)wifiNetworkInfoForBatch;
++ (NSArray<NSDictionary *> *)knownWifiNetworksAtDate:(NSDate *)now;
++ (NSArray<NSDictionary *> *)frequentWifiNetworksAtDate:(NSDate *)now places:(NSArray<NSDictionary *> *)places;
+- (NSDictionary *)currentWifiPlaceForLocations:(NSArray<CLLocation *> *)locations networkInfo:(NSDictionary *)info;
+- (NSArray<CLLocation *> *)locationsByApplyingWifiPlace:(NSArray<CLLocation *> *)locations networkInfo:(NSDictionary *)info;
 - (void)reconcileLocationHealth;
 - (void)evaluateLocationHealth;
 - (NSTimeInterval)locationHealthUptime;
@@ -51,6 +58,8 @@
 
 @property (strong, nonatomic) NSDictionary *lastLocationDictionary;
 @property (strong, nonatomic) NSDictionary *batchWifiInfo;
+@property (strong, nonatomic) NSString *observedWifiSSID;
+@property (strong, nonatomic) NSDate *observedWifiDate;
 @property (strong, nonatomic) NSDictionary *tripStartLocationDictionary;
 
 @property (strong, nonatomic) LOLDatabase *db;
@@ -136,164 +145,138 @@ static long _currentPointsInQueue;
 static NSString *_deviceId;
 
 
-static NSString *GLCanonicalWifiBSSID(NSString *bssid) {
-    if(![bssid isKindOfClass:NSString.class]) return nil;
-    NSString *value = [bssid stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-    if(value.length == 0) return nil;
-
-    NSArray<NSString *> *parts;
-    if([value containsString:@":"]) {
-        parts = [value componentsSeparatedByString:@":"];
-    } else if([value containsString:@"-"]) {
-        parts = [value componentsSeparatedByString:@"-"];
-    } else {
-        if(value.length != 12) return nil;
-        NSMutableArray *pairs = [NSMutableArray arrayWithCapacity:6];
-        for(NSUInteger i = 0; i < value.length; i += 2) {
-            [pairs addObject:[value substringWithRange:NSMakeRange(i, 2)]];
-        }
-        parts = pairs;
+static NSString *GLWifiCoordinateString(id value) {
+    if([value isKindOfClass:NSNumber.class]) {
+        if(CFGetTypeID((__bridge CFTypeRef)value) == CFBooleanGetTypeID()) return nil;
+        return isfinite([value doubleValue]) ? [value stringValue] : nil;
     }
-    if(parts.count != 6) return nil;
-
-    NSCharacterSet *nonHex = [[NSCharacterSet characterSetWithCharactersInString:@"0123456789abcdefABCDEF"] invertedSet];
-    NSMutableArray<NSString *> *octets = [NSMutableArray arrayWithCapacity:6];
-    for(NSString *part in parts) {
-        if(part.length == 0 || part.length > 2 || [part rangeOfCharacterFromSet:nonHex].location != NSNotFound) return nil;
-        unsigned int number = 0;
-        NSScanner *scanner = [NSScanner scannerWithString:part];
-        if(![scanner scanHexInt:&number] || !scanner.isAtEnd || number > 0xff) return nil;
-        [octets addObject:[NSString stringWithFormat:@"%02x", number]];
-    }
-    return [octets componentsJoinedByString:@":"];
+    if(![value isKindOfClass:NSString.class] || [value length] == 0) return nil;
+    double number = 0;
+    NSScanner *scanner = [NSScanner scannerWithString:value];
+    if(![scanner scanDouble:&number] || !scanner.isAtEnd || !isfinite(number)) return nil;
+    return value;
 }
 
-static NSString *GLWifiCoordinateString(id value);
+static BOOL GLValidWifiSSID(id value) {
+    if(![value isKindOfClass:NSString.class]) return NO;
+    NSData *data = [value dataUsingEncoding:NSUTF8StringEncoding];
+    return data.length >= 1 && data.length <= 32;
+}
 
 static NSString *GLWifiSSID(NSDictionary *entry) {
     if(![entry isKindOfClass:NSDictionary.class]) return nil;
     id value = entry[@"name"];
-    if(![value isKindOfClass:NSString.class] || [value length] == 0) value = entry[@"SSID"];
-    return [value isKindOfClass:NSString.class] && [value length] > 0 ? value : nil;
+    if(!GLValidWifiSSID(value)) value = entry[@"SSID"];
+    return GLValidWifiSSID(value) ? value : nil;
 }
 
-static NSString *GLWifiBSSID(NSDictionary *entry) {
-    if(![entry isKindOfClass:NSDictionary.class]) return nil;
-    id value = entry[@"bssid"];
-    if(![value isKindOfClass:NSString.class] || [value length] == 0) value = entry[@"BSSID"];
-    return GLCanonicalWifiBSSID(value);
-}
-
-static BOOL GLIsRedactedWifiNetwork(NSString *ssid, NSString *bssid) {
-    if(![bssid isEqualToString:@"00:00:00:00:00:00"]) return NO;
-    return [ssid caseInsensitiveCompare:@"Wi-Fi"] == NSOrderedSame
-        || [ssid caseInsensitiveCompare:@"WLAN"] == NSOrderedSame;
-}
-
-static BOOL GLWifiIdentityMatches(NSDictionary *left, NSDictionary *right) {
-    NSString *leftSSID = GLWifiSSID(left);
-    NSString *rightSSID = GLWifiSSID(right);
-    if(!leftSSID || ![leftSSID isEqualToString:rightSSID]) return NO;
-    NSString *leftBSSID = GLWifiBSSID(left) ?: @"";
-    NSString *rightBSSID = GLWifiBSSID(right) ?: @"";
-    return [leftBSSID isEqualToString:rightBSSID];
-}
-
-static NSDictionary *GLNormalizedWifiZone(NSDictionary *zone) {
-    if(![zone isKindOfClass:NSDictionary.class] || !GLWifiSSID(zone)) return nil;
-    NSString *latitude = GLWifiCoordinateString(zone[@"latitude"]);
-    NSString *longitude = GLWifiCoordinateString(zone[@"longitude"]);
-    if(!latitude || !longitude) return nil;
-    CLLocationCoordinate2D coordinate = CLLocationCoordinate2DMake(latitude.doubleValue, longitude.doubleValue);
-    if(!CLLocationCoordinate2DIsValid(coordinate)) return nil;
-
-    NSMutableDictionary *normalized = [zone mutableCopy];
-    normalized[@"name"] = GLWifiSSID(zone);
-    normalized[@"latitude"] = latitude;
-    normalized[@"longitude"] = longitude;
-    BOOL hasLowerBSSID = zone[@"bssid"] != nil;
-    id bssid = hasLowerBSSID ? zone[@"bssid"] : zone[@"BSSID"];
-    if(bssid && ![bssid isKindOfClass:NSString.class]) {
-        return nil;
+static NSDictionary *GLNormalizedWifiPlace(id object) {
+    if(![object isKindOfClass:NSDictionary.class]) return nil;
+    NSDictionary *place = object;
+    NSString *identifier = place[@"id"], *name = place[@"name"];
+    if(![identifier isKindOfClass:NSString.class] || ![[NSUUID alloc] initWithUUIDString:identifier]) return nil;
+    if(![name isKindOfClass:NSString.class]) return nil;
+    name = [name stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if(name.length == 0) return nil;
+    NSString *latitude = GLWifiCoordinateString(place[@"latitude"]);
+    NSString *longitude = GLWifiCoordinateString(place[@"longitude"]);
+    if(!latitude || !longitude || !CLLocationCoordinate2DIsValid(CLLocationCoordinate2DMake(latitude.doubleValue, longitude.doubleValue))) return nil;
+    id radius = place[@"radius"] ?: @100;
+    if(![radius isKindOfClass:NSNumber.class] || CFGetTypeID((__bridge CFTypeRef)radius) == CFBooleanGetTypeID() || !isfinite([radius doubleValue])) return nil;
+    if(![place[@"networks"] isKindOfClass:NSArray.class] || [place[@"networks"] count] == 0) return nil;
+    NSMutableOrderedSet *networks = [NSMutableOrderedSet orderedSet];
+    for(id ssid in place[@"networks"]) {
+        if(!GLValidWifiSSID(ssid)) return nil;
+        [networks addObject:ssid];
     }
-    NSString *trimmedBSSID = [bssid isKindOfClass:NSString.class]
-        ? [bssid stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] : nil;
-    if(trimmedBSSID.length > 0) {
-        NSString *canonical = GLCanonicalWifiBSSID(trimmedBSSID);
-        if(!canonical || GLIsRedactedWifiNetwork(GLWifiSSID(zone), canonical)) return nil;
-        normalized[@"bssid"] = canonical;
-    } else {
-        [normalized removeObjectForKey:@"bssid"];
+    NSString *symbol = place[@"symbol"] ?: [GLManager autoWifiPlaceSymbolForName:name];
+    NSString *color = place[@"color"] ?: @"blue";
+    NSString *record = place[@"record"] ?: @"point";
+    if(![@[@"house.fill", @"building.2.fill", @"briefcase.fill", @"graduationcap.fill", @"cup.and.saucer.fill",
+           @"dumbbell.fill", @"cart.fill", @"fork.knife", @"bed.double.fill", @"heart.fill", @"tree.fill", @"airplane",
+           @"car.fill", @"books.vertical.fill", @"cross.case.fill", @"star.fill", @"mappin", @"wifi"] containsObject:symbol]
+       || ![@[@"blue", @"green", @"orange", @"red", @"purple", @"pink", @"teal", @"gray"] containsObject:color]
+       || ![@[@"point", @"nothing"] containsObject:record]) return nil;
+    NSMutableDictionary *result = [@{@"id": identifier, @"name": name,
+        @"latitude": @(latitude.doubleValue), @"longitude": @(longitude.doubleValue),
+        @"radius": @(MIN(2000, MAX(25, [radius doubleValue]))), @"networks": networks.array,
+        @"symbol": symbol, @"color": color, @"record": record} mutableCopy];
+    if(place[@"symbolChosen"]) {
+        id chosen = place[@"symbolChosen"];
+        if(![chosen isKindOfClass:NSNumber.class] || ([chosen doubleValue] != 0 && [chosen doubleValue] != 1)) return nil;
+        result[@"symbolChosen"] = @([chosen boolValue]);
     }
-    [normalized removeObjectForKey:@"SSID"];
-    [normalized removeObjectForKey:@"BSSID"];
-    return [normalized copy];
+    return result.copy;
 }
 
-static NSArray<NSDictionary *> *GLNormalizedWifiZones(NSArray *zones) {
-    NSMutableArray<NSDictionary *> *normalized = [NSMutableArray array];
-    for(id object in zones) {
-        NSDictionary *zone = GLNormalizedWifiZone(object);
-        if(!zone) continue;
-        NSInteger existing = NSNotFound;
-        for(NSUInteger i = 0; i < normalized.count; i++) {
-            if(GLWifiIdentityMatches(normalized[i], zone)) {
-                existing = (NSInteger)i;
-                break;
-            }
+static BOOL GLWifiPlaceContainsFix(NSDictionary *place, CLLocation *fix) {
+    if(!fix || !CLLocationCoordinate2DIsValid(fix.coordinate) || !isfinite(fix.horizontalAccuracy) || fix.horizontalAccuracy < 0) return NO;
+    CLLocation *center = [[CLLocation alloc] initWithLatitude:[place[@"latitude"] doubleValue] longitude:[place[@"longitude"] doubleValue]];
+    return [center distanceFromLocation:fix] <= [place[@"radius"] doubleValue] + MIN(fix.horizontalAccuracy, 200);
+}
+
+static NSString *GLWifiDay(NSTimeInterval time) {
+    static NSDateFormatter *formatter;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        formatter = [NSDateFormatter new];
+        formatter.locale = [[NSLocale alloc] initWithLocaleIdentifier:@"en_US_POSIX"];
+        formatter.calendar = [[NSCalendar alloc] initWithCalendarIdentifier:NSCalendarIdentifierGregorian];
+        formatter.timeZone = [NSTimeZone timeZoneForSecondsFromGMT:0];
+        formatter.dateFormat = @"yyyy-MM-dd";
+    });
+    @synchronized(formatter) { return [formatter stringFromDate:[NSDate dateWithTimeIntervalSince1970:time]]; }
+}
+
+static NSDictionary *GLWifiDays(id raw, NSDate *now) {
+    NSMutableDictionary *days = [NSMutableDictionary dictionary];
+    if(![raw isKindOfClass:NSDictionary.class]) return days;
+    NSTimeInterval today = floor(now.timeIntervalSince1970 / 86400) * 86400;
+    for(int i = 0; i < 7; i++) {
+        NSString *key = GLWifiDay(today - i * 86400);
+        id seconds = raw[key];
+        if([seconds isKindOfClass:NSNumber.class] && isfinite([seconds doubleValue]) && [seconds doubleValue] > 0) {
+            days[key] = @(MIN(86400, [seconds doubleValue]));
         }
-        if(existing == NSNotFound) [normalized addObject:zone];
-        else [normalized replaceObjectAtIndex:existing withObject:zone];
     }
-    return normalized.copy;
+    return days.copy;
 }
 
-static NSDictionary *GLNormalizedObservedWifiNetwork(NSDictionary *info) {
-    NSString *ssid = GLWifiSSID(info);
-    if(!ssid) return nil;
-    id suppliedBSSID = info[@"bssid"] ?: info[@"BSSID"];
-    if(suppliedBSSID && (![suppliedBSSID isKindOfClass:NSString.class]
-       || ([suppliedBSSID length] > 0 && !GLCanonicalWifiBSSID(suppliedBSSID)))) return nil;
-    NSMutableDictionary *network = [NSMutableDictionary dictionaryWithObject:ssid forKey:@"name"];
-    NSString *bssid = GLWifiBSSID(info);
-    if(GLIsRedactedWifiNetwork(ssid, bssid)) return nil;
-    if(bssid) network[@"bssid"] = bssid;
-    return [network copy];
-}
-
-static NSArray<NSDictionary *> *GLNormalizedWifiCatalog(NSArray *catalog) {
-    NSMutableArray<NSDictionary *> *normalized = [NSMutableArray array];
-    for(id object in catalog) {
-        NSDictionary *network = GLNormalizedObservedWifiNetwork(object);
-        if(!network) continue;
-        NSInteger existing = NSNotFound;
-        for(NSUInteger i = 0; i < normalized.count; i++) {
-            if(GLWifiIdentityMatches(normalized[i], network)) {
-                existing = (NSInteger)i;
-                break;
-            }
+static NSArray<NSDictionary *> *GLNormalizedWifiCatalog(NSArray *catalog, NSDate *now) {
+    NSMutableArray<NSMutableDictionary *> *networks = [NSMutableArray array];
+    BOOL legacy = NO;
+    for(id object in catalog) if(GLWifiSSID(object) && !object[@"lastSeen"]) { legacy = YES; break; }
+    // The old catalog was oldest first and had no timestamps.
+    NSArray *ordered = legacy ? catalog.reverseObjectEnumerator.allObjects : catalog;
+    for(id object in ordered) {
+        NSString *ssid = GLWifiSSID(object);
+        if(!ssid) continue;
+        NSDictionary *raw = object;
+        id seen = raw[@"lastSeen"];
+        NSTimeInterval timestamp = [seen isKindOfClass:NSNumber.class] && isfinite([seen doubleValue]) ? MAX(0, [seen doubleValue]) : 0;
+        NSMutableDictionary *entry;
+        for(NSMutableDictionary *known in networks) if([known[@"name"] isEqual:ssid]) { entry = known; break; }
+        if(!entry) {
+            entry = [@{@"name": ssid, @"lastSeen": @(timestamp), @"days": @{}} mutableCopy];
+            [networks addObject:entry];
         }
-        if(existing == NSNotFound) [normalized addObject:network];
-        else [normalized replaceObjectAtIndex:existing withObject:network];
+        NSDictionary *days = GLWifiDays(raw[@"days"], now);
+        NSMutableDictionary *merged = [entry[@"days"] mutableCopy];
+        for(NSString *day in days) merged[day] = @(MIN(86400, [merged[day] doubleValue] + [days[day] doubleValue]));
+        entry[@"days"] = merged.copy;
+        NSString *latitude = GLWifiCoordinateString(raw[@"latitude"]), *longitude = GLWifiCoordinateString(raw[@"longitude"]);
+        if(latitude && longitude && CLLocationCoordinate2DIsValid(CLLocationCoordinate2DMake(latitude.doubleValue, longitude.doubleValue))
+           && (!entry[@"latitude"] || timestamp >= [entry[@"lastSeen"] doubleValue])) {
+            entry[@"latitude"] = @(latitude.doubleValue);
+            entry[@"longitude"] = @(longitude.doubleValue);
+        }
+        entry[@"lastSeen"] = @(MAX(timestamp, [entry[@"lastSeen"] doubleValue]));
     }
-    if(normalized.count > GLWifiKnownNetworkLimit) {
-        [normalized removeObjectsInRange:NSMakeRange(0, normalized.count - GLWifiKnownNetworkLimit)];
-    }
-    return normalized.copy;
-}
-
-static NSString *GLWifiCoordinateString(id value) {
-    if([value isKindOfClass:NSNumber.class]) {
-        double number = [value doubleValue];
-        return isfinite(number) ? [value stringValue] : nil;
-    }
-    if(![value isKindOfClass:NSString.class] || [value length] == 0) return nil;
-    NSString *trimmed = [value stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-    if(trimmed.length == 0) return nil;
-    double number = 0;
-    NSScanner *scanner = [NSScanner scannerWithString:trimmed];
-    if(![scanner scanDouble:&number] || !scanner.isAtEnd || !isfinite(number)) return nil;
-    return value;
+    [networks sortWithOptions:NSSortStable usingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) {
+        return [b[@"lastSeen"] compare:a[@"lastSeen"]];
+    }];
+    if(networks.count > GLWifiKnownNetworkLimit) [networks removeObjectsInRange:NSMakeRange(GLWifiKnownNetworkLimit, networks.count - GLWifiKnownNetworkLimit)];
+    return networks.copy;
 }
 
 static dispatch_queue_t GLNotificationQueue(void) {
@@ -446,24 +429,75 @@ static dispatch_queue_t GLNotificationQueue(void) {
     }
 }
 
-+ (NSArray<NSDictionary *> *)validatedWifiZones:(NSArray *)zones {
-    if(![zones isKindOfClass:NSArray.class] || zones.count > 256) return nil;
++ (NSArray<NSDictionary *> *)validatedWifiPlaces:(NSArray *)places {
+    if(![places isKindOfClass:NSArray.class] || places.count > 256) return nil;
     NSMutableArray *safe = [NSMutableArray array];
-    for(id zone in zones) {
-        NSDictionary *valid = GLNormalizedWifiZone(zone);
-        if(!valid) return nil;
-        NSMutableDictionary *entry = [NSMutableDictionary dictionary];
-        for(NSString *key in @[@"name", @"latitude", @"longitude", @"bssid"]) if(valid[key]) entry[key] = valid[key];
-        [safe addObject:entry];
+    NSMutableSet *identifiers = [NSMutableSet set];
+    for(id place in places) {
+        NSDictionary *valid = GLNormalizedWifiPlace(place);
+        NSString *identifier = [valid[@"id"] lowercaseString];
+        if(!valid || [identifiers containsObject:identifier]) return nil;
+        [identifiers addObject:identifier];
+        [safe addObject:valid];
     }
-    return GLNormalizedWifiZones(safe);
+    return safe.copy;
 }
 
-- (void)replaceWifiZones:(NSArray<NSDictionary *> *)zones {
-    NSArray *valid = [GLManager validatedWifiZones:zones];
-    if(!valid) return;
-    [NSUserDefaults.standardUserDefaults setObject:valid forKey:GLWifiZonesDefaultsName];
++ (NSString *)autoWifiPlaceSymbolForName:(NSString *)name {
+    NSString *folded = [[name stringByFoldingWithOptions:NSCaseInsensitiveSearch | NSDiacriticInsensitiveSearch locale:[[NSLocale alloc] initWithLocaleIdentifier:@"en_US_POSIX"]] lowercaseString];
+    NSArray *rules = @[
+        @[@[@"home", @"house"], @"house.fill"], @[@[@"work", @"office"], @"building.2.fill"],
+        @[@[@"school", @"campus", @"university", @"college"], @"graduationcap.fill"],
+        @[@[@"gym", @"fitness"], @"dumbbell.fill"], @[@[@"cafe", @"coffee"], @"cup.and.saucer.fill"],
+        @[@[@"shop", @"store", @"market"], @"cart.fill"], @[@[@"restaurant"], @"fork.knife"],
+        @[@[@"hotel"], @"bed.double.fill"], @[@[@"mom", @"dad", @"family", @"parents"], @"heart.fill"],
+        @[@[@"park"], @"tree.fill"], @[@[@"airport"], @"airplane"], @[@[@"library"], @"books.vertical.fill"],
+        @[@[@"hospital", @"clinic"], @"cross.case.fill"]];
+    NSRegularExpression *words = [NSRegularExpression regularExpressionWithPattern:@"[\\p{L}\\p{N}_]+" options:0 error:NULL];
+    NSMutableSet *tokens = [NSMutableSet set];
+    for(NSTextCheckingResult *match in [words matchesInString:folded options:0 range:NSMakeRange(0, folded.length)]) {
+        [tokens addObject:[folded substringWithRange:match.range]];
+    }
+    for(NSArray *rule in rules) for(NSString *word in rule[0]) if([tokens containsObject:word]) return rule[1];
+    return @"mappin";
+}
+
++ (NSArray<NSDictionary *> *)placesFromLegacyWifiZones:(NSArray *)zones {
+    if(![zones isKindOfClass:NSArray.class] || zones.count > 10000) return nil;
+    NSMutableArray<NSMutableDictionary *> *places = [NSMutableArray array];
+    for(id zone in zones) {
+        NSString *ssid = GLWifiSSID(zone);
+        if(!ssid) return nil;
+        NSString *latitude = GLWifiCoordinateString(zone[@"latitude"]), *longitude = GLWifiCoordinateString(zone[@"longitude"]);
+        if(!latitude || !longitude || !CLLocationCoordinate2DIsValid(CLLocationCoordinate2DMake(latitude.doubleValue, longitude.doubleValue))) return nil;
+        NSMutableDictionary *group;
+        for(NSMutableDictionary *place in places) {
+            if([place[@"latitude"] doubleValue] == latitude.doubleValue && [place[@"longitude"] doubleValue] == longitude.doubleValue) { group = place; break; }
+        }
+        if(!group) {
+            group = [@{@"id": NSUUID.UUID.UUIDString, @"name": ssid, @"latitude": @(latitude.doubleValue),
+                @"longitude": @(longitude.doubleValue), @"radius": @100, @"networks": @[],
+                @"symbol": [self autoWifiPlaceSymbolForName:ssid], @"color": @"blue", @"record": @"point"} mutableCopy];
+            [places addObject:group];
+        }
+        if(![group[@"networks"] containsObject:ssid]) group[@"networks"] = [group[@"networks"] arrayByAddingObject:ssid];
+    }
+    return [self validatedWifiPlaces:places];
+}
+
+- (BOOL)replaceWifiPlaces:(NSArray<NSDictionary *> *)places {
+    NSArray *valid = [GLManager validatedWifiPlaces:places];
+    if(!valid) return NO;
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    @try {
+        if(![valid isEqual:[defaults objectForKey:GLWifiPlacesDefaultsName]]) [defaults setObject:valid forKey:GLWifiPlacesDefaultsName];
+        if(![valid isEqual:[defaults objectForKey:GLWifiPlacesDefaultsName]]) return NO;
+    } @catch(NSException *exception) { return NO; }
+    for(NSString *key in @[GLWifiZonesDefaultsName, @"WifiZoneName", @"WifiZoneLatitude", @"WifiZoneLongitude"]) {
+        if([defaults objectForKey:key]) [defaults removeObjectForKey:key];
+    }
     [[NSNotificationCenter defaultCenter] postNotificationName:GLSettingsChangedNotification object:self];
+    return YES;
 }
 
 - (void)saveNewDeviceId:(NSString *)deviceId {
@@ -3572,6 +3606,8 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     NSUInteger saved = 0;
     NSMutableDictionary *rejected = self.locationHealthPolicy.expected ? [NSMutableDictionary dictionary] : nil;
     NSDictionary *options = self.advancedTrackingOptions;
+    self.batchWifiInfo = [self wifiNetworkInfoForBatch];
+    NSDictionary *place = [self currentWifiPlaceForLocations:locations networkInfo:self.batchWifiInfo];
     NSMutableArray *usable = [NSMutableArray arrayWithCapacity:locations.count];
     for(CLLocation *location in locations) {
         if(![self isValidLocation:location]) { GLCountLocationRejection(rejected, @"invalid"); continue; }
@@ -3581,6 +3617,10 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
         if(fabs(location.timestamp.timeIntervalSinceNow) <= 20) {
             usefulFix = YES;
             [WhereWolfLocationEngine.shared recordStandardLocation];
+        }
+        if([place[@"record"] isEqual:@"nothing"] && GLWifiPlaceContainsFix(place, location)) {
+            GLCountLocationRejection(rejected, @"wifi_place");
+            continue;
         }
         if([options[@"reject_jumps"] boolValue]) {
             if(self.discardPointsOutsideAccuracy > 0 && location.horizontalAccuracy > self.discardPointsOutsideAccuracy) { GLCountLocationRejection(rejected, @"accuracy"); continue; }
@@ -3612,9 +3652,8 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
         }
     }
 
-    self.batchWifiInfo = [GLManager currentWifiNetworkInfo];
-    [self rememberWifiNetworkInfo:self.batchWifiInfo];
-    locations = [self locationsByApplyingWifiZone:usable networkInfo:self.batchWifiInfo];
+    [self rememberWifiNetworkInfo:self.batchWifiInfo location:locations.lastObject date:NSDate.date];
+    locations = [place[@"record"] isEqual:@"nothing"] ? usable : [self locationsByApplyingWifiPlace:usable networkInfo:self.batchWifiInfo];
 
     NSString *activityType = @"";
     switch(self.tripInProgress ? self.activityTypeDuringTrip : self.activityType) {
@@ -3804,7 +3843,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
         [properties setValue:_deviceId forKey:@"device_id"];
     }
     NSDictionary *wifiInfo = self.batchWifiInfo ?: [GLManager currentWifiNetworkInfo];
-    if(remember) [self rememberWifiNetworkInfo:wifiInfo];
+    if(remember && !self.batchWifiInfo) [self rememberWifiNetworkInfo:wifiInfo];
     [properties setValue:wifiInfo[@"SSID"] forKey:@"wifi"];
     [properties setValue:[self currentBatteryState] forKey:@"battery_state"];
     [properties setValue:[self currentBatteryLevel] forKey:@"battery_level"];
@@ -4114,244 +4153,174 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
 }
 
 
-#pragma mark - Wifi Positioning
+#pragma mark - Wi-Fi Places
 
-- (CLLocation *)currentLocationFromWifiName:(NSString *)wifi bssid:(NSString *)bssid {
-    if(wifi.length == 0) return nil;
-    NSString *canonicalBSSID = GLCanonicalWifiBSSID(bssid);
-    NSDictionary *match;
-    for(NSDictionary *zone in self.wifiZones) {
-        if(![zone[@"name"] isEqualToString:wifi]) continue;
-        NSString *mac = zone[@"bssid"];
-        if(mac.length == 0) {
-            if(!match) match = zone;
-        } else if(canonicalBSSID.length > 0 && [mac isEqualToString:canonicalBSSID]) {
-            match = zone;
-            break;
-        }
+- (NSDictionary *)matchingWifiPlaceForSSID:(NSString *)ssid location:(CLLocation *)fix {
+    if(!GLValidWifiSSID(ssid) || !fix) return nil;
+    NSDictionary *nearest;
+    CLLocationDistance best = DBL_MAX;
+    for(NSDictionary *place in self.wifiPlaces) {
+        if(![place[@"networks"] containsObject:ssid] || !GLWifiPlaceContainsFix(place, fix)) continue;
+        CLLocation *center = [[CLLocation alloc] initWithLatitude:[place[@"latitude"] doubleValue] longitude:[place[@"longitude"] doubleValue]];
+        CLLocationDistance distance = [center distanceFromLocation:fix];
+        if(distance < best) { best = distance; nearest = place; }
     }
-    if(!match) return nil;
-    CLLocationCoordinate2D coord = CLLocationCoordinate2DMake([match[@"latitude"] doubleValue], [match[@"longitude"] doubleValue]);
-    if(!CLLocationCoordinate2DIsValid(coord)) return nil;
-    return [[CLLocation alloc] initWithCoordinate:coord altitude:0 horizontalAccuracy:([match[@"radius"] doubleValue] > 0 ? [match[@"radius"] doubleValue] : 1) verticalAccuracy:-1 course:-1 speed:0 timestamp:NSDate.date];
+    return nearest;
 }
 
-- (NSArray<CLLocation *> *)locationsByApplyingWifiZone:(NSArray<CLLocation *> *)locations networkInfo:(NSDictionary *)info {
+- (NSDictionary *)currentWifiPlaceForLocations:(NSArray<CLLocation *> *)locations networkInfo:(NSDictionary *)info {
     CLLocation *current = locations.lastObject;
-    // Today's network cannot establish where delayed fixes were recorded.
-    if(!current || fabs(current.timestamp.timeIntervalSinceNow) > 20) return locations;
-    if(![self isValidLocation:current]) return locations;
-    CLLocation *zone = [self currentLocationFromWifiName:info[@"SSID"] bssid:info[@"BSSID"]];
-    if(!zone) return locations;
-    CLLocation *replacement = [[CLLocation alloc] initWithCoordinate:zone.coordinate altitude:zone.altitude
-        horizontalAccuracy:zone.horizontalAccuracy verticalAccuracy:zone.verticalAccuracy
-        course:zone.course speed:zone.speed timestamp:current.timestamp];
+    // A current network cannot establish where delayed fixes were recorded.
+    if(!current || ![self isValidLocation:current] || fabs(current.timestamp.timeIntervalSinceNow) > 20) return nil;
+    return [self matchingWifiPlaceForSSID:info[@"SSID"] location:current];
+}
+
+- (NSArray<CLLocation *> *)locationsByApplyingWifiPlace:(NSArray<CLLocation *> *)locations networkInfo:(NSDictionary *)info {
+    NSDictionary *place = [self currentWifiPlaceForLocations:locations networkInfo:info];
+    if(!place || ![place[@"record"] isEqual:@"point"]) return locations;
+    CLLocation *current = locations.lastObject;
+    // Never less accurate than the fix it replaces, so Max Saved-Point Error keeps every point it would have kept.
+    CLLocationAccuracy accuracy = MIN([place[@"radius"] doubleValue], current.horizontalAccuracy);
+    CLLocation *replacement = [[CLLocation alloc] initWithCoordinate:CLLocationCoordinate2DMake([place[@"latitude"] doubleValue], [place[@"longitude"] doubleValue])
+        altitude:0 horizontalAccuracy:accuracy verticalAccuracy:-1 course:-1 speed:0 timestamp:current.timestamp];
     NSMutableArray *result = [locations mutableCopy];
     result[result.count - 1] = replacement;
     return result;
 }
 
-- (NSArray<NSDictionary<NSString *, id> *> *)wifiZones {
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    NSArray *zones = [defaults objectForKey:GLWifiZonesDefaultsName];
-    if(zones == nil) {
-        // Preserve the saved location when migrating the legacy single-zone setting.
+- (NSArray<NSDictionary<NSString *, id> *> *)wifiPlaces {
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    id stored = [defaults objectForKey:GLWifiPlacesDefaultsName];
+    if(stored) return [GLManager validatedWifiPlaces:stored] ?: @[];
+    id zones = [defaults objectForKey:GLWifiZonesDefaultsName];
+    if(!zones) {
         NSString *name = [defaults objectForKey:@"WifiZoneName"];
-        if([name isKindOfClass:NSString.class] && name.length > 0) {
-            NSDictionary *zone = @{@"name": name,
-                                   @"latitude": [defaults objectForKey:@"WifiZoneLatitude"] ?: @"0",
-                                   @"longitude": [defaults objectForKey:@"WifiZoneLongitude"] ?: @"0"};
-            zones = @[zone];
-            [defaults setObject:zones forKey:GLWifiZonesDefaultsName];
-            [defaults removeObjectForKey:@"WifiZoneName"];
-            [defaults removeObjectForKey:@"WifiZoneLatitude"];
-            [defaults removeObjectForKey:@"WifiZoneLongitude"];
-        } else {
-            zones = @[];
-        }
+        if(![name isKindOfClass:NSString.class] || name.length == 0) return @[];
+        zones = @[@{@"name": name, @"latitude": [defaults objectForKey:@"WifiZoneLatitude"] ?: @"0",
+            @"longitude": [defaults objectForKey:@"WifiZoneLongitude"] ?: @"0"}];
     }
-    if(![zones isKindOfClass:NSArray.class]) zones = @[];
-    NSArray *normalized = GLNormalizedWifiZones(zones);
-    if(![zones isEqualToArray:normalized]) [defaults setObject:normalized forKey:GLWifiZonesDefaultsName];
-    return normalized;
+    NSArray *places = [GLManager placesFromLegacyWifiZones:zones];
+    if(!places) return @[];
+    [self replaceWifiPlaces:places];
+    return places;
 }
 
-- (void)saveWifiZones:(NSArray<NSDictionary<NSString *, NSString *> *> *)zones {
-    NSArray *normalized = GLNormalizedWifiZones(zones);
-    [[NSUserDefaults standardUserDefaults] setObject:normalized forKey:GLWifiZonesDefaultsName];
+- (NSDictionary *)wifiNetworkInfoForBatch {
+    return [GLManager currentWifiNetworkInfo];
 }
 
-- (void)addWifiZoneWithName:(NSString *)name latitude:(NSString *)latitude longitude:(NSString *)longitude bssid:(NSString *)bssid {
-    if(![name isKindOfClass:NSString.class] || name.length == 0
-       || (bssid && ![bssid isKindOfClass:NSString.class])) return;
-    NSMutableDictionary *network = [@{ @"name": name,
-        @"bssid": bssid ?: @"" } mutableCopy];
-    if(bssid.length == 0) [network removeObjectForKey:@"bssid"];
-    [self addWifiNetworks:@[network] latitude:latitude ?: @"0" longitude:longitude ?: @"0"];
+#pragma mark - Observed Wi-Fi networks
+
++ (NSArray<NSDictionary<NSString *, id> *> *)knownWifiNetworks {
+    return [self knownWifiNetworksAtDate:NSDate.date];
 }
 
-- (BOOL)addWifiNetworks:(NSArray<NSDictionary<NSString *,NSString *> *> *)networks latitude:(NSString *)latitude longitude:(NSString *)longitude {
-    if(![networks isKindOfClass:NSArray.class]) return NO;
-    if(networks.count == 0) return YES;
-
-    NSString *latitudeValue = GLWifiCoordinateString(latitude);
-    NSString *longitudeValue = GLWifiCoordinateString(longitude);
-    if(!latitudeValue || !longitudeValue) return NO;
-    CLLocationCoordinate2D coordinate = CLLocationCoordinate2DMake(latitudeValue.doubleValue, longitudeValue.doubleValue);
-    if(!CLLocationCoordinate2DIsValid(coordinate)) return NO;
-
-    NSMutableArray<NSDictionary *> *validated = [NSMutableArray arrayWithCapacity:networks.count];
-    for(id object in networks) {
-        if(![object isKindOfClass:NSDictionary.class]) return NO;
-        NSString *name = GLWifiSSID(object);
-        if(!name || [name dataUsingEncoding:NSUTF8StringEncoding].length > 32) return NO;
-        NSMutableDictionary *zone = [@{
-            @"name": name,
-            @"latitude": latitudeValue,
-            @"longitude": longitudeValue,
-        } mutableCopy];
-        BOOL hasLowerBSSID = object[@"bssid"] != nil;
-        id suppliedBSSID = hasLowerBSSID ? object[@"bssid"] : object[@"BSSID"];
-        NSString *trimmedBSSID = [suppliedBSSID isKindOfClass:NSString.class]
-            ? [suppliedBSSID stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] : nil;
-        if(trimmedBSSID.length > 0) {
-            NSString *canonical = GLCanonicalWifiBSSID(trimmedBSSID);
-            if(!canonical || GLIsRedactedWifiNetwork(name, canonical)) return NO;
-            zone[@"bssid"] = canonical;
-        } else if(suppliedBSSID && ![suppliedBSSID isKindOfClass:NSString.class]) {
-            return NO;
-        }
-        [validated addObject:zone.copy];
++ (NSArray<NSDictionary *> *)knownWifiNetworksAtDate:(NSDate *)now {
+    @synchronized (GLManager.class) {
+        NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+        id stored = [defaults objectForKey:GLWifiKnownNetworksDefaultsName];
+        NSArray *raw = [stored isKindOfClass:NSArray.class] ? stored : @[];
+        NSArray *normalized = GLNormalizedWifiCatalog(raw, now);
+        if(![raw isEqualToArray:normalized]) [defaults setObject:normalized forKey:GLWifiKnownNetworksDefaultsName];
+        return normalized;
     }
+}
 
-    NSMutableArray<NSDictionary *> *zones = [self.wifiZones mutableCopy];
-    for(NSDictionary *zone in validated) {
-        NSInteger existing = NSNotFound;
-        for(NSUInteger i = 0; i < zones.count; i++) {
-            if(GLWifiIdentityMatches(zones[i], zone)) {
-                existing = (NSInteger)i;
-                break;
++ (NSArray<NSDictionary<NSString *, id> *> *)frequentWifiNetworks {
+    return [self frequentWifiNetworksAtDate:NSDate.date places:GLManager.sharedManager.wifiPlaces];
+}
+
++ (NSArray<NSDictionary *> *)frequentWifiNetworksAtDate:(NSDate *)now places:(NSArray<NSDictionary *> *)places {
+    NSMutableSet *assigned = [NSMutableSet set];
+    for(NSDictionary *place in places) [assigned addObjectsFromArray:place[@"networks"]];
+    NSMutableArray *frequent = [NSMutableArray array];
+    for(NSDictionary *network in [self knownWifiNetworksAtDate:now]) {
+        if([assigned containsObject:network[@"name"]]) continue;
+        double seconds = 0;
+        for(NSNumber *value in [network[@"days"] allValues]) seconds += value.doubleValue;
+        if(seconds < 3600) continue;
+        NSMutableDictionary *entry = [network mutableCopy];
+        entry[@"connectedSeconds"] = @(seconds);
+        [frequent addObject:entry.copy];
+    }
+    [frequent sortUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) {
+        NSComparisonResult order = [b[@"connectedSeconds"] compare:a[@"connectedSeconds"]];
+        if(order == NSOrderedSame) order = [b[@"lastSeen"] compare:a[@"lastSeen"]];
+        return order == NSOrderedSame ? [a[@"name"] compare:b[@"name"]] : order;
+    }];
+    if(frequent.count > 3) [frequent removeObjectsInRange:NSMakeRange(3, frequent.count - 3)];
+    return frequent.copy;
+}
+
+- (void)rememberWifiNetworkInfo:(NSDictionary *)info {
+    [self rememberWifiNetworkInfo:info location:nil date:NSDate.date];
+}
+
+- (void)rememberWifiNetworkInfo:(NSDictionary *)info location:(CLLocation *)fix date:(NSDate *)now {
+    @synchronized (GLManager.class) {
+        NSString *ssid = GLWifiSSID(info);
+        NSDate *previousDate = self.observedWifiDate;
+        NSString *previousSSID = self.observedWifiSSID;
+        self.observedWifiDate = now;
+        self.observedWifiSSID = ssid;
+        NSArray *known = [GLManager knownWifiNetworksAtDate:now];
+        if(!ssid) return;
+        NSMutableArray *updated = [known mutableCopy];
+        NSMutableDictionary *entry;
+        for(NSDictionary *network in known) if([network[@"name"] isEqual:ssid]) { entry = [network mutableCopy]; [updated removeObject:network]; break; }
+        if(!entry) entry = [@{@"name": ssid, @"days": @{}} mutableCopy];
+        entry[@"lastSeen"] = @(now.timeIntervalSince1970);
+        if(fix && CLLocationCoordinate2DIsValid(fix.coordinate) && isfinite(fix.horizontalAccuracy)
+           && fix.horizontalAccuracy >= 0 && fix.horizontalAccuracy <= 100
+           && [fix.timestamp timeIntervalSinceDate:now] <= 0 && [fix.timestamp timeIntervalSinceDate:now] >= -60) {
+            entry[@"latitude"] = @(fix.coordinate.latitude);
+            entry[@"longitude"] = @(fix.coordinate.longitude);
+        }
+        NSMutableDictionary *days = [GLWifiDays(entry[@"days"], now) mutableCopy];
+        NSTimeInterval gap = previousDate ? [now timeIntervalSinceDate:previousDate] : 0;
+        if([ssid isEqual:previousSSID] && gap > 0 && gap <= 600) {
+            NSTimeInterval cursor = previousDate.timeIntervalSince1970, end = now.timeIntervalSince1970;
+            while(cursor < end) {
+                NSTimeInterval boundary = (floor(cursor / 86400) + 1) * 86400;
+                NSTimeInterval next = MIN(end, boundary);
+                NSString *day = GLWifiDay(cursor);
+                days[day] = @(MIN(86400, [days[day] doubleValue] + next - cursor));
+                cursor = next;
             }
         }
-        if(existing == NSNotFound) [zones addObject:zone];
-        else {
-            NSMutableDictionary *updated = [zones[existing] mutableCopy];
-            [updated addEntriesFromDictionary:zone];
-            [zones replaceObjectAtIndex:existing withObject:updated];
-        }
+        entry[@"days"] = GLWifiDays(days, now);
+        [updated addObject:entry.copy];
+        NSArray *normalized = GLNormalizedWifiCatalog(updated, now);
+        if(![known isEqualToArray:normalized]) [NSUserDefaults.standardUserDefaults setObject:normalized forKey:GLWifiKnownNetworksDefaultsName];
     }
-    [self saveWifiZones:zones];
-    return YES;
 }
-
-- (void)removeWifiZoneAtIndex:(NSInteger)index {
-    NSMutableArray *zones = [NSMutableArray arrayWithArray:self.wifiZones];
-    if(index < 0 || index >= (NSInteger)zones.count) {
-        return;
-    }
-    [zones removeObjectAtIndex:index];
-    [self saveWifiZones:zones];
-}
-
-- (void)saveNewWifiZone:(NSString *)name withLatitude:(NSString *)latitude andLongitude:(NSString *)longitude {
-    if(![name isKindOfClass:NSString.class] || name.length == 0) {
-        return;
-    }
-    [self addWifiZoneWithName:name latitude:latitude longitude:longitude bssid:nil];
-}
-- (NSString *)wifiZoneName {
-    return self.wifiZones.firstObject[@"name"];
-}
-- (NSString *)wifiZoneLatitude {
-    return self.wifiZones.firstObject[@"latitude"];
-}
-- (NSString *)wifiZoneLongitude {
-    return self.wifiZones.firstObject[@"longitude"];
-}
-
-- (NSArray<NSDictionary<NSString *, NSString *> *> *)knownWifiNetworksIncludingSavedZones:(BOOL)includeSavedZones {
-    NSMutableArray<NSDictionary *> *networks = [[GLManager knownWifiNetworks] mutableCopy];
-    if(!includeSavedZones) return networks;
-    for(NSDictionary *zone in self.wifiZones) {
-        NSMutableDictionary *network = [@{ @"name": zone[@"name"] } mutableCopy];
-        NSString *bssid = GLCanonicalWifiBSSID(zone[@"bssid"]);
-        if(bssid) network[@"bssid"] = bssid;
-        BOOL present = NO;
-        for(NSDictionary *known in networks) {
-            if(GLWifiIdentityMatches(known, network)) {
-                present = YES;
-                break;
-            }
-        }
-        if(!present) [networks addObject:network.copy];
-    }
-    return networks;
-}
-
 
 #pragma mark -
 
 - (BOOL)defaultsKeyExists:(NSString *)key {
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    return [defaults objectForKey:key] != nil;
+    return [NSUserDefaults.standardUserDefaults objectForKey:key] != nil;
 }
 
 + (NSString *)currentWifiHotSpotName {
     return [self currentWifiNetworkInfo][@"SSID"];
 }
 
-+ (NSString *)normalizedWifiBSSID:(NSString *)bssid {
-    return GLCanonicalWifiBSSID(bssid);
-}
-
-+ (NSArray<NSDictionary<NSString *, NSString *> *> *)knownWifiNetworks {
-    @synchronized (GLManager.class) {
-        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-        id stored = [defaults objectForKey:GLWifiKnownNetworksDefaultsName];
-        NSArray *raw = [stored isKindOfClass:NSArray.class] ? stored : @[];
-        NSArray *normalized = GLNormalizedWifiCatalog(raw);
-        if(![raw isEqualToArray:normalized]) [defaults setObject:normalized forKey:GLWifiKnownNetworksDefaultsName];
-        return normalized;
-    }
-}
-
-- (void)rememberWifiNetworkInfo:(NSDictionary *)info {
-    @synchronized (GLManager.class) {
-        NSDictionary *network = GLNormalizedObservedWifiNetwork(info);
-        if(!network) return;
-        NSArray *known = [GLManager knownWifiNetworks];
-        for(NSDictionary *entry in known) {
-            if(GLWifiIdentityMatches(entry, network)) return;
-        }
-        NSMutableArray *updated = [known mutableCopy];
-        [updated addObject:network];
-        if(updated.count > GLWifiKnownNetworkLimit) {
-            [updated removeObjectsInRange:NSMakeRange(0, updated.count - GLWifiKnownNetworkLimit)];
-        }
-        [[NSUserDefaults standardUserDefaults] setObject:updated forKey:GLWifiKnownNetworksDefaultsName];
-    }
-}
-
 static NSDictionary *GLFetchedWifiNetwork;
 static CFAbsoluteTime GLFetchedWifiTime;
 static BOOL GLFetchingWifiNetwork;
 
-static NSDictionary *GLNormalizedCurrentWifiInfo(id ssid, id rawBSSID) {
-    if(![ssid isKindOfClass:NSString.class] || [ssid length] == 0) return nil;
-    NSString *bssid = GLCanonicalWifiBSSID(rawBSSID);
-    if(GLIsRedactedWifiNetwork(ssid, bssid)) return nil;
-    return bssid ? @{@"SSID": ssid, @"BSSID": bssid} : @{@"SSID": ssid};
+static NSDictionary *GLNormalizedCurrentWifiInfo(id ssid) {
+    return GLValidWifiSSID(ssid) ? @{@"SSID": ssid} : nil;
 }
 
-// iOS redacts SSID/BSSID without location permission and the wifi-info entitlement.
-// CNCopyCurrentNetworkInfo has been deprecated since iOS 14 and can return nothing on current
-// iOS, so a recent NEHotspotNetwork result fills in, refreshed in the background for later calls.
+// Current SSID access needs location authorization and the Wi-Fi information entitlement.
+// A recent NEHotspotNetwork result fills in when the deprecated CaptiveNetwork API is empty.
 + (NSDictionary *)currentWifiNetworkInfo {
     NSArray *ifs = (__bridge_transfer id)CNCopySupportedInterfaces();
     for (NSString *ifnam in ifs) {
         NSDictionary *info = (__bridge_transfer id)CNCopyCurrentNetworkInfo((__bridge CFStringRef)ifnam);
         if(![info isKindOfClass:NSDictionary.class]) continue;
-        NSDictionary *network = GLNormalizedCurrentWifiInfo(info[@"SSID"], info[@"BSSID"]);
+        NSDictionary *network = GLNormalizedCurrentWifiInfo(info[@"SSID"]);
         if(network) return network;
     }
     [self refreshCurrentWifiNetwork:nil];
@@ -4367,7 +4336,7 @@ static NSDictionary *GLNormalizedCurrentWifiInfo(id ssid, id rawBSSID) {
         GLFetchingWifiNetwork = YES;
     }
     [NEHotspotNetwork fetchCurrentWithCompletionHandler:^(NEHotspotNetwork *current) {
-        NSDictionary *network = GLNormalizedCurrentWifiInfo(current.SSID, current.BSSID);
+        NSDictionary *network = GLNormalizedCurrentWifiInfo(current.SSID);
         @synchronized (GLManager.class) {
             GLFetchingWifiNetwork = NO;
             GLFetchedWifiNetwork = network;

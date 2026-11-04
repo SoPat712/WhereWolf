@@ -10,36 +10,6 @@ struct SendStatusEntry: Identifiable, Equatable {
     let kind: Kind
 }
 
-struct WifiZoneNetwork: Hashable, Identifiable {
-    let name: String
-    let bssid: String?
-    var id: Self { self }
-
-    init?(name: String, bssid: String? = nil) {
-        guard !name.isEmpty, name.utf8.count <= 32 else { return nil }
-        let address = (bssid ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        if address.isEmpty {
-            self.bssid = nil
-        } else {
-            guard let normalized = GLManager.normalizedWifiBSSID(address) else { return nil }
-            if normalized == "00:00:00:00:00:00", ["wi-fi", "wlan"].contains(name.lowercased()) { return nil }
-            self.bssid = normalized
-        }
-        self.name = name
-    }
-
-    init?(_ dictionary: [String: String]) {
-        self.init(name: dictionary["name"] ?? dictionary["SSID"] ?? "",
-                  bssid: dictionary["bssid"] ?? dictionary["BSSID"])
-    }
-
-    var dictionary: [String: String] {
-        var result = ["name": name]
-        if let bssid { result["bssid"] = bssid }
-        return result
-    }
-}
-
 // Notifications refresh SwiftUI's view of the Objective-C manager.
 // Settings use its setters to preserve persistence and tracking changes.
 @Observable
@@ -305,42 +275,85 @@ final class GLManagerBridge {
         return saved
     }
 
-    var wifiZones: [[String: String]] {
+    var wifiPlaces: [WifiPlace] {
         _ = tick
-        return (GLManager.shared().wifiZones ?? []).map { $0.compactMapValues { $0 as? String } }
+        return (GLManager.shared().wifiPlaces ?? []).compactMap(WifiPlace.init)
     }
 
-    func wifiNetworkSnapshot() -> (current: WifiZoneNetwork?, known: [WifiZoneNetwork], location: CLLocation?) {
-        let info = (GLManager.currentWifiNetworkInfo() as? [String: String]) ?? [:]
-        let current = WifiZoneNetwork(info)
-        let gl = GLManager.shared()!
-        let known = (gl.knownWifiNetworks(includingSavedZones: true) ?? []).compactMap(WifiZoneNetwork.init)
-        return (current, known, wifiZoneLocation)
+    var observedWifiNetworks: [WifiObservedNetwork] {
+        _ = tick
+        return (GLManager.knownWifiNetworks() ?? []).compactMap(WifiObservedNetwork.init)
     }
 
-    // Asks iOS for the current network directly, for screens that can wait for the answer.
-    func refreshCurrentWifiNetwork(_ completion: @escaping (WifiZoneNetwork?) -> Void) {
-        GLManager.refreshCurrentWifiNetwork { info in
-            completion(WifiZoneNetwork((info as? [String: String]) ?? [:]))
-        }
+    var frequentWifiNetworks: [WifiObservedNetwork] {
+        _ = tick
+        return Array((GLManager.frequentWifiNetworks() ?? []).compactMap(WifiObservedNetwork.init).prefix(3))
     }
 
-    var wifiZoneLocation: CLLocation? {
+    var currentWifiSSID: String? {
+        _ = tick
+        let info = GLManager.currentWifiNetworkInfo() as? [String: Any]
+        guard let name = info?["SSID"] as? String, !name.isEmpty, name.utf8.count <= 32 else { return nil }
+        return name
+    }
+
+    // Matching uses the received fix, before a place can replace its coordinates.
+    var matchedWifiPlace: WifiPlace? {
+        _ = tick
         _ = clockTick
-        guard let gl = GLManager.shared(), let location = gl.lastReceivedLocation ?? gl.lastLocation,
-              CLLocationCoordinate2DIsValid(location.coordinate), abs(location.timestamp.timeIntervalSinceNow) <= 60 else { return nil }
-        return location
+        guard let gl = GLManager.shared(), let ssid = currentWifiSSID,
+              let fix = gl.lastReceivedLocation,
+              Self.isUsableWifiPlaceLocation(fix, maximumAge: 20),
+              let value = gl.matchingWifiPlace(forSSID: ssid, location: fix) as? [String: Any] else { return nil }
+        return WifiPlace(value)
     }
 
-    func saveWifiNetworks(_ networks: [WifiZoneNetwork], latitude: String, longitude: String) -> Bool {
-        let saved = GLManager.shared().addWifiNetworks(networks.map(\.dictionary), latitude: latitude, longitude: longitude)
+    var wifiPlaceLocation: CLLocation? {
+        _ = clockTick
+        guard let gl = GLManager.shared() else { return nil }
+        if let raw = gl.lastReceivedLocation, Self.isUsableWifiPlaceLocation(raw, maximumAge: 60) { return raw }
+        guard let fallback = gl.lastLocation,
+              Self.isUsableWifiPlaceLocation(fallback, maximumAge: 60) else { return nil }
+        return fallback
+    }
+
+    private static func isUsableWifiPlaceLocation(_ location: CLLocation, maximumAge: TimeInterval) -> Bool {
+        let age = -location.timestamp.timeIntervalSinceNow
+        return CLLocationCoordinate2DIsValid(location.coordinate) && location.horizontalAccuracy >= 0 &&
+            location.horizontalAccuracy.isFinite && age.isFinite && (0...maximumAge).contains(age)
+    }
+
+    @discardableResult
+    func saveWifiPlace(_ place: WifiPlace) -> Bool {
+        guard let place = WifiPlace(place.dictionary) else { return false }
+        var values = wifiPlaces
+        if let index = values.firstIndex(where: { $0.id == place.id }) { values[index] = place }
+        else { values.append(place) }
+        let saved = GLManager.shared().replaceWifiPlaces(values.map(\.dictionary))
         if saved { refresh() }
         return saved
     }
 
-    func removeWifiZones(at offsets: IndexSet) {
-        for index in offsets.sorted(by: >) { GLManager.shared().removeWifiZone(at: index) }
-        refresh()
+    @discardableResult
+    func removeWifiPlace(_ place: WifiPlace) -> Bool {
+        let saved = GLManager.shared().replaceWifiPlaces(wifiPlaces.filter { $0.id != place.id }.map(\.dictionary))
+        if saved { refresh() }
+        return saved
+    }
+
+    // Screens refresh on appearance and when returning from iOS Wi-Fi settings.
+    func refreshCurrentWifiNetwork(_ completion: @escaping (String?) -> Void) {
+        GLManager.refreshCurrentWifiNetwork { [weak self] info in
+            let name = (info as? [String: Any])?["SSID"] as? String
+            self?.refresh()
+            completion(name.flatMap { !$0.isEmpty && $0.utf8.count <= 32 ? $0 : nil })
+        }
+    }
+
+    func refreshWifiNetwork() async -> String? {
+        await withCheckedContinuation { continuation in
+            refreshCurrentWifiNetwork { continuation.resume(returning: $0) }
+        }
     }
 
     private static func timeFormatted(_ totalSeconds: Int) -> String {

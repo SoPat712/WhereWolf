@@ -21,7 +21,7 @@ changes.
 | Apple Health workouts and routes | Optional, explicit authorization. A separate protected route store receives raw locations only after queue acceptance. Workout and route progress survive failed exports and relaunch. |
 | GPS and stationary point filters | Independent normal/trip choices, off by default. The GPS choice uses missing speed and altitude accuracy as a proxy. Stationary filtering requires Motion & Fitness, tolerates uncertain readings after stopping, and retains a stopping point and hourly heartbeat. |
 | Boat activity type | Available on iOS 27 in settings, remote configuration, Shortcuts and both acquisition engines. |
-| WiFi-zone map editing | Added a map picker to the existing multi-network editor. Connected-network autofill, manual entry, atomic batch validation and one coordinate pair per SSID/BSSID identity remain. |
+| Wi-Fi Places | Native map editing groups SSIDs under named points and radii. Match uses the connected name and raw-fix distance; record the place’s point or nothing inside its circle. Old zones migrate by equal coordinates without BSSIDs. |
 | Nonfinite JSON and send diagnostics | Nonfinite metadata becomes JSON null. Send errors remain visible when notifications are disabled. |
 | Send only on Wi-Fi (`f06f88d`, `e7271a5`) | A Sending switch and remote `send_wifi_only`. It also holds the upload scheduler's retries and background task, keeps the flush intent for the first Wi-Fi path, and lets a Send Now drain every batch. |
 | Ask to End Trip When Stopped (`5f5555a`, `f82a55f`, `5b227af`) | A Trip Settings switch with the same stop rule. It uses Motion & Fitness only when already allowed, and the trip summary, Health workout and route end at the stop. |
@@ -32,8 +32,8 @@ changes.
 The glass styling, drawer, shared native map, replay renderer and app icon are
 retained. Upstream storyboard/tab-bar presentation and Icon Composer appearance
 changes are not applied. The fork already had StoreKit 2 tips, custom HTTP
-headers, WiFi/BSSID mappings, trip-distance caching and queue fixes; those
-implementations are retained. The five original Usage Presets and existing users’ settings are
+headers, trip-distance caching and queue fixes; those implementations are retained.
+Wi-Fi Places replaces the earlier BSSID-based zone assignments. The five original Usage Presets and existing users’ settings are
 unchanged. New export, Health, trip-card and filtering choices are opt-in.
 
 ## Storage and signing
