@@ -107,6 +107,10 @@
 		C0A7C4000000000000000017 /* WhereWolfWatchLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A7C4000000000000000007 /* WhereWolfWatchLink.swift */; };
 		C0A7C4000000000000000018 /* WatchLinkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A7C4000000000000000008 /* WatchLinkTests.swift */; };
 		C0A7C4000000000000000019 /* WhereWolfWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = C0A7C4000000000000000001 /* WhereWolfWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		C0A7C4000000000000000031 /* WatchStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A7C4000000000000000034 /* WatchStyle.swift */; };
+		C0A7C4000000000000000032 /* WatchTripModesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A7C4000000000000000035 /* WatchTripModesView.swift */; };
+		C0A7C4000000000000000033 /* WatchPresetsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A7C4000000000000000036 /* WatchPresetsView.swift */; };
+		C0A7C4000000000000000037 /* TripModes.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C25B528FB613DCB4FBF7D384 /* TripModes.xcassets */; };
 		C246F22FA7DFF125127B0BE2 /* TripModes.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C25B528FB613DCB4FBF7D384 /* TripModes.xcassets */; };
 		D0F100000000000000000003 /* GLLocationHealth.m in Sources */ = {isa = PBXBuildFile; fileRef = D0F100000000000000000002 /* GLLocationHealth.m */; };
 		D0F100000000000000000005 /* LocationHealthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0F100000000000000000004 /* LocationHealthView.swift */; };
@@ -313,6 +317,9 @@
 		C0A7C4000000000000000006 /* WatchLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WatchLink.swift; path = GPSLogger/Shared/WatchLink.swift; sourceTree = "<group>"; };
 		C0A7C4000000000000000007 /* WhereWolfWatchLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhereWolfWatchLink.swift; sourceTree = "<group>"; };
 		C0A7C4000000000000000008 /* WatchLinkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/WatchLinkTests.swift; sourceTree = SOURCE_ROOT; };
+		C0A7C4000000000000000034 /* WatchStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchStyle.swift; sourceTree = "<group>"; };
+		C0A7C4000000000000000035 /* WatchTripModesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchTripModesView.swift; sourceTree = "<group>"; };
+		C0A7C4000000000000000036 /* WatchPresetsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchPresetsView.swift; sourceTree = "<group>"; };
 		C215F1FD102A461140930DC1 /* TripControls.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripControls.swift; path = WhereWolfLiveActivity/TripControls.swift; sourceTree = "<group>"; };
 		C25B528FB613DCB4FBF7D384 /* TripModes.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; name = TripModes.xcassets; path = GPSLogger/TripModes.xcassets; sourceTree = "<group>"; };
 		CE0D0CC91D28B0CF79E330F3 /* GLCloudFileWriter.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = GLCloudFileWriter.h; path = GPSLogger/GLCloudFileWriter.h; sourceTree = "<group>"; };
@@ -617,6 +624,9 @@
 				C0A7C4000000000000000002 /* WhereWolfWatchApp.swift */,
 				C0A7C4000000000000000003 /* WatchModel.swift */,
 				C0A7C4000000000000000004 /* WatchControlsView.swift */,
+				C0A7C4000000000000000034 /* WatchStyle.swift */,
+				C0A7C4000000000000000035 /* WatchTripModesView.swift */,
+				C0A7C4000000000000000036 /* WatchPresetsView.swift */,
 				C0A7C4000000000000000005 /* Assets.xcassets */,
 			);
 			path = WhereWolfWatch;
@@ -780,6 +790,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				C0A7C4000000000000000014 /* Assets.xcassets in Resources */,
+				C0A7C4000000000000000037 /* TripModes.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -971,6 +982,9 @@
 				C0A7C4000000000000000011 /* WhereWolfWatchApp.swift in Sources */,
 				C0A7C4000000000000000012 /* WatchModel.swift in Sources */,
 				C0A7C4000000000000000013 /* WatchControlsView.swift in Sources */,
+				C0A7C4000000000000000031 /* WatchStyle.swift in Sources */,
+				C0A7C4000000000000000032 /* WatchTripModesView.swift in Sources */,
+				C0A7C4000000000000000033 /* WatchPresetsView.swift in Sources */,
 				C0A7C4000000000000000015 /* WatchLink.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

@@ -84,7 +84,10 @@ import WatchConnectivity
             queued: 0,
             preset: manager.usageProfile(),
             metric: GLManagerBridge.shared.speedUnit == "KM/H",
-            modes: TripModeStore.modes.map { WatchTripMode(id: $0.id, name: $0.name) })
+            modes: TripModeStore.modes.map {
+                WatchTripMode(id: $0.id, name: $0.name, symbol: TripModeStore.resolvedSymbol($0.symbol))
+            },
+            tripSymbol: tripActive ? TripModeStore.symbol(manager.currentTripMode) : nil)
         manager.numberOfLocations(inQueue: { count in
             DispatchQueue.main.async {
                 status.queued = count

@@ -451,8 +451,12 @@ for sources and the remaining device tests.
 
 The optional watch app (watchOS 10 or later) manages WhereWolf from your wrist:
 turn tracking on or off, retry location updates, start or end a trip, send queued
-locations and choose a Usage Preset. It controls the iPhone app and needs the iPhone
-in range. It does not record locations, and commands are not queued for later.
+locations and choose a Usage Preset. Home has a large tracking button above native
+scrolling controls, with recovery actions for missed updates or an unreachable phone.
+Trips show their own icon, a live timer and distance; starting while tracking is off
+tracks just the trip. Presets stay locked during a trip. It controls the iPhone app
+and needs the iPhone in range. It does not record locations, and commands are not
+queued for later.
 Opening it can wake the iPhone app in the background, but iOS decides whether that
 happens and tracking does not depend on it.
 

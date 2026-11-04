@@ -23,7 +23,11 @@ final class WatchModel: NSObject {
     // Messaging from an open watch app can wake the phone app in the background, which restores tracking.
     func send(_ command: WatchCommand) {
         let session = WCSession.default
-        guard session.activationState == .activated else { return }
+        guard session.activationState == .activated else {
+            unreachable = true
+            session.activate()
+            return
+        }
         revision &+= 1
         let current = revision
         busy = true
@@ -57,6 +61,10 @@ extension WatchModel: WCSessionDelegate {
         let saved = WatchStatus(message: session.receivedApplicationContext)
         Task { @MainActor in
             if let saved { self.status = saved }
+            guard activationState == .activated else {
+                self.unreachable = true
+                return
+            }
             self.send(.refresh)
         }
     }

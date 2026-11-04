@@ -461,7 +461,17 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   holds no location or queue data. `WhereWolfWatchLink` activates `WCSession` at launch
   and sends each command through the same calls as the phone's controls, with the same
   limits and Stop confirmation. `GPSLogger/Shared/WatchLink.swift` defines the messages
-  and belongs to both targets. Commands use live `sendMessage` only and are never queued,
+  and the pure `WatchHomePresentation` mapping, and belongs to both targets. Home uses a
+  black native List with a scaled 84-point tracking hero: green ring while tracking,
+  solid green while off, orange ring for stale fixes and gray when unreachable. Recovery
+  comes first, then Start Trip (or the mode/timer/distance card and a separate End Trip row),
+  Send Now and Preset, on native gray row platters. Keep text untinted, Dynamic Type and
+  44-point targets. The owner rejected glass on the watch: keep the hero a flat filled or
+  ringed circle and add no glass styles or tinted backgrounds. Mode icons come from the
+  phone's `TripModeStore`; include `TripModes.xcassets` in watch resources and fall back to
+  `location.fill` for missing or unknown symbols. Preset has checkmarks and stays locked
+  during trips. Starting a trip while off restores off after its summary commits.
+  Commands use live `sendMessage` only and are never queued,
   because a Stop or End Trip delivered later would do the wrong thing. Status reaches the
   watch through `updateApplicationContext`, at most once a minute for location updates
   and only with the watch app installed. Tracking must never depend on the link. Keep the
