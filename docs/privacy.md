@@ -124,15 +124,16 @@ stops, support optional adaptive tracking, and count trip steps. Processing
 happens on the device, but motion labels and step counts can be included in
 records sent to your configured destination.
 
-WhereWolf matches connected Wi-Fi names to places you configure, using each
-place’s point and radius. It does not store access-point identifiers (BSSIDs).
+WhereWolf matches connected Wi-Fi names to places you configure, within 300 m of
+each point plus reported uncertainty capped at 200 m. It does not store
+access-point identifiers (BSSIDs).
 Place settings are saved locally and are included in optional settings backups
 and sync. A device-only catalog keeps up to 64 network names, their last-seen time,
 the coordinate of the last fix with accuracy of 100 m or better, and connected
 seconds for the last seven calendar days. This catalog is never exported or synced.
 The network name can be included in GeoJSON records as described above. A matching
 place can replace the current recorded coordinate with its configured point, or
-skip recording fixes inside its circle. Location services continue in either case.
+skip recording matching fixes. Location services continue in either case.
 WhereWolf can also check the connection type to support Wi-Fi-only sending and
 connection-return retries.
 

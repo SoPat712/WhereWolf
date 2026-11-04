@@ -44,7 +44,7 @@ struct WifiPlaceListView: View {
                                             .background(.green.opacity(0.16), in: Capsule())
                                     }
                                 }
-                                Text("\(place.networks.joined(separator: ", ")) · \(place.radiusLabel)")
+                                Text(place.networks.joined(separator: ", "))
                                     .font(.footnote)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
@@ -63,7 +63,7 @@ struct WifiPlaceListView: View {
             } header: {
                 Text("Places")
             } footer: {
-                Text("On a place’s network and inside its radius, WhereWolf records the place’s point instead of indoor GPS.")
+                Text("While you’re connected to a place’s network nearby, WhereWolf records the place’s point instead of indoor GPS.")
             }
 
             if !bridge.frequentWifiNetworks.isEmpty {

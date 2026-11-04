@@ -64,8 +64,9 @@ An existing recording continues when you reopen it.
 Settings → **Backup & Sync** exports one JSON settings file and imports it after a
 validated change preview. **Include Server URL and Token** defaults on; that file
 also includes custom headers and contains your server credential. Keep it private.
-Turn it off to omit all three. Backups contain configuration, Wi-Fi places and trip
-modes, without locations, queues, trips, imported workouts or Health records.
+Turn it off to omit all three. Backups contain configuration, Wi-Fi place points and
+networks, and trip modes, without locations, queues, trips, imported workouts or
+Health records. Older Wi-Fi place and zone backups still import.
 Import preserves tracking on/off and waits until the current trip ends. Permissions
 must be configured separately on each iPhone.
 
@@ -178,7 +179,7 @@ Tip Jar controller and main storyboard have been removed.
 
 WhereWolf includes PR #180's precision controls, accuracy filter, and stationary
 stopping, plus its later notification, persisted pause-state, and safe-settings
-follow-ups. It also adds Wi-Fi Places with network names and geographic radii,
+follow-ups. It also adds Wi-Fi Places with network names and saved points,
 custom HTTP headers, server-certificate diagnostics, and the last 50 send
 outcomes for the current app session.
 
@@ -214,11 +215,11 @@ recording, uploads, reminders and Live Activity updates remain independent of
 scene visibility. Replay catches up when Tracker becomes visible; the trip map
 loads when Trip becomes visible.
 
-Wi-Fi Places match a connected network name inside a saved radius, allowing
-up to 200 m of reported uncertainty. Place’s Point replaces only the fresh current
-fix, preserving its timestamp. Its accuracy is the place’s radius or the fix’s own,
-whichever is smaller, so Max Saved-Point Error keeps it whenever it would keep the fix. Nothing
-skips fixes inside the matched circle without stopping location services.
+Wi-Fi Places match a connected network name within 300 m of the saved point, plus
+reported uncertainty capped at 200 m. Place’s Point replaces only the fresh current
+fix, preserving its timestamp. Its accuracy is 300 m or the fix’s own, whichever is
+smaller, so Max Saved-Point Error keeps it whenever it would keep the fix. Nothing
+skips matching fixes without stopping location services.
 Historical fixes remain unchanged when recording a place’s point. Future-dated fixes and repeated identical fixes
 are rejected; delayed history has no blanket age cutoff. Radius pausing uses
 validated raw fixes before recording filters and resets on tracking, preset
@@ -696,11 +697,11 @@ These controls configure [Core Location](https://developer.apple.com/reference/c
 * `Notifications` controls local tracking and send notifications. iOS notification
   permission is also required. Problems Only keeps upload errors and the existing
   missed-update reminder while suppressing routine pause, resume and trip messages.
-* `Wi-Fi Places` groups network names under a named point and a 25 m–2 km radius.
-  Match requires both a connected network name and a fix inside the circle, allowing
-  for uncertainty up to 200 m. The nearer place wins when names are shared.
-  Record the place’s point or save nothing inside its circle. Drag the map to move
-  the point and its circle’s handle to resize. Frequent Networks suggests up to
+* `Wi-Fi Places` groups network names under a named point. Match requires a
+  connected network name and a fix within 300 m of the point, plus reported
+  uncertainty capped at 200 m. The nearer place wins when names are shared.
+  Record the place’s point or save nothing while connected nearby. Drag the map
+  to move the point. Frequent Networks suggests up to
   three unassigned names used for at least an hour in the past seven days.
   The device keeps up to 64 observed network names, without access-point addresses.
   The picker supports manual names; iOS exposes only the connected network and

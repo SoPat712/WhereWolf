@@ -12,17 +12,6 @@ final class SettingsReliabilityTests: XCTestCase {
         XCTAssertEqual(network.id, "Home")
     }
 
-    func testWifiRadiusStepperSnapsCustomValuesAndStopsAtBounds() {
-        XCTAssertEqual(WifiPlace.radii, [25, 50, 75, 100, 150, 200, 250, 300, 400, 500, 750, 1000, 1500, 2000])
-        XCTAssertEqual(WifiPlace.steppedRadius(125, increasing: true), 150)
-        XCTAssertEqual(WifiPlace.steppedRadius(125, increasing: false), 100)
-        XCTAssertEqual(WifiPlace.steppedRadius(100, increasing: true), 150)
-        XCTAssertEqual(WifiPlace.steppedRadius(100, increasing: false), 75)
-        XCTAssertEqual(WifiPlace.steppedRadius(25, increasing: false), 25)
-        XCTAssertEqual(WifiPlace.steppedRadius(2000, increasing: true), 2000)
-        XCTAssertEqual(WifiPlace.steppedRadius(.nan, increasing: true), 100)
-    }
-
     func testWifiPlaceAutoIconUsesWholeWordsWithoutCaseOrDiacritics() {
         let rules = [
             ("HOME", "house.fill"), ("My House", "house.fill"), ("Office", "building.2.fill"), ("Work", "building.2.fill"),
@@ -43,9 +32,18 @@ final class SettingsReliabilityTests: XCTestCase {
         XCTAssertTrue(restored.symbolChosen)
         XCTAssertEqual(WifiPlace(name: "Office").symbol, "building.2.fill")
         XCTAssertEqual(WifiPlace(name: "Home").color, "blue")
-        XCTAssertEqual(WifiPlace(name: "Home").radius, 100)
         XCTAssertEqual(WifiPlace(name: "Home").record, .point)
         XCTAssertFalse(WifiPlace(name: "Home").isValid)
+    }
+
+    func testWifiPlaceDropsLegacyRadius() throws {
+        let place = WifiPlace(name: "Home", latitude: 45.5, longitude: -122.6, networks: ["SSID"])
+        var legacy = place.dictionary
+        legacy["radius"] = 25
+        let restored = try XCTUnwrap(WifiPlace(legacy))
+        XCTAssertEqual(restored, place)
+        XCTAssertNil(restored.dictionary["radius"])
+        XCTAssertTrue(WifiPlace.Recording.nothing.footer.contains(WifiPlace.distanceLabel(GLWifiPlaceMatchDistance)))
     }
 
     func testWifiPlaceRenamePicksIconUntilUserChoosesOne() throws {

@@ -142,7 +142,7 @@ enum SettingsSchema {
                     guard let dict = value as? [String: Any], let valid = validHeaders(dict) else { throw SettingsBackupError.invalid(key) }
                     result[key] = valid
                 case "wifiPlaces":
-                    guard let zones = value as? [[String: Any]], let valid = GLManager.validatedWifiPlaces(zones) else { throw SettingsBackupError.invalid(key) }
+                    guard let places = value as? [[String: Any]], let valid = GLManager.validatedWifiPlaces(places) else { throw SettingsBackupError.invalid(key) }
                     result[key] = valid
                 case "tripModes":
                     guard let entries = value as? [[String: Any]] else { throw SettingsBackupError.invalid(key) }

@@ -40,23 +40,10 @@ struct WifiPlaceEditorView: View {
             }
 
             Section {
-                WifiPlaceRadiusMap(coordinate: $draft.coordinate, radius: $draft.radius,
-                                   tint: draft.tint, onChooseCoordinate: { coordinateChosen = true })
+                WifiPlaceMap(coordinate: $draft.coordinate, tint: draft.tint,
+                             onChooseCoordinate: { coordinateChosen = true })
                     .frame(height: 230)
                     .listRowInsets(EdgeInsets())
-                Stepper {
-                    HStack {
-                        Text("Radius")
-                        Spacer()
-                        Text(draft.radiusLabel).foregroundStyle(.secondary)
-                    }
-                } onIncrement: {
-                    draft.radius = WifiPlace.steppedRadius(draft.radius, increasing: true)
-                } onDecrement: {
-                    draft.radius = WifiPlace.steppedRadius(draft.radius, increasing: false)
-                }
-                .accessibilityValue(draft.radiusLabel)
-                .accessibilityIdentifier("wherewolf.wifiPlaces.radius")
                 Button("Use Current Location") {
                     guard let location = bridge.wifiPlaceLocation else { return }
                     coordinateChosen = true
@@ -69,7 +56,7 @@ struct WifiPlaceEditorView: View {
                         .foregroundStyle(.secondary)
                 }
             } footer: {
-                Text("Drag the map to move the pin and the handle to resize. The place applies only inside the circle, allowing for each fix’s own uncertainty.")
+                Text("Drag the map to move the pin. WhereWolf uses this point while you’re connected to these networks within about \(WifiPlace.distanceLabel(GLWifiPlaceMatchDistance)) of it.")
             }
 
             Section {
@@ -188,148 +175,56 @@ struct WifiPlaceEditorView: View {
     }
 }
 
-private struct WifiPlaceRadiusMap: View {
+private struct WifiPlaceMap: View {
     @Binding var coordinate: CLLocationCoordinate2D
-    @Binding var radius: Double
     let tint: Color
     let onChooseCoordinate: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var position: MapCameraPosition
     @State private var mapCenter: CLLocationCoordinate2D
-    @State private var displayedRadius: Double
-    @State private var resizing = false
-    @State private var resizeStartRadius: Double?
 
-    init(coordinate: Binding<CLLocationCoordinate2D>, radius: Binding<Double>, tint: Color,
+    init(coordinate: Binding<CLLocationCoordinate2D>, tint: Color,
          onChooseCoordinate: @escaping () -> Void) {
         _coordinate = coordinate
-        _radius = radius
         self.tint = tint
         self.onChooseCoordinate = onChooseCoordinate
         _mapCenter = State(initialValue: coordinate.wrappedValue)
-        _displayedRadius = State(initialValue: radius.wrappedValue)
-        _position = State(initialValue: Self.fittedPosition(coordinate.wrappedValue, radius: radius.wrappedValue))
+        _position = State(initialValue: Self.position(coordinate.wrappedValue))
     }
 
     var body: some View {
-        MapReader { proxy in
-            GeometryReader { geometry in
-                let center = CGPoint(x: geometry.size.width / 2, y: geometry.size.height / 2)
-                let knob = proxy.convert(Self.east(of: mapCenter, meters: displayedRadius), to: .local)
-                    ?? CGPoint(x: center.x + 50, y: center.y)
-                Map(position: $position, interactionModes: resizing ? [] : [.pan, .zoom]) {
-                    MapCircle(center: mapCenter, radius: displayedRadius)
-                        .foregroundStyle(.blue.opacity(0.18))
-                        .stroke(.blue, lineWidth: 1.5)
-                }
-                .mapStyle(.standard(elevation: .flat))
-                .mapControls { }
-                .onMapCameraChange(frequency: .continuous) { context in
-                    guard !resizing, position.positionedByUser else { return }
-                    mapCenter = context.camera.centerCoordinate
-                }
-                .onMapCameraChange(frequency: .onEnd) { context in
-                    guard !resizing, position.positionedByUser else { return }
-                    mapCenter = context.camera.centerCoordinate
-                    onChooseCoordinate()
-                    coordinate = mapCenter
-                }
-                .overlay {
-                    Image(systemName: "mappin")
-                        .font(.system(size: 32, weight: .bold))
-                        .foregroundStyle(tint)
-                        .offset(y: -16)
-                        .allowsHitTesting(false)
-                        .accessibilityHidden(true)
-                }
-                .overlay(alignment: .bottomLeading) {
-                    Text(WifiPlace.distanceLabel(displayedRadius))
-                        .font(.footnote.weight(.semibold))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(.regularMaterial, in: Capsule())
-                        .padding(10)
-                        .allowsHitTesting(false)
-                        .accessibilityHidden(true)
-                }
-                .overlay(alignment: .topLeading) {
-                    Circle()
-                        .fill(.white)
-                        .frame(width: 20, height: 20)
-                        .overlay { Image(systemName: "line.2.vertical").font(.system(size: 10, weight: .medium)).foregroundStyle(.gray) }
-                        .shadow(color: .black.opacity(0.3), radius: 1)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Circle())
-                        .position(knob)
-                        .highPriorityGesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("wifiPlaceMap"))
-                            .onChanged { value in
-                                if !resizing { resizeStartRadius = displayedRadius }
-                                resizing = true
-                                guard let point = proxy.convert(value.location, from: .local),
-                                      let start = proxy.convert(value.startLocation, from: .local) else { return }
-                                let origin = CLLocation(latitude: mapCenter.latitude, longitude: mapCenter.longitude)
-                                let target = CLLocation(latitude: point.latitude, longitude: point.longitude)
-                                let initial = CLLocation(latitude: start.latitude, longitude: start.longitude)
-                                let change = origin.distance(from: target) - origin.distance(from: initial)
-                                displayedRadius = min(2000, max(25, (resizeStartRadius ?? radius) + change))
-                            }
-                            .onEnded { _ in
-                                radius = displayedRadius
-                                resizing = false
-                                resizeStartRadius = nil
-                                fitRadius()
-                            })
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityLabel("Radius")
-                        .accessibilityIdentifier("wherewolf.wifiPlaces.radiusHandle")
-                        .accessibilityValue(WifiPlace.distanceLabel(displayedRadius))
-                        .accessibilityHint("Swipe up or down to resize the place.")
-                        .accessibilityAdjustableAction { direction in
-                            switch direction {
-                            case .increment: radius = WifiPlace.steppedRadius(radius, increasing: true)
-                            case .decrement: radius = WifiPlace.steppedRadius(radius, increasing: false)
-                            @unknown default: return
-                            }
-                        }
-                }
-                .coordinateSpace(name: "wifiPlaceMap")
-                .onChange(of: coordinate.latitude) { _, _ in updateCoordinate() }
-                .onChange(of: coordinate.longitude) { _, _ in updateCoordinate() }
-                .onChange(of: radius) { _, value in
-                    guard !resizing else { return }
-                    displayedRadius = value
-                    fitRadius()
-                }
+        Map(position: $position, interactionModes: [.pan]) { }
+            .mapStyle(.standard(elevation: .flat))
+            .mapControls { }
+            .onMapCameraChange(frequency: .onEnd) { context in
+                guard position.positionedByUser else { return }
+                mapCenter = context.camera.centerCoordinate
+                onChooseCoordinate()
+                coordinate = mapCenter
             }
-        }
+            .overlay {
+                Image(systemName: "mappin")
+                    .font(.system(size: 32, weight: .bold))
+                    .foregroundStyle(tint)
+                    .offset(y: -16)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+            .onChange(of: coordinate.latitude) { _, _ in updateCoordinate() }
+            .onChange(of: coordinate.longitude) { _, _ in updateCoordinate() }
     }
 
     private func updateCoordinate() {
         guard abs(mapCenter.latitude - coordinate.latitude) > 0.0000001 ||
                 abs(mapCenter.longitude - coordinate.longitude) > 0.0000001 else { return }
         mapCenter = coordinate
-        fitRadius()
-    }
-
-    private func fitRadius() {
-        let next = Self.fittedPosition(mapCenter, radius: displayedRadius)
+        let next = Self.position(coordinate)
         if reduceMotion { position = next }
         else { withAnimation(.easeInOut(duration: 0.35)) { position = next } }
     }
 
-    private static func fittedPosition(_ coordinate: CLLocationCoordinate2D, radius: Double) -> MapCameraPosition {
-        .region(MKCoordinateRegion(center: coordinate, latitudinalMeters: radius * 3.5,
-                                   longitudinalMeters: radius * 3.5))
-    }
-
-    private static func east(of coordinate: CLLocationCoordinate2D, meters: Double) -> CLLocationCoordinate2D {
-        let latitude = coordinate.latitude * .pi / 180
-        let longitude = coordinate.longitude * .pi / 180
-        let distance = meters / 6_371_000
-        let targetLatitude = asin(sin(latitude) * cos(distance))
-        let targetLongitude = longitude + atan2(sin(distance) * cos(latitude), cos(distance) - sin(latitude) * sin(targetLatitude))
-        let degrees = targetLongitude * 180 / .pi
-        return CLLocationCoordinate2D(latitude: targetLatitude * 180 / .pi,
-                                      longitude: (degrees + 540).truncatingRemainder(dividingBy: 360) - 180)
+    private static func position(_ coordinate: CLLocationCoordinate2D) -> MapCameraPosition {
+        .region(MKCoordinateRegion(center: coordinate, latitudinalMeters: 400,
+                                   longitudinalMeters: 400))
     }
 }

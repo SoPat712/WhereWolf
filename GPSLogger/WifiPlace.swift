@@ -9,7 +9,7 @@ struct WifiPlace: Identifiable, Equatable {
         var footer: String {
             self == .point
                 ? "Each new fix becomes the place’s point, so indoor GPS can’t wander around the building."
-                : "No points are saved while you’re here. Recording carries on once you leave the network or the circle."
+                : "No points are saved while you’re connected here, within about \(WifiPlace.distanceLabel(GLWifiPlaceMatchDistance)) of the pin. Recording carries on once you leave."
         }
     }
 
@@ -39,13 +39,11 @@ struct WifiPlace: Identifiable, Equatable {
         .init(id: "wifi", label: "Wi-Fi")
     ]
     static let colors = ["blue", "green", "orange", "red", "purple", "pink", "teal", "gray"]
-    static let radii: [Double] = [25, 50, 75, 100, 150, 200, 250, 300, 400, 500, 750, 1000, 1500, 2000]
 
     var id: String
     var name: String
     var latitude: Double
     var longitude: Double
-    var radius: Double
     var networks: [String]
     var symbol: String
     var color: String
@@ -53,14 +51,13 @@ struct WifiPlace: Identifiable, Equatable {
     var symbolChosen: Bool
 
     init(id: String = UUID().uuidString, name: String = "", latitude: Double = 0,
-         longitude: Double = 0, radius: Double = 100, networks: [String] = [],
+         longitude: Double = 0, networks: [String] = [],
          symbol: String? = nil, color: String = "blue", record: Recording = .point,
          symbolChosen: Bool = false) {
         self.id = id
         self.name = name
         self.latitude = latitude
         self.longitude = longitude
-        self.radius = radius
         self.networks = networks
         self.symbol = symbol ?? Self.autoSymbol(for: name)
         self.color = color
@@ -75,20 +72,19 @@ struct WifiPlace: Identifiable, Equatable {
               let name = value["name"] as? String,
               let latitude = value["latitude"] as? NSNumber,
               let longitude = value["longitude"] as? NSNumber,
-              let radius = value["radius"] as? NSNumber,
               let networks = value["networks"] as? [String],
               let symbol = value["symbol"] as? String,
               let color = value["color"] as? String,
               let record = Recording(rawValue: value["record"] as? String ?? "point") else { return nil }
         self.init(id: id, name: name, latitude: latitude.doubleValue,
-                  longitude: longitude.doubleValue, radius: radius.doubleValue,
+                  longitude: longitude.doubleValue,
                   networks: networks, symbol: symbol, color: color, record: record,
                   symbolChosen: value["symbolChosen"] as? Bool ?? false)
     }
 
     var dictionary: [String: Any] {
         ["id": id, "name": name.trimmingCharacters(in: .whitespacesAndNewlines),
-         "latitude": latitude, "longitude": longitude, "radius": radius,
+         "latitude": latitude, "longitude": longitude,
          "networks": networks, "symbol": symbol, "color": color,
          "record": record.rawValue, "symbolChosen": symbolChosen]
     }
@@ -99,7 +95,6 @@ struct WifiPlace: Identifiable, Equatable {
         set { latitude = newValue.latitude; longitude = newValue.longitude }
     }
     var tint: Color { Self.tint(for: color) }
-    var radiusLabel: String { Self.distanceLabel(radius) }
 
     static func autoSymbol(for name: String) -> String {
         GLManager.autoWifiPlaceSymbol(for: name)
@@ -108,12 +103,6 @@ struct WifiPlace: Identifiable, Equatable {
     mutating func rename(to name: String) {
         self.name = name
         if !symbolChosen { symbol = Self.autoSymbol(for: name) }
-    }
-
-    static func steppedRadius(_ radius: Double, increasing: Bool) -> Double {
-        guard radius.isFinite else { return 100 }
-        if increasing { return radii.first { $0 > radius } ?? radii.last! }
-        return radii.last { $0 < radius } ?? radii.first!
     }
 
     static func tint(for color: String) -> Color {

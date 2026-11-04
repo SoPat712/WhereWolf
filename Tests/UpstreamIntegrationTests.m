@@ -89,7 +89,7 @@
     XCTAssertEqual(count, 2);
 }
 - (void)testImportedFractionalTimestampsUseTheOriginalCloudDay {
-    XCTAssertNil([self write:@[[self feature:@"healthkit:a" timestamp:@"2026-10-19T23:59:59.125Z"]] mode:GLCloudFileModeDaily]);
+    XCTAssertNil(([self write:@[[self feature:@"healthkit:a" timestamp:@"2026-10-19T23:59:59.125Z"]] mode:GLCloudFileModeDaily]));
     XCTAssertEqual([self featuresAt:@"2026/10/2026-10-19.geojson"].count, 1);
 }
 - (void)testDailyCloudExportRetriesDoNotDuplicateRecordsAcrossDays {
@@ -131,7 +131,7 @@
     NSDictionary *decoded = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
     XCTAssertEqualObjects(decoded[@"values"], (@[NSNull.null, NSNull.null, @1]));
     XCTAssertEqualObjects(decoded[@"nested"][@"negative"], NSNull.null);
-    XCTAssertNil([GLManager dataWithJSONObject:@{@"bad": NSSet.set} error:nil]);
+    XCTAssertNil(([GLManager dataWithJSONObject:@{@"bad": NSSet.set} error:nil]));
 }
 - (void)testOwnTracksCloudConversionPreservesIdentityAndRecordedTime {
     GLManager *manager = [GLManager new];

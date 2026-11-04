@@ -37,6 +37,7 @@ final class SettingsBackupTests: XCTestCase {
         XCTAssertEqual(places.count, 1)
         XCTAssertEqual(places[0]["networks"] as? [String], ["Home", "Home 5G"])
         XCTAssertNil(places[0]["bssid"])
+        XCTAssertNil(places[0]["radius"])
         XCTAssertNil(preview.values["wifiZones"])
         XCTAssertTrue(preview.ignoredKeys.isEmpty)
         XCTAssertEqual(preview.changes.first?.title, "Wi-Fi Places")
@@ -44,6 +45,25 @@ final class SettingsBackupTests: XCTestCase {
         XCTAssertFalse(SettingsSchema.syncKeys.contains("wifiZones"))
         let newData = try SettingsBackup.encode(preview.values, credentials: false, appVersion: "1")
         XCTAssertTrue(SettingsSchema.equal(try SettingsBackup.preview(newData, current: [:]).values, preview.values))
+    }
+    func testWifiPlaceBackupIgnoresLegacyRadiusAndExportsPointsOnly() throws {
+        let place = WifiPlace(name: "Home", latitude: 45.5, longitude: -122.6, networks: ["Home"]).dictionary
+        var legacy = place
+        legacy["radius"] = 25
+        let input: [String: Any] = ["wifiPlaces": [legacy]]
+        let data = try JSONSerialization.data(withJSONObject: ["schemaVersion": 1, "settings": input])
+        let preview = try SettingsBackup.preview(data, current: [:])
+        let imported = try XCTUnwrap(preview.values["wifiPlaces"] as? [[String: Any]])
+        XCTAssertTrue(SettingsSchema.equal(imported, [place]))
+        XCTAssertNil(imported[0]["radius"])
+        for values in [input, preview.values] {
+            let exported = try SettingsBackup.encode(values, credentials: false, appVersion: "1")
+            let envelope = try XCTUnwrap(JSONSerialization.jsonObject(with: exported) as? [String: Any])
+            let settings = try XCTUnwrap(envelope["settings"] as? [String: Any])
+            let places = try XCTUnwrap(settings["wifiPlaces"] as? [[String: Any]])
+            XCTAssertTrue(SettingsSchema.equal(places, [place]))
+            XCTAssertNil(places[0]["radius"])
+        }
     }
     func testBackupWithoutCredentialsOmitsHeadersToo() throws {
         let data = try SettingsBackup.encode(fixture(), credentials: false, appVersion: "1")
@@ -96,6 +116,35 @@ final class SettingsBackupTests: XCTestCase {
             snapshot: { [:] }, apply: { _ in XCTFail("Unsupported build must stay local") }, supported: false)
         unavailable.setEnabled(true)
         XCTAssertFalse(unavailable.enabled); XCTAssertFalse(unavailable.available); XCTAssertTrue(cloud.writes.isEmpty)
+    }
+    @MainActor func testWifiPlacesSyncIgnoresLegacyRadiusAndWritesPointsOnly() throws {
+        let suite = "WhereWolf.Backup.\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let cloud = TestSettingsCloud(), secrets = MemorySettingsCredentialStore()
+        let place = WifiPlace(name: "Home", latitude: 45.5, longitude: -122.6, networks: ["Home"]).dictionary
+        var legacy = place
+        legacy["radius"] = 2000
+        var settings: [String: Any] = ["wifiPlaces": []]
+        let sync = SettingsSync(defaults: defaults, cloud: cloud, secrets: secrets,
+            snapshot: { settings }, apply: { settings.merge($0) { _, new in new } },
+            clock: { Date(timeIntervalSince1970: 100) })
+        sync.observeLocalChanges(initial: true)
+        cloud.values[SettingsSync.prefix + "wifiPlaces"] = SettingsSyncRecord(value: [legacy], modified: 50, writer: "remote").dictionary
+        sync.setEnabled(true)
+        XCTAssertTrue(SettingsSchema.equal(settings["wifiPlaces"], [place]))
+        let records = try XCTUnwrap(defaults.dictionary(forKey: SettingsSync.recordsKey))
+        let accepted = try XCTUnwrap(SettingsSyncRecord(try XCTUnwrap(records["wifiPlaces"])))
+        XCTAssertTrue(SettingsSchema.equal(accepted.value, [place]))
+        XCTAssertEqual(accepted.modified, 50)
+        legacy["name"] = "House"
+        settings["wifiPlaces"] = [legacy]
+        sync.synchronize()
+        let exported = try XCTUnwrap(SettingsSyncRecord(try XCTUnwrap(cloud.values[SettingsSync.prefix + "wifiPlaces"])))
+        let places = try XCTUnwrap(exported.value as? [[String: Any]])
+        XCTAssertEqual(places[0]["name"] as? String, "House")
+        XCTAssertNil(places[0]["radius"])
+        XCTAssertEqual(exported.modified, 100)
     }
     @MainActor func testSyncMergesPerKeyAndExcludesSecretsAndDeviceState() throws {
         let suite = "WhereWolf.Backup.\(UUID())"

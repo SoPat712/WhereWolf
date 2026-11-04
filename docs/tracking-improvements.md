@@ -186,16 +186,17 @@ device verification because the simulator does not expose them.
 
 ## Wi-Fi Places
 
-Places group exact network names under one named point and a 25 m–2 km radius.
-Matching requires the connected SSID and a raw fix within the radius plus its
-reported uncertainty, capped at 200 m. Invalid accuracy never matches; the nearer
+Places group exact network names under one named point. Matching requires the
+connected SSID and a raw fix within 300 m of the point plus reported uncertainty,
+capped at 200 m. Invalid accuracy never matches; the nearer
 center wins when places share a name. Place’s Point replaces only the fresh current
-fix and preserves its timestamp. Nothing rejects inside-circle fixes before queue
-acceptance, trips, Health or replay, without stopping acquisition or uploads.
+fix and preserves its timestamp, with accuracy capped at 300 m. Nothing rejects
+matching fixes before queue acceptance, trips, Health or replay, without stopping
+acquisition or uploads.
 
-The native editor moves the point by dragging a map, resizes its circle with an
-accessible handle or Stepper, and accepts multiple observed or manually entered
-network names. Old zones at equal coordinates become one place and lose BSSIDs.
+The native editor moves the point by dragging a map and accepts multiple observed
+or manually entered network names. Old zones at equal coordinates become one place
+and lose BSSIDs.
 The old keys remain until the new value saves successfully. Places are included
 in Backup & Sync, including imports of older zone backups.
 

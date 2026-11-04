@@ -225,7 +225,8 @@ struct SettingsSyncRecord {
         if !SettingsSchema.equal(defaults.dictionary(forKey: Self.recordsKey), safe) { defaults.set(safe, forKey: Self.recordsKey) }
     }
     func observeLocalChanges(initial: Bool = false) {
-        for (key, value) in Self.flattened(snapshot()) where Self.portableKeys.contains(key) {
+        for (key, raw) in Self.flattened(snapshot()) where Self.portableKeys.contains(key) {
+            guard let value = try? Self.validatedValue(raw, key: key) else { continue }
             if initial, SettingsSchema.secrets.contains(key), let old = local[key] {
                 local[key] = SettingsSyncRecord(value: value, modified: old.modified, writer: old.writer)
                 continue
@@ -253,7 +254,10 @@ struct SettingsSyncRecord {
             var changes: [String: Any] = [:]
             var accepted: [String: SettingsSyncRecord] = [:]
             for (key, record) in remote where record.isNewer(than: local[key]) {
-                if let value = try Self.validatedValue(record.value, key: key) { changes[key] = value; accepted[key] = record }
+                if let value = try Self.validatedValue(record.value, key: key) {
+                    changes[key] = value
+                    accepted[key] = SettingsSyncRecord(value: value, modified: record.modified, writer: record.writer)
+                }
             }
             applying = true
             defer { applying = false }

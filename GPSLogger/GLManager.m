@@ -22,6 +22,8 @@
 @import UserNotifications;
 @import NetworkExtension;
 
+const CLLocationDistance GLWifiPlaceMatchDistance = 300;
+
 @interface GLManager()
 
 - (void)postLocalNotification:(NSString *)message title:(NSString *)title;
@@ -181,8 +183,6 @@ static NSDictionary *GLNormalizedWifiPlace(id object) {
     NSString *latitude = GLWifiCoordinateString(place[@"latitude"]);
     NSString *longitude = GLWifiCoordinateString(place[@"longitude"]);
     if(!latitude || !longitude || !CLLocationCoordinate2DIsValid(CLLocationCoordinate2DMake(latitude.doubleValue, longitude.doubleValue))) return nil;
-    id radius = place[@"radius"] ?: @100;
-    if(![radius isKindOfClass:NSNumber.class] || CFGetTypeID((__bridge CFTypeRef)radius) == CFBooleanGetTypeID() || !isfinite([radius doubleValue])) return nil;
     if(![place[@"networks"] isKindOfClass:NSArray.class] || [place[@"networks"] count] == 0) return nil;
     NSMutableOrderedSet *networks = [NSMutableOrderedSet orderedSet];
     for(id ssid in place[@"networks"]) {
@@ -199,7 +199,7 @@ static NSDictionary *GLNormalizedWifiPlace(id object) {
        || ![@[@"point", @"nothing"] containsObject:record]) return nil;
     NSMutableDictionary *result = [@{@"id": identifier, @"name": name,
         @"latitude": @(latitude.doubleValue), @"longitude": @(longitude.doubleValue),
-        @"radius": @(MIN(2000, MAX(25, [radius doubleValue]))), @"networks": networks.array,
+        @"networks": networks.array,
         @"symbol": symbol, @"color": color, @"record": record} mutableCopy];
     if(place[@"symbolChosen"]) {
         id chosen = place[@"symbolChosen"];
@@ -212,7 +212,7 @@ static NSDictionary *GLNormalizedWifiPlace(id object) {
 static BOOL GLWifiPlaceContainsFix(NSDictionary *place, CLLocation *fix) {
     if(!fix || !CLLocationCoordinate2DIsValid(fix.coordinate) || !isfinite(fix.horizontalAccuracy) || fix.horizontalAccuracy < 0) return NO;
     CLLocation *center = [[CLLocation alloc] initWithLatitude:[place[@"latitude"] doubleValue] longitude:[place[@"longitude"] doubleValue]];
-    return [center distanceFromLocation:fix] <= [place[@"radius"] doubleValue] + MIN(fix.horizontalAccuracy, 200);
+    return [center distanceFromLocation:fix] <= GLWifiPlaceMatchDistance + MIN(fix.horizontalAccuracy, 200);
 }
 
 static NSString *GLWifiDay(NSTimeInterval time) {
@@ -476,7 +476,7 @@ static dispatch_queue_t GLNotificationQueue(void) {
         }
         if(!group) {
             group = [@{@"id": NSUUID.UUID.UUIDString, @"name": ssid, @"latitude": @(latitude.doubleValue),
-                @"longitude": @(longitude.doubleValue), @"radius": @100, @"networks": @[],
+                @"longitude": @(longitude.doubleValue), @"networks": @[],
                 @"symbol": [self autoWifiPlaceSymbolForName:ssid], @"color": @"blue", @"record": @"point"} mutableCopy];
             [places addObject:group];
         }
@@ -4180,7 +4180,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     if(!place || ![place[@"record"] isEqual:@"point"]) return locations;
     CLLocation *current = locations.lastObject;
     // Never less accurate than the fix it replaces, so Max Saved-Point Error keeps every point it would have kept.
-    CLLocationAccuracy accuracy = MIN([place[@"radius"] doubleValue], current.horizontalAccuracy);
+    CLLocationAccuracy accuracy = MIN(GLWifiPlaceMatchDistance, current.horizontalAccuracy);
     CLLocation *replacement = [[CLLocation alloc] initWithCoordinate:CLLocationCoordinate2DMake([place[@"latitude"] doubleValue], [place[@"longitude"] doubleValue])
         altitude:0 horizontalAccuracy:accuracy verticalAccuracy:-1 course:-1 speed:0 timestamp:current.timestamp];
     NSMutableArray *result = [locations mutableCopy];

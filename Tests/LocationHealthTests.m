@@ -182,7 +182,7 @@
     XCTAssertEqual(self.load.count, 0);
     NSData *data = [NSData dataWithContentsOfURL:[self.directory URLByAppendingPathComponent:@"events.json"]];
     NSArray *saved = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
-    XCTAssertEqualObjects(saved, @[]);
+    XCTAssertEqualObjects(saved, (@[]));
 }
 - (void)testClearingTheLogIsSerializedAfterPendingWrites {
     [self.log append:[self event:1]];
