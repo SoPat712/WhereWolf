@@ -7,17 +7,17 @@ import XCTest
 @testable import WhereWolf
 
 final class BackgroundRuntimeTests: XCTestCase {
-    @MainActor func testAudioReopenPromptDefaultsOnAndPreservesSavedChoice() {
+    @MainActor func testAudioReopenPromptDefaultsOffAndPreservesSavedChoice() {
         let defaults = UserDefaults.standard
         let domain = Bundle.main.bundleIdentifier!
         let saved = defaults.persistentDomain(forName: domain) ?? [:]
         let key = "WhereWolfLiveActivityAskToReopenAfterAudio"
         defer { defaults.setPersistentDomain(saved, forName: domain) }
         defaults.removeObject(forKey: key)
-        XCTAssertTrue(WhereWolfBackgroundRuntime.shared.askToReopenAfterAudio)
-        XCTAssertNil(defaults.persistentDomain(forName: domain)?[key])
-        defaults.set(false, forKey: key)
         XCTAssertFalse(WhereWolfBackgroundRuntime.shared.askToReopenAfterAudio)
+        XCTAssertNil(defaults.persistentDomain(forName: domain)?[key])
+        defaults.set(true, forKey: key)
+        XCTAssertTrue(WhereWolfBackgroundRuntime.shared.askToReopenAfterAudio)
     }
 
     @MainActor func testBlankAppearanceDefaultPreservesSavedChoices() {

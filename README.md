@@ -388,9 +388,9 @@ Settings → Background adds helpers that follow Start/Stop Tracking:
   tracking falls back to the original location engine while hidden. WhereWolf's own silent audio
   does not count and keeps its existing behavior. This setting is included in optional settings sync.
 - **Ask to Reopen When Audio Stops** appears under Hide While Audio Plays and
-  defaults on. After audio has stopped for 15 seconds, if restoring an activity
-  is refused or must wait for the foreground, it schedules one notification
-  45 seconds later: “Music stopped — Open WhereWolf to bring back its Live Activity.”
+  defaults off. After audio has stopped for 15 seconds, if restoring an activity
+  is refused or must wait for the foreground, it schedules one silent notification
+  five minutes later, without sound or vibration: “Music stopped — Open WhereWolf to bring back its Live Activity.”
   iOS can deliver it while WhereWolf is suspended; tapping it opens the app and
   lets the activity return. The prompt is removed when audio resumes, you open
   WhereWolf or tap Retry, an activity returns, either switch turns off, Always

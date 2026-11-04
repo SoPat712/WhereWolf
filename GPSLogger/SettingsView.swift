@@ -395,7 +395,7 @@ struct BackgroundSettingsView: View {
                 Toggle("Hide While Audio Plays", isOn: $bridge.hideLiveActivityWhileAudioPlays)
                 if bridge.hideLiveActivityWhileAudioPlays {
                     Toggle("Ask to Reopen When Audio Stops", isOn: $bridge.askToReopenAfterAudio)
-                    Text("On by default. If the Live Activity cannot return after music stops, a notification 45 seconds later asks you to open WhereWolf. This needs notification permission, independently of Notifications and Problems Only.")
+                    Text("Off by default. If the Live Activity cannot return after music stops, a silent notification about five minutes later asks you to open WhereWolf. This needs notification permission, independently of Notifications and Problems Only.")
                         .font(.footnote).foregroundStyle(.secondary)
                     if bridge.askToReopenAfterAudio && !audioNotificationsAllowed {
                         HStack {

@@ -44,8 +44,10 @@ final class LiveActivityReopenPromptTests: XCTestCase {
                 XCTAssertEqual(request.content.title, "Music stopped")
                 XCTAssertEqual(request.content.body, "Open WhereWolf to bring back its Live Activity.")
                 XCTAssertTrue(request.content.categoryIdentifier.isEmpty)
+                XCTAssertNil(request.content.sound)
+                XCTAssertEqual(request.content.interruptionLevel, .passive)
                 let trigger = try XCTUnwrap(request.trigger as? UNTimeIntervalNotificationTrigger)
-                XCTAssertEqual(trigger.timeInterval, 45)
+                XCTAssertEqual(trigger.timeInterval, 300)
                 XCTAssertFalse(trigger.repeats)
             }
         }

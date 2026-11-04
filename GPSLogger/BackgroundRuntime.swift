@@ -125,7 +125,7 @@ private enum TrackingActivityHandle {
         UserDefaults.standard.register(defaults: [Key.liveActivity: true,
                                                  Key.appearance: "blank", Key.lockScreenCard: false, Key.silentAudio: false,
                                                  Key.hideWhileAudioPlays: false,
-                                                 Key.askToReopenAfterAudio: true])
+                                                 Key.askToReopenAfterAudio: false])
     }
 
     var liveActivityEnabled: Bool {

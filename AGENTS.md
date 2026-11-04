@@ -569,9 +569,10 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   background restore attempt per activity family, then waits for
   foreground or explicit Retry after a refusal. Hiding is not a failure. Preserve
   Stop, pauses, trip state and the reminder deadline.
-  Ask to Reopen When Audio Stops defaults on and appears under
+  Ask to Reopen When Audio Stops defaults off and appears under
   Hide While Audio Plays. After confirmed audio ending, a refused or deferred
-  restore schedules one authorized local prompt 45 seconds later with the fixed
+  restore schedules one authorized passive (silent) local prompt five minutes later,
+  so short pauses never send it, with the fixed
   `WhereWolfLiveActivityAudioReopen` identifier. Withdraw pending and delivered
   prompts on renewed audio, foreground, restore, Retry, either switch off, lost
   Always access, Stop or no remaining activity to restore. Only the inline Allow

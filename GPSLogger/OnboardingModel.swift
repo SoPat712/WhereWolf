@@ -67,7 +67,7 @@ struct OnboardingStatus {
     var tripActive = false
     var liveActivity = "Blank"
     var hideForAudio = false
-    var askToReopen = true
+    var askToReopen = false
     var backgroundRefresh = "Unavailable"
     var lowPower = false
     var watchPaired = false

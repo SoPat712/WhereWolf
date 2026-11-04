@@ -18,10 +18,12 @@ extension UNUserNotificationCenter: LiveActivityReopenNotificationCenter {
 @MainActor
 final class LiveActivityReopenPrompt {
     static let notificationID = "WhereWolfLiveActivityAudioReopen"
+    // Long enough that pausing a song or switching tracks never sends it.
+    static let delay: TimeInterval = 300
 
     struct State {
         var hideWhileAudioPlays = false
-        var askToReopen = true
+        var askToReopen = false
         var authorization = CLAuthorizationStatus.notDetermined
         var trackingEligible = false
         var hasPendingRestore = false
@@ -97,9 +99,9 @@ final class LiveActivityReopenPrompt {
                         let content = UNMutableNotificationContent()
                         content.title = "Music stopped"
                         content.body = "Open WhereWolf to bring back its Live Activity."
-                        content.sound = .default
+                        content.interruptionLevel = .passive
                         let request = UNNotificationRequest(identifier: Self.notificationID, content: content,
-                            trigger: UNTimeIntervalNotificationTrigger(timeInterval: 45, repeats: false))
+                            trigger: UNTimeIntervalNotificationTrigger(timeInterval: Self.delay, repeats: false))
                         try? await center.add(request)
                         // An add already handed to iOS can finish after a withdrawal.
                         if current != revision { remove() }
