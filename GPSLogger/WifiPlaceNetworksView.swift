@@ -7,6 +7,7 @@ struct WifiPlaceNetworksView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var bridge = GLManagerBridge.shared
     @State private var search = ""
+    @State private var searching = false
     @State private var selected: [String] = []
     @State private var manualNames: [String] = []
 
@@ -19,6 +20,8 @@ struct WifiPlaceNetworksView: View {
                             manualNames.append(search)
                             selected.append(search)
                             search = ""
+                            // Active search hides the navigation bar, and with it the Add button.
+                            searching = false
                         } label: {
                             Label("Add “\(search)”", systemImage: "plus.circle")
                         }
@@ -40,7 +43,7 @@ struct WifiPlaceNetworksView: View {
                     Text("Each network appears once, however many access points it has. iOS reveals only the network you’re connected to, so this list grows as you use Wi-Fi.")
                 }
             }
-            .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .always),
+            .searchable(text: $search, isPresented: $searching, placement: .navigationBarDrawer(displayMode: .always),
                         prompt: "Search or type a network name")
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
