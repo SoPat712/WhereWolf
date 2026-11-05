@@ -96,6 +96,11 @@ mocked URLSession configuration.
 runs the standalone suite twice and checks native Forms, tabs and setup accessibility
 without screenshots. Its build log and `full-1.json` / `full-2.json` stay in that
 `wherewolf` folder; its DerivedData is isolated under `overland/three-features`.
+Test the smallest thing first: `verify.py --only "Class,Class/testMethod"` builds and runs
+just those tests once (class setup intact, no screen audits, result in `focused.json`), and
+`verify.py --last-failed` reruns only what failed last time. The two full runs are for
+landing, not progress checks. Triage a flaky test by running it alone several times; fix
+the timing assumption rather than raising timeouts. Run one heavy test run at a time.
 
 Tests use an in-memory queue and mocked `wherewolf.test` requests. Objective-C tests
 reach app Swift types through protocols and `NSClassFromString`; never import the
