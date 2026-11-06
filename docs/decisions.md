@@ -40,6 +40,15 @@ This log lists the decisions agents made on their own while working on WhereWolf
   - no new targets or identifiers.
 - **Undo:** `git revert 0e08526`, then remove the widget from the home or lock screen.
 
+## 2026-11-06: Wi-Fi place point heartbeat and unnamed-network hold (f003aeb)
+
+- **Asked for:** "shouldn't it only be one point? no new point logged while same wifi?", after the route scribbled around the work Wi-Fi place.
+- **Decided:**
+  - the place's point saves on arrival, then every 5 minutes while matched, instead of exactly once, so the history ruler's stop, Go To and Coverage still see the visit;
+  - an unreadable network name keeps the last match while fixes stay inside the place.
+- **Why:** a stop needs at least 5 minutes of points, and Coverage marks gaps over 10 minutes. iOS often returns no network name in the background, which let raw indoor fixes through between points.
+- **Undo:** `git revert f003aeb`, or raise `GLWifiPlaceHeartbeatInterval` for strictly one point per visit.
+
 ## Deferred for the owner
 
 - **Watch complication for Today:** it needs a new watch widget extension and bundle identifier, which is an Apple developer account change.
