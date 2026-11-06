@@ -5,7 +5,9 @@ import UIKit
 @Observable
 @MainActor
 final class HistoryPlaybackModel {
-    private(set) var points: [RecordedLocation] = []
+    private(set) var points: [RecordedLocation] = [] {
+        didSet { setRulerStep(rulerStep) }
+    }
     private(set) var landmarks = HistoryLandmarks(points: [], timeline: ReplayTimeline(points: []), places: [])
     private(set) var selectedIndex: Int?
     private(set) var payload: RecordedPayload?
@@ -18,10 +20,43 @@ final class HistoryPlaybackModel {
     private(set) var isRulerInteracting = false
     private(set) var rulerHold: ReplayRulerHold?
     private(set) var rulerHoldCancelled = false
+    private(set) var rulerStep = 1.0
+    private var rulerWidth: CGFloat = 350
     private(set) var consumerActive = false
     private(set) var retentionRevision = 0
     var isBrowsing = false
     var playbackRate = 1.0
+
+    var rulerDetents: HistoryRulerCoarseDrag.Detents {
+        .init(tickCount: points.isEmpty ? 48 : points.count, rulerWidth: rulerWidth)
+    }
+
+    func setRulerWidth(_ width: CGFloat) {
+        guard width > 0, width != rulerWidth else { return }
+        rulerWidth = width
+        setRulerStep(rulerStep)
+    }
+
+    func setRulerStep(_ step: Double) {
+        let step = rulerDetents.nearestStep(to: step)
+        guard rulerStep != step else { return }
+        rulerStep = step
+        if UIAccessibility.isVoiceOverRunning {
+            let position = rulerPosition ?? (isBrowsing ? Double(points.count) - playbackIndex : 0)
+            UIAccessibility.post(notification: .announcement, argument: rulerScaleLabel(at: position).buttonAccessibility)
+        }
+    }
+
+    func rulerScaleLabel(at position: Double) -> HistoryRulerCoarseDrag.ScaleLabel {
+        HistoryRulerCoarseDrag.scaleLabel(pointsPerTick: rulerStep, position: position,
+            pointCount: points.count, timestampAt: { self.points[$0].timestamp }, emptyInterval: retentionInterval / 48)
+    }
+
+    func rulerScaleMenu(at position: Double) -> [HistoryRulerCoarseDrag.MenuEntry] {
+        let interval = HistoryRulerCoarseDrag.estimatedInterval(position: position, pointCount: points.count,
+            timestampAt: { self.points[$0].timestamp }, emptyInterval: retentionInterval / 48)
+        return rulerDetents.menuEntries(interval: interval ?? retentionInterval / 48, current: rulerStep)
+    }
 
     var retentionInterval: TimeInterval {
         _ = retentionRevision
@@ -974,9 +1009,37 @@ struct HistoryRuler: View {
             : "Live"
     }
 
+    private var scaleMenu: some View {
+        Menu {
+            Section("One bar covers") {
+                ForEach(history.rulerScaleMenu(at: position)) { entry in
+                    Button {
+                        history.setRulerStep(entry.step)
+                    } label: {
+                        if entry.selected { Label(entry.title, systemImage: "checkmark") }
+                        else { Text(entry.title) }
+                    }
+                }
+            }
+        } label: {
+            Text(history.rulerScaleLabel(at: position).buttonText)
+                .font(.caption2.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 2)
+                .background(.primary.opacity(0.08), in: Capsule())
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(history.rulerScaleLabel(at: position).buttonAccessibility)
+        .disabled(history.isRulerInteracting)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HistoryRulerSurface(position: position, tickCount: tickCount,
+                                step: history.rulerStep, detents: history.rulerDetents,
                                 revision: history.rulerInteractionRevision,
                                 active: history.consumerActive && scenePhase == .active,
                                 reduceMotion: reduceMotion, value: value,
@@ -996,6 +1059,8 @@ struct HistoryRuler: View {
                 if history.isRulerInteracting { history.endRulerInteraction() }
             }, onHold: { hold in
                 history.setRulerHold(hold)
+            }, onScale: { step in
+                history.setRulerStep(step)
             }, onAdjust: { direction in
                 let target = min(tickCount, max(0, Int(position.rounded()) + direction))
                 if target == 0 { onLive() }
@@ -1006,6 +1071,7 @@ struct HistoryRuler: View {
                 }
             })
             .frame(height: 56)
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { history.setRulerWidth($0) }
             HStack {
                 if history.isBrowsing && position > 0 {
                     Button {
@@ -1032,7 +1098,16 @@ struct HistoryRuler: View {
                         .foregroundStyle(.blue)
                         .accessibilityHidden(true)
                 }
+                if !history.isBrowsing {
+                    Text("Pinch for scale; hold to scrub")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .accessibilityHidden(true)
+                }
                 Spacer(minLength: 8)
+                scaleMenu
                 if history.isBrowsing {
                     Button(action: onLive) {
                         Label("Live", systemImage: "location.fill")
@@ -1041,11 +1116,6 @@ struct HistoryRuler: View {
                     .buttonStyle(.plain)
                     .foregroundStyle(.blue)
                     .accessibilityLabel("Return to Live")
-                } else {
-                    Text("Hold to scrub; move up for precision")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .accessibilityHidden(true)
                 }
             }
             .frame(height: 18)
@@ -1062,11 +1132,10 @@ struct HistoryRuler: View {
 
 enum HistoryRulerCoarseDrag {
     struct Detents {
-        // Ordered from the hold's initial, coarsest step toward point-by-point precision.
+        // Ordered from whole-history coverage toward point-by-point precision.
         let steps: [Double]
-        let availableTravel: CGFloat
 
-        init(tickCount: Int, rulerWidth: CGFloat, availableTravel: CGFloat) {
+        init(tickCount: Int, rulerWidth: CGFloat) {
             let width = max(1, Double(rulerWidth))
             let coarsest = Double(tickCount) * 12 <= width ? 1
                 : HistoryRulerCoarseDrag.niceStep(Double(max(1, tickCount)) * 18 / width)
@@ -1079,26 +1148,69 @@ enum HistoryRulerCoarseDrag {
                 magnitude *= 10
             }
             self.steps = Array(steps.reversed())
-            self.availableTravel = max(0, availableTravel)
         }
 
-        var bandHeight: CGFloat { max(36, min(48, availableTravel / CGFloat(steps.count))) }
+        func nearestStep(to target: Double) -> Double {
+            steps[index(nearest: target)]
+        }
 
-        func resolved(upwardDistance: CGFloat, previous: Int? = nil) -> Int {
-            let distance = max(0, upwardDistance)
-            let last = steps.count - 1
-            guard distance > 0, last > 0 else { return 0 }
-            // If even 36-point bands cannot fit, the safe-area edge still reaches the finest step.
-            func boundary(_ index: Int) -> CGFloat { min(availableTravel, CGFloat(index) * bandHeight) }
-            guard let previous else { return (1...last).filter { distance >= boundary($0) }.count }
-            var index = min(last, max(0, previous))
-            while index < last && distance >= min(availableTravel, boundary(index + 1) + 4) { index += 1 }
-            while index > 0 && distance < boundary(index) - 4 { index -= 1 }
+        func index(nearest target: Double) -> Int {
+            let value = log(min(steps[0], max(1, target)))
+            return steps.indices.min { abs(log(steps[$0]) - value) < abs(log(steps[$1]) - value) }!
+        }
+
+        func pinched(startStep: Double, scale: Double, previous: Int) -> Int {
+            guard scale > 0, !scale.isNaN else { return min(steps.count - 1, max(0, previous)) }
+            let value = log(min(steps[0], max(1, startStep / scale)))
+            var index = min(steps.count - 1, max(0, previous))
+            // Cross 15% beyond the logarithmic midpoint before leaving the current step.
+            while index < steps.count - 1 {
+                let current = log(steps[index]), finer = log(steps[index + 1])
+                if value > current - (current - finer) * 0.65 { break }
+                index += 1
+            }
+            while index > 0 {
+                let current = log(steps[index]), coarser = log(steps[index - 1])
+                if value < current + (coarser - current) * 0.65 { break }
+                index -= 1
+            }
             return index
         }
 
         func scale(at index: Int) -> Scale {
             HistoryRulerCoarseDrag.scale(step: steps[min(steps.count - 1, max(0, index))], coarsest: steps[0])
+        }
+
+        func menuEntries(interval: TimeInterval, current: Double) -> [MenuEntry] {
+            let targets: [(String, Double)] = [
+                ("Every point", 1), ("1 minute", 60 / interval), ("5 minutes", 300 / interval),
+                ("15 minutes", 900 / interval), ("1 hour", 3_600 / interval),
+                ("6 hours", 21_600 / interval), ("Whole history", steps[0])
+            ]
+            var seen = Set<Double>()
+            return targets.compactMap { title, target in
+                let step = nearestStep(to: target)
+                guard seen.insert(step).inserted else { return nil }
+                return MenuEntry(title: title, step: step, selected: step == current)
+            }
+        }
+    }
+
+    struct MenuEntry: Identifiable, Equatable {
+        var title: String
+        var step: Double
+        var selected: Bool
+        var id: Double { step }
+    }
+
+    struct Hold {
+        private var lastX: CGFloat
+
+        init(at location: CGPoint) { lastX = location.x }
+
+        mutating func translation(to location: CGPoint) -> CGFloat {
+            defer { lastX = location.x }
+            return location.x - lastX
         }
     }
 
@@ -1114,6 +1226,14 @@ enum HistoryRulerCoarseDrag {
             CGFloat((position - tick) / pointsPerTick) * spacing
         }
 
+        func contentOffset(at position: Double, tickCount: Int) -> CGFloat {
+            CGFloat((Double(tickCount) - position) / pointsPerTick) * spacing
+        }
+
+        func position(at contentOffset: CGFloat, tickCount: Int) -> Double {
+            Double((self.contentOffset(at: 0, tickCount: tickCount) - contentOffset) / spacing) * pointsPerTick
+        }
+
         func blended(to target: Self, progress: CGFloat) -> Self {
             func blend(_ a: CGFloat, _ b: CGFloat) -> CGFloat { a + (b - a) * progress }
             return Self(pointsPerTick: target.pointsPerTick,
@@ -1127,6 +1247,18 @@ enum HistoryRulerCoarseDrag {
     struct ScaleLabel: Equatable {
         var text: String
         var accessibility: String
+        var everyPoint = false
+
+        var buttonText: String {
+            everyPoint ? "Every point" : text.replacingOccurrences(of: "1 bar ", with: "")
+                .replacingOccurrences(of: "= ", with: "") + " per bar"
+        }
+
+        var buttonAccessibility: String {
+            everyPoint ? "Ruler scale, every point"
+                : "Ruler scale, " + accessibility.replacingOccurrences(of: "1 bar ", with: "")
+                    .replacingOccurrences(of: "equals ", with: "") + " per bar"
+        }
     }
 
     static func niceStep(_ value: Double) -> Double {
@@ -1170,12 +1302,8 @@ enum HistoryRulerCoarseDrag {
         return start.addingTimeInterval(timestampAt(lower + 1).timeIntervalSince(start) * (index - Double(lower)))
     }
 
-    static func scaleLabel(pointsPerTick: Double, position: Double, pointCount: Int,
-                           timestampAt: (Int) -> Date, emptyInterval: TimeInterval) -> ScaleLabel {
-        if pointCount > 0 && pointsPerTick == 1 {
-            return ScaleLabel(text: "1 bar = 1 point", accessibility: "1 bar equals 1 point")
-        }
-        var interval = emptyInterval
+    static func estimatedInterval(position: Double, pointCount: Int, timestampAt: (Int) -> Date,
+                                  emptyInterval: TimeInterval) -> TimeInterval? {
         if pointCount > 0 {
             let index = min(pointCount - 1, max(0, Int(floor(Double(pointCount) - position))))
             let lower = max(0, index - 4)
@@ -1188,15 +1316,24 @@ enum HistoryRulerCoarseDrag {
                     if delta.isFinite && delta > 0 { total += delta; count += 1 }
                 }
             }
-            guard count > 0 else {
-                let points = String(format: "%.0f", pointsPerTick)
-                return ScaleLabel(text: "1 bar = \(points) points", accessibility: "1 bar equals \(points) points")
-            }
-            interval = total / Double(count)
+            return count > 0 ? total / Double(count) : nil
+        }
+        return emptyInterval
+    }
+
+    static func scaleLabel(pointsPerTick: Double, position: Double, pointCount: Int,
+                           timestampAt: (Int) -> Date, emptyInterval: TimeInterval) -> ScaleLabel {
+        if pointCount > 0 && pointsPerTick == 1 {
+            return ScaleLabel(text: "1 bar = 1 point", accessibility: "1 bar equals 1 point", everyPoint: true)
+        }
+        guard let interval = estimatedInterval(position: position, pointCount: pointCount,
+                                              timestampAt: timestampAt, emptyInterval: emptyInterval) else {
+            let points = String(format: "%.0f", pointsPerTick)
+            return ScaleLabel(text: "1 bar = \(points) points", accessibility: "1 bar equals \(points) points")
         }
         let duration = interval * pointsPerTick
         guard duration >= 1 else {
-            return ScaleLabel(text: "1 bar ≈ <1 s", accessibility: "1 bar about less than 1 second")
+            return ScaleLabel(text: "1 bar ≈ <1 s", accessibility: "1 bar about less than 1 second", everyPoint: pointsPerTick == 1)
         }
         let units: [(seconds: Double, short: String, long: String)] = [
             (86_400, "d", "day"), (3_600, "h", "hour"), (60, "min", "minute"), (1, "s", "second")
@@ -1207,13 +1344,16 @@ enum HistoryRulerCoarseDrag {
         let rounded = (amount / rounding).rounded() * rounding
         let number = rounded == rounded.rounded() ? String(format: "%.0f", rounded) : String(format: "%.1f", rounded)
         let spokenUnit = unit.long + (rounded == 1 ? "" : "s")
-        return ScaleLabel(text: "1 bar ≈ \(number) \(unit.short)", accessibility: "1 bar about \(number) \(spokenUnit)")
+        return ScaleLabel(text: "1 bar ≈ \(number) \(unit.short)", accessibility: "1 bar about \(number) \(spokenUnit)",
+                          everyPoint: pointsPerTick == 1)
     }
 }
 
 private struct HistoryRulerSurface: UIViewRepresentable {
     var position: Double
     var tickCount: Int
+    var step: Double
+    var detents: HistoryRulerCoarseDrag.Detents
     var revision: Int
     var active: Bool
     var reduceMotion: Bool
@@ -1226,6 +1366,7 @@ private struct HistoryRulerSurface: UIViewRepresentable {
     var onEnd: (Double) -> Void
     var onCancel: () -> Void
     var onHold: (ReplayRulerHold) -> Void
+    var onScale: (Double) -> Void
     var onAdjust: (Int) -> Void
 
     func makeUIView(context: Context) -> HistoryRulerContainer {
@@ -1261,7 +1402,6 @@ private final class HistoryRulerTicks: UIView {
             symbols.removeAll(keepingCapacity: true)
         }
     }
-    static let spacing: CGFloat = 12
     private let font = UIFont.systemFont(ofSize: 10, weight: .medium)
     private var widths: [String: CGFloat] = [:]
     private var symbols: [Int: UIImage] = [:]
@@ -1507,13 +1647,14 @@ private final class HistoryRulerCoarseBubble: UIView {
     }
 }
 
-private final class HistoryRulerContainer: UIView, UIScrollViewDelegate {
+private final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecognizerDelegate {
     private let scrollView = HistoryRulerScrollView()
     private let contentView = UIView()
     private let ticks = HistoryRulerTicks()
     private let coarsePress: UILongPressGestureRecognizer
+    private let pinch: UIPinchGestureRecognizer
     private let coarseBubble = HistoryRulerCoarseBubble(frame: .zero)
-    private let normalAccessibilityHint = "Older points are on the left. Drag right to browse them, or left toward Live. Hold, then drag sideways to scrub. Move up for finer steps."
+    private let normalAccessibilityHint = "Older points are on the left. Drag right to browse them, or left toward Live. Pinch to change the scale; hold to scrub."
     private let selectionFeedback = UISelectionFeedbackGenerator()
     private let boundaryFeedback = UIImpactFeedbackGenerator(style: .soft)
     private let coarseFeedback = UIImpactFeedbackGenerator(style: .light)
@@ -1523,12 +1664,13 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate {
     private var dragging = false
     private var decelerating = false
     private var coarseDragging = false
+    private var pinching = false
+    private var pinchStartStep = 1.0
     private var coarseGestureCancelled = false
-    private var coarseLastX: CGFloat = 0
-    private var coarseStartY: CGFloat = 0
+    private var hold = HistoryRulerCoarseDrag.Hold(at: .zero)
     private var coarseLevel = 0
     private var stopSnap = HistoryStopSnap()
-    private var coarseDetents = HistoryRulerCoarseDrag.Detents(tickCount: 1, rulerWidth: 350, availableTravel: 0)
+    private var coarseDetents = HistoryRulerCoarseDrag.Detents(tickCount: 1, rulerWidth: 350)
     private var interactionLiveEdge = Date()
     private weak var drawerSheet: UIView?
     private var scaleLink: CADisplayLink?
@@ -1547,9 +1689,11 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate {
     private lazy var motionElement = HistoryRulerMotionElement(accessibilityContainer: self)
 #endif
 
-    private var maximumOffset: CGFloat { CGFloat(ticks.tickCount) * HistoryRulerTicks.spacing }
-    private var position: Double { Double((maximumOffset - scrollView.contentOffset.x) / HistoryRulerTicks.spacing) }
-    private var moving: Bool { dragging || decelerating || coarseDragging }
+    private var maximumOffset: CGFloat { ticks.scale.contentOffset(at: 0, tickCount: ticks.tickCount) }
+    private var position: Double { ticks.scale.position(at: scrollView.contentOffset.x, tickCount: ticks.tickCount) }
+    private var motionPosition: Double { position / ticks.scale.pointsPerTick * Double(ticks.scale.spacing) }
+    private var held: Bool { coarseDragging || pinching }
+    private var moving: Bool { dragging || decelerating || held }
     private var coarseBubbleVisible: Bool { coarseBubble.superview != nil }
 
     private var currentValue: String {
@@ -1572,6 +1716,7 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate {
 
     init() {
         coarsePress = UILongPressGestureRecognizer()
+        pinch = UIPinchGestureRecognizer()
         super.init(frame: .zero)
         backgroundColor = .clear
         ticks.backgroundColor = .clear
@@ -1583,6 +1728,7 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate {
         scrollView.alwaysBounceHorizontal = true
         scrollView.alwaysBounceVertical = false
         scrollView.isDirectionalLockEnabled = true
+        scrollView.panGestureRecognizer.maximumNumberOfTouches = 1
         scrollView.contentInsetAdjustmentBehavior = .never
         scrollView.scrollsToTop = false
         scrollView.delegate = self
@@ -1592,7 +1738,6 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate {
         scrollView.accessibilityTraits = .adjustable
         scrollView.onAdjust = { [weak self] direction in
             guard let self else { return }
-            if self.coarseDragging { self.endCoarseDrag() }
             self.cancelMotion()
             self.selectionFeedback.prepare()
             self.configuration?.onAdjust(direction)
@@ -1603,8 +1748,16 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate {
         coarsePress.minimumPressDuration = 0.35
         coarsePress.allowableMovement = 16
         coarsePress.cancelsTouchesInView = true
+        coarsePress.delegate = self
         coarsePress.addTarget(self, action: #selector(coarsePressChanged(_:)))
         addGestureRecognizer(coarsePress)
+        pinch.delegate = self
+        pinch.addTarget(self, action: #selector(pinchChanged(_:)))
+        addGestureRecognizer(pinch)
+        scrollView.accessibilityCustomActions = [
+            UIAccessibilityCustomAction(name: "Finer Scale", target: self, selector: #selector(finerScale)),
+            UIAccessibilityCustomAction(name: "Coarser Scale", target: self, selector: #selector(coarserScale))
+        ]
 #if targetEnvironment(simulator)
         motionElement.ruler = self
         motionElement.accessibilityLabel = "History ruler motion"
@@ -1625,20 +1778,22 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate {
         if interrupted { cancelMotion() }
         appliedRevision = configuration.revision
         if !moving { ticks.tickCount = configuration.tickCount }
-        scrollView.isScrollEnabled = configuration.active && !coarseDragging
+        coarseDetents = configuration.detents
+        coarseLevel = coarseDetents.index(nearest: configuration.step)
+        let scale = coarseDetents.scale(at: coarseLevel)
+        if scale != scaleTo { setScale(scale, animated: configuration.active && !configuration.reduceMotion) }
+        scrollView.isScrollEnabled = configuration.active && !held
         if configuration.active && !wasActive { coarseGestureCancelled = false }
-        coarsePress.isEnabled = configuration.active
+        coarsePress.isEnabled = configuration.active && !pinching
+        pinch.isEnabled = configuration.active
         if configuration.reduceMotion, scaleLink != nil { setScale(scaleTo, animated: false) }
         scrollView.decelerationRate = configuration.reduceMotion ? .fast : .normal
-        if configuration.active && coarseDragging { updateCoarseBubble() }
+        if configuration.active && held { updateCoarseBubble() }
         if !configuration.active { removeCoarseBubble() }
         updateAccessibility()
         updateGeometry()
         if !moving {
-            suppressScroll = true
-            scrollView.setContentOffset(CGPoint(x: maximumOffset - CGFloat(configuration.position) * HistoryRulerTicks.spacing,
-                                               y: 0), animated: false)
-            suppressScroll = false
+            updateGeometry(at: configuration.position)
         }
         redraw()
     }
@@ -1647,7 +1802,7 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate {
         super.layoutSubviews()
         updateGeometry()
         redraw()
-        if coarseDragging { updateCoarseBubblePosition() }
+        if held { updateCoarseBubblePosition() }
 #if targetEnvironment(simulator)
         motionElement.accessibilityFrameInContainerSpace = bounds
 #endif
@@ -1656,32 +1811,33 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate {
     override func didMoveToWindow() {
         super.didMoveToWindow()
         if window == nil { cancelMotion() }
-        else if coarseDragging { showCoarseBubble() }
+        else if held { showCoarseBubble() }
     }
 
-    private func updateGeometry() {
+    private func updateGeometry(at anchoredPosition: Double? = nil) {
+        let anchor = anchoredPosition ?? position
         let contentSize = CGSize(width: bounds.width + maximumOffset, height: bounds.height)
-        guard scrollView.frame != bounds || scrollView.contentSize != contentSize else { return }
-        // The offset range stays independent of width while the drawer changes its layout.
-        let offset = scrollView.contentOffset
+        guard anchoredPosition != nil || scrollView.frame != bounds || scrollView.contentSize != contentSize else { return }
         suppressScroll = true
         ticks.frame = bounds
         scrollView.frame = bounds
         contentView.frame = CGRect(origin: .zero, size: contentSize)
         scrollView.contentSize = contentSize
+        let offset = CGPoint(x: ticks.scale.contentOffset(at: anchor, tickCount: ticks.tickCount), y: 0)
         if scrollView.contentOffset != offset { scrollView.setContentOffset(offset, animated: false) }
         suppressScroll = false
     }
 
-    func cancelMotion() {
+    func cancelMotion(notifying: Bool = true) {
         let wasMoving = moving
-        let wasCoarseDragging = coarseDragging
+        let wasHeld = held
         coarseDragging = false
+        pinching = false
         stopSnap.reset()
         dragging = false
         decelerating = false
         velocity = 0
-        if wasCoarseDragging {
+        if wasHeld {
             coarseGestureCancelled = true
             scrollView.isScrollEnabled = configuration?.active ?? false
             scrollView.panGestureRecognizer.isEnabled = configuration?.active ?? false
@@ -1695,16 +1851,18 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate {
             scrollView.panGestureRecognizer.isEnabled = true
         }
         suppressScroll = false
-        setScale(.init(), animated: false)
+        coarsePress.isEnabled = configuration?.active ?? false
+        setScale(scaleTo, animated: false)
         updateAccessibility()
         if wasMoving {
-            configuration?.onCancel()
+            if notifying { configuration?.onCancel() }
             recordMotion(force: true)
         }
     }
 
     func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
-        guard !coarseDragging else { return }
+        guard !held else { return }
+        if scaleLink != nil { setScale(scaleTo, animated: false) }
         if let configuration, ticks.tickCount != configuration.tickCount {
             ticks.tickCount = configuration.tickCount
             updateGeometry()
@@ -1714,7 +1872,7 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate {
         decelerating = false
         velocity = 0
         lastMotionTime = ProcessInfo.processInfo.systemUptime
-        lastMotionPosition = position * Double(HistoryRulerTicks.spacing)
+        lastMotionPosition = motionPosition
         lastFeedbackPosition = position
         lastBoundary = boundary(at: position)
         selectionFeedback.prepare()
@@ -1724,9 +1882,9 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate {
     }
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
-        guard !suppressScroll, moving, !coarseDragging else { return }
+        guard !suppressScroll, moving, !held else { return }
         let now = ProcessInfo.processInfo.systemUptime
-        let points = position * Double(HistoryRulerTicks.spacing)
+        let points = motionPosition
         let elapsed = now - lastMotionTime
         if elapsed > 0.001 { velocity = (points - lastMotionPosition) / elapsed }
         lastMotionTime = now
@@ -1744,7 +1902,7 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate {
     }
 
     func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
-        guard dragging, !coarseDragging else { return }
+        guard dragging, !held else { return }
         dragging = false
         decelerating = decelerate
         recordMotion(force: true)
@@ -1773,14 +1931,17 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate {
     }
 
     private func setScale(_ scale: HistoryRulerCoarseDrag.Scale, animated: Bool) {
+        let anchor = position
         scaleLink?.invalidate()
         scaleLink = nil
         scaleFrom = ticks.scale
         scaleTo = scale
         // Change the represented interval immediately; only the bar geometry eases.
         ticks.scale.pointsPerTick = scale.pointsPerTick
+        updateGeometry(at: anchor)
         guard animated, ticks.scale != scale, window != nil else {
             ticks.scale = scale
+            updateGeometry(at: anchor)
             redraw()
             return
         }
@@ -1795,9 +1956,11 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate {
     }
 
     fileprivate func advanceScale(at time: Double) {
+        let anchor = position
         let progress = min(1, max(0, (time - scaleStarted) / 0.15))
         let eased = progress * progress * (3 - 2 * progress)
         ticks.scale = scaleFrom.blended(to: scaleTo, progress: CGFloat(eased))
+        updateGeometry(at: anchor)
         redraw()
         if progress == 1 {
             scaleLink?.invalidate()
@@ -1805,35 +1968,92 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate {
         }
     }
 
+    // UIView's own method and the delegate's share this selector; both reach here for the ruler's recognizers.
+    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        if gestureRecognizer === pinch {
+            return configuration?.active == true && !coarseDragging && !coarseGestureCancelled
+        }
+        if gestureRecognizer === coarsePress {
+            return configuration?.active == true && !pinching && !dragging && coarsePress.numberOfTouches == 1
+        }
+        return super.gestureRecognizerShouldBegin(gestureRecognizer)
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                           shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+        // A second finger can take over a one-finger scroll, but cannot take over a hold.
+        (gestureRecognizer === pinch && other === scrollView.panGestureRecognizer)
+            || (other === pinch && gestureRecognizer === scrollView.panGestureRecognizer)
+    }
+
+    @objc private func finerScale() -> Bool { adjustScale(by: 1) }
+    @objc private func coarserScale() -> Bool { adjustScale(by: -1) }
+
+    private func adjustScale(by direction: Int) -> Bool {
+        cancelMotion()
+        let next = min(coarseDetents.steps.count - 1, max(0, coarseLevel + direction))
+        guard next != coarseLevel else { return false }
+        changeScale(to: next)
+        return true
+    }
+
+    private func changeScale(to level: Int) {
+        guard level != coarseLevel else { return }
+        coarseLevel = level
+        let scale = coarseDetents.scale(at: level)
+        setScale(scale, animated: configuration?.reduceMotion != true)
+        configuration?.onScale(scale.pointsPerTick)
+        if held { publishHoldScale(); updateCoarseBubble() }
+        coarseFeedback.impactOccurred(intensity: 0.55)
+        coarseFeedback.prepare()
+    }
+
+    @objc private func pinchChanged(_ pinch: UIPinchGestureRecognizer) {
+        switch pinch.state {
+        case .began:
+            guard !coarseDragging, configuration?.active == true else { return }
+            cancelMotion(notifying: false)
+            pinching = true
+            coarseGestureCancelled = true
+            pinchStartStep = coarseDetents.steps[coarseLevel]
+            stopSnap.reset()
+            interactionLiveEdge = configuration?.onBegin() ?? Date()
+            scrollView.isScrollEnabled = false
+            coarsePress.isEnabled = false
+            publishHoldScale()
+            coarseFeedback.prepare()
+            showCoarseBubble()
+        case .changed:
+            guard pinching else { return }
+            changeScale(to: coarseDetents.pinched(startStep: pinchStartStep, scale: Double(pinch.scale),
+                                                  previous: coarseLevel))
+        case .ended:
+            coarseGestureCancelled = false
+            guard pinching else { return }
+            changeScale(to: coarseDetents.pinched(startStep: pinchStartStep, scale: Double(pinch.scale),
+                                                  previous: coarseLevel))
+            endCoarseDrag()
+        case .cancelled, .failed:
+            if pinching { cancelMotion() }
+            coarseGestureCancelled = false
+        default:
+            break
+        }
+    }
+
     @objc private func coarsePressChanged(_ press: UILongPressGestureRecognizer) {
         switch press.state {
         case .began:
             guard !coarseGestureCancelled else { return }
-            beginCoarseDrag(at: press.location(in: window))
+            beginCoarseDrag(at: press.location(ofTouch: 0, in: window))
         case .changed:
             guard coarseDragging else { return }
-            let location = press.location(in: window)
-            let translation = location.x - coarseLastX
-            coarseLastX = location.x
-            let level = coarseDetents.resolved(upwardDistance: coarseStartY - location.y,
-                                               previous: coarseLevel)
-            let changedLevel = level != coarseLevel
-            if changedLevel {
-                if coarseDetents.steps[level] == 1 { stopSnap.reset() }
-                coarseLevel = level
-                setScale(coarseDetents.scale(at: level), animated: configuration?.reduceMotion != true)
-                publishHoldScale()
-                coarseFeedback.impactOccurred(intensity: 0.55)
-                coarseFeedback.prepare()
-                updateCoarseBubble()
-                if UIAccessibility.isVoiceOverRunning {
-                    UIAccessibility.post(notification: .announcement, argument: scaleLabel.accessibility)
-                }
-            }
-            if translation != 0 || changedLevel { moveCoarse(translation: translation, finger: location.x) }
+            let location = press.location(ofTouch: 0, in: window)
+            let translation = hold.translation(to: location)
+            if translation != 0 { moveCoarse(translation: translation, finger: location.x) }
         case .ended:
             coarseGestureCancelled = false
-            endCoarseDrag()
+            if coarseDragging { endCoarseDrag() }
         case .cancelled, .failed:
             if coarseDragging { cancelMotion() }
             coarseGestureCancelled = false
@@ -1843,24 +2063,13 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate {
     }
 
     private func beginCoarseDrag(at location: CGPoint) {
-        guard !coarseDragging, configuration?.active == true, !dragging else { return }
+        guard !held, configuration?.active == true, !dragging else { return }
         if decelerating { cancelMotion() }
-        if let configuration, ticks.tickCount != configuration.tickCount {
-            ticks.tickCount = configuration.tickCount
-            updateGeometry()
-            redraw()
-        }
         coarseGestureCancelled = false
         coarseDragging = true
-        coarseLastX = location.x
-        coarseStartY = location.y
-        coarseLevel = 0
+        hold = HistoryRulerCoarseDrag.Hold(at: location)
         stopSnap.reset()
-        let safeTop = window.map { $0.bounds.minY + $0.safeAreaInsets.top } ?? safeAreaInsets.top
-        coarseDetents = HistoryRulerCoarseDrag.Detents(tickCount: ticks.tickCount, rulerWidth: bounds.width,
-                                                       availableTravel: location.y - safeTop - 24)
         interactionLiveEdge = configuration?.onBegin() ?? Date()
-        setScale(coarseDetents.scale(at: 0), animated: configuration?.reduceMotion != true)
         publishHoldScale()
         velocity = 0
         lastFeedbackPosition = min(Double(ticks.tickCount), max(0, position))
@@ -1903,7 +2112,7 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate {
     private func setCoarsePosition(_ target: Double) {
         let bounded = min(Double(ticks.tickCount), max(0, target))
         suppressScroll = true
-        scrollView.setContentOffset(CGPoint(x: maximumOffset - CGFloat(bounded) * HistoryRulerTicks.spacing, y: 0), animated: false)
+        scrollView.setContentOffset(CGPoint(x: ticks.scale.contentOffset(at: bounded, tickCount: ticks.tickCount), y: 0), animated: false)
         suppressScroll = false
         redraw()
         let now = ProcessInfo.processInfo.systemUptime
@@ -1914,18 +2123,19 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate {
     }
 
     private func endCoarseDrag() {
-        guard coarseDragging else { return }
+        guard held else { return }
         let bounded = min(Double(ticks.tickCount), max(0, position))
+        let wasScrubbing = coarseDragging
         coarseDragging = false
+        pinching = false
         stopSnap.reset()
         coarseGestureCancelled = false
         coarsePress.isEnabled = false
         scrollView.isScrollEnabled = configuration?.active ?? false
         scrollView.panGestureRecognizer.isEnabled = configuration?.active ?? false
         removeCoarseBubble()
-        setScale(.init(), animated: false)
         updateAccessibility()
-        if let configuration { appliedRevision = configuration.onMove(bounded) }
+        if wasScrubbing, let configuration { appliedRevision = configuration.onMove(bounded) }
         configuration?.onEnd(bounded)
         coarsePress.isEnabled = configuration?.active ?? false
         recordMotion(force: true)
@@ -1934,16 +2144,14 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate {
     private func updateAccessibility() {
         let stop = position > 0 ? configuration?.landmarks.stop(containing: Double(ticks.tickCount) - position, pointCount: configuration?.points.count) : nil
         let value = currentValue + (stop.map { ", \($0.accessibility)" } ?? "")
-        scrollView.accessibilityValue = coarseDragging
-            ? "\(value), \(scaleLabel.accessibility)"
-            : value
-        scrollView.accessibilityHint = coarseDragging
-            ? "Drag sideways to scrub. Move up for finer steps. Release to stop."
+        scrollView.accessibilityValue = "\(value), \(scaleLabel.accessibility)"
+        scrollView.accessibilityHint = held
+            ? "Drag sideways to scrub while holding, or pinch to change the scale. Release to stop."
             : normalAccessibilityHint
     }
 
     private func showCoarseBubble() {
-        guard coarseDragging else { return }
+        guard held else { return }
         if let window {
             if coarseBubble.superview !== window {
                 coarseBubble.removeFromSuperview()
@@ -1958,7 +2166,7 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate {
     }
 
     private func updateCoarseBubble() {
-        guard coarseDragging else { return }
+        guard held else { return }
         coarseBubble.valueLabel.text = currentValue
         coarseBubble.setEvent(stopSnap.boundary)
         coarseBubble.captionLabel.text = scaleLabel.text
@@ -1968,7 +2176,7 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate {
     }
 
     private func updateCoarseBubblePosition() {
-        guard coarseDragging, let host = coarseBubble.superview else { return }
+        guard held, let host = coarseBubble.superview else { return }
         var anchor = convert(CGPoint(x: bounds.midX, y: bounds.minY), to: host)
         if drawerSheet?.window !== window { drawerSheet = nil }
         if drawerSheet == nil { drawerSheet = findDrawer(in: host) }
@@ -2031,7 +2239,7 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate {
         let now = ProcessInfo.processInfo.systemUptime
         guard force || now - lastSampleTime >= 1.0 / 30.0 else { return }
         lastSampleTime = now
-        motionSamples.append([now, position * Double(HistoryRulerTicks.spacing), velocity,
+        motionSamples.append([now, motionPosition, velocity,
                               dragging ? 1 : 0, decelerating ? 1 : 0])
         if motionSamples.count > 180 { motionSamples.removeFirst(motionSamples.count - 180) }
 #endif
@@ -2040,9 +2248,10 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate {
 #if targetEnvironment(simulator)
     var motionValue: String {
         let values: [String: Any] = [
-            "position": position * Double(HistoryRulerTicks.spacing), "ticks": position,
+            "position": motionPosition, "ticks": position,
             "velocity": velocity, "dragging": dragging, "decelerating": decelerating,
             "coarse": coarseDragging,
+            "pinching": pinching,
             "bubbleVisible": coarseBubbleVisible,
             "bubbleGlass": coarseBubble.usesLiquidGlass,
             "bubbleTime": coarseBubbleVisible ? (coarseBubble.valueLabel.text ?? "") : "",

@@ -434,28 +434,220 @@ final class HistoryPlaybackTests: XCTestCase {
         XCTAssertEqual(first.map(\.longitude), second.dropLast().map(\.longitude))
     }
 
-    func testRulerPrecisionBandsUseUpwardDistanceAndHysteresis() {
-        let detents = HistoryRulerCoarseDrag.Detents(tickCount: 20_000, rulerWidth: 350, availableTravel: 1_000)
-        XCTAssertEqual(detents.bandHeight, 48)
-        XCTAssertEqual(detents.resolved(upwardDistance: -100), 0)
-        XCTAssertEqual(detents.resolved(upwardDistance: -100, previous: detents.steps.count - 1), 0)
+    func testRulerPinchUsesLogarithmicMidpointsWithHysteresisBothWays() {
+        let detents = HistoryRulerCoarseDrag.Detents(tickCount: 20_000, rulerWidth: 350)
         for index in 0..<(detents.steps.count - 1) {
-            let threshold = CGFloat(index + 1) * 48
-            XCTAssertEqual(detents.resolved(upwardDistance: threshold - 0.1), index)
-            XCTAssertEqual(detents.resolved(upwardDistance: threshold), index + 1)
-            XCTAssertEqual(detents.resolved(upwardDistance: threshold + 3.9, previous: index), index)
-            XCTAssertEqual(detents.resolved(upwardDistance: threshold + 4, previous: index), index + 1)
-            XCTAssertEqual(detents.resolved(upwardDistance: threshold - 4, previous: index + 1), index + 1)
-            XCTAssertEqual(detents.resolved(upwardDistance: threshold - 4.1, previous: index + 1), index)
+            let coarse = detents.steps[index], fine = detents.steps[index + 1]
+            let gap = log(coarse / fine)
+            XCTAssertEqual(detents.pinched(startStep: coarse, scale: exp(gap * 0.64), previous: index), index)
+            XCTAssertEqual(detents.pinched(startStep: coarse, scale: exp(gap * 0.66), previous: index), index + 1)
+            XCTAssertEqual(detents.pinched(startStep: coarse, scale: exp(gap * 0.36), previous: index + 1), index + 1)
+            XCTAssertEqual(detents.pinched(startStep: coarse, scale: exp(gap * 0.34), previous: index + 1), index)
+            XCTAssertEqual(detents.pinched(startStep: fine, scale: exp(-gap * 0.64), previous: index + 1), index + 1)
+            XCTAssertEqual(detents.pinched(startStep: fine, scale: exp(-gap * 0.66), previous: index + 1), index)
+            XCTAssertEqual(detents.nearestStep(to: fine * exp(gap * 0.49)), fine)
+            XCTAssertEqual(detents.nearestStep(to: fine * exp(gap * 0.51)), coarse)
         }
-        let compact = HistoryRulerCoarseDrag.Detents(tickCount: 20_000, rulerWidth: 350, availableTravel: 440)
-        XCTAssertEqual(compact.bandHeight, 40)
-        XCTAssertEqual(compact.resolved(upwardDistance: 404, previous: 0), compact.steps.count - 1)
-        let constrained = HistoryRulerCoarseDrag.Detents(tickCount: 20_000, rulerWidth: 350, availableTravel: 200)
-        XCTAssertEqual(constrained.bandHeight, 36)
-        XCTAssertEqual(constrained.resolved(upwardDistance: 200, previous: 0), constrained.steps.count - 1)
-        XCTAssertEqual(constrained.resolved(upwardDistance: 197, previous: constrained.steps.count - 1), constrained.steps.count - 1)
-        XCTAssertEqual(constrained.resolved(upwardDistance: 500), constrained.steps.count - 1)
+    }
+
+    func testRulerPinchClampsAtBothEndsAndCanCrossMultipleSteps() {
+        let detents = HistoryRulerCoarseDrag.Detents(tickCount: 20_000, rulerWidth: 350)
+        let middle = detents.index(nearest: 20)
+        XCTAssertEqual(detents.pinched(startStep: 20, scale: 1, previous: middle), middle)
+        XCTAssertEqual(detents.steps[detents.pinched(startStep: 20, scale: 4, previous: middle)], 5)
+        XCTAssertEqual(detents.steps[detents.pinched(startStep: 20, scale: 0.2, previous: middle)], 100)
+        for previous in detents.steps.indices {
+            XCTAssertEqual(detents.pinched(startStep: 20, scale: 1e100, previous: previous), detents.steps.count - 1)
+            XCTAssertEqual(detents.pinched(startStep: 20, scale: 1e-100, previous: previous), 0)
+        }
+        let single = HistoryRulerCoarseDrag.Detents(tickCount: 1, rulerWidth: 350)
+        XCTAssertEqual(single.pinched(startStep: 1, scale: 100, previous: 0), 0)
+        XCTAssertEqual(single.pinched(startStep: 1, scale: 0.01, previous: 0), 0)
+    }
+
+    func testRulerMenuMapsTimeTargetsInLogSpaceAndChecksTheMatchingStep() {
+        let detents = HistoryRulerCoarseDrag.Detents(tickCount: 20_000, rulerWidth: 350)
+        let entries = detents.menuEntries(interval: 30, current: 20)
+        XCTAssertEqual(entries.map(\.title), ["Every point", "1 minute", "5 minutes", "15 minutes", "1 hour", "6 hours", "Whole history"])
+        XCTAssertEqual(entries.map(\.step), [1, 2, 10, 20, 100, 1_000, 2_000])
+        XCTAssertEqual(entries.filter(\.selected).map(\.title), ["15 minutes"])
+        for entry in entries {
+            XCTAssertEqual(detents.menuEntries(interval: 30, current: entry.step).filter(\.selected).map(\.step), [entry.step])
+        }
+    }
+
+    func testRulerMenuDropsStepsAlreadyUsedByEarlierEntries() {
+        let detents = HistoryRulerCoarseDrag.Detents(tickCount: 20_000, rulerWidth: 350)
+        let entries = detents.menuEntries(interval: 3_600, current: 5)
+        XCTAssertEqual(entries.map(\.title), ["Every point", "6 hours", "Whole history"])
+        XCTAssertEqual(entries.map(\.step), [1, 5, 2_000])
+        XCTAssertEqual(entries.filter(\.selected).map(\.title), ["6 hours"])
+        let short = HistoryRulerCoarseDrag.Detents(tickCount: 50, rulerWidth: 350)
+        XCTAssertEqual(short.menuEntries(interval: 30, current: 5).map(\.title), ["Every point", "1 minute", "5 minutes"])
+        let single = HistoryRulerCoarseDrag.Detents(tickCount: 1, rulerWidth: 350)
+        XCTAssertEqual(single.menuEntries(interval: 30, current: 1), [.init(title: "Every point", step: 1, selected: true)])
+    }
+
+    func testRulerScrollOffsetsKeepTheNeedleAnchoredAtEveryScaleIncludingLive() {
+        let detents = HistoryRulerCoarseDrag.Detents(tickCount: 20_000, rulerWidth: 350)
+        for position in [0.0, 0.25, 5_123.5, 20_000] {
+            for index in detents.steps.indices {
+                let scale = detents.scale(at: index)
+                let offset = scale.contentOffset(at: position, tickCount: 20_000)
+                XCTAssertEqual(scale.position(at: offset, tickCount: 20_000), position, accuracy: 1e-9)
+                XCTAssertEqual(scale.screenOffset(of: position, at: position), 0)
+                if position == 0 { XCTAssertEqual(scale.position(at: offset, tickCount: 20_000), 0) }
+            }
+        }
+    }
+
+    func testCoarseScrollingMovesOneBarPerBarSpacingIncludingMomentumOffsets() {
+        let scale = HistoryRulerCoarseDrag.scale(step: 200, coarsest: 2_000)
+        let start = 5_123.5
+        let offset = scale.contentOffset(at: start, tickCount: 20_000)
+        for bars in [-4.0, -1, 0.5, 1, 6] {
+            let moved = scale.position(at: offset - CGFloat(bars) * scale.spacing, tickCount: 20_000)
+            XCTAssertEqual(moved - start, bars * 200, accuracy: 1e-9)
+        }
+    }
+
+    @MainActor func testRulerScaleChangesPreserveSelectionAndLiveWithoutStartingAHold() {
+        let (model, _) = replay(at: (0..<400).map { Double($0) * 60 })
+        model.beginRulerInteraction()
+        model.scrub(rulerPosition: 250.25, liveEdge: Date())
+        model.endRulerInteraction(at: 250.25, onLive: { XCTFail("Unexpected Live") })
+        let pose = model.renderPose
+        let index = model.selectedIndex
+        let time = model.rulerTime
+        let revision = model.rulerInteractionRevision
+        for step in [20.0, 5, 1, 50] {
+            model.setRulerStep(step)
+            XCTAssertEqual(model.rulerStep, step)
+            XCTAssertEqual(model.rulerPosition, 250.25)
+            XCTAssertEqual(model.renderPose, pose)
+            XCTAssertEqual(model.selectedIndex, index)
+            XCTAssertEqual(model.rulerTime, time)
+            XCTAssertEqual(model.rulerInteractionRevision, revision)
+            XCTAssertNil(model.rulerHold, "Menu and accessibility scale changes must not zoom the map")
+        }
+        model.returnToLive()
+        model.setRulerStep(5)
+        XCTAssertFalse(model.isBrowsing)
+        XCTAssertNil(model.rulerPosition)
+        XCTAssertNil(model.selectedIndex)
+        XCTAssertNil(model.renderPose)
+        XCTAssertNil(model.rulerHold)
+    }
+
+    @MainActor func testRulerScalePersistsAcrossLiveTabChangesPlaybackAndCancellation() {
+        let points = locations(400)
+        let model = HistoryPlaybackModel(pointLoader: { after, completion in completion(points.filter { $0.id > after }) },
+            payloadLoader: { _, completion in completion([:]) })
+        model.setConsumerActive(true)
+        model.setRulerStep(20)
+        model.scrub(pointAt: 100)
+        model.returnToLive()
+        XCTAssertEqual(model.rulerStep, 20)
+        model.setConsumerActive(false)
+        model.setConsumerActive(true)
+        XCTAssertEqual(model.rulerStep, 20)
+        model.togglePlayback()
+        model.advancePlayback(by: 1)
+        XCTAssertEqual(model.rulerStep, 20)
+        model.pause()
+        model.beginRulerInteraction()
+        model.setRulerHold(ReplayRulerHold(pointsPerBar: 20, visibleBars: 20))
+        model.endRulerInteraction()
+        XCTAssertTrue(model.rulerHoldCancelled)
+        XCTAssertEqual(model.rulerStep, 20)
+        model.returnToLive()
+    }
+
+    @MainActor func testRulerScaleClampsWhenLoadingOrPruningShrinksTheLadder() {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        var clock = now
+        let points = (0..<400).map { index in
+            RecordedLocation(id: Int64(index + 1), timestamp: now.addingTimeInterval(Double(index - 399) * 120),
+                             latitude: 45, longitude: -122)
+        }
+        let model = HistoryPlaybackModel(pointLoader: { _, completion in completion(points) },
+            payloadLoader: { _, completion in completion([:]) }, clock: { clock })
+        model.setRulerStep(5)
+        model.setConsumerActive(true)
+        model.setRulerStep(50)
+        XCTAssertEqual(model.rulerStep, 50)
+        clock = now.addingTimeInterval(86_400 - 1_200)
+        model.expireOldPoints()
+        XCTAssertEqual(model.points.count, 11)
+        XCTAssertEqual(model.rulerStep, 1)
+
+        let short = HistoryPlaybackModel(pointLoader: { _, completion in completion(Array(points.suffix(30))) },
+            payloadLoader: { _, completion in completion([:]) }, clock: { now })
+        short.setRulerStep(5)
+        short.setConsumerActive(true)
+        XCTAssertEqual(short.rulerDetents.steps, [2, 1])
+        XCTAssertEqual(short.rulerStep, 2)
+    }
+
+    @MainActor func testPinchScaleChangesDeferPayloadReadsUntilReleaseAndPreserveTheNeedle() {
+        let points = locations(400)
+        var pending = [([Int64], ([Int64: RecordedPayload]) -> Void)]()
+        let model = HistoryPlaybackModel(pointLoader: { _, completion in completion(points) },
+            payloadLoader: { pending.append(($0, $1)) })
+        model.setConsumerActive(true)
+        model.scrub(pointAt: 100)
+        let pose = model.renderPose
+        let index = model.selectedIndex
+        model.beginRulerInteraction()
+        model.setRulerHold(ReplayRulerHold(pointsPerBar: 1, visibleBars: 20))
+        pending[0].1(payloads(pending[0].0))
+        XCTAssertEqual(pending.count, 1, "An in-flight completion must not start a read during a pinch")
+        for step in [5.0, 20, 50, 2] {
+            model.setRulerHold(ReplayRulerHold(pointsPerBar: step, visibleBars: 20))
+            model.setRulerStep(step)
+            XCTAssertEqual(model.renderPose, pose)
+            XCTAssertEqual(model.selectedIndex, index)
+            XCTAssertNil(model.rulerPosition)
+            XCTAssertEqual(pending.count, 1)
+        }
+        model.endRulerInteraction(at: 300, onLive: { XCTFail("Unexpected Live") })
+        XCTAssertNil(model.rulerHold)
+        XCTAssertFalse(model.rulerHoldCancelled)
+        XCTAssertEqual(model.rulerStep, 2)
+        XCTAssertEqual(model.renderPose, pose)
+        XCTAssertEqual(pending.count, 2)
+        XCTAssertTrue(pending[1].0.contains(101))
+        pending[1].1(payloads(pending[1].0))
+        XCTAssertEqual(model.payload?.device, "device-101")
+        XCTAssertEqual(pending.count, 2)
+    }
+
+    func testHeldScrubbingIgnoresVerticalMovementAndStillSnapsAtTheCurrentScale() {
+        let start = Date(timeIntervalSince1970: 0)
+        let points = (0..<11).map { index in
+            RecordedLocation(id: Int64(index + 1), timestamp: start.addingTimeInterval(Double(index) * 60),
+                             latitude: 45, longitude: -122)
+        }
+        let landmarks = HistoryLandmarks(points: points, timeline: ReplayTimeline(points: points), places: [])
+        let scale = HistoryRulerCoarseDrag.scale(step: 2, coarsest: 5)
+        var hold = HistoryRulerCoarseDrag.Hold(at: CGPoint(x: 100, y: 500))
+        var snap = HistoryStopSnap()
+        var position = 1.0
+        for y in [CGFloat(0), 900, -500, 500] {
+            let translation = hold.translation(to: CGPoint(x: 100, y: y))
+            XCTAssertEqual(translation, 0)
+            position = snap.move(position: position, translation: Double(translation), finger: 100,
+                pointsPerBar: scale.pointsPerTick, spacing: Double(scale.spacing), pointCount: points.count, landmarks: landmarks)
+            XCTAssertEqual(position, 1)
+            XCTAssertEqual(snap.boundary?.index, 10)
+            XCTAssertEqual(scale.pointsPerTick, 2)
+        }
+        let translation = hold.translation(to: CGPoint(x: 111, y: -1_000))
+        XCTAssertEqual(translation, 11)
+        let released = snap.move(position: position, translation: Double(translation), finger: 111,
+            pointsPerBar: scale.pointsPerTick, spacing: Double(scale.spacing), pointCount: points.count, landmarks: landmarks)
+        XCTAssertEqual(released, position)
+        XCTAssertNil(snap.boundary)
     }
 
     func testRulerLadderRoundsUpToCoverTheEntireHistory() {
@@ -465,7 +657,7 @@ final class HistoryPlaybackTests: XCTestCase {
             (20_000, [2_000, 1_000, 500, 200, 100, 50, 20, 10, 5, 2, 1])
         ]
         for (count, expected) in cases {
-            let detents = HistoryRulerCoarseDrag.Detents(tickCount: count, rulerWidth: 350, availableTravel: 1_000)
+            let detents = HistoryRulerCoarseDrag.Detents(tickCount: count, rulerWidth: 350)
             XCTAssertEqual(detents.steps, expected)
             let coarse = detents.scale(at: 0)
             XCTAssertGreaterThanOrEqual(350 / Double(coarse.spacing) * coarse.pointsPerTick, Double(count))
@@ -475,9 +667,9 @@ final class HistoryPlaybackTests: XCTestCase {
             }
             XCTAssertEqual(detents.scale(at: expected.count - 1), HistoryRulerCoarseDrag.Scale())
         }
-        let empty = HistoryRulerCoarseDrag.Detents(tickCount: 48, rulerWidth: 350, availableTravel: 1_000)
+        let empty = HistoryRulerCoarseDrag.Detents(tickCount: 48, rulerWidth: 350)
         XCTAssertEqual(empty.steps, [5, 2, 1])
-        XCTAssertEqual(HistoryRulerCoarseDrag.Detents(tickCount: 20, rulerWidth: 350, availableTravel: 1_000).steps, [1])
+        XCTAssertEqual(HistoryRulerCoarseDrag.Detents(tickCount: 20, rulerWidth: 350).steps, [1])
         for value in [1.0, 2, 5, 10, 20, 50, 100, 200, 500, 1_000] {
             XCTAssertEqual(HistoryRulerCoarseDrag.niceStep(value), value)
         }
@@ -507,7 +699,7 @@ final class HistoryPlaybackTests: XCTestCase {
     }
 
     func testRulerTicksFollowTheFingerOneToOneAtEveryPrecision() {
-        let detents = HistoryRulerCoarseDrag.Detents(tickCount: 10_000, rulerWidth: 350, availableTravel: 1_000)
+        let detents = HistoryRulerCoarseDrag.Detents(tickCount: 10_000, rulerWidth: 350)
         for index in detents.steps.indices {
             let scale = detents.scale(at: index)
             for dx in [CGFloat(-48), -6, 1, 17, 48] {
@@ -537,7 +729,7 @@ final class HistoryPlaybackTests: XCTestCase {
 
     func testRulerScrubbingClampsAndCanReverseFromEitherBoundary() {
         for count in [1, 10_000] {
-            let detents = HistoryRulerCoarseDrag.Detents(tickCount: count, rulerWidth: 350, availableTravel: 1_000)
+            let detents = HistoryRulerCoarseDrag.Detents(tickCount: count, rulerWidth: 350)
             for index in detents.steps.indices {
                 let scale = detents.scale(at: index)
                 let live = HistoryRulerCoarseDrag.position(after: Double(count) / 2, translation: -1_000_000,
@@ -567,6 +759,15 @@ final class HistoryPlaybackTests: XCTestCase {
         XCTAssertEqual(label(100, 25).text, "1 bar ≈ 1.3 h")
         XCTAssertEqual(label(1, 5).text, "1 bar = 1 point")
         XCTAssertEqual(label(1, 5).accessibility, "1 bar equals 1 point")
+        XCTAssertEqual(label(1, 5).buttonText, "Every point")
+        XCTAssertEqual(label(1, 5).buttonAccessibility, "Ruler scale, every point")
+        XCTAssertEqual(label(20, 25).buttonText, "≈ 15 min per bar")
+        XCTAssertEqual(label(20, 25).buttonAccessibility, "Ruler scale, about 15 minutes per bar")
+        let interval = HistoryRulerCoarseDrag.estimatedInterval(position: 25, pointCount: timestamps.count,
+            timestampAt: { timestamps[$0] }, emptyInterval: 1_800)
+        XCTAssertEqual(interval, 45)
+        let detents = HistoryRulerCoarseDrag.Detents(tickCount: 20_000, rulerWidth: 350)
+        XCTAssertEqual(detents.menuEntries(interval: interval!, current: 20).first { $0.title == "15 minutes" }?.step, 20)
     }
 
     func testRulerBubbleScaleHandlesEmptySingleAndEqualTimestampHistories() {
@@ -576,6 +777,11 @@ final class HistoryPlaybackTests: XCTestCase {
                                                      emptyInterval: 1_800)
         XCTAssertEqual(empty.text, "1 bar ≈ 1 h")
         XCTAssertEqual(empty.accessibility, "1 bar about 1 hour")
+        let emptyPoint = HistoryRulerCoarseDrag.scaleLabel(pointsPerTick: 1, position: 20, pointCount: 0,
+            timestampAt: { _ in XCTFail("Empty history read"); return date }, emptyInterval: 1_800)
+        XCTAssertEqual(emptyPoint.text, "1 bar ≈ 30 min")
+        XCTAssertEqual(emptyPoint.buttonText, "Every point")
+        XCTAssertEqual(emptyPoint.buttonAccessibility, "Ruler scale, every point")
         let single = HistoryRulerCoarseDrag.scaleLabel(pointsPerTick: 1, position: 1, pointCount: 1,
                                                       timestampAt: { _ in date }, emptyInterval: 1_800)
         XCTAssertEqual(single.text, "1 bar = 1 point")

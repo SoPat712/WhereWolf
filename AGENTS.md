@@ -249,37 +249,47 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   Its day sections are newest first, with stops and movements chronological within
   each day, shared activity/distance calculations, and Viewing on the selected row.
   Selecting a row jumps to its start and dismisses. Cancel and Go use native toolbars.
-  The history ruler enters scrubbing after a 0.35-second hold. Its precision
-  detents use every 1–2–5 points-per-bar step, from the smallest step that rounds
-  up to cover the loaded history in one ruler width down to one point per bar.
-  Before points load, use the same ladder over 48 time ticks. Upward travel
-  refines in 48-point bands, shrinking evenly to a 36-point floor when space is
-  short; the top safe-area edge (with 24-point clearance) always reaches the finest
-  detent. Keep four-point hysteresis on each side of boundaries and a soft light
-  impact on changes. Bar spacing (12–18), heights, width and bottom grow with
-  log(step) / log(coarsest), with zero coarseness for a one-step ladder.
-  Ticks move with the finger 1:1 at every scale; ease their geometry in UIKit over
-  0.15 seconds, or jump with Reduce Motion. Preserve normal scrolling and inertia,
-  stop hold motion on release, and cancel it when the tab, scene or ruler
-  interaction revision changes. While held, show a Liquid Glass time/scale bubble
+  Pinching the history ruler changes a scale retained for the model's lifetime,
+  across Live, tabs and playback, without defaults. Spread for fewer points per bar;
+  pinch together for more. Use every 1–2–5 step from one point per bar through the
+  step that rounds up to cover loaded history in one ruler width, or 48 time ticks
+  before points load. Clamp when the ladder shrinks. Resolve startStep / pinchScale
+  in log space, crossing 15% beyond the midpoint before changing steps, with a soft
+  light impact. Keep the needle and selection anchored, including at Live.
+  Bar spacing (12–18), heights, width and bottom grow with log(step) / log(coarsest),
+  with zero coarseness for a one-step ladder. Ease geometry in UIKit over 0.15 seconds,
+  or jump with Reduce Motion. One-finger scrolling and momentum use the current scale;
+  ticks move with the finger 1:1. A 0.35-second hold scrubs at that scale; vertical
+  travel does nothing. Hold and pinch are exclusive; the scroll pan takes one touch.
+  Stop held motion on release and cancel interactions when the tab, scene or ruler
+  interaction revision changes. Hold and pinch show a Liquid Glass time/scale bubble
   with primary text (blur material before iOS 26), centered eight points above the
   drawer's `wherewolf.panel.sheet` view and below the top safe area; fall back to
   above the ruler if absent. Derive the scale from nearby recorded intervals, or
   retention time before points load. Remove the window bubble on release or
   cancellation without changing drawer height. Reaching Live clamps at zero
-  without ending a drag or hold; return to Live only when motion ends there.
-  Only a held detent coarser than one point per bar snaps within six screen points
+  without ending an interaction; return to Live only when motion ends there.
+  Only held scrubbing coarser than one point per bar snaps within six screen points
   of a stop boundary. Hold the exact index until the finger moves over ten points,
   then rebase at the current finger without a jump. Give each snap a selection haptic;
   its bubble adds the colored stop symbol and arrival/departure event above the scale.
-  Ordinary drags and inertia never snap. VoiceOver's value names a containing stop
-  and its arrival; keep its one-point increment/decrement and announce the held scale. Retain every stored
-  route point. A Tracker replay hold recaptures a manually moved camera, preserving
+  Ordinary drags, inertia and pinches never snap. The 18-point row under the ruler
+  keeps the time (and at Live the hint "Pinch for scale; hold to scrub"), a scale capsule
+  styled like the Go To time, and Live; the capsule opens a native Menu headed One bar covers: Every point,
+  1 minute, 5 minutes, 15 minutes, 1 hour, 6 hours and Whole history. Map durations
+  to the nearest step in log space using the bubble's estimate, drop later duplicate
+  steps and check the current entry. Menu changes anchor the needle without moving
+  the camera. VoiceOver's value names a containing stop and its arrival; keep its
+  one-point increment/decrement, add Finer Scale and Coarser Scale actions, and
+  announce scale changes. Hold and pinch share the map hold zoom and cached-payload
+  rules; release loads the final selection once. Retain every stored route point.
+  A Tracker replay hold or pinch recaptures a manually moved camera, preserving
   overview mode. In follow mode, one point per bar uses the starting follow distance
   D0; coarser detents fit the route within ±(2 + (half the visible bars − 2) × coarseness²)
   bars of the needle into the overview's clear map area, never closer than D0, so mid
-  detents stay close and only the coarsest fit the whole visible ruler. Compute the box at hold start, detent changes
-  and moves greater than half a window, never per frame. UIKit eases distance in
+  detents stay close and only the coarsest fit the whole visible ruler. Compute the
+  box at hold or pinch start, detent changes and moves greater than half a window,
+  never per frame. UIKit eases distance in
   log space over 0.3 seconds while following the same replay pose. Do not write the
   saved follow distance or the outer SwiftUI camera on held steps. Release flies
   back to D0 through the existing camera transition; Live's flight wins. Cancellation
@@ -367,8 +377,8 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   because recorded motion lives in payloads; snapshot loads read only point metadata.
   `ReplayTimeline` shares corrected cumulative distance with those rows.
   Hide altitude when vertical accuracy is negative. Nearby
-  payloads use a bounded prefetch cache and coalesced reads; a ruler hold shows
-  only cached payloads and starts no reads, including from in-flight completions.
+  payloads use a bounded prefetch cache and coalesced reads; a ruler hold or pinch
+  shows only cached payloads and starts no reads, including from in-flight completions.
   On release, load around the final selection once. Normal drags and playback keep
   prefetching. Format JSON only for inspection. Cache the complete route through
   every stored point, without sampling. Publish replay position and coordinate together in one `ReplayPose`.

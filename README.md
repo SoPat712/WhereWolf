@@ -151,19 +151,17 @@ Settings content uses the system safe area throughout the transition. Sliders
 have common-value detents and selection feedback, and still support exact numeric entry. Dragging previews a setting;
 releasing saves it once.
 
-Hold the history ruler for a moment, then drag sideways to scrub the timeline.
-Move upward over the map for finer steps through 1–2–5 detents: 1,000, 500,
-200, 100, 50, 20, 10, 5, 2, then one recorded point per bar. Longer histories add
-coarser steps; shorter histories need fewer. The starting step covers the whole
-loaded history in one ruler width. The bars follow your finger at every scale,
-growing taller and wider for larger steps. A Liquid Glass bubble above the drawer
-shows the selected time and how much time each bar represents (blur material before iOS 26). Releasing stops the
-hold immediately. Reaching Live keeps the gesture active so you can scrub back;
-releasing there returns to Live. While following a replay point, coarser steps
-zoom out to fit the route near the needle; only the coarsest steps fit the whole
-visible ruler. Release flies back to your starting zoom. Overview stays in overview. Held scrubbing uses cached point
-details and loads the final selection on release.
-Normal dragging keeps its original precision and momentum. Trip Settings starts
+Pinch the history ruler to change its scale: spread for finer steps, or pinch
+in for coarser ones, from every recorded point to the whole loaded history.
+The scale stays where you leave it across Live, tabs and playback. Drag or flick
+with one finger to browse at that scale, with momentum. Hold for a moment to
+scrub sideways; moving vertically leaves the scale unchanged.
+During a pinch or hold, a Liquid Glass bubble above the drawer shows the selected
+time and the estimated time per bar (blur material before iOS 26). Coarser scales
+zoom out around the replay point; release flies back to the starting zoom.
+Overview stays in overview. Holds and pinches use cached point details and load
+the final selection on release. Reaching Live keeps the gesture active so you can
+scrub back; releasing there returns to Live. Trip Settings starts
 with a translucent glass background and fades toward the grouped Settings
 background as the sheet expands; collapsing reverses the fade. Cards use the
 same secondary grouped colors as the main Settings form in light and dark mode.
@@ -516,13 +514,18 @@ scenes, and when tracking stops.
 The ruler at the top of the Tracker panel keeps the selected tick in the center.
 Older points lie to its left and **Live** lies to its right. Drag right to browse
 older points, or left to return to Live. A tap alone does not change modes.
-Each tick selects one recorded point during normal dragging; holding offers
-larger steps with the scale shown in the bubble. Time labels, local-midnight dividers
-and stop capsules help you find your way through the retained history. Stops use a
-nearby saved Wi-Fi Place’s name, icon and color, or show an unnamed stop’s duration.
-At coarser held scales, the ruler snaps to arrivals and departures; move your finger
-ten points away to continue scrubbing. The bubble names the event. Normal drags and
-VoiceOver adjustments still move one point at a time.
+Pinch to change how many recorded points each bar covers, or tap the scale
+capsule beside the time to choose **Every point**, a time interval, or **Whole
+history**. Time estimates use nearby recorded intervals. The selected point stays
+under the needle when the scale changes. The scale remains set across Live, tabs
+and playback; dragging and flicking use it too.
+Time labels, local-midnight dividers and stop capsules help you find your way
+through the retained history. Stops use a nearby saved Wi-Fi Place’s name, icon
+and color, or show an unnamed stop’s duration. Hold for 0.35 seconds to scrub
+sideways at the current scale. Coarse held scrubbing snaps within six screen points
+of arrivals and departures; move your finger over ten points away to continue.
+The bubble names the event. Ordinary drags, momentum and pinches do not snap.
+VoiceOver keeps one-point adjustments and offers **Finer Scale** and **Coarser Scale**.
 
 The buttons beside Play jump to the previous or next stop arrival or departure.
 Tap the time capsule beneath the ruler to open **Go To**. Pick a date and time to
