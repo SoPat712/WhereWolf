@@ -84,6 +84,18 @@ private final class ReplayMarkerView: MKMarkerAnnotationView {
 }
 
 @MainActor
+private final class RulerZoomFrameTarget: NSObject {
+    private weak var coordinator: NativeMapSurface.Coordinator?
+
+    init(coordinator: NativeMapSurface.Coordinator) { self.coordinator = coordinator }
+
+    @objc func frame(_ link: CADisplayLink) {
+        guard let coordinator else { link.invalidate(); return }
+        coordinator.advanceRulerZoom(at: link.timestamp)
+    }
+}
+
+@MainActor
 private final class ReplayHeadingFrameTarget: NSObject {
     private weak var coordinator: NativeMapSurface.Coordinator?
 
@@ -302,6 +314,8 @@ struct NativeMapSurface: UIViewRepresentable {
     var replayFollowing = true
     var replayFollowDistance: CLLocationDistance? = nil
     var replayOverview = false
+    var rulerHold: ReplayRulerHold? = nil
+    var rulerHoldCancelled = false
     var replayStatusHeight: CGFloat = 0
     // SwiftUI animation transactions do not cross the shell's separate map hosting controller.
     var replayCameraAction = 0
@@ -317,6 +331,7 @@ struct NativeMapSurface: UIViewRepresentable {
     var onCameraChange: (MapCamera, Bool) -> Void
     var onInteraction: () -> Void
     var onRotationChange: (Bool) -> Void = { _ in }
+    var onRulerCameraRestore: (MapCamera, CLLocationDistance) -> Void = { _, _ in }
 
     @MainActor static func setDrawerTop(_ value: CGFloat, on map: MKMapView) {
         guard let map = map as? AttributionMapView else { return }
@@ -421,6 +436,7 @@ struct NativeMapSurface: UIViewRepresentable {
 
     static func dismantleUIView(_ map: MKMapView, coordinator: Coordinator) {
         coordinator.stopCameraTransition()
+        coordinator.stopRulerZoom()
         coordinator.stopLiveMotion()
         coordinator.stopReplayHeading()
         coordinator.stopHeadingMode()
@@ -504,6 +520,17 @@ struct NativeMapSurface: UIViewRepresentable {
         private var cameraTransition: MapCameraTransition?
         private var cameraDestination: MapCamera?
         private var cameraDisplayLink: CADisplayLink?
+        private var heldRuler: ReplayRulerHold?
+        private var heldBaseDistance: CLLocationDistance?
+        private var heldPitch: Double?
+        private var rulerRestoreGeneration = 0
+        private var heldDistance: CLLocationDistance?
+        private var heldFitPosition: Double?
+        private var heldCoordinate: CLLocationCoordinate2D?
+        private var rulerDistanceEase: ReplayHoldDistanceEase?
+        private var rulerContactTime: TimeInterval?
+        private var rulerZoomLink: CADisplayLink?
+        private lazy var rulerProjection = MKMapView()
         private var replayHeading = HeadingMotion()
         private var replayHeadingDisplayLink: CADisplayLink?
         private var liveMotion = LiveMapMotion()
@@ -538,6 +565,7 @@ struct NativeMapSurface: UIViewRepresentable {
             let cameraAction = parent.replayCameraAction != self.parent.replayCameraAction
                 || parent.recenterAction != self.parent.recenterAction
             self.parent = parent
+            if cameraAction { rulerRestoreGeneration &+= 1 }
             guard let map else { return }
             CATransaction.begin()
             CATransaction.setDisableActions(true)
@@ -564,10 +592,13 @@ struct NativeMapSurface: UIViewRepresentable {
             updateOverlays(map)
             updateSelection(map)
             observeGestures(in: map)
-            if cameraAction {
-                applyPosition(map, animated: visible && !UIAccessibility.isReduceMotionEnabled, force: true)
-            } else if !cameraActionAnimating && !interacting && !hasMapContact {
-                applyPosition(map, animated: animated && !UIAccessibility.isReduceMotionEnabled)
+            let restoredRuler = updateRulerHold(on: map, wasDetached: wasDetached)
+            if !restoredRuler {
+                if cameraAction {
+                    applyPosition(map, animated: visible && !UIAccessibility.isReduceMotionEnabled, force: true)
+                } else if !cameraActionAnimating && !interacting && !hasMapContact {
+                    applyPosition(map, animated: animated && !UIAccessibility.isReduceMotionEnabled)
+                }
             }
             updateHeadingMode(on: map)
             if visible && !wasVisible { viewportChanged(on: map) }
@@ -740,8 +771,8 @@ struct NativeMapSurface: UIViewRepresentable {
                 next = .overview(ObjectIdentifier(route))
             } else if parent.replayFollowing, parent.replayRoute != nil, let coordinate = parent.selected {
                 next = .camera(MapCamera(centerCoordinate: coordinate,
-                    distance: parent.replayFollowDistance ?? parent.position.camera?.distance ?? 2_000,
-                    heading: map.camera.heading, pitch: Double(map.camera.pitch)))
+                    distance: heldDistance ?? parent.replayFollowDistance ?? parent.position.camera?.distance ?? 2_000,
+                    heading: map.camera.heading, pitch: heldPitch ?? Double(map.camera.pitch)))
             } else if parent.position.followsUserLocation {
                 next = .follow
             } else if let camera = parent.position.camera {
@@ -801,6 +832,141 @@ struct NativeMapSurface: UIViewRepresentable {
             }
         }
 
+        private func updateRulerHold(on map: MKMapView, wasDetached: Bool) -> Bool {
+            let hold = parent.scenePhase == .active && parent.pageActive ? parent.rulerHold : nil
+            guard let hold else {
+                guard heldRuler != nil, let base = heldBaseDistance else { return false }
+                stopRulerZoom()
+                heldRuler = nil
+                heldBaseDistance = nil
+                let pitch = heldPitch
+                heldPitch = nil
+                rulerRestoreGeneration &+= 1
+                heldDistance = nil
+                heldFitPosition = nil
+                let coordinate = heldCoordinate
+                heldCoordinate = nil
+                guard let coordinate else { return false }
+                // Returning to Live owns its flight and must never be interrupted by a replay restore.
+                guard parent.replayActive else {
+                    if parent.rulerHoldCancelled {
+                        var restored = MapCamera(map.camera)
+                        restored.centerCoordinate = coordinate
+                        restored.distance = base
+                        restored.pitch = pitch ?? restored.pitch
+                        map.setCamera(anchoredCamera(restored, on: map), animated: false)
+                        reportRulerRestore(restored, base: base)
+                    }
+                    return false
+                }
+                var destination = MapCamera(map.camera)
+                let following = parent.replayFollowing && !parent.replayOverview && !interacting
+                if following {
+                    destination.centerCoordinate = parent.selected ?? coordinate
+                    destination.distance = base
+                    destination.pitch = pitch ?? destination.pitch
+                    parent.replayFollowDistance = base
+                    request = .camera(destination)
+                    if parent.rulerHoldCancelled || parent.scenePhase != .active || !parent.pageActive {
+                        stopCameraTransition()
+                        setCamera(destination, on: map, animated: false)
+                    } else {
+                        startCameraTransition(to: destination, on: map)
+                    }
+                }
+                reportRulerRestore(destination, base: base)
+                return following
+            }
+            if heldRuler == nil {
+                rulerRestoreGeneration &+= 1
+                heldPitch = Double(map.camera.pitch)
+                heldBaseDistance = wasDetached || replayDetached
+                    ? map.camera.centerCoordinateDistance
+                    : parent.replayFollowDistance ?? map.camera.centerCoordinateDistance
+                heldDistance = map.camera.centerCoordinateDistance
+                heldFitPosition = nil
+                if parent.replayActive && !parent.replayOverview {
+                    parent.replayFollowing = true
+                    interacting = false
+                    stopCameraTransition()
+                }
+            }
+            if heldRuler != hold {
+                heldFitPosition = nil
+                heldRuler = hold
+            }
+            guard parent.replayActive, parent.replayFollowing, !parent.replayOverview,
+                  !interacting, let route = parent.replayRoute,
+                  !route.coordinates.isEmpty, let coordinate = parent.selected,
+                  let base = heldBaseDistance else {
+                stopRulerZoom()
+                heldDistance = nil
+                heldFitPosition = nil
+                return false
+            }
+            heldCoordinate = coordinate
+            guard !hasMapContact else { return false }
+            guard hold.needsFit(at: parent.replayPosition, since: heldFitPosition) else { return false }
+            heldFitPosition = parent.replayPosition
+            var fit: CLLocationDistance?
+            if hold.pointsPerBar > 1,
+               let bounds = ReplayHoldZoom.bounds(in: route.coordinates,
+                    window: hold.window(at: parent.replayPosition, count: route.coordinates.count), anchor: coordinate) {
+                fit = ReplayHoldZoom.fittedDistance(bounds: bounds, anchor: coordinate, base: base, on: map,
+                    clearRect: NativeMapSurface.replayClearRect(on: map), anchorPoint: NativeMapSurface.visibleCenter(on: map),
+                    pitch: heldPitch, projection: rulerProjection)
+            }
+            let distance = ReplayHoldZoom.distance(base: base, pointsPerBar: hold.pointsPerBar, fitted: fit)
+            easeRulerDistance(to: distance, on: map)
+            return false
+        }
+
+        private func reportRulerRestore(_ camera: MapCamera, base: CLLocationDistance) {
+            let generation = rulerRestoreGeneration
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.rulerRestoreGeneration == generation, self.heldRuler == nil else { return }
+                var current = camera
+                if self.parent.replayActive, self.parent.replayFollowing, !self.parent.replayOverview,
+                   let selected = self.parent.selected { current.centerCoordinate = selected }
+                self.parent.onRulerCameraRestore(current, base)
+            }
+        }
+
+        private func easeRulerDistance(to distance: CLLocationDistance, on map: MKMapView) {
+            let current = map.camera.centerCoordinateDistance
+            stopRulerZoom()
+            heldDistance = current
+            guard !UIAccessibility.isReduceMotionEnabled, abs(log(max(1, distance) / max(1, current))) > 0.0001 else {
+                heldDistance = distance
+                return
+            }
+            rulerDistanceEase = ReplayHoldDistanceEase(from: current, to: distance, start: CACurrentMediaTime())
+            let target = RulerZoomFrameTarget(coordinator: self)
+            let link = CADisplayLink(target: target, selector: #selector(RulerZoomFrameTarget.frame(_:)))
+            let maximum = Float(map.window?.windowScene?.screen.maximumFramesPerSecond ?? 60)
+            link.preferredFrameRateRange = CAFrameRateRange(minimum: min(60, maximum), maximum: maximum, preferred: maximum)
+            link.add(to: .main, forMode: .common)
+            rulerZoomLink = link
+        }
+
+        func advanceRulerZoom(at time: TimeInterval) {
+            guard let map, let ease = rulerDistanceEase, heldRuler != nil,
+                  parent.scenePhase == .active, parent.pageActive, parent.replayFollowing,
+                  !parent.replayOverview, !interacting else { stopRulerZoom(); return }
+            guard !hasMapContact else { return }
+            heldDistance = UIAccessibility.isReduceMotionEnabled ? ease.to : ease.distance(at: time)
+            applyPosition(map, animated: false)
+            alignMarkers(on: map)
+            if UIAccessibility.isReduceMotionEnabled || ease.progress(at: time) == 1 { stopRulerZoom() }
+        }
+
+        func stopRulerZoom() {
+            rulerZoomLink?.invalidate()
+            rulerZoomLink = nil
+            rulerDistanceEase = nil
+            rulerContactTime = nil
+        }
+
         func stopCameraTransition() {
             cameraDisplayLink?.invalidate()
             cameraDisplayLink = nil
@@ -826,6 +992,11 @@ struct NativeMapSurface: UIViewRepresentable {
 
         private func moveCamera(on map: MKMapView, distance: CLLocationDistance, heading: CLLocationDirection?) -> MapZoomResult? {
             guard parent.sceneVisible, parent.pageActive else { return nil }
+            rulerRestoreGeneration &+= 1
+            if heldRuler != nil {
+                stopRulerZoom()
+                heldDistance = distance
+            }
             let wasInteracting = interacting
             revision += 1
             interacting = false
@@ -1215,23 +1386,35 @@ struct NativeMapSurface: UIViewRepresentable {
             guard hasMapContact != active else { return }
             hasMapContact = active
             if active {
+                rulerContactTime = rulerDistanceEase == nil ? nil : time
                 cameraContactTime = cameraTransition == nil ? nil : time
             } else if let paused = cameraContactTime, let transition = cameraTransition {
                 cameraTransition = MapCameraTransition(from: transition.from, to: transition.to,
                     start: transition.start + max(0, time - paused), length: transition.length,
                     flightWidth: transition.flightWidth)
             }
-            if !active { cameraContactTime = nil }
+            if !active {
+                if let paused = rulerContactTime, let ease = rulerDistanceEase {
+                    rulerDistanceEase = ReplayHoldDistanceEase(from: ease.from, to: ease.to,
+                                                               start: ease.start + max(0, time - paused))
+                }
+                rulerContactTime = nil
+                cameraContactTime = nil
+            }
             // A tap resumes following; a recognized pan retains its own camera and deferred delegate commit.
             guard !active, !interacting, !cameraActionAnimating, parent.sceneVisible, parent.pageActive,
                   let map else { return }
-            if parent.position.followsUserLocation { followUser(on: map, animated: false) }
+            if heldRuler != nil {
+                _ = updateRulerHold(on: map, wasDetached: false)
+                applyPosition(map, animated: false)
+            } else if parent.position.followsUserLocation { followUser(on: map, animated: false) }
             else { viewportChanged(on: map) }
         }
 
         func clearMapContact() {
             hasMapContact = false
             cameraContactTime = nil
+            rulerContactTime = nil
         }
 
         func observeGestures(in view: UIView) {
@@ -1283,6 +1466,9 @@ struct NativeMapSurface: UIViewRepresentable {
         }
 
         private func beginInteraction() {
+            rulerRestoreGeneration &+= 1
+            stopRulerZoom()
+            heldDistance = nil
             stopCameraTransition()
             flyToUser = false
             guard !interacting else { return }
@@ -1317,7 +1503,7 @@ struct NativeMapSurface: UIViewRepresentable {
                 beginInteraction()
                 return
             }
-            if cameraActionAnimating {
+            if cameraActionAnimating || (heldRuler != nil && !interacting) {
                 return
             }
             if !interacting, correctionsRemaining > 0 {

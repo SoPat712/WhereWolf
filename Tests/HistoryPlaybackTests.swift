@@ -262,6 +262,57 @@ final class HistoryPlaybackTests: XCTestCase {
         XCTAssertEqual(pending.count, 2)
     }
 
+    @MainActor func testHeldScrubbingUsesCachedPayloadsAndLoadsOnceOnRelease() {
+        let points = locations(400)
+        var requests = [[Int64]]()
+        let model = HistoryPlaybackModel(pointLoader: { _, completion in completion(points) },
+                                         payloadLoader: { ids, completion in
+            requests.append(ids)
+            completion(self.payloads(ids))
+        })
+        model.setConsumerActive(true)
+        XCTAssertEqual(requests.count, 1)
+        model.beginRulerInteraction()
+        model.setRulerHold(ReplayRulerHold(pointsPerBar: 20, visibleBars: 20))
+        model.scrub(rulerPosition: 1, liveEdge: Date())
+        XCTAssertEqual(model.payload?.device, "device-400")
+        for position in [300.0, 350, 200] {
+            model.scrub(rulerPosition: position, liveEdge: Date())
+            XCTAssertNil(model.payload)
+            XCTAssertEqual(requests.count, 1)
+        }
+        model.scrub(rulerPosition: 10, liveEdge: Date())
+        XCTAssertEqual(model.payload?.device, "device-391")
+        model.scrub(rulerPosition: 300, liveEdge: Date())
+        model.endRulerInteraction(at: 300, onLive: { XCTFail("Unexpected Live") })
+        XCTAssertNil(model.rulerHold)
+        XCTAssertFalse(model.rulerHoldCancelled)
+        XCTAssertEqual(requests.count, 2)
+        XCTAssertTrue(requests[1].contains(101))
+        XCTAssertEqual(model.payload?.device, "device-101")
+    }
+
+    @MainActor func testPayloadCompletionDuringHoldDoesNotStartAnotherRead() {
+        let points = locations(400)
+        var pending = [([Int64], ([Int64: RecordedPayload]) -> Void)]()
+        let model = HistoryPlaybackModel(pointLoader: { _, completion in completion(points) },
+                                         payloadLoader: { pending.append(($0, $1)) })
+        model.setConsumerActive(true)
+        model.beginRulerInteraction()
+        model.scrub(rulerPosition: 300, liveEdge: Date())
+        model.setRulerHold(ReplayRulerHold(pointsPerBar: 20, visibleBars: 20))
+        model.scrub(rulerPosition: 350, liveEdge: Date())
+        pending[0].1(payloads(pending[0].0))
+        XCTAssertNil(model.payload)
+        XCTAssertEqual(pending.count, 1)
+        model.endRulerInteraction(at: 350, onLive: { XCTFail("Unexpected Live") })
+        XCTAssertEqual(pending.count, 2)
+        XCTAssertTrue(pending[1].0.contains(51))
+        pending[1].1(payloads(pending[1].0))
+        XCTAssertEqual(model.payload?.device, "device-51")
+        XCTAssertEqual(pending.count, 2)
+    }
+
     @MainActor func testInactiveConsumerDoesNotLoadReplayDetails() {
         let points = locations(100)
         var pending = [([Int64], ([Int64: RecordedPayload]) -> Void)]()
@@ -384,47 +435,81 @@ final class HistoryPlaybackTests: XCTestCase {
     }
 
     func testRulerPrecisionBandsUseUpwardDistanceAndHysteresis() {
-        typealias Level = HistoryRulerCoarseDrag.Level
-        let bands: [(CGFloat, Level)] = [(-100, .fast), (0, .fast), (49, .fast), (50, .medium),
-                                        (109, .medium), (110, .slow), (169, .slow), (170, .pointByPoint)]
-        for (distance, level) in bands {
-            XCTAssertEqual(Level.resolved(upwardDistance: distance), level)
+        let detents = HistoryRulerCoarseDrag.Detents(tickCount: 20_000, rulerWidth: 350, availableTravel: 1_000)
+        XCTAssertEqual(detents.bandHeight, 48)
+        XCTAssertEqual(detents.resolved(upwardDistance: -100), 0)
+        XCTAssertEqual(detents.resolved(upwardDistance: -100, previous: detents.steps.count - 1), 0)
+        for index in 0..<(detents.steps.count - 1) {
+            let threshold = CGFloat(index + 1) * 48
+            XCTAssertEqual(detents.resolved(upwardDistance: threshold - 0.1), index)
+            XCTAssertEqual(detents.resolved(upwardDistance: threshold), index + 1)
+            XCTAssertEqual(detents.resolved(upwardDistance: threshold + 3.9, previous: index), index)
+            XCTAssertEqual(detents.resolved(upwardDistance: threshold + 4, previous: index), index + 1)
+            XCTAssertEqual(detents.resolved(upwardDistance: threshold - 4, previous: index + 1), index + 1)
+            XCTAssertEqual(detents.resolved(upwardDistance: threshold - 4.1, previous: index + 1), index)
         }
-        for (index, threshold) in [CGFloat(50), 110, 170].enumerated() {
-            let lower = Level(rawValue: index)!
-            let upper = Level(rawValue: index + 1)!
-            XCTAssertEqual(Level.resolved(upwardDistance: threshold + 3.9, previous: lower), lower)
-            XCTAssertEqual(Level.resolved(upwardDistance: threshold + 4, previous: lower), upper)
-            XCTAssertEqual(Level.resolved(upwardDistance: threshold - 4, previous: upper), upper)
-            XCTAssertEqual(Level.resolved(upwardDistance: threshold - 4.1, previous: upper), lower)
-        }
-        XCTAssertEqual(Level.resolved(upwardDistance: 250, previous: .fast), .pointByPoint)
-        XCTAssertEqual(Level.resolved(upwardDistance: -50, previous: .pointByPoint), .fast)
+        let compact = HistoryRulerCoarseDrag.Detents(tickCount: 20_000, rulerWidth: 350, availableTravel: 440)
+        XCTAssertEqual(compact.bandHeight, 40)
+        XCTAssertEqual(compact.resolved(upwardDistance: 404, previous: 0), compact.steps.count - 1)
+        let constrained = HistoryRulerCoarseDrag.Detents(tickCount: 20_000, rulerWidth: 350, availableTravel: 200)
+        XCTAssertEqual(constrained.bandHeight, 36)
+        XCTAssertEqual(constrained.resolved(upwardDistance: 200, previous: 0), constrained.steps.count - 1)
+        XCTAssertEqual(constrained.resolved(upwardDistance: 197, previous: constrained.steps.count - 1), constrained.steps.count - 1)
+        XCTAssertEqual(constrained.resolved(upwardDistance: 500), constrained.steps.count - 1)
     }
 
-    func testRulerScalesUseNiceGeometricStepsForShortAndLongHistories() {
-        let levels = HistoryRulerCoarseDrag.Level.allCases
-        let short = levels.map { HistoryRulerCoarseDrag.scale(level: $0, tickCount: 1, rulerWidth: 320) }
-        let long = levels.map { HistoryRulerCoarseDrag.scale(level: $0, tickCount: 10_000, rulerWidth: 320) }
-        XCTAssertEqual(short.map(\.pointsPerTick), [1, 1, 1, 1])
-        XCTAssertEqual(long.map(\.pointsPerTick), [500, 50, 10, 1])
-        XCTAssertEqual(long.map(\.spacing), [18, 16, 14, 12])
-        let widthSpan = 320 / Double(long[0].spacing) * long[0].pointsPerTick
-        XCTAssertEqual(widthSpan / 10_000, 1, accuracy: 0.2)
-        XCTAssertEqual(long.last!, HistoryRulerCoarseDrag.Scale())
-        for pair in zip(long, long.dropFirst()) {
-            XCTAssertGreaterThan(pair.0.minorHeight, pair.1.minorHeight)
-            XCTAssertGreaterThan(pair.0.majorHeight, pair.1.majorHeight)
-            XCTAssertGreaterThan(pair.0.lineWidth, pair.1.lineWidth)
+    func testRulerLadderRoundsUpToCoverTheEntireHistory() {
+        let cases: [(Int, [Double])] = [
+            (1, [1]), (50, [5, 2, 1]),
+            (4_000, [500, 200, 100, 50, 20, 10, 5, 2, 1]),
+            (20_000, [2_000, 1_000, 500, 200, 100, 50, 20, 10, 5, 2, 1])
+        ]
+        for (count, expected) in cases {
+            let detents = HistoryRulerCoarseDrag.Detents(tickCount: count, rulerWidth: 350, availableTravel: 1_000)
+            XCTAssertEqual(detents.steps, expected)
+            let coarse = detents.scale(at: 0)
+            XCTAssertGreaterThanOrEqual(350 / Double(coarse.spacing) * coarse.pointsPerTick, Double(count))
+            if expected.count > 1 {
+                let smaller = expected[1]
+                XCTAssertLessThan(350 / 18 * smaller, Double(count))
+            }
+            XCTAssertEqual(detents.scale(at: expected.count - 1), HistoryRulerCoarseDrag.Scale())
         }
+        let empty = HistoryRulerCoarseDrag.Detents(tickCount: 48, rulerWidth: 350, availableTravel: 1_000)
+        XCTAssertEqual(empty.steps, [5, 2, 1])
+        XCTAssertEqual(HistoryRulerCoarseDrag.Detents(tickCount: 20, rulerWidth: 350, availableTravel: 1_000).steps, [1])
         for value in [1.0, 2, 5, 10, 20, 50, 100, 200, 500, 1_000] {
             XCTAssertEqual(HistoryRulerCoarseDrag.niceStep(value), value)
         }
+        XCTAssertEqual(HistoryRulerCoarseDrag.niceStep(2.01), 5)
+        XCTAssertEqual(HistoryRulerCoarseDrag.niceStep(201), 500)
+    }
+
+    func testRulerBarGeometryUsesLogarithmicCoarseness() {
+        XCTAssertEqual(HistoryRulerCoarseDrag.coarseness(step: 1, coarsest: 2_000), 0)
+        XCTAssertEqual(HistoryRulerCoarseDrag.coarseness(step: 2_000, coarsest: 2_000), 1)
+        XCTAssertEqual(HistoryRulerCoarseDrag.coarseness(step: 1, coarsest: 1), 0)
+        let coarseness = log(20.0) / log(2_000.0)
+        XCTAssertEqual(HistoryRulerCoarseDrag.coarseness(step: 20, coarsest: 2_000), coarseness, accuracy: 1e-12)
+        let scale = HistoryRulerCoarseDrag.scale(step: 20, coarsest: 2_000)
+        let amount = CGFloat(coarseness)
+        XCTAssertEqual(scale.spacing, 12 + 6 * amount, accuracy: 1e-9)
+        XCTAssertEqual(scale.minorHeight, 12 + 10 * amount, accuracy: 1e-9)
+        XCTAssertEqual(scale.majorHeight, 17 + 9 * amount, accuracy: 1e-9)
+        XCTAssertEqual(scale.lineWidth, 1 + 0.6 * amount, accuracy: 1e-9)
+        XCTAssertEqual(scale.bottom, 21 + 5 * amount, accuracy: 1e-9)
+        let coarse = HistoryRulerCoarseDrag.scale(step: 2_000, coarsest: 2_000)
+        XCTAssertEqual(coarse.spacing, 18)
+        XCTAssertEqual(coarse.minorHeight, 22)
+        XCTAssertEqual(coarse.majorHeight, 26)
+        XCTAssertEqual(coarse.lineWidth, 1.6)
+        XCTAssertEqual(coarse.bottom, 26)
     }
 
     func testRulerTicksFollowTheFingerOneToOneAtEveryPrecision() {
-        for level in HistoryRulerCoarseDrag.Level.allCases {
-            let scale = HistoryRulerCoarseDrag.scale(level: level, tickCount: 10_000, rulerWidth: 320)
+        let detents = HistoryRulerCoarseDrag.Detents(tickCount: 10_000, rulerWidth: 350, availableTravel: 1_000)
+        for index in detents.steps.indices {
+            let scale = detents.scale(at: index)
             for dx in [CGFloat(-48), -6, 1, 17, 48] {
                 let start = 5_000.25
                 let end = HistoryRulerCoarseDrag.position(after: start, translation: dx, tickCount: 10_000, scale: scale)
@@ -437,8 +522,8 @@ final class HistoryPlaybackTests: XCTestCase {
     }
 
     func testRulerScaleTweenKeepsTheNeedlePositionAndFingerMovement() {
-        let from = HistoryRulerCoarseDrag.scale(level: .fast, tickCount: 10_000, rulerWidth: 320)
-        let to = HistoryRulerCoarseDrag.scale(level: .slow, tickCount: 10_000, rulerWidth: 320)
+        let from = HistoryRulerCoarseDrag.scale(step: 1_000, coarsest: 1_000)
+        let to = HistoryRulerCoarseDrag.scale(step: 20, coarsest: 1_000)
         for progress in [CGFloat(0), 0.25, 0.5, 1] {
             let scale = from.blended(to: to, progress: progress)
             let position = 5_123.5
@@ -451,9 +536,10 @@ final class HistoryPlaybackTests: XCTestCase {
     }
 
     func testRulerScrubbingClampsAndCanReverseFromEitherBoundary() {
-        for level in HistoryRulerCoarseDrag.Level.allCases {
-            for count in [1, 10_000] {
-                let scale = HistoryRulerCoarseDrag.scale(level: level, tickCount: count, rulerWidth: 320)
+        for count in [1, 10_000] {
+            let detents = HistoryRulerCoarseDrag.Detents(tickCount: count, rulerWidth: 350, availableTravel: 1_000)
+            for index in detents.steps.indices {
+                let scale = detents.scale(at: index)
                 let live = HistoryRulerCoarseDrag.position(after: Double(count) / 2, translation: -1_000_000,
                                                          tickCount: count, scale: scale)
                 let oldest = HistoryRulerCoarseDrag.position(after: Double(count) / 2, translation: 1_000_000,
@@ -1468,5 +1554,243 @@ final class HistoryPlaybackTests: XCTestCase {
             (id, RecordedPayload(format: "GeoJSON", speed: 2, accuracy: 5, altitude: 10,
                                  device: "device-\(id)", battery: "50%", rawJSON: Data("{}".utf8)))
         })
+    }
+}
+
+final class HistoryRulerZoomTests: XCTestCase {
+    func testHoldWindowAndRecomputeThreshold() {
+        let hold = ReplayRulerHold(pointsPerBar: 5, visibleBars: 20)
+        XCTAssertEqual(hold.halfWindow, 50)
+        XCTAssertEqual(hold.window(at: 100, count: 400), 50..<151)
+        XCTAssertEqual(hold.window(at: 0, count: 400), 0..<51)
+        XCTAssertEqual(hold.window(at: 399, count: 400), 349..<400)
+        XCTAssertEqual(hold.window(at: 100.5, count: 400), 51..<151)
+        XCTAssertTrue(hold.window(at: 0, count: 0).isEmpty)
+        XCTAssertTrue(hold.needsFit(at: 100, since: nil))
+        XCTAssertFalse(hold.needsFit(at: 150, since: 100))
+        XCTAssertFalse(hold.needsFit(at: 50, since: 100))
+        XCTAssertTrue(hold.needsFit(at: 150.001, since: 100))
+        XCTAssertTrue(hold.needsFit(at: 49.999, since: 100))
+    }
+
+    func testPointPrecisionUsesBaseAndCoarseZoomNeverGoesBelowIt() {
+        XCTAssertEqual(ReplayHoldZoom.distance(base: 2_000, pointsPerBar: 1, fitted: 80_000), 2_000)
+        XCTAssertEqual(ReplayHoldZoom.distance(base: 2_000, pointsPerBar: 20, fitted: 500), 2_000)
+        XCTAssertEqual(ReplayHoldZoom.distance(base: 2_000, pointsPerBar: 20, fitted: nil), 2_000)
+        XCTAssertEqual(ReplayHoldZoom.distance(base: 2_000, pointsPerBar: 20, fitted: 80_000), 80_000)
+        XCTAssertEqual(ReplayHoldZoom.distance(base: 2_000, pointsPerBar: 20, fitted: 1e9), MapZoom.maximumDistance)
+    }
+
+    func testWindowBoundsRetainEveryPointAndWrapTheDateline() throws {
+        let anchor = MKMapPoint(CLLocationCoordinate2D(latitude: 45, longitude: 179.999))
+        let points = [(-400.0, -100.0), (0, 900), (800, 300), (9_000, 20_000)].map {
+            MKMapPoint(x: (anchor.x + $0.0).truncatingRemainder(dividingBy: MKMapRect.world.width),
+                       y: anchor.y + $0.1).coordinate
+        }
+        let box = try XCTUnwrap(ReplayHoldZoom.bounds(in: points, window: 0..<3, anchor: anchor.coordinate))
+        XCTAssertEqual(box.minX, anchor.x - 400, accuracy: 0.001)
+        XCTAssertEqual(box.maxX, anchor.x + 800, accuracy: 0.001)
+        XCTAssertEqual(box.minY, anchor.y - 100, accuracy: 0.001)
+        XCTAssertEqual(box.maxY, anchor.y + 900, accuracy: 0.001)
+        XCTAssertNil(ReplayHoldZoom.bounds(in: [], window: 0..<0, anchor: anchor.coordinate))
+    }
+
+    func testKnownProjectedBoxFitsAroundThePose() {
+        let clear = CGRect(x: 0, y: 0, width: 200, height: 100)
+        let anchor = CGPoint(x: 100, y: 50)
+        let bounds = CGRect(x: 0, y: 0, width: 400, height: 200)
+        let ratio = ReplayHoldZoom.requiredScale(bounds: bounds, anchor: anchor, clear: clear)
+        XCTAssertEqual(ratio, 3)
+        let scale = CGFloat(ratio)
+        let fitted = CGRect(x: anchor.x + (bounds.minX - anchor.x) / scale,
+                            y: anchor.y + (bounds.minY - anchor.y) / scale,
+                            width: bounds.width / scale, height: bounds.height / scale)
+        XCTAssertGreaterThanOrEqual(fitted.minX, clear.minX)
+        XCTAssertLessThanOrEqual(fitted.maxX, clear.maxX)
+        XCTAssertGreaterThanOrEqual(fitted.minY, clear.minY)
+        XCTAssertLessThanOrEqual(fitted.maxY, clear.maxY)
+    }
+
+    func testLogDistanceEaseEndpointsMidpointAndRetarget() {
+        let ease = ReplayHoldDistanceEase(from: 2_000, to: 200_000, start: 10)
+        XCTAssertEqual(ease.distance(at: 9), 2_000)
+        XCTAssertEqual(ease.distance(at: 10), 2_000)
+        XCTAssertEqual(ease.distance(at: 10.15), 20_000, accuracy: 1e-6)
+        XCTAssertEqual(ease.distance(at: 10.3), 200_000)
+        XCTAssertEqual(ease.distance(at: 11), 200_000)
+        let current = ease.distance(at: 10.1)
+        let retarget = ReplayHoldDistanceEase(from: current, to: 5_000, start: 10.1)
+        XCTAssertEqual(retarget.distance(at: 10.1), current)
+        XCTAssertEqual(retarget.distance(at: 10.4), 5_000)
+    }
+
+    @MainActor func testNativeHoldFollowsPoseAndRestoresBaseWithoutChangingTheSavedZoom() {
+        var (surface, coordinator, map) = nativeReplay()
+        defer { tearDown(coordinator, map: map) }
+        surface.rulerHold = ReplayRulerHold(pointsPerBar: 20, visibleBars: 20)
+        coordinator.update(surface, animated: false)
+        coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
+        let coarse = map.camera.centerCoordinateDistance
+        XCTAssertGreaterThan(coarse, 2_000)
+        XCTAssertEqual(coordinator.parent.replayFollowDistance, 2_000)
+        let outerCamera = surface.position.camera
+        surface.replayPosition = 51
+        surface.selected = surface.replayRoute!.coordinates[51]
+        coordinator.update(surface, animated: false)
+        XCTAssertEqual(map.camera.centerCoordinateDistance, coarse, accuracy: 0.1)
+        XCTAssertEqual(surface.position.camera, outerCamera)
+        let point = map.convert(surface.selected!, toPointTo: map)
+        let target = NativeMapSurface.visibleCenter(on: map)
+        XCTAssertEqual(point.x, target.x, accuracy: 1)
+        XCTAssertEqual(point.y, target.y, accuracy: 1)
+        surface.rulerHold = ReplayRulerHold(pointsPerBar: 1, visibleBars: 29)
+        coordinator.update(surface, animated: false)
+        coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
+        XCTAssertEqual(map.camera.centerCoordinateDistance, 2_000, accuracy: 0.1)
+        surface.rulerHold = ReplayRulerHold(pointsPerBar: 20, visibleBars: 20)
+        coordinator.update(surface, animated: false)
+        coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
+        surface.rulerHold = nil
+        coordinator.update(surface, animated: false)
+        coordinator.advanceCameraTransition(at: .greatestFiniteMagnitude)
+        XCTAssertEqual(map.camera.centerCoordinateDistance, 2_000, accuracy: 0.1)
+    }
+
+    @MainActor func testNativeHoldCancellationRestoresImmediatelyAndOverviewStaysPut() {
+        var (surface, coordinator, map) = nativeReplay()
+        defer { tearDown(coordinator, map: map) }
+        surface.rulerHold = ReplayRulerHold(pointsPerBar: 20, visibleBars: 20)
+        coordinator.update(surface, animated: false)
+        coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
+        XCTAssertGreaterThan(map.camera.centerCoordinateDistance, 2_000)
+        surface.rulerHold = nil
+        surface.rulerHoldCancelled = true
+        coordinator.update(surface, animated: false)
+        XCTAssertEqual(map.camera.centerCoordinateDistance, 2_000, accuracy: 0.1)
+        surface.replayOverview = true
+        coordinator.update(surface, animated: false)
+        let overview = MapCamera(map.camera)
+        surface.rulerHold = ReplayRulerHold(pointsPerBar: 20, visibleBars: 20)
+        coordinator.update(surface, animated: false)
+        coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
+        XCTAssertEqual(MapCamera(map.camera), overview)
+        XCTAssertTrue(coordinator.parent.replayOverview)
+    }
+
+    @MainActor func testInactiveSceneCancelsTheHoldWithoutAnAnimation() {
+        var (surface, coordinator, map) = nativeReplay()
+        defer { tearDown(coordinator, map: map) }
+        surface.rulerHold = ReplayRulerHold(pointsPerBar: 20, visibleBars: 20)
+        coordinator.update(surface, animated: false)
+        coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
+        XCTAssertGreaterThan(map.camera.centerCoordinateDistance, 2_000)
+        surface.scenePhase = .inactive
+        coordinator.update(surface, animated: false)
+        XCTAssertEqual(map.camera.centerCoordinateDistance, 2_000, accuracy: 0.1)
+        coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
+        XCTAssertEqual(map.camera.centerCoordinateDistance, 2_000, accuracy: 0.1)
+    }
+
+    @MainActor func testEmptyHistoryHoldDoesNotChangeTheCamera() {
+        var (surface, coordinator, map) = nativeReplay()
+        defer { tearDown(coordinator, map: map) }
+        surface.replayRoute = nil
+        surface.selected = nil
+        surface.position = .camera(MapCamera(centerCoordinate: map.centerCoordinate, distance: 6_000))
+        coordinator.update(surface, animated: false)
+        let before = MapCamera(map.camera)
+        surface.rulerHold = ReplayRulerHold(pointsPerBar: 5, visibleBars: 20)
+        coordinator.update(surface, animated: false)
+        coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
+        XCTAssertEqual(MapCamera(map.camera), before)
+        surface.rulerHold = nil
+        coordinator.update(surface, animated: false)
+        coordinator.advanceCameraTransition(at: .greatestFiniteMagnitude)
+        XCTAssertEqual(MapCamera(map.camera), before)
+    }
+
+    @MainActor func testNativeHoldRecapturesTheManuallyChosenDistance() {
+        var (surface, coordinator, map) = nativeReplay()
+        defer { tearDown(coordinator, map: map) }
+        surface.replayFollowing = false
+        surface.position = .camera(MapCamera(centerCoordinate: surface.selected!, distance: 6_000))
+        coordinator.update(surface, animated: false)
+        surface.rulerHold = ReplayRulerHold(pointsPerBar: 1, visibleBars: 29)
+        coordinator.update(surface, animated: false)
+        coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
+        XCTAssertTrue(coordinator.parent.replayFollowing)
+        XCTAssertEqual(map.camera.centerCoordinateDistance, 6_000, accuracy: 0.1)
+        XCTAssertEqual(coordinator.parent.replayFollowDistance, 2_000)
+        surface.replayFollowing = true
+        surface.rulerHold = nil
+        surface.rulerHoldCancelled = true
+        coordinator.update(surface, animated: false)
+        XCTAssertEqual(map.camera.centerCoordinateDistance, 6_000, accuracy: 0.1)
+    }
+
+    @MainActor private func nativeReplay() -> (NativeMapSurface, NativeMapSurface.Coordinator, MKMapView) {
+        let points = (0...100).map { index in
+            RecordedLocation(id: Int64(index), timestamp: Date(timeIntervalSince1970: Double(index)),
+                             latitude: 45 + Double(index) * 0.001, longitude: -122)
+        }
+        let selected = points[50].coordinate
+        let surface = NativeMapSurface(position: .camera(MapCamera(centerCoordinate: selected, distance: 2_000)),
+            mapType: .standard, coordinates: [], replayRoute: ReplayRouteGeometry(points: points),
+            replayPosition: 50, replayActive: true, replayFollowing: true, replayFollowDistance: 2_000,
+            selected: selected, selectedTitle: "Recorded point", scenePhase: .active, pageActive: true,
+            onCameraChange: { _, _ in }, onInteraction: {})
+        let coordinator = NativeMapSurface.Coordinator(surface)
+        let map = MKMapView(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        map.insetsLayoutMarginsFromSafeArea = false
+        map.layoutMargins = .zero
+        map.delegate = coordinator
+        coordinator.map = map
+        coordinator.update(surface, animated: false)
+        return (surface, coordinator, map)
+    }
+
+    @MainActor private func tearDown(_ coordinator: NativeMapSurface.Coordinator, map: MKMapView) {
+        coordinator.stopRulerZoom()
+        coordinator.stopCameraTransition()
+        coordinator.stopReplayHeading()
+        coordinator.stopLiveMotion()
+        coordinator.stopHeadingMode()
+        map.delegate = nil
+    }
+
+    @MainActor func testMapKitFitsTheBoxWhileKeepingThePoseAtTheVisibleCenter() throws {
+        let map = MKMapView(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        map.insetsLayoutMarginsFromSafeArea = false
+        map.layoutMargins = .zero
+        let anchor = CLLocationCoordinate2D(latitude: 45, longitude: -122)
+        let coordinates = [CLLocationCoordinate2D(latitude: 44.98, longitude: -122.03),
+                           CLLocationCoordinate2D(latitude: 45.01, longitude: -121.98)]
+        let bounds = try XCTUnwrap(ReplayHoldZoom.bounds(in: coordinates, window: 0..<2, anchor: anchor))
+        let clear = CGRect(x: 16, y: 140, width: 312, height: 400)
+        let point = CGPoint(x: 201, y: 330)
+        for heading in [0.0, 71] {
+            for pitch in [0.0, 45] {
+                map.setCamera(MKMapCamera(lookingAtCenter: anchor, fromDistance: 2_000, pitch: pitch, heading: heading), animated: false)
+                let distance = try XCTUnwrap(ReplayHoldZoom.fittedDistance(bounds: bounds, anchor: anchor,
+                    base: 2_000, on: map, clearRect: clear, anchorPoint: point))
+                XCTAssertGreaterThanOrEqual(distance, 2_000)
+                map.setCamera(MKMapCamera(lookingAtCenter: anchor, fromDistance: distance, pitch: pitch, heading: heading), animated: false)
+                for _ in 0..<6 {
+                    let camera = map.camera.copy() as! MKMapCamera
+                    camera.centerCoordinate = MapViewport.anchoredCenter(anchor,
+                        projectionCenter: map.convert(CGPoint(x: map.bounds.midX, y: map.bounds.midY), toCoordinateFrom: map),
+                        projectionTarget: map.convert(point, toCoordinateFrom: map))
+                    map.setCamera(camera, animated: false)
+                }
+                XCTAssertEqual(remainder(map.camera.heading - heading, 360), 0, accuracy: 0.01)
+                let projectedAnchor = map.convert(anchor, toPointTo: map)
+                XCTAssertEqual(projectedAnchor.x, point.x, accuracy: 1)
+                XCTAssertEqual(projectedAnchor.y, point.y, accuracy: 1)
+                for coordinate in coordinates {
+                    let projected = map.convert(coordinate, toPointTo: map)
+                    XCTAssertTrue(clear.insetBy(dx: -1, dy: -1).contains(projected))
+                }
+            }
+        }
     }
 }

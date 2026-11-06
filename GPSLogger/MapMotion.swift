@@ -132,6 +132,133 @@ enum ReplayOverviewFit {
     }
 }
 
+struct ReplayRulerHold: Equatable {
+    let pointsPerBar: Double
+    let visibleBars: Double
+
+    var halfWindow: Double { max(0, visibleBars * pointsPerBar / 2) }
+
+    func window(at position: Double, count: Int) -> Range<Int> {
+        guard count > 0 else { return 0..<0 }
+        let lower = min(count - 1, max(0, Int(ceil(position - halfWindow))))
+        let upper = min(count, max(lower + 1, Int(floor(position + halfWindow)) + 1))
+        return lower..<upper
+    }
+
+    func needsFit(at position: Double, since previous: Double?) -> Bool {
+        guard let previous else { return true }
+        return abs(position - previous) > halfWindow
+    }
+}
+
+struct ReplayHoldDistanceEase {
+    let from: CLLocationDistance
+    let to: CLLocationDistance
+    let start: TimeInterval
+    static let duration: TimeInterval = 0.3
+
+    func progress(at time: TimeInterval) -> Double {
+        min(1, max(0, (time - start) / Self.duration))
+    }
+
+    func distance(at time: TimeInterval) -> CLLocationDistance {
+        let progress = progress(at: time)
+        if progress == 0 { return from }
+        if progress == 1 { return to }
+        let eased = progress * progress * (3 - 2 * progress)
+        return exp(log(max(1, from)) + (log(max(1, to)) - log(max(1, from))) * eased)
+    }
+}
+
+enum ReplayHoldZoom {
+    static func distance(base: CLLocationDistance, pointsPerBar: Double,
+                         fitted: CLLocationDistance?) -> CLLocationDistance {
+        let base = min(MapZoom.maximumDistance, max(MapZoom.minimumDistance, base))
+        guard pointsPerBar > 1, let fitted, fitted.isFinite else { return base }
+        return min(MapZoom.maximumDistance, max(base, fitted))
+    }
+
+    static func bounds(in coordinates: [CLLocationCoordinate2D], window: Range<Int>,
+                       anchor: CLLocationCoordinate2D) -> MKMapRect? {
+        guard !window.isEmpty, window.lowerBound >= 0, window.upperBound <= coordinates.count else { return nil }
+        let origin = MKMapPoint(anchor)
+        let world = MKMapRect.world.width
+        var minX = origin.x, maxX = origin.x, minY = origin.y, maxY = origin.y
+        for index in window {
+            let point = MKMapPoint(coordinates[index])
+            guard point.x.isFinite, point.y.isFinite else { return nil }
+            var dx = point.x - origin.x
+            dx -= (dx / world).rounded() * world
+            minX = min(minX, origin.x + dx); maxX = max(maxX, origin.x + dx)
+            minY = min(minY, point.y); maxY = max(maxY, point.y)
+        }
+        return MKMapRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+    }
+
+    // The pose remains at the map's usual visible center, rather than at the route box's midpoint.
+    static func requiredScale(bounds: CGRect, anchor: CGPoint, clear: CGRect) -> Double {
+        guard clear.contains(anchor) else { return 1 }
+        let horizontal = max((anchor.x - bounds.minX) / max(1, anchor.x - clear.minX),
+                             (bounds.maxX - anchor.x) / max(1, clear.maxX - anchor.x))
+        let vertical = max((anchor.y - bounds.minY) / max(1, anchor.y - clear.minY),
+                           (bounds.maxY - anchor.y) / max(1, clear.maxY - anchor.y))
+        return Double(max(0, max(horizontal, vertical)))
+    }
+
+    @MainActor static func fittedDistance(bounds: MKMapRect, anchor: CLLocationCoordinate2D,
+                                          base: CLLocationDistance, on map: MKMapView,
+                                          clearRect: CGRect, anchorPoint: CGPoint,
+                                          pitch requestedPitch: Double? = nil,
+                                          projection reused: MKMapView? = nil) -> CLLocationDistance? {
+        guard clearRect.width > 1, clearRect.height > 1, map.bounds.width > 1, map.bounds.height > 1 else { return nil }
+        let corners = [MKMapPoint(x: bounds.minX, y: bounds.minY), MKMapPoint(x: bounds.maxX, y: bounds.minY),
+                       MKMapPoint(x: bounds.maxX, y: bounds.maxY), MKMapPoint(x: bounds.minX, y: bounds.maxY)]
+            .map { point -> CLLocationCoordinate2D in
+                let world = MKMapRect.world.width
+                let x = (point.x.truncatingRemainder(dividingBy: world) + world).truncatingRemainder(dividingBy: world)
+                return MKMapPoint(x: x, y: point.y).coordinate
+            }
+        // Creating a map view costs more than the fit, and holds refit on every detent change.
+        let projection = reused ?? MKMapView()
+        if projection.frame.size != map.bounds.size { projection.frame = CGRect(origin: .zero, size: map.bounds.size) }
+        projection.insetsLayoutMarginsFromSafeArea = false
+        projection.layoutMargins = .zero
+        if projection.mapType != map.mapType { projection.mapType = map.mapType }
+        projection.layoutIfNeeded()
+        let target = clearRect.offsetBy(dx: -map.bounds.minX, dy: -map.bounds.minY).insetBy(dx: 1, dy: 1)
+        let point = CGPoint(x: anchorPoint.x - map.bounds.minX, y: anchorPoint.y - map.bounds.minY)
+        let pitch = requestedPitch ?? Double(map.camera.pitch)
+        // Start near the box's scale so distant corners do not project behind a pitched horizon.
+        let seed = MKMapRect(x: bounds.minX, y: bounds.minY,
+                             width: max(1, bounds.width), height: max(1, bounds.height))
+        projection.setVisibleMapRect(seed, edgePadding: UIEdgeInsets(top: target.minY, left: target.minX,
+            bottom: projection.bounds.maxY - target.maxY, right: projection.bounds.maxX - target.maxX), animated: false)
+        var distance = ReplayHoldZoom.distance(base: base, pointsPerBar: 2,
+                                               fitted: projection.camera.centerCoordinateDistance)
+        for _ in 0..<24 {
+            var camera = MapCamera(centerCoordinate: anchor, distance: distance,
+                                   heading: map.camera.heading, pitch: pitch)
+            projection.setCamera(MKMapCamera(camera), animated: false)
+            for _ in 0..<4 {
+                camera = MapCamera(projection.camera)
+                camera.centerCoordinate = MapViewport.anchoredCenter(anchor,
+                    projectionCenter: projection.convert(CGPoint(x: projection.bounds.midX, y: projection.bounds.midY),
+                                                          toCoordinateFrom: projection),
+                    projectionTarget: projection.convert(point, toCoordinateFrom: projection))
+                projection.setCamera(MKMapCamera(camera), animated: false)
+            }
+            guard let projected = ReplayOverviewFit.projectedBounds(corners.map { projection.convert($0, toPointTo: projection) }) else { return nil }
+            let applied = projection.camera.centerCoordinateDistance
+            let ratio = requiredScale(bounds: projected, anchor: point, clear: target)
+            if ratio <= 1 || applied >= MapZoom.maximumDistance { return applied }
+            let next = min(MapZoom.maximumDistance, max(distance, applied) * max(1.01, ratio * 1.02))
+            if next <= distance { return applied }
+            distance = next
+        }
+        return projection.camera.centerCoordinateDistance
+    }
+}
+
 struct MapCameraTransition {
     let from: MapCamera
     var to: MapCamera

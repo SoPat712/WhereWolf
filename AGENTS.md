@@ -225,23 +225,35 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   height and align its intrinsic controls to the top while measurement is pending;
   otherwise SwiftUI centers the changed content inside the previous host height.
   Details uses one labeled capsule in both modes.
-  The history ruler enters scrubbing after a 0.35-second hold. Upward travel from
-  the hold selects Fast, Medium, Slow and Point by point at 50/110/170 points,
-  with an eight-point hysteresis band and a light impact on changes. Fast spans
-  roughly the loaded history per ruler width; intermediate scales use geometric
-  1–2–5 points-per-bar steps, and Point by point uses the normal 12-point ticks.
-  Ticks move with the finger 1:1 at every scale; ease their spacing, height and
-  width in UIKit over 0.15 seconds, or jump with Reduce Motion. Preserve normal
-  scrolling and inertia, stop hold motion on release, and cancel it when the
-  tab, scene or ruler interaction revision changes. While held, show a Liquid
-  Glass time/scale bubble with primary text (blur material before iOS 26), centered
-  eight points above the drawer's `wherewolf.panel.sheet` view and below the top
-  safe area; fall back to above the ruler if absent. Derive the scale from nearby
-  recorded intervals, or retention time before points load. Remove the window
-  bubble on release or cancellation without changing drawer height. Reaching Live
-  clamps at zero without ending a drag or hold; return to Live only when motion
-  ends there. Keep VoiceOver's point steps and announce the held scale. Retain
-  every stored route point.
+  The history ruler enters scrubbing after a 0.35-second hold. Its precision
+  detents use every 1–2–5 points-per-bar step, from the smallest step that rounds
+  up to cover the loaded history in one ruler width down to one point per bar.
+  Before points load, use the same ladder over 48 time ticks. Upward travel
+  refines in 48-point bands, shrinking evenly to a 36-point floor when space is
+  short; the top safe-area edge (with 24-point clearance) always reaches the finest
+  detent. Keep four-point hysteresis on each side of boundaries and a soft light
+  impact on changes. Bar spacing (12–18), heights, width and bottom grow with
+  log(step) / log(coarsest), with zero coarseness for a one-step ladder.
+  Ticks move with the finger 1:1 at every scale; ease their geometry in UIKit over
+  0.15 seconds, or jump with Reduce Motion. Preserve normal scrolling and inertia,
+  stop hold motion on release, and cancel it when the tab, scene or ruler
+  interaction revision changes. While held, show a Liquid Glass time/scale bubble
+  with primary text (blur material before iOS 26), centered eight points above the
+  drawer's `wherewolf.panel.sheet` view and below the top safe area; fall back to
+  above the ruler if absent. Derive the scale from nearby recorded intervals, or
+  retention time before points load. Remove the window bubble on release or
+  cancellation without changing drawer height. Reaching Live clamps at zero
+  without ending a drag or hold; return to Live only when motion ends there.
+  Keep VoiceOver's point steps and announce the held scale. Retain every stored
+  route point. A Tracker replay hold recaptures a manually moved camera, preserving
+  overview mode. In follow mode, one point per bar uses the starting follow distance
+  D0; coarser detents fit the route window visible on the ruler into the overview's
+  clear map area, never closer than D0. Compute the box at hold start, detent changes
+  and moves greater than half a window, never per frame. UIKit eases distance in
+  log space over 0.3 seconds while following the same replay pose. Do not write the
+  saved follow distance or the outer SwiftUI camera on held steps. Release flies
+  back to D0 through the existing camera transition; Live's flight wins. Cancellation
+  restores D0 immediately, and release/cancellation syncs the outer camera once.
   Trip Settings uses `ExpandingSheetBackgroundView`: glass beneath a grouped
   Settings background that eases with the sheet's visible height. Row cards use
   `settingsRowBackground()`: in the glass sheet they ease from a translucent fill to the
@@ -322,9 +334,11 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   speed on either side, which counts as the direct distance across it.
   Keep its width steady, and stack readings that do not fit instead of truncating them. Recorded motion outranks speed inference,
   except that flying speeds win. Hide altitude when vertical accuracy is negative. Nearby
-  payloads use a bounded prefetch cache and coalesced reads; format JSON only for
-  inspection. Cache the complete route through every stored point, without
-  sampling. Publish replay position and coordinate together in one `ReplayPose`.
+  payloads use a bounded prefetch cache and coalesced reads; a ruler hold shows
+  only cached payloads and starts no reads, including from in-flight completions.
+  On release, load around the final selection once. Normal drags and playback keep
+  prefetching. Format JSON only for inspection. Cache the complete route through
+  every stored point, without sampling. Publish replay position and coordinate together in one `ReplayPose`.
   `ReplayRoutePresentation` retains every vertex and draws every route line with a
   plain `MKPolylineRenderer`, the only renderer MapKit draws as vector geometry at
   a constant screen width. Path renderer subclasses become bitmap tiles that stretch

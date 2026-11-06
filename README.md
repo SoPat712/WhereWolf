@@ -152,12 +152,17 @@ have common-value detents and selection feedback, and still support exact numeri
 releasing saves it once.
 
 Hold the history ruler for a moment, then drag sideways to scrub the timeline.
-Move upward over the map for finer steps: Fast, Medium, Slow, then Point by point.
-The bars follow your finger at every scale, growing taller and wider for larger
-steps. A Liquid Glass bubble above the drawer shows the selected time and how
-much time each bar represents (blur material before iOS 26). Releasing stops the
+Move upward over the map for finer steps through 1–2–5 detents: 1,000, 500,
+200, 100, 50, 20, 10, 5, 2, then one recorded point per bar. Longer histories add
+coarser steps; shorter histories need fewer. The starting step covers the whole
+loaded history in one ruler width. The bars follow your finger at every scale,
+growing taller and wider for larger steps. A Liquid Glass bubble above the drawer
+shows the selected time and how much time each bar represents (blur material before iOS 26). Releasing stops the
 hold immediately. Reaching Live keeps the gesture active so you can scrub back;
-releasing there returns to Live.
+releasing there returns to Live. While following a replay point, coarser steps
+zoom out to fit the visible ruler's stretch of route, then release flies back to
+your starting zoom. Overview stays in overview. Held scrubbing uses cached point
+details and loads the final selection on release.
 Normal dragging keeps its original precision and momentum. Trip Settings starts
 with a translucent glass background and fades toward the grouped Settings
 background as the sheet expands; collapsing reverses the fade. Cards use the

@@ -91,6 +91,9 @@ struct WhereWolfRootView: View {
         .onChange(of: history.cameraCenter) { previous, center in
             focusHistoryPosition(center, from: previous)
         }
+        .onChange(of: history.rulerHold != nil) { _, holding in
+            if holding, selection == 0, !replayOverview { replayCameraFree = false }
+        }
         .onChange(of: bridge.tripInProgress) { _, _ in
             tripRevision = nil
             trip = TripMapState()
@@ -232,6 +235,8 @@ struct WhereWolfRootView: View {
                                 replayFollowing: !replayCameraFree,
                                 replayFollowDistance: replayCameraDistance ?? 2_000,
                                 replayOverview: mapTab == 0 && replayOverview,
+                                rulerHold: mapTab == 0 ? history.rulerHold : nil,
+                                rulerHoldCancelled: history.rulerHoldCancelled && history.isBrowsing,
                                 replayStatusHeight: mapTab == 0 && history.isBrowsing
                                     ? max(speedometerHeight, replayStatusHeight) : 0,
                                 replayCameraAction: replayCameraAction, recenterAction: recenterRequest,
@@ -240,7 +245,12 @@ struct WhereWolfRootView: View {
                                 scenePhase: scenePhase, pageActive: selection < 2,
                                 trackingEnabled: bridge.trackingEnabled,
                                 onCameraChange: cameraChanged, onInteraction: stopFollowing,
-                                onRotationChange: { mapRotated = $0 })
+                                onRotationChange: { mapRotated = $0 },
+                                onRulerCameraRestore: { restored, base in
+            guard history.isBrowsing, history.rulerHold == nil else { return }
+            replayCameraDistance = base
+            if mapTab == 0, !replayOverview { camera = .camera(restored) }
+        })
     }
 
     private func stopFollowing() {
@@ -261,7 +271,7 @@ struct WhereWolfRootView: View {
             mapPanned(current)
             return
         }
-        guard mapTab != 0 || !replayOverview else { return }
+        guard mapTab != 0 || (!replayOverview && history.rulerHold == nil) else { return }
         guard !camera.followsUserLocation, let region = camera.region,
               region.span.latitudeDelta.isFinite, region.span.latitudeDelta > 0 else { return }
         camera = .camera(current)
@@ -339,7 +349,7 @@ struct WhereWolfRootView: View {
 
     private func applyCameraResult(_ result: MapZoomResult) {
         if mapTab == 0, history.isBrowsing {
-            replayCameraDistance = result.camera.distance
+            if history.rulerHold == nil { replayCameraDistance = result.camera.distance }
             replayCameraFree = !result.replayFollowing
             replayOverview = false
             camera = .camera(result.camera)
@@ -355,7 +365,7 @@ struct WhereWolfRootView: View {
     private func locationButtonPressed() {
         if mapTab == 0, history.isBrowsing {
             let overview = locationButtonShowsOverview
-            if replayCameraFree, !overview, let map = drawerGeometry.readMap?() {
+            if replayCameraFree, !overview, history.rulerHold == nil, let map = drawerGeometry.readMap?() {
                 replayCameraDistance = map.camera.centerCoordinateDistance
             }
             withAnimation(.easeInOut(duration: 0.45)) {
@@ -395,6 +405,8 @@ struct WhereWolfRootView: View {
     private func focusHistoryPosition(_ position: ReplayCoordinate?, from previous: ReplayCoordinate? = nil) {
         guard selection == 0, history.isBrowsing, !replayOverview,
               let coordinate = position?.coordinate else { return }
+        // The native surface follows this same pose; a hold only needs the outer camera on release.
+        guard history.rulerHold == nil else { return }
         if replayCameraFree {
             // Playback, including its final frame, must not recapture a manually moved camera.
             guard history.isRulerInteracting || history.playbackTime == nil else { return }
