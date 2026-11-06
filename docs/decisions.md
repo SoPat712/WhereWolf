@@ -49,6 +49,17 @@ This log lists the decisions agents made on their own while working on WhereWolf
 - **Why:** a stop needs at least 5 minutes of points, and Coverage marks gaps over 10 minutes. iOS often returns no network name in the background, which let raw indoor fixes through between points.
 - **Undo:** `git revert b3b71dc`, or raise `GLWifiPlaceHeartbeatInterval` for strictly one point per visit.
 
+## 2026-11-06: pinch ruler details (4339cf4)
+
+- **Approved:** pinch to change the ruler's scale, flick at that scale, and a scale button with a menu (mockup boards 1, 3 and 4). Hold-and-move-up goes away.
+- **Decided:**
+  - a pinch changes step only 15% past the logarithmic midpoint between steps, so the scale does not flicker at a boundary;
+  - the menu offers Every point, 1 minute, 5 minutes, 15 minutes, 1 hour, 6 hours and Whole history, and drops entries that land on the same step;
+  - the scale lasts while the app runs and is not saved across launches;
+  - the scale button shares the 18-point row under the ruler, styled like the time button, rather than a 44-point button that would make the drawer taller;
+  - the hint at Live reads "Pinch for scale; hold to scrub".
+- **Undo:** `git revert 4339cf4`.
+
 ## Deferred for the owner
 
 - **Watch complication for Today:** it needs a new watch widget extension and bundle identifier, which is an Apple developer account change.
