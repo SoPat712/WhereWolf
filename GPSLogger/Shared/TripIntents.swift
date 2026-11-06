@@ -24,7 +24,9 @@ struct TripModeEntity: AppEntity {
         let mode = TripModeStore.mode(id)
         let symbol = TripModeStore.symbol(id)
         return DisplayRepresentation(title: "\(mode?.name ?? id)",
-                                     image: TripModeStore.isCustomSymbol(symbol) ? .init(named: symbol) : .init(systemName: symbol),
+                                     // Templates take the system's tint, so custom symbols stay visible on dark backgrounds.
+                                     image: TripModeStore.isCustomSymbol(symbol) ? .init(named: symbol, isTemplate: true)
+                                         : .init(systemName: symbol, isTemplate: true),
                                      synonyms: (mode?.synonyms ?? []).map { "\($0)" })
     }
 }

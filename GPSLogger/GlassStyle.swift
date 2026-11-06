@@ -22,9 +22,26 @@ private struct SettingsFormStyle: ViewModifier {
     }
 }
 
+private struct SettingsRowBackground: ViewModifier {
+    @Environment(\.glassSettingsSheet) private var glassSheet
+
+    func body(content: Content) -> some View {
+        if glassSheet {
+            content.listRowBackground(ExpandingSheetRowBackground())
+        } else {
+            content.listRowBackground(Color.settingsRow)
+        }
+    }
+}
+
 extension View {
     func settingsFormStyle() -> some View {
         modifier(SettingsFormStyle())
+    }
+
+    // Inside the glass sheet, row cards follow the sheet from translucent to solid.
+    func settingsRowBackground() -> some View {
+        modifier(SettingsRowBackground())
     }
 
     @ViewBuilder
@@ -103,6 +120,8 @@ final class ExpandingSheetBackgroundView: UIView {
     private var targetOpacity: CGFloat = 0
     private var detent: PresentationDetent?
     private let observedPans = NSHashTable<UIPanGestureRecognizer>.weakObjects()
+    private static let backgrounds = NSHashTable<ExpandingSheetBackgroundView>.weakObjects()
+    private static let rows = NSHashTable<ExpandingSheetRowBackgroundView>.weakObjects()
 
     var solidOpacity: CGFloat { fill.alpha }
     var solidColor: UIColor { fill.backgroundColor ?? .clear }
@@ -123,6 +142,7 @@ final class ExpandingSheetBackgroundView: UIView {
         fill.alpha = 0
         addSubview(glass)
         addSubview(fill)
+        Self.backgrounds.add(self)
         NotificationCenter.default.addObserver(self, selector: #selector(accessibilityChanged),
                                                name: UIAccessibility.reduceTransparencyStatusDidChangeNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(stopFollowing),
@@ -183,6 +203,7 @@ final class ExpandingSheetBackgroundView: UIView {
         // UIKit can commit a detent's layout before its visual transition starts.
         fill.alpha = abs(difference) < 0.001 ? targetOpacity
             : fill.alpha + difference * (1 - exp(-elapsed / 0.07))
+        publish()
         stableFrames = abs(height - lastHeight) < 0.1 ? stableFrames + 1 : 0
         lastHeight = height
         if stableFrames >= 8 && fill.alpha == targetOpacity && CACurrentMediaTime() >= followUntil { stopFollowing() }
@@ -245,7 +266,24 @@ final class ExpandingSheetBackgroundView: UIView {
             targetOpacity = 1
             fill.alpha = 1
         }
+        publish()
         return height
+    }
+
+    fileprivate static func attach(_ row: ExpandingSheetRowBackgroundView) {
+        rows.add(row)
+        row.solid = backgrounds.allObjects.first { $0.owns(row) }?.fill.alpha ?? 1
+    }
+
+    private func owns(_ view: UIView) -> Bool {
+        guard let window, view.window === window else { return false }
+        guard let container = sheet?.containerView else { return true }
+        return view.isDescendant(of: container)
+    }
+
+    // Rows update in UIKit on the background's own frames, without re-rendering SwiftUI.
+    private func publish() {
+        for row in Self.rows.allObjects where owns(row) { row.solid = fill.alpha }
     }
 
     @objc private func accessibilityChanged() { setNeedsLayout() }
@@ -259,6 +297,49 @@ private final class ExpandingSheetFrameTarget: NSObject {
     @objc func frame(_ link: CADisplayLink) {
         guard let view else { link.invalidate(); return }
         view.advanceFrame(at: link.timestamp)
+    }
+}
+
+struct ExpandingSheetRowBackground: UIViewRepresentable {
+    func makeUIView(context: Context) -> ExpandingSheetRowBackgroundView { ExpandingSheetRowBackgroundView() }
+    func updateUIView(_ view: ExpandingSheetRowBackgroundView, context: Context) {}
+}
+
+// A row card that is a translucent fill over the sheet's glass and the solid grouped
+// row color once the sheet's own background is solid.
+final class ExpandingSheetRowBackgroundView: UIView {
+    private let glassFill = UIView()
+    private let solidFill = UIView()
+
+    var solid: CGFloat = 1 {
+        didSet {
+            solidFill.alpha = solid
+            glassFill.alpha = 1 - solid
+        }
+    }
+
+    init() {
+        super.init(frame: .zero)
+        isUserInteractionEnabled = false
+        backgroundColor = .clear
+        glassFill.backgroundColor = .tertiarySystemFill
+        solidFill.backgroundColor = .secondarySystemGroupedBackground
+        glassFill.alpha = 0
+        addSubview(glassFill)
+        addSubview(solidFill)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        glassFill.frame = bounds
+        solidFill.frame = bounds
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window != nil { ExpandingSheetBackgroundView.attach(self) }
     }
 }
 

@@ -155,7 +155,7 @@ struct TripModesView: View {
             } footer: {
                 Text("Modes appear in this order in the trip picker. Names and icons are local; the server value stays stable unless you set one.")
             }
-            .listRowBackground(Color.settingsRow)
+            .settingsRowBackground()
 
             Section {
                 Button("Restore Default Modes", systemImage: "arrow.counterclockwise") {
@@ -164,7 +164,7 @@ struct TripModesView: View {
             } footer: {
                 Text("Restoring brings back deleted built-ins and resets their names, icons and settings. Your custom modes stay at the end.")
             }
-            .listRowBackground(Color.settingsRow)
+            .settingsRowBackground()
         }
         .settingsFormStyle()
         .navigationTitle("Trip Modes")

@@ -232,8 +232,9 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   only while held, without changing drawer height; remove
   it from the window on release or cancellation. Retain every stored route point.
   Trip Settings uses `ExpandingSheetBackgroundView`: glass beneath a grouped
-  Settings background that eases with the sheet's visible height. Use secondary
-  grouped colors for row cards. `SettingsFormStyle` clears Form and navigation
+  Settings background that eases with the sheet's visible height. Row cards use
+  `settingsRowBackground()`: in the glass sheet they ease from a translucent fill to the
+  secondary grouped color on the background's own UIKit frames, without SwiftUI updates. `SettingsFormStyle` clears Form and navigation
   backgrounds only inside the glass sheet; regular Settings navigation retains
   its native grouped Form. Stop frame updates when settled, detached or
   backgrounded. Respect Reduce Transparency and dark appearance.

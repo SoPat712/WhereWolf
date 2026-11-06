@@ -172,6 +172,9 @@ final class DrawerLayoutTests: XCTestCase {
         let sheet = try XCTUnwrap(root.presentedViewController?.sheetPresentationController)
         XCTAssertLessThan(backdrop.solidOpacity, 0.05,
                           "Background \(backdrop.bounds.height), presented \(sheet.presentedView?.bounds.height ?? 0), frame \(sheet.frameOfPresentedViewInContainerView)")
+        let rows = rowBackgrounds(in: window)
+        XCTAssertFalse(rows.isEmpty, "Trip Settings rows should use the sheet's row background.")
+        XCTAssertTrue(rows.allSatisfy { $0.solid < 0.05 }, "Rows over the glass should be translucent: \(rows.map(\.solid))")
 
         let recorder = SheetOpacityRecorder(backdrop: backdrop)
         defer { recorder.stop() }
@@ -183,6 +186,8 @@ final class DrawerLayoutTests: XCTestCase {
         }
         recorder.stop()
         XCTAssertGreaterThan(backdrop.solidOpacity, 0.99)
+        XCTAssertTrue(rowBackgrounds(in: window).allSatisfy { $0.solid > 0.99 },
+                      "Rows should be solid once the sheet is: \(rowBackgrounds(in: window).map(\.solid))")
         XCTAssertGreaterThan(recorder.samples.filter { $0 > 0.05 && $0 < 0.95 }.count, 3,
                              "The backdrop should fade during expansion, not switch at the endpoint. Samples: \(recorder.samples)")
         backdrop.followForTransition()
@@ -191,10 +196,15 @@ final class DrawerLayoutTests: XCTestCase {
             !backdrop.isFollowing && root.presentedViewController?.transitionCoordinator == nil
         }
         XCTAssertLessThan(backdrop.solidOpacity, 0.05)
+        XCTAssertTrue(rowBackgrounds(in: window).allSatisfy { $0.solid < 0.05 })
         XCTAssertFalse(backdrop.isFollowing)
         backdrop.setNeedsLayout()
         backdrop.layoutIfNeeded()
         XCTAssertFalse(backdrop.isFollowing, "An unchanged layout must not restart settled frame updates.")
+    }
+
+    private func rowBackgrounds(in view: UIView) -> [ExpandingSheetRowBackgroundView] {
+        (view as? ExpandingSheetRowBackgroundView).map { [$0] } ?? view.subviews.flatMap { rowBackgrounds(in: $0) }
     }
 
     private func sheetBackground(in view: UIView) -> ExpandingSheetBackgroundView? {
