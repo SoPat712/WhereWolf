@@ -66,6 +66,8 @@
 		A05500000000000000000002 /* WhereWolfShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = A05500000000000000000001 /* WhereWolfShell.swift */; };
 		A06600000000000000000002 /* RecentLocationHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = A06600000000000000000001 /* RecentLocationHistory.swift */; };
 		A07700000000000000000002 /* HistoryPlaybackView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A07700000000000000000001 /* HistoryPlaybackView.swift */; };
+		D1F600000000000000000004 /* HistoryGoToView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F600000000000000000003 /* HistoryGoToView.swift */; };
+		D1F600000000000000000002 /* HistoryLandmarks.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F600000000000000000001 /* HistoryLandmarks.swift */; };
 		A0990000000000000000000B /* TipJarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A09900000000000000000001 /* TipJarView.swift */; };
 		A0990000000000000000000C /* TipStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A09900000000000000000002 /* TipStore.swift */; };
 		A0990000000000000000000D /* TipDonation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A09900000000000000000003 /* TipDonation.swift */; };
@@ -75,6 +77,7 @@
 		A0BC00000000000000000002 /* ReplayRouteRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0BC00000000000000000001 /* ReplayRouteRenderer.swift */; };
 		A0BC00000000000000000012 /* ReplayRouteRendererTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0BC00000000000000000011 /* ReplayRouteRendererTests.swift */; };
 		A0CC00000000000000000002 /* HistoryPlaybackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0CC00000000000000000001 /* HistoryPlaybackTests.swift */; };
+		D1F600000000000000000006 /* HistoryLandmarkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F600000000000000000005 /* HistoryLandmarkTests.swift */; };
 		A0DD00000000000000000002 /* SettingsReliabilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0DD00000000000000000001 /* SettingsReliabilityTests.swift */; };
 		A0EE00000000000000000002 /* DrawerLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0EE00000000000000000001 /* DrawerLayoutTests.swift */; };
 		AF7619AB633D818AD53D1C15 /* TripActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8F54F73CE518F85F9D383BF /* TripActivityAttributes.swift */; };
@@ -277,6 +280,8 @@
 		A05500000000000000000001 /* WhereWolfShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhereWolfShell.swift; sourceTree = "<group>"; };
 		A06600000000000000000001 /* RecentLocationHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentLocationHistory.swift; sourceTree = "<group>"; };
 		A07700000000000000000001 /* HistoryPlaybackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryPlaybackView.swift; sourceTree = "<group>"; };
+		D1F600000000000000000003 /* HistoryGoToView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryGoToView.swift; sourceTree = "<group>"; };
+		D1F600000000000000000001 /* HistoryLandmarks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryLandmarks.swift; sourceTree = "<group>"; };
 		A09900000000000000000001 /* TipJarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TipJarView.swift; sourceTree = "<group>"; };
 		A09900000000000000000002 /* TipStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TipStore.swift; sourceTree = "<group>"; };
 		A09900000000000000000003 /* TipDonation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TipDonation.swift; sourceTree = "<group>"; };
@@ -286,6 +291,7 @@
 		A0BC00000000000000000001 /* ReplayRouteRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplayRouteRenderer.swift; sourceTree = "<group>"; };
 		A0BC00000000000000000011 /* ReplayRouteRendererTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/ReplayRouteRendererTests.swift; sourceTree = SOURCE_ROOT; };
 		A0CC00000000000000000001 /* HistoryPlaybackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/HistoryPlaybackTests.swift; sourceTree = SOURCE_ROOT; };
+		D1F600000000000000000005 /* HistoryLandmarkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/HistoryLandmarkTests.swift; sourceTree = SOURCE_ROOT; };
 		A0DD00000000000000000001 /* SettingsReliabilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/SettingsReliabilityTests.swift; sourceTree = SOURCE_ROOT; };
 		A0EE00000000000000000001 /* DrawerLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/DrawerLayoutTests.swift; sourceTree = SOURCE_ROOT; };
 		A535D757A5D6F60B81BFCA5E /* UpstreamIntegrationTests.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = UpstreamIntegrationTests.m; path = Tests/UpstreamIntegrationTests.m; sourceTree = "<group>"; };
@@ -438,6 +444,7 @@
 				C0F000000000000000000110 /* ConnectionTestTests.swift */,
 				C0F00000000000000000010E /* SettingsBackupTests.swift */,
 				A0CC00000000000000000001 /* HistoryPlaybackTests.swift */,
+				D1F600000000000000000005 /* HistoryLandmarkTests.swift */,
 				C0A7C4000000000000000008 /* WatchLinkTests.swift */,
 				00D3E0000000000000000001 /* TripEndPromptTests.swift */,
 				C0A100000000000000000006 /* TrackingPolicyTests.m */,
@@ -555,6 +562,8 @@
 				A04400000000000000000001 /* MapControlPanel.swift */,
 				A06600000000000000000001 /* RecentLocationHistory.swift */,
 				A07700000000000000000001 /* HistoryPlaybackView.swift */,
+				D1F600000000000000000003 /* HistoryGoToView.swift */,
+				D1F600000000000000000001 /* HistoryLandmarks.swift */,
 				D1F0000000000000000000A1 /* MapMotion.swift */,
 				D1F0000000000000000000B1 /* ReplayTimeline.swift */,
 				00D2E0000000000000000001 /* TripEndPrompt.swift */,
@@ -888,6 +897,8 @@
 				A04400000000000000000002 /* MapControlPanel.swift in Sources */,
 				A06600000000000000000002 /* RecentLocationHistory.swift in Sources */,
 				A07700000000000000000002 /* HistoryPlaybackView.swift in Sources */,
+				D1F600000000000000000004 /* HistoryGoToView.swift in Sources */,
+				D1F600000000000000000002 /* HistoryLandmarks.swift in Sources */,
 				D1F0000000000000000000A2 /* MapMotion.swift in Sources */,
 				D1F0000000000000000000B2 /* ReplayTimeline.swift in Sources */,
 				00D2E0000000000000000002 /* TripEndPrompt.swift in Sources */,
@@ -943,6 +954,7 @@
 				B08800000000000000000053 /* LiveActivityAudioPolicyTests.swift in Sources */,
 				B08800000000000000000057 /* LiveActivityReopenPromptTests.swift in Sources */,
 				A0CC00000000000000000002 /* HistoryPlaybackTests.swift in Sources */,
+				D1F600000000000000000006 /* HistoryLandmarkTests.swift in Sources */,
 				C0A7C4000000000000000018 /* WatchLinkTests.swift in Sources */,
 				00D3E0000000000000000002 /* TripEndPromptTests.swift in Sources */,
 				A0DD00000000000000000002 /* SettingsReliabilityTests.swift in Sources */,

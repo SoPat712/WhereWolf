@@ -110,6 +110,13 @@ struct WhereWolfRootView: View {
         .onReceive(NotificationCenter.default.publisher(for: .recentLocationHistoryRetentionChanged)) { _ in
             history.retentionDidChange()
         }
+        .onChange(of: bridge.wifiPlaces) { _, _ in history.reload() }
+        .onReceive(NotificationCenter.default.publisher(for: NSLocale.currentLocaleDidChangeNotification)) { _ in
+            history.reload()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .NSSystemTimeZoneDidChange)) { _ in
+            history.reload()
+        }
         .onChange(of: scenePhase) { _, phase in
             bridge.setSceneActive(phase == .active, id: sceneID)
             updateConsumers()

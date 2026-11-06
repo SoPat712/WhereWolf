@@ -494,14 +494,14 @@ final class HistoryPlaybackTests: XCTestCase {
         let scale = HistoryRulerCoarseDrag.scale(step: 20, coarsest: 2_000)
         let amount = CGFloat(coarseness)
         XCTAssertEqual(scale.spacing, 12 + 6 * amount, accuracy: 1e-9)
-        XCTAssertEqual(scale.minorHeight, 12 + 10 * amount, accuracy: 1e-9)
-        XCTAssertEqual(scale.majorHeight, 17 + 9 * amount, accuracy: 1e-9)
+        XCTAssertEqual(scale.minorHeight, 12 + 8 * amount, accuracy: 1e-9)
+        XCTAssertEqual(scale.majorHeight, 17 + 7 * amount, accuracy: 1e-9)
         XCTAssertEqual(scale.lineWidth, 1 + 0.6 * amount, accuracy: 1e-9)
         XCTAssertEqual(scale.bottom, 21 + 5 * amount, accuracy: 1e-9)
         let coarse = HistoryRulerCoarseDrag.scale(step: 2_000, coarsest: 2_000)
         XCTAssertEqual(coarse.spacing, 18)
-        XCTAssertEqual(coarse.minorHeight, 22)
-        XCTAssertEqual(coarse.majorHeight, 26)
+        XCTAssertEqual(coarse.minorHeight, 20)
+        XCTAssertEqual(coarse.majorHeight, 24)
         XCTAssertEqual(coarse.lineWidth, 1.6)
         XCTAssertEqual(coarse.bottom, 26)
     }
@@ -1018,6 +1018,8 @@ final class HistoryPlaybackTests: XCTestCase {
         XCTAssertNil(timeline.legDistance(at: first.count + 5))
         let last = try XCTUnwrap(timeline.legDistance(at: points.count - 1))
         XCTAssertEqual(last, 2_100, accuracy: 20)
+        XCTAssertEqual(timeline.distance(from: 0, through: points.count - 1), 3_100, accuracy: 20)
+        XCTAssertEqual(timeline.distance(from: stay.count + first.count - 1, through: points.count - 1), last, accuracy: 0.001)
     }
 
     func testLegDistanceSkipsGPSJumpsAndStillWandering() throws {
@@ -1547,6 +1549,167 @@ final class HistoryPlaybackTests: XCTestCase {
             model.select(index)
             XCTAssertNil(model.playbackAccuracy)
         }
+    }
+
+    func testArchivePointLoadsUseInferredActivityForJourneyRowsWithoutPayloadPrefetch() {
+        let suite = "WhereWolf.HistoryLandmarkMotion.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(suite, isDirectory: true)
+        let now = Date(timeIntervalSince1970: 2_000_000_000)
+        let store = RecentLocationHistory(directoryURL: directory, defaults: defaults, clock: { now })
+        defer {
+            defaults.removePersistentDomain(forName: suite)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        for index in 0..<2 {
+            store.recordUpdate([
+                "type": "Feature", "geometry": ["type": "Point", "coordinates": [-122.0, 45 + Double(index) * 60 / 111_195]],
+                "properties": ["timestamp": ISO8601DateFormatter().string(from: now.addingTimeInterval(Double(index - 2) * 60)),
+                               "motion": ["cycling"]]
+            ] as NSDictionary)
+        }
+        let loaded = expectation(description: "point metadata")
+        var points: [RecordedLocation] = []
+        store.load(after: 0) { points = $0; loaded.fulfill() }
+        wait(for: [loaded], timeout: 2)
+        XCTAssertEqual(points.count, 2)
+        let landmarks = HistoryLandmarks(points: points, timeline: ReplayTimeline(points: points), places: [])
+        XCTAssertEqual(landmarks.journey.first?.rows.first?.title, "Walk")
+    }
+
+    @MainActor func testStopJumpsAndGoToUseTheSelectionPathAndKeepLandmarksCached() {
+        let start = Date().addingTimeInterval(-1_200)
+        var points = (0...10).map {
+            RecordedLocation(id: Int64($0 + 1), timestamp: start.addingTimeInterval(Double($0) * 60),
+                             latitude: 45, longitude: -122)
+        }
+        var landmarkTime = 0.0
+        let model = HistoryPlaybackModel(pointLoader: { after, completion in
+            completion(points.filter { $0.id > after })
+        }, payloadLoader: { _, completion in completion([:]) }, places: { [] },
+           landmarkBuilder: immediateLandmarks, landmarkClock: { landmarkTime })
+        model.setConsumerActive(true)
+        let landmarks = model.landmarks
+        XCTAssertEqual(landmarks.boundaries.map(\.index), [0, 10])
+        model.beginRulerInteraction()
+        model.scrub(rulerPosition: 5.5, liveEdge: Date())
+        let revision = model.rulerInteractionRevision
+        model.goTo(start.addingTimeInterval(5.6 * 60))
+        XCTAssertTrue(model.isBrowsing)
+        XCTAssertEqual(model.selectedIndex, 6)
+        XCTAssertEqual(model.renderPose?.position, 6)
+        XCTAssertNil(model.rulerPosition)
+        XCTAssertNil(model.playbackTime)
+        XCTAssertFalse(model.isRulerInteracting)
+        XCTAssertGreaterThan(model.rulerInteractionRevision, revision)
+        model.jumpToStop(1)
+        XCTAssertEqual(model.selectedIndex, 10)
+        XCTAssertNil(model.stopBoundary(1))
+        model.jumpToStop(-1)
+        XCTAssertEqual(model.selectedIndex, 0)
+        XCTAssertNil(model.stopBoundary(-1))
+        XCTAssertTrue(model.landmarks === landmarks)
+        model.reload()
+        XCTAssertTrue(model.landmarks === landmarks)
+        points.append(RecordedLocation(id: 12, timestamp: start.addingTimeInterval(660), latitude: 45.001, longitude: -122))
+        model.reload()
+        XCTAssertTrue(model.landmarks === landmarks, "New points retain the cached landmarks until the coalesced build")
+        landmarkTime = 30
+        model.reload()
+        XCTAssertFalse(model.landmarks === landmarks)
+        XCTAssertEqual(model.landmarks.timestamps.count, points.count)
+        model.goTo(start.addingTimeInterval(-60))
+        XCTAssertEqual(model.selectedIndex, 0)
+        model.goTo(Date())
+        XCTAssertEqual(model.selectedIndex, points.count - 1)
+    }
+
+    @MainActor func testStopJumpButtonsHaveNoTargetWithoutStays() {
+        let points = locations(5)
+        let model = HistoryPlaybackModel(pointLoader: { _, completion in completion(points) },
+                                         payloadLoader: { _, completion in completion([:]) }, places: { [] })
+        model.setConsumerActive(true)
+        model.scrub(pointAt: 2)
+        XCTAssertNil(model.stopBoundary(-1))
+        XCTAssertNil(model.stopBoundary(1))
+        model.jumpToStop(-1)
+        model.jumpToStop(1)
+        XCTAssertEqual(model.selectedIndex, 2)
+    }
+
+    @MainActor func testStaleLandmarkGenerationCannotReplaceANewerBuild() {
+        let points = locations(5)
+        var places: [WifiPlace] = []
+        var builds: [(result: HistoryLandmarks, publish: (HistoryLandmarks) -> Void)] = []
+        let model = HistoryPlaybackModel(pointLoader: { after, completion in
+            completion(points.filter { $0.id > after })
+        }, payloadLoader: { _, completion in completion([:]) }, places: { places },
+           landmarkBuilder: { points, timeline, places, calendar, locale, publish in
+            builds.append((HistoryLandmarks(points: points, timeline: timeline, places: places,
+                                             calendar: calendar, locale: locale), publish))
+        })
+        model.setConsumerActive(true)
+        let previous = model.landmarks
+        XCTAssertEqual(builds.count, 1)
+        places = [WifiPlace(id: "home", name: "Home", latitude: 45, longitude: -122)]
+        model.reload()
+        XCTAssertEqual(builds.count, 2, "Place changes bypass new-point coalescing")
+        XCTAssertTrue(model.landmarks === previous)
+        builds[1].publish(builds[1].result)
+        XCTAssertTrue(model.landmarks === builds[1].result)
+        builds[0].publish(builds[0].result)
+        XCTAssertTrue(model.landmarks === builds[1].result)
+    }
+
+    @MainActor func testLandmarkNavigationClampsWhenPointsShrinkBeforeAPendingBuildLands() {
+        let now = Date()
+        let points: [RecordedLocation] = (0..<12).map { (index: Int) -> RecordedLocation in
+            let offset: TimeInterval = index < 6 ? -30 * 3_600 + Double(index) * 60 : -1_200 + Double(index - 6) * 60
+            let latitude: Double = index < 6 ? 45 : 45.01
+            return RecordedLocation(id: Int64(index + 1), timestamp: now.addingTimeInterval(offset),
+                                    latitude: latitude, longitude: -122)
+        }
+        var retention: TimeInterval = 48 * 3_600
+        var places: [WifiPlace] = []
+        var builds: [(result: HistoryLandmarks, publish: (HistoryLandmarks) -> Void)] = []
+        let model = HistoryPlaybackModel(pointLoader: { after, completion in
+            completion(points.filter { $0.id > after })
+        }, payloadLoader: { _, completion in completion([:]) }, retentionDuration: { retention }, places: { places },
+           landmarkBuilder: { points, timeline, places, calendar, locale, publish in
+            builds.append((HistoryLandmarks(points: points, timeline: timeline, places: places,
+                                             calendar: calendar, locale: locale), publish))
+        })
+        model.setConsumerActive(true)
+        builds[0].publish(builds[0].result)
+        let previous = model.landmarks
+        places = [WifiPlace(id: "home", name: "Home", latitude: 45, longitude: -122)]
+        model.reload()
+        XCTAssertEqual(builds.count, 2)
+        retention = 24 * 3_600
+        model.retentionDidChange()
+        XCTAssertEqual(model.points.count, 6)
+        XCTAssertTrue(model.landmarks === previous)
+        model.goTo(points.last!.timestamp)
+        XCTAssertEqual(model.selectedIndex, 5)
+        XCTAssertNil(model.stopBoundary(1))
+        model.scrub(pointAt: previous.journey.first!.rows.last!.start)
+        XCTAssertEqual(model.selectedIndex, 5)
+        model.scrub(pointAt: 0)
+        XCTAssertEqual(model.stopBoundary(1)?.index, 5)
+        model.jumpToStop(1)
+        XCTAssertEqual(model.selectedIndex, 5)
+        builds[1].publish(builds[1].result)
+        XCTAssertTrue(model.landmarks === previous, "The pending pre-expiry generation must be ignored")
+        let latest = builds.last!
+        latest.publish(latest.result)
+        XCTAssertTrue(model.landmarks === latest.result)
+        XCTAssertEqual(model.landmarks.timestamps, model.points.map { (point: RecordedLocation) -> Date in point.timestamp })
+    }
+
+    @MainActor private func immediateLandmarks(points: [RecordedLocation], timeline: ReplayTimeline, places: [WifiPlace],
+                                              calendar: Calendar, locale: Locale,
+                                              completion: @escaping (HistoryLandmarks) -> Void) {
+        completion(HistoryLandmarks(points: points, timeline: timeline, places: places, calendar: calendar, locale: locale))
     }
 
     private func payloads(_ ids: [Int64]) -> [Int64: RecordedPayload] {

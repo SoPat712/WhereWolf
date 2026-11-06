@@ -214,16 +214,6 @@ final class ReplayTimeline {
                 shortestDurations[index] = ReplayPacing.shortestStay / count
             }
         }
-        var previous = 0
-        var offset = 0.0
-        for stay in stays + [ReplayStay(start: points.count, end: points.count, span: 0)] {
-            if previous < points.count {
-                for index in previous..<min(stay.start + 1, points.count) { legDistances[index] -= offset }
-            }
-            guard stay.end < points.count else { break }
-            offset = legDistances[stay.end]
-            previous = stay.end
-        }
         self.stays = stays
         self.durations = durations
         self.shortestDurations = shortestDurations
@@ -258,7 +248,20 @@ final class ReplayTimeline {
 
     func legDistance(at index: Int) -> Double? {
         guard legDistances.indices.contains(index), stay(containing: index) == nil else { return nil }
-        return legDistances[index]
+        // Keep one cumulative array; subtract the preceding stay only for the overlay's leg.
+        var lower = 0, upper = stays.count
+        while lower < upper {
+            let middle = (lower + upper) / 2
+            if stays[middle].end < index { lower = middle + 1 }
+            else { upper = middle }
+        }
+        let origin = lower > 0 ? legDistances[stays[lower - 1].end] : 0
+        return max(0, legDistances[index] - origin)
+    }
+
+    func distance(from start: Int, through end: Int) -> Double {
+        guard legDistances.indices.contains(start), legDistances.indices.contains(end), end >= start else { return 0 }
+        return max(0, legDistances[end] - legDistances[start])
     }
 
     func inferredActivity(at index: Int) -> ReplayActivity {

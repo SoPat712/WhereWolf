@@ -515,8 +515,21 @@ The ruler at the top of the Tracker panel keeps the selected tick in the center.
 Older points lie to its left and **Live** lies to its right. Drag right to browse
 older points, or left to return to Live. A tap alone does not change modes.
 Each tick selects one recorded point during normal dragging; holding offers
-larger steps with the scale shown in the bubble. The step buttons always move
-one point at a time. Play animates the journey at 0.25×, 0.5×, 1×, 2×, 5×, 10×, 25×, or 50× replay
+larger steps with the scale shown in the bubble. Time labels, local-midnight dividers
+and stop capsules help you find your way through the retained history. Stops use a
+nearby saved Wi-Fi Place’s name, icon and color, or show an unnamed stop’s duration.
+At coarser held scales, the ruler snaps to arrivals and departures; move your finger
+ten points away to continue scrubbing. The bubble names the event. Normal drags and
+VoiceOver adjustments still move one point at a time.
+
+The buttons beside Play jump to the previous or next stop arrival or departure.
+Tap the time capsule beneath the ruler to open **Go To**. Pick a date and time to
+select the nearest recorded point, or choose a stop or movement from the day list.
+The list includes time ranges, movement type and distance, with **Viewing** beside
+your current position. It covers the oldest retained point through now; days are
+newest first and each day’s entries run chronologically.
+
+Play animates the journey at 0.25×, 0.5×, 1×, 2×, 5×, 10×, 25×, or 50× replay
 pace, with 1× as the default. These are relative playback speeds: long gaps are compressed,
 movement between fixes is interpolated, and changing speed preserves the
 current position and zoom. A display link keeps movement in step with the

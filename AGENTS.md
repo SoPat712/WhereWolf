@@ -225,6 +225,27 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   height and align its intrinsic controls to the top while measurement is pending;
   otherwise SwiftUI centers the changed content inside the previous host height.
   Details uses one labeled capsule in both modes.
+  The history ruler is 56 points high, with a 16-point top label lane. Cached
+  `HistoryLandmarks` point-index metadata builds on a utility queue, coalescing new
+  points to at most once per 30 seconds and promptly rebuilding for snapshots, expiry,
+  retention, Wi-Fi Places, calendar or locale changes. Generation checks discard stale
+  builds; pending builds retain the previous landmarks with indices clamped to current points.
+  Minute marks use time-zone arithmetic and visible labels format through a bounded cache.
+  Stop navigation and Go To share the existing `ReplayTimeline` stays.
+  UIKit draws only visible landmarks alongside the bars, including during scale easing.
+  Local-midnight dividers and weekday labels outrank stop labels, which outrank time
+  labels; time marks coarsen through 1/5/15 minutes, 1 hour and 6 hours to keep at least
+  60 points between labels. Stop capsules use the nearest Wi-Fi Place within
+  `GLWifiPlaceMatchDistance` of the stay center, otherwise gray `mappin` and a duration.
+  Use a symbol alone when the stop text does not fit. Keep every stored point.
+  The buttons beside Play jump to the previous/next arrival or departure through the
+  existing selection path; disable at the ends and name the target for VoiceOver.
+  The time beneath the ruler opens the native Go To sheet while browsing; Live keeps
+  its plain label. Go To uses medium/large detents, compact date/time pickers bounded
+  from the oldest retained point to now, and selects the nearest stored point.
+  Its day sections are newest first, with stops and movements chronological within
+  each day, shared activity/distance calculations, and Viewing on the selected row.
+  Selecting a row jumps to its start and dismisses. Cancel and Go use native toolbars.
   The history ruler enters scrubbing after a 0.35-second hold. Its precision
   detents use every 1–2–5 points-per-bar step, from the smallest step that rounds
   up to cover the loaded history in one ruler width down to one point per bar.
@@ -244,7 +265,12 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   retention time before points load. Remove the window bubble on release or
   cancellation without changing drawer height. Reaching Live clamps at zero
   without ending a drag or hold; return to Live only when motion ends there.
-  Keep VoiceOver's point steps and announce the held scale. Retain every stored
+  Only a held detent coarser than one point per bar snaps within six screen points
+  of a stop boundary. Hold the exact index until the finger moves over ten points,
+  then rebase at the current finger without a jump. Give each snap a selection haptic;
+  its bubble adds the colored stop symbol and arrival/departure event above the scale.
+  Ordinary drags and inertia never snap. VoiceOver's value names a containing stop
+  and its arrival; keep its one-point increment/decrement and announce the held scale. Retain every stored
   route point. A Tracker replay hold recaptures a manually moved camera, preserving
   overview mode. In follow mode, one point per bar uses the starting follow distance
   D0; coarser detents fit the route within ±(2 + (half the visible bars − 2) × coarseness²)
@@ -334,7 +360,10 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   wandering that paces as stationary, and a fix over 100 m out and straight back at over three times the
   speed on either side, which counts as the direct distance across it.
   Keep its width steady, and stack readings that do not fit instead of truncating them. Recorded motion outranks speed inference,
-  except that flying speeds win. Hide altitude when vertical accuracy is negative. Nearby
+  except that flying speeds win. Cached Go To movement rows use inferred activity
+  because recorded motion lives in payloads; snapshot loads read only point metadata.
+  `ReplayTimeline` shares corrected cumulative distance with those rows.
+  Hide altitude when vertical accuracy is negative. Nearby
   payloads use a bounded prefetch cache and coalesced reads; a ruler hold shows
   only cached payloads and starts no reads, including from in-flight completions.
   On release, load around the final selection once. Normal drags and playback keep
