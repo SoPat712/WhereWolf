@@ -6,3 +6,4 @@ exclude:
   - tracking-improvements.md
   - upstream-integration.md
   - workout-import.md
+  - decisions.md
