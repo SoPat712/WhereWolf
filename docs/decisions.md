@@ -30,7 +30,7 @@ This log lists the decisions agents made on their own while working on WhereWolf
   - **Rebuilds** triggered by newly arrived points coalesce to at most once every 30 seconds.
 - **Undo:** `git revert d3423c2`.
 
-## 2026-11-06: Today widget (commit pending)
+## 2026-11-06: Today widget (0e08526)
 
 - **Why built unasked:** the relayed overnight instruction was to build features the owner would very likely approve. This was the first suggestion after comparing WhereWolf with Dawarich's iPhone app.
 - **Decided:**
@@ -38,7 +38,7 @@ This log lists the decisions agents made on their own while working on WhereWolf
   - distance uses the replay overlay's rules across the whole day;
   - points count every archived point since local midnight;
   - no new targets or identifiers.
-- **Undo:** `git revert <sha>`, then remove the widget from the home or lock screen.
+- **Undo:** `git revert 0e08526`, then remove the widget from the home or lock screen.
 
 ## Deferred for the owner
 
