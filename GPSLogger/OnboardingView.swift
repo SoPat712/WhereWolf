@@ -492,10 +492,14 @@ struct OnboardingView: View {
                     }
                 }
             }
-            group {
-                toggleRow("Hide While Music Plays", "Gives Music the island. Needs Always.", isOn: $bridge.hideLiveActivityWhileAudioPlays, verticalPadding: 8)
-                separator()
-                toggleRow("Ask to Reopen", "A nudge to bring it back after music.", isOn: $bridge.askToReopenAfterAudio, verticalPadding: 8)
+            if bridge.liveActivityEnabled || bridge.tripLiveActivityEnabled {
+                group {
+                    toggleRow("Hide While Music Plays", "Gives Music the island. Needs Always.", isOn: $bridge.hideLiveActivityWhileAudioPlays, verticalPadding: 8)
+                    if bridge.hideLiveActivityWhileAudioPlays {
+                        separator()
+                        toggleRow("Ask to Reopen", "A nudge to bring it back after music.", isOn: $bridge.askToReopenAfterAudio, verticalPadding: 8)
+                    }
+                }
             }
         }
     }

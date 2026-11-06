@@ -151,10 +151,13 @@ Settings content uses the system safe area throughout the transition. Sliders
 have common-value detents and selection feedback, and still support exact numeric entry. Dragging previews a setting;
 releasing saves it once.
 
-Hold the history ruler briefly, then drag to scroll through larger stretches of
-the timeline. A Liquid Glass time bubble with readable text appears above the
-ruler while held (blur material before iOS 26), and
-releasing stops it immediately.
+Hold the history ruler for a moment, then drag sideways to scrub the timeline.
+Move upward over the map for finer steps: Fast, Medium, Slow, then Point by point.
+The bars follow your finger at every scale, growing taller and wider for larger
+steps. A Liquid Glass bubble above the drawer shows the selected time and how
+much time each bar represents (blur material before iOS 26). Releasing stops the
+hold immediately. Reaching Live keeps the gesture active so you can scrub back;
+releasing there returns to Live.
 Normal dragging keeps its original precision and momentum. Trip Settings starts
 with a translucent glass background and fades toward the grouped Settings
 background as the sheet expands; collapsing reverses the fade. Cards use the
@@ -506,8 +509,9 @@ scenes, and when tracking stops.
 The ruler at the top of the Tracker panel keeps the selected tick in the center.
 Older points lie to its left and **Live** lies to its right. Drag right to browse
 older points, or left to return to Live. A tap alone does not change modes.
-Each tick selects one recorded point; the step buttons also move one point at a
-time. Play animates the journey at 0.25×, 0.5×, 1×, 2×, 5×, 10×, 25×, or 50× replay
+Each tick selects one recorded point during normal dragging; holding offers
+larger steps with the scale shown in the bubble. The step buttons always move
+one point at a time. Play animates the journey at 0.25×, 0.5×, 1×, 2×, 5×, 10×, 25×, or 50× replay
 pace, with 1× as the default. These are relative playback speeds: long gaps are compressed,
 movement between fixes is interpolated, and changing speed preserves the
 current position and zoom. A display link keeps movement in step with the

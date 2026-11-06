@@ -393,24 +393,27 @@ struct BackgroundSettingsView: View {
 
             Section {
                 Toggle("Tracking Live Activity", isOn: $bridge.liveActivityEnabled)
-                Toggle("Hide While Audio Plays", isOn: $bridge.hideLiveActivityWhileAudioPlays)
-                if bridge.hideLiveActivityWhileAudioPlays {
-                    Toggle("Ask to Reopen When Audio Stops", isOn: $bridge.askToReopenAfterAudio)
-                    Text("Off by default. If the Live Activity cannot return after music stops, a silent notification about five minutes later asks you to open WhereWolf. This needs notification permission, independently of Notifications and Problems Only.")
-                        .font(.footnote).foregroundStyle(.secondary)
-                    if bridge.askToReopenAfterAudio && !audioNotificationsAllowed {
-                        HStack {
-                            Text("Allow notifications for this prompt.")
-                            Spacer()
-                            Button("Allow") {
-                                requestingAudioNotifications = true
-                                Task {
-                                    _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
-                                    await refreshAudioNotificationPermission()
-                                    requestingAudioNotifications = false
+                // Both switches act on the tracking and trip activities, so they need one of them.
+                if bridge.liveActivityEnabled || bridge.tripLiveActivityEnabled {
+                    Toggle("Hide While Audio Plays", isOn: $bridge.hideLiveActivityWhileAudioPlays)
+                    if bridge.hideLiveActivityWhileAudioPlays {
+                        Toggle("Ask to Reopen When Audio Stops", isOn: $bridge.askToReopenAfterAudio)
+                        Text("Off by default. If the Live Activity cannot return after music stops, a silent notification about five minutes later asks you to open WhereWolf. This needs notification permission, independently of Notifications and Problems Only.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                        if bridge.askToReopenAfterAudio && !audioNotificationsAllowed {
+                            HStack {
+                                Text("Allow notifications for this prompt.")
+                                Spacer()
+                                Button("Allow") {
+                                    requestingAudioNotifications = true
+                                    Task {
+                                        _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
+                                        await refreshAudioNotificationPermission()
+                                        requestingAudioNotifications = false
+                                    }
                                 }
+                                .disabled(requestingAudioNotifications)
                             }
-                            .disabled(requestingAudioNotifications)
                         }
                     }
                 }

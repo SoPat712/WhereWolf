@@ -35,10 +35,10 @@ nice -n 10 xcodebuild -jobs 1 -workspace WhereWolf.xcworkspace -scheme WhereWolf
 - Run only one build at a time, using `nice -n 10` and `-jobs 1` to preserve
   desktop responsiveness. Two jobs is the maximum. These are scheduling controls,
   not a hard CPU-percentage cap. The smoke script defaults to `BUILD_JOBS=1`.
-- Coordinate with Iron/Light through `~/.local/share/agent-coord/` (the old
-  `~/Library/Caches/agent-coord` path is a compatibility symlink). Read the
+- Coordinate with Iron/Light through `~/.local/share/agent-coord/`. Nothing lives
+  under `~/Library/Caches`, which Mac cleaners wipe. Read the
   Overland inbox before each build, test run or resource claim using
-  `python3 ~/Library/Caches/agent-coord/coord.py inbox Overland`.
+  `python3 ~/.local/share/agent-coord/coord.py inbox Overland`.
   Use `coord.py run compiler Overland 'operation, ~duration' -- COMMAND...`
   for builds and `coord.py run check Overland 'operation, ~duration' -- COMMAND...`
   for simulator tests or UI checks. Checks reserve both slots so they cannot
@@ -225,12 +225,23 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   height and align its intrinsic controls to the top while measurement is pending;
   otherwise SwiftUI centers the changed content inside the previous host height.
   Details uses one labeled capsule in both modes.
-  The history ruler enters coarse scrolling after a brief hold; preserve normal
-  scrolling and inertia, stop coarse motion on release, and cancel it when the
-  tab, scene or ruler interaction revision changes. Show the time bubble with
-  Liquid Glass and primary text (blur material before iOS 26) above the ruler
-  only while held, without changing drawer height; remove
-  it from the window on release or cancellation. Retain every stored route point.
+  The history ruler enters scrubbing after a 0.35-second hold. Upward travel from
+  the hold selects Fast, Medium, Slow and Point by point at 50/110/170 points,
+  with an eight-point hysteresis band and a light impact on changes. Fast spans
+  roughly the loaded history per ruler width; intermediate scales use geometric
+  1–2–5 points-per-bar steps, and Point by point uses the normal 12-point ticks.
+  Ticks move with the finger 1:1 at every scale; ease their spacing, height and
+  width in UIKit over 0.15 seconds, or jump with Reduce Motion. Preserve normal
+  scrolling and inertia, stop hold motion on release, and cancel it when the
+  tab, scene or ruler interaction revision changes. While held, show a Liquid
+  Glass time/scale bubble with primary text (blur material before iOS 26), centered
+  eight points above the drawer's `wherewolf.panel.sheet` view and below the top
+  safe area; fall back to above the ruler if absent. Derive the scale from nearby
+  recorded intervals, or retention time before points load. Remove the window
+  bubble on release or cancellation without changing drawer height. Reaching Live
+  clamps at zero without ending a drag or hold; return to Live only when motion
+  ends there. Keep VoiceOver's point steps and announce the held scale. Retain
+  every stored route point.
   Trip Settings uses `ExpandingSheetBackgroundView`: glass beneath a grouped
   Settings background that eases with the sheet's visible height. Row cards use
   `settingsRowBackground()`: in the glass sheet they ease from a translucent fill to the
@@ -585,7 +596,8 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   background restore attempt per activity family, then waits for
   foreground or explicit Retry after a refusal. Hiding is not a failure. Preserve
   Stop, pauses, trip state and the reminder deadline.
-  Ask to Reopen When Audio Stops defaults off and appears under
+  Settings and the guide show Hide While Audio Plays only while the tracking or trip Live
+  Activity is enabled. Ask to Reopen When Audio Stops defaults off and appears under
   Hide While Audio Plays. After confirmed audio ending, a refused or deferred
   restore schedules one authorized passive (silent) local prompt five minutes later,
   so short pauses never send it, with the fixed

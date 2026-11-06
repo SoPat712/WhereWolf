@@ -52,6 +52,7 @@ struct DrawerBarTween {
 // A Find My style drawer: one glass sheet whose bottom holds the tab strip. Collapsed, the
 // sheet is just the tab capsule; expanded, the tabs float in their own capsule under the content.
 final class MapControlPanelController: UIViewController, UIGestureRecognizerDelegate, UIScrollViewDelegate {
+    static let sheetIdentifier = "wherewolf.panel.sheet"
     var onCollapsedTopChange: ((CGFloat) -> Void)?
     var onPresentedTopChange: ((CGFloat) -> Void)?
     var animationClock: (() -> CFTimeInterval)?
@@ -310,6 +311,7 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
     }
 
     private func configurePanel() {
+        effectView.accessibilityIdentifier = Self.sheetIdentifier
         effectView.translatesAutoresizingMaskIntoConstraints = false
         effectView.clipsToBounds = true
         effectView.layer.cornerCurve = .continuous
