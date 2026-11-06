@@ -60,6 +60,17 @@ This log lists the decisions agents made on their own while working on WhereWolf
   - the hint at Live reads "Pinch for scale; hold to scrub".
 - **Undo:** `git revert 4339cf4`.
 
+## 2026-11-06: map zoom follows the ruler scale (5ae98be)
+
+- **Asked for:** "the more pinched out you are, the more zoomed out the map should be also … since you're traveling larger distances".
+- **Decided:**
+  - while replay follows a point at a scale coarser than every point, the map keeps the pinch's fit after release, through drags, momentum and playback; every point returns to the user's own zoom;
+  - the fit is recomputed only when the scale changes or the needle moves half a ruler width, never per frame;
+  - the zoom buttons still work at a coarse scale, but the next refit takes the zoom back;
+  - leaving history while zoomed by the scale lands Live at the live zoom from before history; otherwise Live keeps the replay zoom as before;
+  - leaving the Tracker tab restores the user's zoom at once, and coming back reapplies the scale's zoom without animating.
+- **Undo:** `git revert 5ae98be`.
+
 ## Deferred for the owner
 
 - **Watch complication for Today:** it needs a new watch widget extension and bundle identifier, which is an Apple developer account change.
