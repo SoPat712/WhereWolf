@@ -45,6 +45,7 @@ final class HistoryPlaybackModel {
     @ObservationIgnored private let placesProvider: () -> [WifiPlace]
     @ObservationIgnored private let landmarkBuilder: HistoryLandmarks.Builder
     @ObservationIgnored private let landmarkClock: () -> TimeInterval
+    @ObservationIgnored private let clock: () -> Date
     @ObservationIgnored private var landmarkGeneration = 0
     @ObservationIgnored private var lastLandmarkBuild: TimeInterval?
     @ObservationIgnored private var needsLandmarkRebuild = false
@@ -69,13 +70,15 @@ final class HistoryPlaybackModel {
     }, retentionDuration: @escaping () -> TimeInterval = { HistoryRetention.duration },
          places: @escaping () -> [WifiPlace] = { (GLManager.shared().wifiPlaces ?? []).compactMap(WifiPlace.init) },
          landmarkBuilder: @escaping HistoryLandmarks.Builder = HistoryLandmarks.build,
-         landmarkClock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
+         landmarkClock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+         clock: @escaping () -> Date = Date.init) {
         self.pointLoader = pointLoader
         self.payloadLoader = payloadLoader
         self.retentionDurationProvider = retentionDuration
         self.placesProvider = places
         self.landmarkBuilder = landmarkBuilder
         self.landmarkClock = landmarkClock
+        self.clock = clock
     }
 
     var selectedPoint: RecordedLocation? {
@@ -189,9 +192,10 @@ final class HistoryPlaybackModel {
                 self.needsFullSnapshot = self.needsFullSnapshot || fullSnapshot
                 return
             }
-            self.expireOldPoints()
+            // Expiry shifts every index, so landmarks rebuild at once, but only after the new points are in.
+            let expired = self.expireOldPoints(force: false, rebuildingLandmarks: false)
             let selectedID = self.selectedPoint?.id
-            let cutoff = Date().addingTimeInterval(-self.retentionInterval)
+            let cutoff = self.clock().addingTimeInterval(-self.retentionInterval)
             let ordered = self.unique(incoming.filter { $0.timestamp >= cutoff })
             self.lastLoadedID = max(self.lastLoadedID, incoming.map(\.id).max() ?? 0)
             if fullSnapshot {
@@ -219,8 +223,8 @@ final class HistoryPlaybackModel {
             let places = self.placesProvider()
             let contextChanged = places != self.landmarkPlaces
                 || self.landmarkCalendar != Calendar.current || self.landmarkLocale != Locale.current
-            if fullSnapshot || !ordered.isEmpty || contextChanged {
-                self.rebuildLandmarks(places: places, promptly: fullSnapshot || contextChanged)
+            if fullSnapshot || !ordered.isEmpty || contextChanged || expired {
+                self.rebuildLandmarks(places: places, promptly: fullSnapshot || contextChanged || expired)
             }
             self.prefetchPayloads(around: self.selectedIndex ?? max(0, self.points.count - 1))
             self.loading = false
@@ -265,6 +269,12 @@ final class HistoryPlaybackModel {
             guard let self, self.landmarkGeneration == generation else { return }
             self.landmarks = result
         }
+    }
+
+    // Go To lists every stretch, so opening it does not wait for the coalesced build.
+    func refreshLandmarks() {
+        guard needsLandmarkRebuild, consumerActive, !isRulerInteracting, !isPlaying, !loading, !expiring else { return }
+        rebuildLandmarks()
     }
 
     private func flushLandmarkRebuild() {
@@ -336,10 +346,11 @@ final class HistoryPlaybackModel {
         expireOldPoints(force: false)
     }
 
-    private func expireOldPoints(force: Bool) {
-        guard force || consumerActive else { return }
-        let now = Date()
-        guard force || now.timeIntervalSince(lastExpiration) >= 60 else { return }
+    @discardableResult
+    private func expireOldPoints(force: Bool, rebuildingLandmarks: Bool = true) -> Bool {
+        guard force || consumerActive else { return false }
+        let now = clock()
+        guard force || now.timeIntervalSince(lastExpiration) >= 60 else { return false }
         lastExpiration = now
         expiring = true
         defer {
@@ -351,9 +362,9 @@ final class HistoryPlaybackModel {
         let previousIndex = selectedIndex
         let previousCount = points.count
         points.removeAll { $0.timestamp < cutoff }
-        guard points.count != previousCount else { return }
+        guard points.count != previousCount else { return false }
         pointsRevision &+= 1
-        rebuildLandmarks()
+        if rebuildingLandmarks { rebuildLandmarks() }
         lastPrefetchIndex = nil
         let retained = Set(points.map(\.id))
         payloadCache = payloadCache.filter { retained.contains($0.key) }
@@ -389,6 +400,7 @@ final class HistoryPlaybackModel {
                 renderPose = ReplayPose(position: Double(selectedIndex ?? 0), coordinate: coordinate)
             }
         }
+        return true
     }
 
     func scrub(to time: Date) {

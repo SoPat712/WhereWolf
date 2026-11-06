@@ -1624,6 +1624,39 @@ final class HistoryPlaybackTests: XCTestCase {
         XCTAssertEqual(model.selectedIndex, points.count - 1)
     }
 
+    @MainActor func testReturningAfterExpiryBuildsLandmarksWithTheNewPointsAndGoToRefreshes() {
+        var now = Date()
+        let start = now.addingTimeInterval(-1_000)
+        var points = (0...4).map {
+            RecordedLocation(id: Int64($0 + 1), timestamp: start.addingTimeInterval(Double($0) * 60),
+                             latitude: 45, longitude: -122)
+        }
+        var landmarkTime = 0.0
+        let model = HistoryPlaybackModel(pointLoader: { after, completion in
+            completion(points.filter { $0.id > after })
+        }, payloadLoader: { _, completion in completion([:]) }, retentionDuration: { 86_400 }, places: { [] },
+           landmarkBuilder: immediateLandmarks, landmarkClock: { landmarkTime }, clock: { now })
+        model.setConsumerActive(true)
+        XCTAssertEqual(model.landmarks.timestamps.count, 5)
+        model.setConsumerActive(false)
+        // A day in the background: the earlier points expire while new ones arrive.
+        now = now.addingTimeInterval(90_000)
+        points += (5...9).map {
+            RecordedLocation(id: Int64($0 + 1), timestamp: start.addingTimeInterval(90_000 + Double($0) * 60),
+                             latitude: 45.01, longitude: -122)
+        }
+        landmarkTime = 1
+        model.setConsumerActive(true)
+        XCTAssertEqual(model.points.map(\.id), Array(6...10))
+        XCTAssertEqual(model.landmarks.timestamps, model.points.map(\.timestamp))
+        XCTAssertEqual(model.landmarks.journey.flatMap(\.rows).last?.end, 4)
+        points.append(RecordedLocation(id: 11, timestamp: start.addingTimeInterval(90_600), latitude: 45.01, longitude: -122))
+        model.reload()
+        XCTAssertEqual(model.landmarks.timestamps.count, 5, "Appended points wait for the coalesced build.")
+        model.refreshLandmarks()
+        XCTAssertEqual(model.landmarks.timestamps, model.points.map(\.timestamp), "Opening Go To does not wait.")
+    }
+
     @MainActor func testStopJumpButtonsHaveNoTargetWithoutStays() {
         let points = locations(5)
         let model = HistoryPlaybackModel(pointLoader: { _, completion in completion(points) },

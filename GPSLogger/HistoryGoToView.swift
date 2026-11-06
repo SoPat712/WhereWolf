@@ -69,6 +69,7 @@ struct HistoryGoToView: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .onAppear { history.refreshLandmarks() }
         .onChange(of: history.landmarks.timestamps.first) { _, _ in
             time = min(window.upperBound, max(window.lowerBound, time))
         }

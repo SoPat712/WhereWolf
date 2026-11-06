@@ -230,7 +230,8 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   The history ruler is 56 points high, with a 16-point top label lane. Cached
   `HistoryLandmarks` point-index metadata builds on a utility queue, coalescing new
   points to at most once per 30 seconds and promptly rebuilding for snapshots, expiry,
-  retention, Wi-Fi Places, calendar or locale changes. Generation checks discard stale
+  retention, Wi-Fi Places, calendar or locale changes. A reload that both expires and appends
+  rebuilds once, after appending; opening Go To starts any pending build at once. Generation checks discard stale
   builds; pending builds retain the previous landmarks with indices clamped to current points.
   Minute marks use time-zone arithmetic and visible labels format through a bounded cache.
   Stop navigation and Go To share the existing `ReplayTimeline` stays.
