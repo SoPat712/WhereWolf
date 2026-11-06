@@ -158,7 +158,8 @@ with one finger to browse at that scale, with momentum. Hold for a moment to
 scrub sideways; moving vertically leaves the scale unchanged.
 During a pinch or hold, a Liquid Glass bubble above the drawer shows the selected
 time and the estimated time per bar (blur material before iOS 26). Coarser scales
-zoom out around the replay point; release flies back to the starting zoom.
+zoom out around the replay point and keep that zoom after release, including
+during momentum and playback. **Every point** returns to your point-following zoom.
 Overview stays in overview. Holds and pinches use cached point details and load
 the final selection on release. Reaching Live keeps the gesture active so you can
 scrub back; releasing there returns to Live. Trip Settings starts
@@ -518,7 +519,10 @@ Pinch to change how many recorded points each bar covers, or tap the scale
 capsule beside the time to choose **Every point**, a time interval, or **Whole
 history**. Time estimates use nearby recorded intervals. The selected point stays
 under the needle when the scale changes. The scale remains set across Live, tabs
-and playback; dragging and flicking use it too.
+and playback; dragging and flicking use it too. While the map follows a replay
+point, coarser scales also zoom out to fit the nearby route. That zoom stays after
+release. Choose **Every point** to return to your point-following zoom. Live,
+overview and a manually moved camera keep their own zoom.
 Time labels, local-midnight dividers and stop capsules help you find your way
 through the retained history. Stops use a nearby saved Wi-Fi Place’s name, icon
 and color, or show an unnamed stop’s duration. Hold for 0.35 seconds to scrub

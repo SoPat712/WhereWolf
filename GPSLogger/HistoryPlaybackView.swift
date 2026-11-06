@@ -31,6 +31,15 @@ final class HistoryPlaybackModel {
         .init(tickCount: points.isEmpty ? 48 : points.count, rulerWidth: rulerWidth)
     }
 
+    var rulerZoom: ReplayRulerHold? {
+        guard rulerStep > 1 else { return nil }
+        let detents = rulerDetents
+        let scale = detents.scale(at: detents.index(nearest: rulerStep))
+        return ReplayRulerHold(pointsPerBar: scale.pointsPerTick,
+            visibleBars: Double(rulerWidth / scale.spacing),
+            coarseness: HistoryRulerCoarseDrag.coarseness(step: rulerStep, coarsest: detents.steps[0]))
+    }
+
     func setRulerWidth(_ width: CGFloat) {
         guard width > 0, width != rulerWidth else { return }
         rulerWidth = width

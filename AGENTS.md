@@ -278,22 +278,29 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   styled like the Go To time, and Live; the capsule opens a native Menu headed One bar covers: Every point,
   1 minute, 5 minutes, 15 minutes, 1 hour, 6 hours and Whole history. Map durations
   to the nearest step in log space using the bubble's estimate, drop later duplicate
-  steps and check the current entry. Menu changes anchor the needle without moving
-  the camera. VoiceOver's value names a containing stop and its arrival; keep its
+  steps and check the current entry. Menu changes anchor the needle. VoiceOver's
+  value names a containing stop and its arrival; keep its
   one-point increment/decrement, add Finer Scale and Coarser Scale actions, and
-  announce scale changes. Hold and pinch share the map hold zoom and cached-payload
-  rules; release loads the final selection once. Retain every stored route point.
+  announce scale changes. Hold and pinch use cached payloads; release loads the
+  final selection once. Retain every stored route point.
   A Tracker replay hold or pinch recaptures a manually moved camera, preserving
-  overview mode. In follow mode, one point per bar uses the starting follow distance
-  D0; coarser detents fit the route within ±(2 + (half the visible bars − 2) × coarseness²)
+  overview mode. Replay point following uses the persistent ruler scale during
+  browsing, scrubbing, momentum and playback. One point per bar uses the saved follow
+  distance D0; coarser detents fit the route within ±(2 + (half the visible bars − 2) × coarseness²)
   bars of the needle into the overview's clear map area, never closer than D0, so mid
   detents stay close and only the coarsest fit the whole visible ruler. Compute the
-  box at hold or pinch start, detent changes and moves greater than half a window,
-  never per frame. UIKit eases distance in
-  log space over 0.3 seconds while following the same replay pose. Do not write the
-  saved follow distance or the outer SwiftUI camera on held steps. Release flies
-  back to D0 through the existing camera transition; Live's flight wins. Cancellation
-  restores D0 immediately, and release/cancellation syncs the outer camera once.
+  box when scale zoom starts, the scale changes or the needle moves greater than
+  half a window, never per frame. UIKit eases scale zoom in log space over 0.3 seconds,
+  including menu and VoiceOver changes. Release and gesture cancellation retain it.
+  Keep `rulerZoom` separate from gesture-only `rulerHold`, payload gating and interaction
+  deferrals. Do not write the saved follow distance or outer SwiftUI camera while
+  scale zoom applies; sync once when it ends. Every point returns to D0 through the
+  existing camera transition. Leaving Tracker or the active scene restores D0
+  immediately; returning reapplies scale zoom without animation. A freed camera and
+  overview ignore the scale; resuming point following uses D0. Leaving history while
+  scale zoom applies, Live's flight lands at the live zoom from before history;
+  otherwise it keeps the replay zoom. Live ignores scale changes; re-entering history
+  reapplies scale zoom. Respect Reduce Motion.
   Trip Settings uses `ExpandingSheetBackgroundView`: glass beneath a grouped
   Settings background that eases with the sheet's visible height. Row cards use
   `settingsRowBackground()`: in the glass sheet they ease from a translucent fill to the

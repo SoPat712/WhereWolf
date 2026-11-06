@@ -528,7 +528,8 @@ final class HistoryPlaybackTests: XCTestCase {
             XCTAssertEqual(model.selectedIndex, index)
             XCTAssertEqual(model.rulerTime, time)
             XCTAssertEqual(model.rulerInteractionRevision, revision)
-            XCTAssertNil(model.rulerHold, "Menu and accessibility scale changes must not zoom the map")
+            XCTAssertNil(model.rulerHold)
+            XCTAssertEqual(model.rulerZoom?.pointsPerBar, step > 1 ? step : nil)
         }
         model.returnToLive()
         model.setRulerStep(5)
@@ -614,12 +615,22 @@ final class HistoryPlaybackTests: XCTestCase {
         XCTAssertNil(model.rulerHold)
         XCTAssertFalse(model.rulerHoldCancelled)
         XCTAssertEqual(model.rulerStep, 2)
+        XCTAssertEqual(model.rulerZoom?.pointsPerBar, 2)
         XCTAssertEqual(model.renderPose, pose)
         XCTAssertEqual(pending.count, 2)
         XCTAssertTrue(pending[1].0.contains(101))
         pending[1].1(payloads(pending[1].0))
         XCTAssertEqual(model.payload?.device, "device-101")
         XCTAssertEqual(pending.count, 2)
+        model.beginRulerInteraction()
+        model.scrub(rulerPosition: 200, liveEdge: Date())
+        XCTAssertEqual(pending.count, 3, "Ordinary coarse dragging still reads point details")
+        model.endRulerInteraction(at: 200, onLive: { XCTFail("Unexpected Live") })
+        model.scrub(pointAt: 300)
+        XCTAssertEqual(pending.count, 3)
+        pending[2].1(payloads(pending[2].0))
+        XCTAssertEqual(pending.count, 4, "A coarse scale alone must not block a follow-up read")
+        model.returnToLive()
     }
 
     func testHeldScrubbingIgnoresVerticalMovementAndStillSnapsAtTheCurrentScale() {
@@ -2036,74 +2047,346 @@ final class HistoryRulerZoomTests: XCTestCase {
         XCTAssertEqual(retarget.distance(at: 10.4), 5_000)
     }
 
-    @MainActor func testNativeHoldFollowsPoseAndRestoresBaseWithoutChangingTheSavedZoom() {
+    @MainActor func testScaleZoomUsesTheRulerGeometryAndSurvivesGestureReleaseAndCancellation() throws {
+        let points = replayPoints()
+        let model = HistoryPlaybackModel(pointLoader: { _, completion in completion(points) },
+            payloadLoader: { _, completion in completion([:]) }, places: { [] },
+            clock: { Date(timeIntervalSince1970: 100) })
+        model.setConsumerActive(true)
+        model.scrub(pointAt: 50)
+        model.setRulerStep(5)
+        model.setRulerWidth(402)
+        let detents = model.rulerDetents
+        let scale = detents.scale(at: detents.index(nearest: 5))
+        let zoom = try XCTUnwrap(model.rulerZoom)
+        XCTAssertEqual(zoom.pointsPerBar, 5)
+        XCTAssertEqual(zoom.visibleBars, Double(402 / scale.spacing))
+        XCTAssertEqual(zoom.coarseness, HistoryRulerCoarseDrag.coarseness(step: 5, coarsest: detents.steps[0]))
+        var (surface, coordinator, map) = nativeReplay()
+        defer { tearDown(coordinator, map: map); model.returnToLive() }
+        for cancelled in [false, true] {
+            model.beginRulerInteraction()
+            model.setRulerHold(zoom)
+            surface.rulerZoom = model.rulerZoom
+            coordinator.update(surface, animated: false)
+            coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
+            let coarse = map.camera.centerCoordinateDistance
+            XCTAssertGreaterThan(coarse, 2_000)
+            if cancelled { model.endRulerInteraction() }
+            else { model.endRulerInteraction(at: 51, onLive: { XCTFail("Unexpected Live") }) }
+            XCTAssertNil(model.rulerHold)
+            XCTAssertEqual(model.rulerZoom, zoom)
+            surface.rulerZoom = model.rulerZoom
+            coordinator.update(surface, animated: false)
+            coordinator.advanceCameraTransition(at: .greatestFiniteMagnitude)
+            XCTAssertEqual(map.camera.centerCoordinateDistance, coarse, accuracy: 0.1)
+            XCTAssertEqual(coordinator.parent.replayFollowDistance, 2_000)
+        }
+        model.setRulerWidth(300)
+        XCTAssertNotEqual(model.rulerZoom?.visibleBars, zoom.visibleBars)
+        model.setRulerStep(1)
+        XCTAssertNil(model.rulerZoom)
+    }
+
+    @MainActor func testNativeScaleFollowsPoseAndEasesBackToBaseAtEveryPoint() {
         var (surface, coordinator, map) = nativeReplay()
         defer { tearDown(coordinator, map: map) }
-        surface.rulerHold = ReplayRulerHold(pointsPerBar: 20, visibleBars: 20)
+        let outerCamera = surface.position.camera
+        surface.rulerZoom = ReplayRulerHold(pointsPerBar: 5, visibleBars: 20)
         coordinator.update(surface, animated: false)
         coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
         let coarse = map.camera.centerCoordinateDistance
         XCTAssertGreaterThan(coarse, 2_000)
         XCTAssertEqual(coordinator.parent.replayFollowDistance, 2_000)
-        let outerCamera = surface.position.camera
         surface.replayPosition = 51
         surface.selected = surface.replayRoute!.coordinates[51]
         coordinator.update(surface, animated: false)
         XCTAssertEqual(map.camera.centerCoordinateDistance, coarse, accuracy: 0.1)
-        XCTAssertEqual(surface.position.camera, outerCamera)
+        XCTAssertEqual(coordinator.parent.position.camera, outerCamera)
         let point = map.convert(surface.selected!, toPointTo: map)
         let target = NativeMapSurface.visibleCenter(on: map)
         XCTAssertEqual(point.x, target.x, accuracy: 1)
         XCTAssertEqual(point.y, target.y, accuracy: 1)
-        surface.rulerHold = ReplayRulerHold(pointsPerBar: 1, visibleBars: 29)
+        surface.rulerZoom = nil
         coordinator.update(surface, animated: false)
-        coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
+        if !UIAccessibility.isReduceMotionEnabled {
+            XCTAssertEqual(map.camera.centerCoordinateDistance, coarse, accuracy: 0.1)
+        }
+        coordinator.advanceCameraTransition(at: .greatestFiniteMagnitude)
         XCTAssertEqual(map.camera.centerCoordinateDistance, 2_000, accuracy: 0.1)
-        surface.rulerHold = ReplayRulerHold(pointsPerBar: 20, visibleBars: 20)
+        XCTAssertEqual(coordinator.parent.replayFollowDistance, 2_000)
+    }
+
+    @MainActor func testPlaybackAndMomentumRefitOnlyAfterHalfAWindow() throws {
+        let points = replayPoints()
+        let model = HistoryPlaybackModel(pointLoader: { _, completion in completion(points) },
+            payloadLoader: { _, completion in completion([:]) }, places: { [] },
+            clock: { Date(timeIntervalSince1970: 100) })
+        model.setConsumerActive(true)
+        model.scrub(pointAt: 25)
+        model.setRulerStep(2)
+        var (surface, coordinator, map) = nativeReplay()
+        defer { tearDown(coordinator, map: map); model.returnToLive() }
+        surface.rulerZoom = model.rulerZoom
+        let zoom = try XCTUnwrap(model.rulerZoom)
+        surface.replayPosition = model.playbackIndex
+        surface.selected = model.renderPose!.coordinate.coordinate
+        coordinator.update(surface, animated: false)
+        var fittedAt = try XCTUnwrap(coordinator.rulerFitPosition)
+        var refits = 0
+        model.togglePlayback()
+        for _ in 0..<120 where model.isPlaying {
+            model.advancePlayback(by: 0.1)
+            surface.replayPosition = model.playbackIndex
+            surface.selected = model.renderPose!.coordinate.coordinate
+            coordinator.update(surface, animated: false)
+            if abs(surface.replayPosition - fittedAt) > zoom.halfWindow {
+                fittedAt = surface.replayPosition
+                refits += 1
+            }
+            XCTAssertEqual(coordinator.rulerFitPosition, fittedAt)
+            coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
+        }
+        XCTAssertGreaterThan(refits, 0)
+        model.pause()
+        model.beginRulerInteraction()
+        // Scroll-view deceleration publishes ruler positions through the same path as a drag.
+        for index in [50.0, 51, 52, 70, 70.25, 71, 90] {
+            model.scrub(rulerPosition: Double(points.count) - index, liveEdge: Date())
+            surface.replayPosition = model.playbackIndex
+            surface.selected = model.renderPose!.coordinate.coordinate
+            coordinator.update(surface, animated: false)
+            if abs(index - fittedAt) > zoom.halfWindow { fittedAt = index }
+            XCTAssertEqual(coordinator.rulerFitPosition, fittedAt)
+            let easeStart = coordinator.rulerDistanceEase?.start
+            for _ in 0..<3 {
+                coordinator.update(surface, animated: false)
+                XCTAssertEqual(coordinator.rulerFitPosition, fittedAt)
+                XCTAssertEqual(coordinator.rulerDistanceEase?.start, easeStart)
+            }
+            coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
+        }
+        model.endRulerInteraction(at: 11, onLive: { XCTFail("Unexpected Live") })
+        XCTAssertEqual(coordinator.parent.replayFollowDistance, 2_000)
+    }
+
+    @MainActor func testMenuScaleChangeEasesDistanceWithoutStartingAGesture() throws {
+        let points = replayPoints()
+        let model = HistoryPlaybackModel(pointLoader: { _, completion in completion(points) },
+            payloadLoader: { _, completion in completion([:]) }, places: { [] },
+            clock: { Date(timeIntervalSince1970: 100) })
+        model.setConsumerActive(true)
+        model.scrub(pointAt: 50)
+        var (surface, coordinator, map) = nativeReplay()
+        defer { tearDown(coordinator, map: map); model.returnToLive() }
+        let entry = try XCTUnwrap(model.rulerScaleMenu(at: 51).last)
+        model.setRulerStep(entry.step)
+        XCTAssertNil(model.rulerHold)
+        XCTAssertFalse(model.isRulerInteracting)
+        surface.rulerZoom = model.rulerZoom
+        let before = map.camera.centerCoordinateDistance
+        coordinator.update(surface, animated: true)
+        if UIAccessibility.isReduceMotionEnabled {
+            XCTAssertNil(coordinator.rulerDistanceEase)
+            XCTAssertGreaterThan(map.camera.centerCoordinateDistance, before)
+            return
+        }
+        let ease = try XCTUnwrap(coordinator.rulerDistanceEase)
+        XCTAssertGreaterThan(ease.to, before)
+        coordinator.advanceRulerZoom(at: ease.start + 0.15)
+        XCTAssertEqual(map.camera.centerCoordinateDistance, sqrt(before * ease.to), accuracy: 0.1)
+        coordinator.advanceRulerZoom(at: ease.start + 1)
+        XCTAssertEqual(map.camera.centerCoordinateDistance, ease.to, accuracy: 0.1)
+        coordinator.advanceCameraTransition(at: .greatestFiniteMagnitude)
+        XCTAssertEqual(map.camera.centerCoordinateDistance, ease.to, accuracy: 0.1)
+        XCTAssertEqual(coordinator.parent.replayFollowDistance, 2_000)
+        XCTAssertEqual(coordinator.parent.position.camera, surface.position.camera)
+        XCTAssertNil(coordinator.rulerDistanceEase)
+    }
+
+    @MainActor func testInactiveSceneAndTrackerTabRestoreAndReapplyWithoutAnimation() {
+        var (surface, coordinator, map) = nativeReplay()
+        defer { tearDown(coordinator, map: map) }
+        surface.rulerZoom = ReplayRulerHold(pointsPerBar: 5, visibleBars: 20)
         coordinator.update(surface, animated: false)
         coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
-        surface.rulerHold = nil
+        let route = surface.replayRoute
+        let selected = surface.selected
+        for exit in 0..<3 {
+            let coarse = map.camera.centerCoordinateDistance
+            XCTAssertGreaterThan(coarse, 2_000)
+            if exit == 0 { surface.scenePhase = .inactive }
+            else { surface.rulerZoomActive = false }
+            if exit == 2 {
+                surface.rulerZoom = nil
+                surface.replayActive = false
+                surface.replayRoute = nil
+                surface.selected = nil
+                surface.position = .userLocation(fallback: .automatic)
+            }
+            coordinator.update(surface, animated: false)
+            XCTAssertEqual(map.camera.centerCoordinateDistance, 2_000, accuracy: 0.1)
+            coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
+            XCTAssertEqual(map.camera.centerCoordinateDistance, 2_000, accuracy: 0.1)
+            surface.scenePhase = .active
+            surface.rulerZoomActive = true
+            surface.rulerZoom = ReplayRulerHold(pointsPerBar: 5, visibleBars: 20)
+            surface.replayActive = true
+            surface.replayRoute = route
+            surface.selected = selected
+            coordinator.update(surface, animated: false)
+            XCTAssertNil(coordinator.rulerDistanceEase)
+            XCTAssertEqual(map.camera.centerCoordinateDistance, coarse, accuracy: 0.1)
+        }
+    }
+
+    @MainActor func testOverviewIgnoresScaleAndReturningToFollowUsesBase() {
+        var (surface, coordinator, map) = nativeReplay()
+        defer { tearDown(coordinator, map: map) }
+        surface.replayOverview = true
+        coordinator.update(surface, animated: false)
+        let overview = MapCamera(map.camera)
+        for step in [2.0, 5, 20] {
+            surface.rulerZoom = ReplayRulerHold(pointsPerBar: step, visibleBars: 20)
+            coordinator.update(surface, animated: false)
+            coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
+            XCTAssertEqual(MapCamera(map.camera), overview)
+            XCTAssertNil(coordinator.rulerFitPosition)
+            XCTAssertTrue(coordinator.parent.replayOverview)
+        }
+        surface.replayOverview = false
+        surface.replayCameraAction += 1
+        coordinator.update(surface, animated: true)
+        coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
+        let coarse = map.camera.centerCoordinateDistance
+        coordinator.advanceCameraTransition(at: .greatestFiniteMagnitude)
+        XCTAssertEqual(map.camera.centerCoordinateDistance, coarse, accuracy: 0.1)
+        XCTAssertEqual(coordinator.parent.replayFollowDistance, 2_000)
+        surface.rulerZoom = nil
         coordinator.update(surface, animated: false)
         coordinator.advanceCameraTransition(at: .greatestFiniteMagnitude)
         XCTAssertEqual(map.camera.centerCoordinateDistance, 2_000, accuracy: 0.1)
     }
 
-    @MainActor func testNativeHoldCancellationRestoresImmediatelyAndOverviewStaysPut() {
+    @MainActor func testFreedCameraIgnoresScaleAndLocationButtonResumesFromBase() {
         var (surface, coordinator, map) = nativeReplay()
         defer { tearDown(coordinator, map: map) }
-        surface.rulerHold = ReplayRulerHold(pointsPerBar: 20, visibleBars: 20)
+        surface.rulerZoom = ReplayRulerHold(pointsPerBar: 5, visibleBars: 20)
         coordinator.update(surface, animated: false)
         coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
-        XCTAssertGreaterThan(map.camera.centerCoordinateDistance, 2_000)
-        surface.rulerHold = nil
-        surface.rulerHoldCancelled = true
+        surface.replayFollowing = false
+        surface.position = .camera(MapCamera(centerCoordinate: surface.selected!, distance: 6_000))
         coordinator.update(surface, animated: false)
-        XCTAssertEqual(map.camera.centerCoordinateDistance, 2_000, accuracy: 0.1)
-        surface.replayOverview = true
-        coordinator.update(surface, animated: false)
-        let overview = MapCamera(map.camera)
-        surface.rulerHold = ReplayRulerHold(pointsPerBar: 20, visibleBars: 20)
+        let freed = MapCamera(map.camera)
+        surface.rulerZoom = ReplayRulerHold(pointsPerBar: 20, visibleBars: 20)
         coordinator.update(surface, animated: false)
         coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
-        XCTAssertEqual(MapCamera(map.camera), overview)
-        XCTAssertTrue(coordinator.parent.replayOverview)
-    }
-
-    @MainActor func testInactiveSceneCancelsTheHoldWithoutAnAnimation() {
-        var (surface, coordinator, map) = nativeReplay()
-        defer { tearDown(coordinator, map: map) }
-        surface.rulerHold = ReplayRulerHold(pointsPerBar: 20, visibleBars: 20)
-        coordinator.update(surface, animated: false)
+        XCTAssertEqual(MapCamera(map.camera), freed)
+        XCTAssertEqual(coordinator.parent.replayFollowDistance, 2_000)
+        XCTAssertNil(coordinator.rulerFitPosition)
+        surface.replayFollowing = true
+        surface.replayCameraAction += 1
+        coordinator.update(surface, animated: true)
         coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
-        XCTAssertGreaterThan(map.camera.centerCoordinateDistance, 2_000)
-        surface.scenePhase = .inactive
+        XCTAssertGreaterThan(map.camera.centerCoordinateDistance, 6_000)
+        XCTAssertEqual(coordinator.parent.replayFollowDistance, 2_000)
+        surface.rulerZoom = nil
         coordinator.update(surface, animated: false)
-        XCTAssertEqual(map.camera.centerCoordinateDistance, 2_000, accuracy: 0.1)
-        coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
+        coordinator.advanceCameraTransition(at: .greatestFiniteMagnitude)
         XCTAssertEqual(map.camera.centerCoordinateDistance, 2_000, accuracy: 0.1)
     }
 
-    @MainActor func testEmptyHistoryHoldDoesNotChangeTheCamera() {
+    @MainActor func testLiveFlightUsesTheUsersLiveZoomAndHistoryReappliesScale() {
+        var (surface, coordinator, map) = nativeReplay()
+        defer { tearDown(coordinator, map: map) }
+        let route = surface.replayRoute!
+        let selected = surface.selected!
+        surface.replayActive = false
+        surface.replayRoute = nil
+        surface.selected = nil
+        surface.position = .camera(MapCamera(centerCoordinate: selected, distance: 6_000))
+        coordinator.update(surface, animated: false)
+        surface.replayActive = true
+        surface.replayRoute = route
+        surface.selected = selected
+        surface.rulerZoom = ReplayRulerHold(pointsPerBar: 5, visibleBars: 20)
+        coordinator.update(surface, animated: false)
+        coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
+        XCTAssertGreaterThan(map.camera.centerCoordinateDistance, 6_000)
+        surface.replayActive = false
+        surface.replayRoute = nil
+        surface.selected = nil
+        surface.position = .userLocation(fallback: .automatic)
+        coordinator.update(surface, animated: false)
+        map.showsUserLocation = true
+        let location = CLLocation(latitude: 45.2, longitude: -121.9)
+        coordinator.receiveLiveLocation(location, on: map)
+        coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
+        coordinator.advanceCameraTransition(at: .greatestFiniteMagnitude)
+        XCTAssertEqual(map.camera.centerCoordinateDistance, 6_000, accuracy: 0.1)
+        XCTAssertEqual(coordinator.parent.replayFollowDistance, 2_000)
+        XCTAssertNil(coordinator.rulerFitPosition)
+        surface.rulerZoom = ReplayRulerHold(pointsPerBar: 20, visibleBars: 20)
+        coordinator.update(surface, animated: false)
+        XCTAssertEqual(map.camera.centerCoordinateDistance, 6_000, accuracy: 0.1)
+        surface.replayActive = true
+        surface.replayRoute = route
+        surface.selected = selected
+        coordinator.update(surface, animated: false)
+        coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
+        XCTAssertGreaterThan(map.camera.centerCoordinateDistance, 6_000)
+        XCTAssertEqual(coordinator.parent.replayFollowDistance, 2_000)
+    }
+
+    @MainActor func testLiveKeepsTheReplayZoomWhenNoScaleZoomApplied() {
+        var (surface, coordinator, map) = nativeReplay()
+        defer { tearDown(coordinator, map: map) }
+        let route = surface.replayRoute!
+        let selected = surface.selected!
+        surface.replayActive = false
+        surface.replayRoute = nil
+        surface.selected = nil
+        surface.position = .camera(MapCamera(centerCoordinate: selected, distance: 6_000))
+        coordinator.update(surface, animated: false)
+        surface.replayActive = true
+        surface.replayRoute = route
+        surface.selected = selected
+        coordinator.update(surface, animated: false)
+        let replayDistance = map.camera.centerCoordinateDistance
+        XCTAssertGreaterThan(abs(replayDistance - 6_000), 1)
+        surface.replayActive = false
+        surface.replayRoute = nil
+        surface.selected = nil
+        surface.position = .userLocation(fallback: .automatic)
+        coordinator.update(surface, animated: false)
+        map.showsUserLocation = true
+        coordinator.receiveLiveLocation(CLLocation(latitude: 45.2, longitude: -121.9), on: map)
+        coordinator.advanceCameraTransition(at: .greatestFiniteMagnitude)
+        XCTAssertEqual(map.camera.centerCoordinateDistance, replayDistance, accuracy: 1)
+    }
+
+    @MainActor func testCameraControlsKeepTheBaseAndOuterCameraWhileScaleZoomApplies() throws {
+        var (surface, coordinator, map) = nativeReplay()
+        defer { tearDown(coordinator, map: map) }
+        surface.rulerZoom = ReplayRulerHold(pointsPerBar: 5, visibleBars: 20)
+        coordinator.update(surface, animated: false)
+        coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
+        let outerCamera = coordinator.parent.position.camera
+        _ = try XCTUnwrap(coordinator.zoom(inward: true, on: map))
+        coordinator.advanceCameraTransition(at: .greatestFiniteMagnitude)
+        XCTAssertEqual(coordinator.parent.replayFollowDistance, 2_000)
+        XCTAssertEqual(coordinator.parent.position.camera, outerCamera)
+        _ = try XCTUnwrap(coordinator.faceNorth(on: map))
+        coordinator.advanceCameraTransition(at: .greatestFiniteMagnitude)
+        XCTAssertEqual(coordinator.parent.replayFollowDistance, 2_000)
+        XCTAssertEqual(coordinator.parent.position.camera, outerCamera)
+        surface.rulerZoom = nil
+        coordinator.update(surface, animated: false)
+        coordinator.advanceCameraTransition(at: .greatestFiniteMagnitude)
+        XCTAssertEqual(map.camera.centerCoordinateDistance, 2_000, accuracy: 0.1)
+    }
+
+    @MainActor func testEmptyHistoryScaleDoesNotChangeTheCamera() {
         var (surface, coordinator, map) = nativeReplay()
         defer { tearDown(coordinator, map: map) }
         surface.replayRoute = nil
@@ -2111,40 +2394,25 @@ final class HistoryRulerZoomTests: XCTestCase {
         surface.position = .camera(MapCamera(centerCoordinate: map.centerCoordinate, distance: 6_000))
         coordinator.update(surface, animated: false)
         let before = MapCamera(map.camera)
-        surface.rulerHold = ReplayRulerHold(pointsPerBar: 5, visibleBars: 20)
+        surface.rulerZoom = ReplayRulerHold(pointsPerBar: 5, visibleBars: 20)
         coordinator.update(surface, animated: false)
         coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
         XCTAssertEqual(MapCamera(map.camera), before)
-        surface.rulerHold = nil
+        surface.rulerZoom = nil
         coordinator.update(surface, animated: false)
         coordinator.advanceCameraTransition(at: .greatestFiniteMagnitude)
         XCTAssertEqual(MapCamera(map.camera), before)
     }
 
-    @MainActor func testNativeHoldRecapturesTheManuallyChosenDistance() {
-        var (surface, coordinator, map) = nativeReplay()
-        defer { tearDown(coordinator, map: map) }
-        surface.replayFollowing = false
-        surface.position = .camera(MapCamera(centerCoordinate: surface.selected!, distance: 6_000))
-        coordinator.update(surface, animated: false)
-        surface.rulerHold = ReplayRulerHold(pointsPerBar: 1, visibleBars: 29)
-        coordinator.update(surface, animated: false)
-        coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
-        XCTAssertTrue(coordinator.parent.replayFollowing)
-        XCTAssertEqual(map.camera.centerCoordinateDistance, 6_000, accuracy: 0.1)
-        XCTAssertEqual(coordinator.parent.replayFollowDistance, 2_000)
-        surface.replayFollowing = true
-        surface.rulerHold = nil
-        surface.rulerHoldCancelled = true
-        coordinator.update(surface, animated: false)
-        XCTAssertEqual(map.camera.centerCoordinateDistance, 6_000, accuracy: 0.1)
-    }
-
-    @MainActor private func nativeReplay() -> (NativeMapSurface, NativeMapSurface.Coordinator, MKMapView) {
-        let points = (0...100).map { index in
+    private func replayPoints() -> [RecordedLocation] {
+        (0...100).map { index in
             RecordedLocation(id: Int64(index), timestamp: Date(timeIntervalSince1970: Double(index)),
                              latitude: 45 + Double(index) * 0.001, longitude: -122)
         }
+    }
+
+    @MainActor private func nativeReplay() -> (NativeMapSurface, NativeMapSurface.Coordinator, MKMapView) {
+        let points = replayPoints()
         let selected = points[50].coordinate
         let surface = NativeMapSurface(position: .camera(MapCamera(centerCoordinate: selected, distance: 2_000)),
             mapType: .standard, coordinates: [], replayRoute: ReplayRouteGeometry(points: points),

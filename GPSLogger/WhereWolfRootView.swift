@@ -35,6 +35,11 @@ struct WhereWolfRootView: View {
     @State private var mapRotated = false
     @Environment(\.scenePhase) private var scenePhase
 
+    private var rulerOwnsCamera: Bool {
+        selection == 0 && scenePhase == .active && history.isBrowsing
+            && history.rulerZoom != nil && !replayOverview && !replayCameraFree
+    }
+
     private enum MapAppearance: String, CaseIterable {
         case standard = "Map"
         case hybrid = "Hybrid"
@@ -92,6 +97,7 @@ struct WhereWolfRootView: View {
             focusHistoryPosition(center, from: previous)
         }
         .onChange(of: history.rulerHold != nil) { _, holding in
+            // Starting a gesture recaptures the camera; changing the persistent scale alone must not.
             if holding, selection == 0, !replayOverview { replayCameraFree = false }
         }
         .onChange(of: bridge.tripInProgress) { _, _ in
@@ -242,8 +248,8 @@ struct WhereWolfRootView: View {
                                 replayFollowing: !replayCameraFree,
                                 replayFollowDistance: replayCameraDistance ?? 2_000,
                                 replayOverview: mapTab == 0 && replayOverview,
-                                rulerHold: mapTab == 0 ? history.rulerHold : nil,
-                                rulerHoldCancelled: history.rulerHoldCancelled && history.isBrowsing,
+                                rulerZoom: mapTab == 0 ? history.rulerZoom : nil,
+                                rulerZoomActive: selection == 0,
                                 replayStatusHeight: mapTab == 0 && history.isBrowsing
                                     ? max(speedometerHeight, replayStatusHeight) : 0,
                                 replayCameraAction: replayCameraAction, recenterAction: recenterRequest,
@@ -254,7 +260,7 @@ struct WhereWolfRootView: View {
                                 onCameraChange: cameraChanged, onInteraction: stopFollowing,
                                 onRotationChange: { mapRotated = $0 },
                                 onRulerCameraRestore: { restored, base in
-            guard history.isBrowsing, history.rulerHold == nil else { return }
+            guard history.isBrowsing, !rulerOwnsCamera else { return }
             replayCameraDistance = base
             if mapTab == 0, !replayOverview { camera = .camera(restored) }
         })
@@ -278,7 +284,7 @@ struct WhereWolfRootView: View {
             mapPanned(current)
             return
         }
-        guard mapTab != 0 || (!replayOverview && history.rulerHold == nil) else { return }
+        guard mapTab != 0 || (!replayOverview && !rulerOwnsCamera) else { return }
         guard !camera.followsUserLocation, let region = camera.region,
               region.span.latitudeDelta.isFinite, region.span.latitudeDelta > 0 else { return }
         camera = .camera(current)
@@ -356,10 +362,11 @@ struct WhereWolfRootView: View {
 
     private func applyCameraResult(_ result: MapZoomResult) {
         if mapTab == 0, history.isBrowsing {
-            if history.rulerHold == nil { replayCameraDistance = result.camera.distance }
+            let scaleZoom = rulerOwnsCamera
+            if !scaleZoom { replayCameraDistance = result.camera.distance }
             replayCameraFree = !result.replayFollowing
             replayOverview = false
-            camera = .camera(result.camera)
+            if !scaleZoom { camera = .camera(result.camera) }
         } else if !camera.followsUserLocation {
             camera = .camera(result.camera)
         }
@@ -372,7 +379,7 @@ struct WhereWolfRootView: View {
     private func locationButtonPressed() {
         if mapTab == 0, history.isBrowsing {
             let overview = locationButtonShowsOverview
-            if replayCameraFree, !overview, history.rulerHold == nil, let map = drawerGeometry.readMap?() {
+            if replayCameraFree, !overview, history.rulerZoom == nil, let map = drawerGeometry.readMap?() {
                 replayCameraDistance = map.camera.centerCoordinateDistance
             }
             withAnimation(.easeInOut(duration: 0.45)) {
@@ -412,14 +419,16 @@ struct WhereWolfRootView: View {
     private func focusHistoryPosition(_ position: ReplayCoordinate?, from previous: ReplayCoordinate? = nil) {
         guard selection == 0, history.isBrowsing, !replayOverview,
               let coordinate = position?.coordinate else { return }
-        // The native surface follows this same pose; a hold only needs the outer camera on release.
-        guard history.rulerHold == nil else { return }
         if replayCameraFree {
             // Playback, including its final frame, must not recapture a manually moved camera.
             guard history.isRulerInteracting || history.playbackTime == nil else { return }
-            replayCameraDistance = drawerGeometry.readMap?()?.camera.centerCoordinateDistance ?? replayCameraDistance
+            if history.rulerZoom == nil {
+                replayCameraDistance = drawerGeometry.readMap?()?.camera.centerCoordinateDistance ?? replayCameraDistance
+            }
             replayCameraFree = false
         }
+        // The native surface follows this same pose without publishing the scale distance to SwiftUI.
+        guard !rulerOwnsCamera else { return }
         let target = MapCameraPosition.camera(MapCamera(centerCoordinate: coordinate,
                                                         distance: replayCameraDistance ?? 2_000))
         let jumpDistance = previous.map {
