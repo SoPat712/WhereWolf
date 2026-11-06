@@ -94,6 +94,7 @@ static NSString *const GLUseNewLocationEngineDefaultsName = @"GLUseNewLocationEn
 static NSString *const GLWifiZonesDefaultsName = @"WifiZones";
 static NSString *const GLWifiPlacesDefaultsName = @"WifiPlaces";
 FOUNDATION_EXPORT const CLLocationDistance GLWifiPlaceMatchDistance;
+FOUNDATION_EXPORT const NSTimeInterval GLWifiPlaceHeartbeatInterval;
 static NSString *const GLWifiKnownNetworksDefaultsName = @"WifiKnownNetworks";
 
 static NSString *const GLTripModeWalk = @"walk";

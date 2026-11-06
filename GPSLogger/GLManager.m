@@ -23,6 +23,7 @@
 @import NetworkExtension;
 
 const CLLocationDistance GLWifiPlaceMatchDistance = 300;
+const NSTimeInterval GLWifiPlaceHeartbeatInterval = 300;
 
 @interface GLManager()
 
@@ -60,6 +61,7 @@ const CLLocationDistance GLWifiPlaceMatchDistance = 300;
 
 @property (strong, nonatomic) NSDictionary *lastLocationDictionary;
 @property (strong, nonatomic) NSDictionary *batchWifiInfo;
+@property (strong, nonatomic) NSString *wifiPlaceMatchID;
 @property (strong, nonatomic) NSString *observedWifiSSID;
 @property (strong, nonatomic) NSDate *observedWifiDate;
 @property (strong, nonatomic) NSDictionary *tripStartLocationDictionary;
@@ -3608,6 +3610,9 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     NSDictionary *options = self.advancedTrackingOptions;
     self.batchWifiInfo = [self wifiNetworkInfoForBatch];
     NSDictionary *place = [self currentWifiPlaceForLocations:locations networkInfo:self.batchWifiInfo];
+    CLLocation *current = locations.lastObject;
+    // Only a fresh fix can start or end a match; a delayed batch leaves it as it was.
+    if(current && [self isValidLocation:current] && fabs(current.timestamp.timeIntervalSinceNow) <= 20) self.wifiPlaceMatchID = place[@"id"];
     NSMutableArray *usable = [NSMutableArray arrayWithCapacity:locations.count];
     for(CLLocation *location in locations) {
         if(![self isValidLocation:location]) { GLCountLocationRejection(rejected, @"invalid"); continue; }
@@ -3618,7 +3623,8 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
             usefulFix = YES;
             [WhereWolfLocationEngine.shared recordStandardLocation];
         }
-        if([place[@"record"] isEqual:@"nothing"] && GLWifiPlaceContainsFix(place, location)) {
+        // Inside a matched place only the current fix survives, to become the place's point.
+        if(place && GLWifiPlaceContainsFix(place, location) && ([place[@"record"] isEqual:@"nothing"] || location != current)) {
             GLCountLocationRejection(rejected, @"wifi_place");
             continue;
         }
@@ -3701,6 +3707,15 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
             usefulFix = YES;
             [WhereWolfLocationEngine.shared recordStandardLocation];
         }
+        // A place saves its point on arrival and then once per heartbeat, whatever the point filters
+        // allow, so a stay there still shows in history and Coverage.
+        BOOL placePoint = loc != rawLocation;
+        if(placePoint && lastLocationSeen && lastLocationSeen.coordinate.latitude == loc.coordinate.latitude
+           && lastLocationSeen.coordinate.longitude == loc.coordinate.longitude
+           && [loc.timestamp timeIntervalSinceDate:lastLocationSeen.timestamp] < GLWifiPlaceHeartbeatInterval) {
+            GLCountLocationRejection(rejected, @"wifi_place");
+            continue;
+        }
 
         BOOL stationaryFilter = self.discardPointsWhileStationaryCurrentValue && [self.motionAuthorizationStatus isEqual:@"Allowed"];
         if(!stationaryFilter || [self deviceIsMovingAtDate:rawLocation.timestamp]) self.inStationaryStop = NO;
@@ -3709,7 +3724,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
             && [rawLocation.timestamp timeIntervalSinceDate:self.lastStationaryPointDate] >= 3600;
         if(stationaryFilter && self.inStationaryStop && !stationaryHeartbeat) { GLCountLocationRejection(rejected, @"stationary"); continue; }
         if(self.discardPointsWithoutGPSCurrentValue && rawLocation.verticalAccuracy < 0 && rawLocation.speed < 0) { GLCountLocationRejection(rejected, @"gps"); continue; }
-        if(!(stationaryPoint && !self.inStationaryStop) && !stationaryHeartbeat &&
+        if(!placePoint && !(stationaryPoint && !self.inStationaryStop) && !stationaryHeartbeat &&
            ![GLPointSelection acceptLocation:loc previous:lastLocationSeen anyLimit:[options[@"any_threshold"] boolValue]
             distance:self.discardPointsWithinDistanceCurrentValue seconds:self.discardPointsWithinSecondsCurrentValue
             turn:[options[@"turn_degrees"] doubleValue]]) { GLCountLocationRejection(rejected, @"threshold"); continue; }
@@ -4172,7 +4187,14 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     CLLocation *current = locations.lastObject;
     // A current network cannot establish where delayed fixes were recorded.
     if(!current || ![self isValidLocation:current] || fabs(current.timestamp.timeIntervalSinceNow) > 20) return nil;
-    return [self matchingWifiPlaceForSSID:info[@"SSID"] location:current];
+    if(GLValidWifiSSID(info[@"SSID"])) return [self matchingWifiPlaceForSSID:info[@"SSID"] location:current];
+    // In the background iOS sometimes cannot name the connected network. An unnamed network keeps
+    // the last match while fixes stay inside it; another network or a fix outside ends it.
+    if(!self.wifiPlaceMatchID) return nil;
+    for(NSDictionary *place in self.wifiPlaces) {
+        if([place[@"id"] isEqual:self.wifiPlaceMatchID]) return GLWifiPlaceContainsFix(place, current) ? place : nil;
+    }
+    return nil;
 }
 
 - (NSArray<CLLocation *> *)locationsByApplyingWifiPlace:(NSArray<CLLocation *> *)locations networkInfo:(NSDictionary *)info {

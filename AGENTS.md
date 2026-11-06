@@ -679,9 +679,14 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   Match SSID plus raw-fix distance within `GLWifiPlaceMatchDistance` (300 m) +
   min(accuracy, 200); invalid accuracy never matches and the nearest point wins.
   Point replaces only a <=20-second current fix, reporting min(300, fix accuracy)
-  so Max Saved-Point Error never drops a point it would have kept. Nothing rejects
-  matching fixes through `wifi_place` before accepted-fix, trip, Health or replay
-  updates; keep acquisition and uploads active.
+  so Max Saved-Point Error never drops a point it would have kept, and drops the batch's
+  other fixes inside the place. The point saves on arrival whatever the point filters allow,
+  then at most once per `GLWifiPlaceHeartbeatInterval` (5 minutes) while matched, so stays and
+  Coverage still see the visit. Nothing rejects matching fixes through `wifi_place` before
+  accepted-fix, trip, Health or replay updates; keep acquisition and uploads active.
+  iOS often cannot name the network in the background: an empty name keeps the last match
+  while fresh fixes stay inside that place and never starts one. Another network or a
+  fresh fix outside ends it; delayed batches leave it unchanged.
   Native Forms, navigation and sheets own the list, editor, network and icon pickers.
   The map has a fixed center pin and a 400 m region; dragging moves the point, with
   rotation and pitch off. Never imply scanning or access to iOS’s saved networks.

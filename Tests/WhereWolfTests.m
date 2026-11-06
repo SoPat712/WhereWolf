@@ -944,7 +944,7 @@ static int denyCommit(void *context, int action, const char *first, const char *
     XCTAssertEqual([manager.locationUpdateHealth[@"attempts"] intValue], 0);
     XCTAssertEqualObjects(manager.locationUpdateHealth[@"state"], @"points_skipped");
     XCTAssertGreaterThan([manager.locationUpdateHealth[@"rejected"][@"wifi_place"] intValue], 0);
-    manager.wifiInfo = @{};
+    manager.wifiInfo = @{@"SSID": @"Other"};
     [manager processLocations:@[[self location:45.5 time:NSDate.date.timeIntervalSince1970 - 1]]];
     XCTAssertEqual(self.count, 2);
 }
@@ -1001,6 +1001,52 @@ static int denyCommit(void *context, int action, const char *first, const char *
     XCTAssertEqual(self.count, 1);
     [manager processLocations:@[[self location:45.5 time:NSDate.date.timeIntervalSince1970 - 2], [self location:45.51 time:NSDate.date.timeIntervalSince1970 - 1]]];
     XCTAssertEqual(self.count, 3);
+}
+- (void)testWifiPlacePointSavesArrivalAndHeartbeatsOnly {
+    TestLocationHealthManager *manager = [self healthManager];
+    manager.wifiInfo = @{@"SSID": @"Home"};
+    manager.discardPointsWithinDistance = 10; manager.discardPointsWithinSeconds = 5;
+    manager.discardPointsOutsideAccuracy = -1;
+    [manager setValue:@YES forKey:@"trackingEnabled"];
+    [manager replaceWifiPlaces:@[[self wifiPlace:@"Home" latitude:45.5]]];
+    NSTimeInterval now = NSDate.date.timeIntervalSince1970;
+    [manager setValue:[self location:45.50004 time:now - 600] forKey:@"lastLocation"];
+    [manager processLocations:@[[self location:45.5003 time:now - 19], [self location:45.5002 time:now - 10]]];
+    XCTAssertEqual(self.count, 1, @"Arrival saves the point inside the distance filter and drops the earlier inside fix.");
+    XCTAssertEqual(manager.lastLocation.coordinate.latitude, 45.5);
+    [manager processLocations:@[[self location:45.5004 time:now - 9]]];
+    XCTAssertEqual(self.count, 1);
+    CLLocation *point = manager.lastLocation;
+    [manager setValue:[[CLLocation alloc] initWithCoordinate:point.coordinate altitude:0 horizontalAccuracy:5 verticalAccuracy:-1
+        course:-1 speed:0 timestamp:[NSDate dateWithTimeIntervalSince1970:now - 8 - GLWifiPlaceHeartbeatInterval]] forKey:@"lastLocation"];
+    [manager processLocations:@[[self location:45.5001 time:now - 8]]];
+    XCTAssertEqual(self.count, 2, @"A heartbeat saves the point again.");
+}
+- (void)testWifiPlaceMatchSurvivesAnUnnamedNetworkUntilAnotherNetworkOrLeaving {
+    TestLocationHealthManager *manager = [self healthManager];
+    manager.discardPointsWithinDistance = -1; manager.discardPointsWithinSeconds = 0;
+    manager.discardPointsOutsideAccuracy = -1;
+    [manager setValue:@YES forKey:@"trackingEnabled"];
+    NSMutableDictionary *place = [self wifiPlace:@"Home" latitude:45.5]; place[@"record"] = @"nothing";
+    [manager replaceWifiPlaces:@[place]];
+    NSTimeInterval now = NSDate.date.timeIntervalSince1970;
+    manager.wifiInfo = @{};
+    [manager processLocations:@[[self location:45.5 time:now - 10]]];
+    XCTAssertEqual(self.count, 1, @"An unnamed network never starts a match.");
+    manager.wifiInfo = @{@"SSID": @"Home"};
+    [manager processLocations:@[[self location:45.5001 time:now - 9]]];
+    manager.wifiInfo = @{};
+    [manager processLocations:@[[self location:45.5002 time:now - 8]]];
+    XCTAssertEqual(self.count, 1, @"An unnamed network keeps the match inside the place.");
+    [manager processLocations:@[[self location:45.51 time:now - 7]]];
+    XCTAssertEqual(self.count, 2, @"A fix outside ends the match.");
+    [manager processLocations:@[[self location:45.5 time:now - 6]]];
+    XCTAssertEqual(self.count, 3, @"Returning without the network does not resume it.");
+    manager.wifiInfo = @{@"SSID": @"Home"};
+    [manager processLocations:@[[self location:45.5001 time:now - 5]]];
+    manager.wifiInfo = @{@"SSID": @"Other"};
+    [manager processLocations:@[[self location:45.5002 time:now - 4]]];
+    XCTAssertEqual(self.count, 4, @"Another network ends the match.");
 }
 - (void)testWifiCatalogMigratesBySSIDAndEnforces64MostRecent {
     [fixtureDefaults setObject:@[

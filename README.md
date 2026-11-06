@@ -724,7 +724,10 @@ These controls configure [Core Location](https://developer.apple.com/reference/c
 * `Wi-Fi Places` groups network names under a named point. Match requires a
   connected network name and a fix within 300 m of the point, plus reported
   uncertainty capped at 200 m. The nearer place wins when names are shared.
-  Record the place’s point or save nothing while connected nearby. Drag the map
+  Record the place’s point or save nothing while connected nearby. The point is
+  saved on arrival and then every 5 minutes while you stay, never the GPS fixes
+  around it. If iOS cannot read the network name in the background, the match
+  holds until a fix lands outside the place or another network connects. Drag the map
   to move the point. Frequent Networks suggests up to
   three unassigned names used for at least an hour in the past seven days.
   The device keeps up to 64 observed network names, without access-point addresses.

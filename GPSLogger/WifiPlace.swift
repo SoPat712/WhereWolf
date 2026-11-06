@@ -8,7 +8,7 @@ struct WifiPlace: Identifiable, Equatable {
         var label: String { self == .point ? "Place’s Point" : "Nothing" }
         var footer: String {
             self == .point
-                ? "Each new fix becomes the place’s point, so indoor GPS can’t wander around the building."
+                ? "The place’s point is saved when you arrive and every 5 minutes while you stay, so indoor GPS can’t wander around the building."
                 : "No points are saved while you’re connected here, within about \(WifiPlace.distanceLabel(GLWifiPlaceMatchDistance)) of the pin. Recording carries on once you leave."
         }
     }
