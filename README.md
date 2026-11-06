@@ -198,6 +198,8 @@ stationary-point filtering, and Wi-Fi place editing on a map. These use the
 app’s existing screens and glass styling. Health, iCloud, Wi-Fi identity and
 widget sharing require the corresponding signing capabilities. See the
 [integration notes](docs/upstream-integration.md) for behavior and build options.
+The Today widget shows today's archived distance and point count, the last fix and tracking
+state on the Home Screen or Lock Screen, and resets at local midnight without opening the app.
 Siri phrases work with or without the word "trip", such as "Start a walk in WhereWolf",
 and Siri learns from the trips and tracking changes you make in the app.
 Siri also accepts the app names "Werewolf" and "Where Wolf", such as

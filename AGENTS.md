@@ -174,6 +174,8 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   `INAlternativeAppNames` in the phone's Info.plist supplies "Werewolf" and
   "Where Wolf" for the App Shortcuts' application-name token. Keep the display
   name WhereWolf and the token in every phrase.
+  The Today widget shares coordinate-free daily totals from `RecentLocationHistory`,
+  computed incrementally on its queue with replay distance rules and the existing minor-reload budget; its timeline resets at local midnight.
 - **Workout import**: `WorkoutRouteImporter` reads other apps' saved Health routes
   after explicit read-access setup. Manual imports and optional foreground checks
   use a separate protected SQLite collection; keep every valid point, source and

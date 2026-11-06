@@ -43,6 +43,12 @@ import WidgetKit
                            name: UIApplication.didEnterBackgroundNotification, object: nil)
         center.addObserver(self, selector: #selector(newData),
                            name: Notification.Name(GLNewDataNotification), object: nil)
+        center.addObserver(self, selector: #selector(newData),
+                           name: .recentLocationHistoryChanged, object: nil)
+        for name in [UIApplication.didBecomeActiveNotification, .NSCalendarDayChanged,
+                     .NSSystemTimeZoneDidChange, .recentLocationHistoryRetentionChanged] {
+            center.addObserver(self, selector: #selector(stateChanged), name: name, object: nil)
+        }
         for key in watchedDefaults {
             UserDefaults.standard.addObserver(self, forKeyPath: key, options: [], context: nil)
         }
@@ -103,7 +109,22 @@ import WidgetKit
             DispatchQueue.main.async { [self] in
                 guard generation == refreshGeneration else { return }
                 state.queueCount = count
-                save(state)
+                RecentLocationHistory.shared.loadTodaySummary { [self] summary in
+                    guard generation == refreshGeneration else { return }
+                    if let summary {
+                        state.todayDistance = summary.distance
+                        state.todayPoints = summary.points
+                        state.todayStart = summary.start
+                        state.lastFixDate = summary.lastFixDate
+                    } else {
+                        let previous = SharedTripState.read().forToday(at: Date())
+                        state.todayDistance = previous.todayDistance
+                        state.todayPoints = previous.todayPoints
+                        state.todayStart = previous.todayStart
+                        state.lastFixDate = previous.lastFixDate
+                    }
+                    save(state)
+                }
             }
         })
     }
@@ -120,6 +141,10 @@ import WidgetKit
         let countsChanged = old.queueCount != state.queueCount
             || old.lastSentDate != state.lastSentDate
             || old.tripDistance != state.tripDistance
+            || old.todayDistance != state.todayDistance
+            || old.todayPoints != state.todayPoints
+            || old.todayStart != state.todayStart
+            || old.lastFixDate != state.lastFixDate
 
         if tripOrTrackingChanged {
             WidgetCenter.shared.reloadAllTimelines()

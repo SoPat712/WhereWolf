@@ -70,6 +70,7 @@ struct WhereWolfWidgetBundle: WidgetBundle {
         TrackingActivityWidget()
         TripLiveActivityWidget()
         StatusWidget()
+        TodayWidget()
         if #available(iOS 18.0, *) {
             TripControl()
             SendNowControl()

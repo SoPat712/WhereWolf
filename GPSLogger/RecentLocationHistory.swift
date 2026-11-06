@@ -120,6 +120,8 @@ final class RecentLocationHistory: NSObject {
     private let clock: () -> Date
     private var database: OpaquePointer?
     private var lastPrune = 0.0
+    private var pruningRevision = 0
+    private var todayCache = TodayHistoryCache()
     private let retentionLock = NSLock()
     private var retentionGeneration = 0
     private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
@@ -204,6 +206,13 @@ final class RecentLocationHistory: NSObject {
     func loadStorageSummary(completion: @escaping (HistoryStorageSummary) -> Void) {
         queue.async(qos: .utility) {
             let summary = self.storageSummary()
+            DispatchQueue.main.async { completion(summary) }
+        }
+    }
+
+    func loadTodaySummary(calendar: Calendar = .current, completion: @escaping (TodayHistorySummary?) -> Void) {
+        queue.async(qos: .utility) {
+            let summary = self.todaySummary(calendar: calendar)
             DispatchQueue.main.async { completion(summary) }
         }
     }
@@ -353,7 +362,12 @@ final class RecentLocationHistory: NSObject {
               let statement else { return false }
         defer { sqlite3_finalize(statement) }
         guard sqlite3_bind_double(statement, 1, cutoff) == SQLITE_OK else { return false }
-        return sqlite3_step(statement) == SQLITE_DONE
+        guard sqlite3_step(statement) == SQLITE_DONE else { return false }
+        if sqlite3_changes(database) > 0,
+           todayCache.oldestTimestamp.map({ $0.timeIntervalSince1970 < cutoff }) == true {
+            pruningRevision &+= 1
+        }
+        return true
     }
 
     private func pruneForCurrentRetention() {
@@ -386,6 +400,64 @@ final class RecentLocationHistory: NSObject {
             ))
         }
         return points
+    }
+
+    private func todaySummary(calendar: Calendar) -> TodayHistorySummary? {
+        guard let database = open() else { return nil }
+        let now = clock()
+        let cutoff = now.addingTimeInterval(-retentionDuration())
+        if now.timeIntervalSince1970 - lastPrune >= 3600 {
+            if prune(database, before: cutoff.timeIntervalSince1970) { lastPrune = now.timeIntervalSince1970 }
+        }
+        todayCache.prepare(now: now, calendar: calendar, pruningRevision: pruningRevision, cutoff: cutoff)
+        let day = TodayWindow(containing: now, calendar: calendar)
+        // The second range admits future-dated rows as the clock reaches them, even when a
+        // later ID has already been counted. Both ranges load geometry only within today.
+        let sql = """
+        SELECT id, timestamp, latitude, longitude FROM points
+        WHERE id > ? AND timestamp >= ? AND timestamp < ? AND timestamp <= ?
+        UNION ALL
+        SELECT id, timestamp, latitude, longitude FROM points
+        WHERE id <= ? AND timestamp >= ? AND timestamp < ? AND timestamp <= ? AND timestamp > ?
+        """
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
+              let statement else { return nil }
+        defer { sqlite3_finalize(statement) }
+        let start = max(day.start, cutoff).timeIntervalSince1970
+        sqlite3_bind_int64(statement, 1, todayCache.lastArchivedID)
+        sqlite3_bind_double(statement, 2, start)
+        sqlite3_bind_double(statement, 3, day.end.timeIntervalSince1970)
+        sqlite3_bind_double(statement, 4, now.timeIntervalSince1970)
+        sqlite3_bind_int64(statement, 5, todayCache.lastArchivedID)
+        sqlite3_bind_double(statement, 6, start)
+        sqlite3_bind_double(statement, 7, day.end.timeIntervalSince1970)
+        sqlite3_bind_double(statement, 8, now.timeIntervalSince1970)
+        sqlite3_bind_double(statement, 9, todayCache.readThrough.timeIntervalSince1970)
+        var additions: [RecordedLocation] = []
+        var result = sqlite3_step(statement)
+        while result == SQLITE_ROW {
+            additions.append(RecordedLocation(
+                id: sqlite3_column_int64(statement, 0),
+                timestamp: Date(timeIntervalSince1970: sqlite3_column_double(statement, 1)),
+                latitude: sqlite3_column_double(statement, 2), longitude: sqlite3_column_double(statement, 3)))
+            result = sqlite3_step(statement)
+        }
+        guard result == SQLITE_DONE else { return nil }
+
+        var latest: OpaquePointer?
+        guard sqlite3_prepare_v2(database,
+                                "SELECT timestamp FROM points WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp DESC LIMIT 1",
+                                -1, &latest, nil) == SQLITE_OK, let latest else { return nil }
+        defer { sqlite3_finalize(latest) }
+        sqlite3_bind_double(latest, 1, cutoff.timeIntervalSince1970)
+        sqlite3_bind_double(latest, 2, now.timeIntervalSince1970)
+        let latestResult = sqlite3_step(latest)
+        guard latestResult == SQLITE_ROW || latestResult == SQLITE_DONE else { return nil }
+        let lastFix = latestResult == SQLITE_ROW
+            ? Date(timeIntervalSince1970: sqlite3_column_double(latest, 0)) : nil
+        todayCache.extend(additions, through: now)
+        return todayCache.summary(lastFixDate: lastFix)
     }
 
     private func storageSummary() -> HistoryStorageSummary {

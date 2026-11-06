@@ -184,7 +184,7 @@ final class ReplayTimeline {
     private static let staySilence: TimeInterval = 60
     private static let stillStep = 25.0
     private static let jumpDistance = 100.0
-    private static let activityWindow: TimeInterval = 30
+    static let activityWindow: TimeInterval = 30
     private static let earthRadius = 6_371_008.8
 
     init(points: [RecordedLocation]) {
@@ -195,15 +195,11 @@ final class ReplayTimeline {
         for index in durations.indices {
             let distance = Self.distance(points[index], points[index + 1])
             // Fixes wandering during a shorter stop are not progress. The marker still visits each one.
-            let still = distance <= Self.stillStep && (speeds[index] ?? .infinity) < ReplayActivity.stoppedSpeed
-                && (speeds[index + 1] ?? .infinity) < ReplayActivity.stoppedSpeed
+            let still = Self.isStationary(distance: distance, speeds: speeds, segment: index)
             durations[index] = ReplayPacing.baseDuration(
                 recordedInterval: points[index + 1].timestamp.timeIntervalSince(points[index].timestamp),
                 distance: still ? 0 : distance)
-            // A jump counts as the direct distance across it, once the fix after it arrives.
-            let travelled = still || Self.isJump(points, at: index + 1) ? 0
-                : index > 0 && Self.isJump(points, at: index) ? Self.distance(points[index - 1], points[index + 1])
-                : distance
+            let travelled = Self.travelledDistance(points, segment: index, distance: distance, stationary: still)
             legDistances[index + 1] = legDistances[index] + travelled
         }
         var shortestDurations = [TimeInterval](repeating: 0, count: durations.count)
@@ -271,6 +267,30 @@ final class ReplayTimeline {
     static func distance(_ lhs: RecordedLocation, _ rhs: RecordedLocation) -> Double {
         let delta = offset(of: rhs, from: lhs)
         return hypot(delta.x, delta.y)
+    }
+
+    // Per-fix increments before the overlay resets its distance at each stay.
+    static func distanceIncrements(_ points: [RecordedLocation]) -> [Double] {
+        let speeds = netSpeeds(points)
+        return points.indices.map { index -> Double in
+            guard index > 0 else { return 0 }
+            let distance = Self.distance(points[index - 1], points[index])
+            let still = isStationary(distance: distance, speeds: speeds, segment: index - 1)
+            return travelledDistance(points, segment: index - 1, distance: distance, stationary: still)
+        }
+    }
+
+    private static func isStationary(distance: Double, speeds: [Double?], segment: Int) -> Bool {
+        distance <= stillStep
+            && (speeds[segment] ?? .infinity) < ReplayActivity.stoppedSpeed
+            && (speeds[segment + 1] ?? .infinity) < ReplayActivity.stoppedSpeed
+    }
+
+    private static func travelledDistance(_ points: [RecordedLocation], segment: Int, distance: Double, stationary: Bool) -> Double {
+        if stationary || isJump(points, at: segment + 1) { return 0 }
+        // A jump counts as the direct distance across it, once the fix after it arrives.
+        if segment > 0, isJump(points, at: segment) { return Self.distance(points[segment - 1], points[segment + 1]) }
+        return distance
     }
 
     private static func offset(of point: RecordedLocation, from origin: RecordedLocation) -> (x: Double, y: Double) {
