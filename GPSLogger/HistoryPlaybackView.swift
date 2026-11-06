@@ -1603,7 +1603,9 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate {
     private func publishHoldScale() {
         let scale = coarseDetents.scale(at: coarseLevel)
         configuration?.onHold(ReplayRulerHold(pointsPerBar: scale.pointsPerTick,
-                                             visibleBars: Double(bounds.width / scale.spacing)))
+                                             visibleBars: Double(bounds.width / scale.spacing),
+                                             coarseness: HistoryRulerCoarseDrag.coarseness(
+                                                step: scale.pointsPerTick, coarsest: coarseDetents.steps[0])))
     }
 
     private func setCoarsePosition(_ target: Double) {

@@ -1573,6 +1573,16 @@ final class HistoryRulerZoomTests: XCTestCase {
         XCTAssertTrue(hold.needsFit(at: 49.999, since: 100))
     }
 
+    func testMidDetentsFitOnlyTheBarsNearTheNeedle() {
+        XCTAssertEqual(ReplayRulerHold(pointsPerBar: 20, visibleBars: 24, coarseness: 1).halfWindow, 240)
+        XCTAssertEqual(ReplayRulerHold(pointsPerBar: 20, visibleBars: 24, coarseness: 0).halfWindow, 40)
+        XCTAssertEqual(ReplayRulerHold(pointsPerBar: 20, visibleBars: 24, coarseness: 0.5).halfWindow, 40 + 200 * 0.25,
+                       accuracy: 0.0001)
+        XCTAssertEqual(ReplayRulerHold(pointsPerBar: 20, visibleBars: 3, coarseness: 0).halfWindow, 30)
+        let mid = ReplayRulerHold(pointsPerBar: 20, visibleBars: 24, coarseness: 0.45)
+        XCTAssertLessThan(mid.halfWindow, ReplayRulerHold(pointsPerBar: 20, visibleBars: 24).halfWindow / 2)
+    }
+
     func testPointPrecisionUsesBaseAndCoarseZoomNeverGoesBelowIt() {
         XCTAssertEqual(ReplayHoldZoom.distance(base: 2_000, pointsPerBar: 1, fitted: 80_000), 2_000)
         XCTAssertEqual(ReplayHoldZoom.distance(base: 2_000, pointsPerBar: 20, fitted: 500), 2_000)

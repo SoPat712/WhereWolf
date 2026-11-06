@@ -247,8 +247,9 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   Keep VoiceOver's point steps and announce the held scale. Retain every stored
   route point. A Tracker replay hold recaptures a manually moved camera, preserving
   overview mode. In follow mode, one point per bar uses the starting follow distance
-  D0; coarser detents fit the route window visible on the ruler into the overview's
-  clear map area, never closer than D0. Compute the box at hold start, detent changes
+  D0; coarser detents fit the route within ±(2 + (half the visible bars − 2) × coarseness²)
+  bars of the needle into the overview's clear map area, never closer than D0, so mid
+  detents stay close and only the coarsest fit the whole visible ruler. Compute the box at hold start, detent changes
   and moves greater than half a window, never per frame. UIKit eases distance in
   log space over 0.3 seconds while following the same replay pose. Do not write the
   saved follow distance or the outer SwiftUI camera on held steps. Release flies

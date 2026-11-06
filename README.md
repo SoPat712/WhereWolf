@@ -160,8 +160,8 @@ growing taller and wider for larger steps. A Liquid Glass bubble above the drawe
 shows the selected time and how much time each bar represents (blur material before iOS 26). Releasing stops the
 hold immediately. Reaching Live keeps the gesture active so you can scrub back;
 releasing there returns to Live. While following a replay point, coarser steps
-zoom out to fit the visible ruler's stretch of route, then release flies back to
-your starting zoom. Overview stays in overview. Held scrubbing uses cached point
+zoom out to fit the route near the needle; only the coarsest steps fit the whole
+visible ruler. Release flies back to your starting zoom. Overview stays in overview. Held scrubbing uses cached point
 details and loads the final selection on release.
 Normal dragging keeps its original precision and momentum. Trip Settings starts
 with a translucent glass background and fades toward the grouped Settings

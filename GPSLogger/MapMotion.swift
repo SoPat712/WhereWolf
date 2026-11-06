@@ -133,10 +133,19 @@ enum ReplayOverviewFit {
 }
 
 struct ReplayRulerHold: Equatable {
+    static let nearBars: Double = 2
+
     let pointsPerBar: Double
     let visibleBars: Double
+    var coarseness: Double = 1
 
-    var halfWindow: Double { max(0, visibleBars * pointsPerBar / 2) }
+    // Mid detents fit only the bars near the needle, so the map stays close until the coarsest steps.
+    var halfWindow: Double {
+        let half = max(0, visibleBars / 2)
+        let near = min(half, Self.nearBars)
+        let weight = pow(min(1, max(0, coarseness)), 2)
+        return max(0, pointsPerBar * (near + (half - near) * weight))
+    }
 
     func window(at position: Double, count: Int) -> Range<Int> {
         guard count > 0 else { return 0..<0 }
