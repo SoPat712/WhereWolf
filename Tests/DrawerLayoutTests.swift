@@ -35,6 +35,21 @@ final class DrawerLayoutTests: XCTestCase {
             }
         }
     }
+    func testDrawerCellsLandOnSystemItemsWithAnEvenSelectionGap() {
+        // The measured iOS 27 bar: three 94-point items, 86 apart and overlapping by 8, inside a 274-point platter.
+        let platter = DrawerBarGeometry(frame: CGRect(x: 64, y: 780, width: 274, height: 62), radius: 31)
+        let items = (0..<3).map { CGRect(x: 68 + CGFloat($0) * 86, y: 784, width: 94, height: 54) }
+        let inset = SystemTabBarGeometry.stripInset(for: platter, items: items)
+        XCTAssertEqual(inset, SystemTabBarGeometry.defaultStripInset, accuracy: 0.01)
+        let pitch = (platter.frame.width - inset * 2 - DrawerTabStrip.sideInset * 2) / CGFloat(items.count)
+        for (index, item) in items.enumerated() {
+            let center = platter.frame.minX + inset + DrawerTabStrip.sideInset + pitch * (CGFloat(index) + 0.5)
+            XCTAssertEqual(center, item.midX, accuracy: 0.01)
+        }
+        XCTAssertEqual(DrawerTabStrip.sideInset - DrawerTabStrip.contentInset, DrawerTabStrip.contentInset,
+                       "The end selections keep the same gap from the capsule as above and below them.")
+    }
+
     func testControlsRemainAtDrawerTopWhileHeightMeasurementIsDeferred() async throws {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.first as? UIWindowScene)
         let previous = scene.windows.first(where: \.isKeyWindow)

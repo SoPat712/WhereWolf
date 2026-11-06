@@ -719,7 +719,7 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
                                                 width: width, height: height), radius: height / 2)
     }
 
-    func transitionBar(toSystem: Bool, systemGeometry: DrawerBarGeometry, systemTabsInset: CGFloat = 4,
+    func transitionBar(toSystem: Bool, systemGeometry: DrawerBarGeometry, systemTabsInset: CGFloat = SystemTabBarGeometry.defaultStripInset,
                        animated: Bool, fromSystem: Bool = false) {
         loadViewIfNeeded()
         if toSystem, systemHandoffComplete, spring?.bar == nil { return }

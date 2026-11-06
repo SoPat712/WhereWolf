@@ -69,7 +69,7 @@ final class WhereWolfShellController: UITabBarController, UITabBarControllerDele
     private var currentControlsID: Int
     private var collapsedTop: CGFloat?
     private(set) var systemPlatterGeometry: DrawerBarGeometry?
-    private var systemTabsInset = SystemTabBarGeometry.platterPadding
+    private var systemTabsInset = SystemTabBarGeometry.defaultStripInset
     private var updatingBar = false
     private var suppressSystemBar = true
     private var barLayoutSize = CGSize.zero
@@ -372,6 +372,9 @@ final class WhereWolfShellController: UITabBarController, UITabBarControllerDele
 enum SystemTabBarGeometry {
     // On a 402-point iOS 27 phone, the 266 × 54 item union sits in a 274 × 62 platter.
     static let platterPadding: CGFloat = 4
+    // System items start one padding inside the platter and overlap their neighbors by two, so the
+    // drawer strip fills the platter when its cells line up with them.
+    static let defaultStripInset: CGFloat = max(0, platterPadding * 2 - DrawerTabStrip.sideInset)
 
     static var isFloating: Bool {
         if #available(iOS 26.0, *) { return true }
@@ -440,10 +443,10 @@ enum SystemTabBarGeometry {
         var lefts: [CGFloat] = []
         for x in items.map(\.minX).sorted() where lefts.last.map({ x - $0 > 1 }) ?? true { lefts.append(x) }
         guard lefts.count == DrawerTabStrip.tabs.count, let first = lefts.first, let last = lefts.last else {
-            return platterPadding
+            return defaultStripInset
         }
         let pitch = (last - first) / CGFloat(lefts.count - 1)
-        let strip = pitch * CGFloat(lefts.count) + DrawerTabStrip.contentInset * 2
+        let strip = pitch * CGFloat(lefts.count) + DrawerTabStrip.sideInset * 2
         return max(0, (platter.frame.width - strip) / 2)
     }
 
@@ -470,6 +473,9 @@ struct DrawerTabStrip: View {
     @GestureState private var pressed: Int?
 
     static let contentInset: CGFloat = 4
+    // The selection reaches past its cell by the content inset, so the ends need twice the inset to
+    // leave the same gap beside the selection as above and below it.
+    static let sideInset: CGFloat = contentInset * 2
     // Items match the system tab bar measured on iOS 27: 54-point cells with a symbol centered 20
     // points down and a 10-point label centered 41 down. UIKit draws its 16-point semibold tab
     // symbols about 1.4 times larger, which a 22.6-point semibold symbol matches. The strip is never
@@ -516,7 +522,8 @@ struct DrawerTabStrip: View {
                 .accessibilityAction { onSelect(tab.id) }
             }
         }
-        .padding(Self.contentInset)
+        .padding(.vertical, Self.contentInset)
+        .padding(.horizontal, Self.sideInset)
         .contentShape(Rectangle())
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         // One gesture handles taps and sideways scrubbing, like the system tab bar: the highlight

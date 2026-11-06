@@ -487,7 +487,9 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   system tab bar measured on iOS 27 (54-point cells; UIKit draws 16-point semibold symbols about
   1.4 times larger, so a 22.6-point semibold symbol centered 20 points down; a 10-point medium
   label centered 41 down) and are never scaled; the drawer
-  changes only the strip's layout width, so open and closed change the spacing. The closed
+  changes only the strip's layout width, so open and closed change the spacing. Like the
+  system's, the selection reaches 4 points past its cell; the strip's 8-point side insets keep
+  a 4-point gap around it on every side, and the strip fills the platter at handoff. The closed
   capsule keeps 10.6 points above the strip for the grabber mark and 3.2 below. Zoom buttons
   preserve replay following and rotation; manual map gestures remain free.
   A compass below Zoom Out appears while the heading is more than 1° from north, reported
