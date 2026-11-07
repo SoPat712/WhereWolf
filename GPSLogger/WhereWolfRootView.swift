@@ -37,7 +37,8 @@ struct WhereWolfRootView: View {
 
     private var rulerOwnsCamera: Bool {
         selection == 0 && scenePhase == .active && history.isBrowsing
-            && history.rulerZoom != nil && !replayOverview && !replayCameraFree
+            && (history.rulerZoom != nil || history.rulerScaleChannel.frame != nil)
+            && !replayOverview && !replayCameraFree
     }
 
     private enum MapAppearance: String, CaseIterable {
@@ -249,6 +250,7 @@ struct WhereWolfRootView: View {
                                 replayFollowDistance: replayCameraDistance ?? 2_000,
                                 replayOverview: mapTab == 0 && replayOverview,
                                 rulerZoom: mapTab == 0 ? history.rulerZoom : nil,
+                                rulerScaleChannel: mapTab == 0 ? history.rulerScaleChannel : nil,
                                 rulerZoomActive: selection == 0,
                                 replayStatusHeight: mapTab == 0 && history.isBrowsing
                                     ? max(speedometerHeight, replayStatusHeight) : 0,

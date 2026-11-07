@@ -21,6 +21,7 @@ final class HistoryPlaybackModel {
     private(set) var rulerHold: ReplayRulerHold?
     private(set) var rulerHoldCancelled = false
     private(set) var rulerStep = 1.0
+    @ObservationIgnored let rulerScaleChannel = RulerScaleChannel()
     private var rulerWidth: CGFloat = 350
     private(set) var consumerActive = false
     private(set) var retentionRevision = 0
@@ -33,11 +34,7 @@ final class HistoryPlaybackModel {
 
     var rulerZoom: ReplayRulerHold? {
         guard rulerStep > 1 else { return nil }
-        let detents = rulerDetents
-        let scale = detents.scale(at: detents.index(nearest: rulerStep))
-        return ReplayRulerHold(pointsPerBar: scale.pointsPerTick,
-            visibleBars: Double(rulerWidth / scale.spacing),
-            coarseness: HistoryRulerCoarseDrag.coarseness(step: rulerStep, coarsest: detents.steps[0]))
+        return rulerDetents.zoom(step: rulerStep, width: rulerWidth)
     }
 
     func setRulerWidth(_ width: CGFloat) {
@@ -1070,6 +1067,8 @@ struct HistoryRuler: View {
                 history.setRulerHold(hold)
             }, onScale: { step in
                 history.setRulerStep(step)
+            }, onContinuousScale: { frame in
+                history.rulerScaleChannel.send(frame)
             }, onAdjust: { direction in
                 let target = min(tickCount, max(0, Int(position.rounded()) + direction))
                 if target == 0 { onLive() }
@@ -1168,22 +1167,26 @@ enum HistoryRulerCoarseDrag {
             return steps.indices.min { abs(log(steps[$0]) - value) < abs(log(steps[$1]) - value) }!
         }
 
-        func pinched(startStep: Double, scale: Double, previous: Int) -> Int {
-            guard scale > 0, !scale.isNaN else { return min(steps.count - 1, max(0, previous)) }
-            let value = log(min(steps[0], max(1, startStep / scale)))
-            var index = min(steps.count - 1, max(0, previous))
-            // Cross 15% beyond the logarithmic midpoint before leaving the current step.
-            while index < steps.count - 1 {
-                let current = log(steps[index]), finer = log(steps[index + 1])
-                if value > current - (current - finer) * 0.65 { break }
-                index += 1
-            }
-            while index > 0 {
-                let current = log(steps[index]), coarser = log(steps[index - 1])
-                if value < current + (coarser - current) * 0.65 { break }
-                index -= 1
-            }
-            return index
+        func bracket(at value: Double) -> Bracket {
+            let value = min(steps[0], max(1, value))
+            if steps.contains(value) { return Bracket(lower: value, upper: value, t: 0) }
+            let upperIndex = steps.lastIndex { $0 > value }!
+            let lower = steps[upperIndex + 1], upper = steps[upperIndex]
+            return Bracket(lower: lower, upper: upper, t: log(value / lower) / log(upper / lower))
+        }
+
+        func settleTarget(at value: Double, velocity: Double = 0, pinchScale: Double = 1) -> Int {
+            let nearest = index(nearest: value)
+            let projection = velocity.isFinite && pinchScale.isFinite && pinchScale > 0
+                ? 0.12 * velocity / pinchScale : 0
+            let projected = exp(min(log(steps[0]), max(0, log(value) - projection)))
+            return min(steps.count - 1, min(nearest + 1, max(nearest - 1, index(nearest: projected))))
+        }
+
+        func zoom(step: Double, width: CGFloat) -> ReplayRulerHold {
+            let scale = HistoryRulerCoarseDrag.scale(step: step, coarsest: steps[0])
+            return ReplayRulerHold(pointsPerBar: step, visibleBars: Double(width / scale.spacing),
+                coarseness: HistoryRulerCoarseDrag.coarseness(step: step, coarsest: steps[0]))
         }
 
         func scale(at index: Int) -> Scale {
@@ -1203,6 +1206,76 @@ enum HistoryRulerCoarseDrag {
                 return MenuEntry(title: title, step: step, selected: step == current)
             }
         }
+    }
+
+    struct Bracket {
+        let lower: Double
+        let upper: Double
+        let t: Double
+
+        var alphas: (lower: Double, upper: Double) {
+            guard lower != upper else { return (1, 0) }
+            let blend = min(1, max(0, (t - 0.25) / 0.5))
+            let eased = blend * blend * (3 - 2 * blend)
+            return (1 - eased, eased)
+        }
+
+        func distance(lower from: Double, upper to: Double) -> Double {
+            if t == 0 { return from }
+            if t == 1 { return to }
+            return exp(log(max(1, from)) + log(max(1, to) / max(1, from)) * t)
+        }
+
+        struct Bar {
+            let position: Double
+            var alpha: Double
+            var majorAlpha: Double
+        }
+
+        func bars(in range: ClosedRange<Double>) -> [Bar] {
+            var bars: [Double: Bar] = [:]
+            let alphas = alphas
+            for (step, alpha) in [(lower, alphas.lower), (upper, alphas.upper)] where alpha > 0 {
+                let first = Int(ceil(max(0, range.lowerBound) / step))
+                let last = Int(floor(range.upperBound / step))
+                guard first <= last else { continue }
+                for tick in first...last {
+                    let position = Double(tick) * step
+                    let major = tick.isMultiple(of: 5)
+                    var bar = bars[position] ?? Bar(position: position, alpha: 0, majorAlpha: 0)
+                    bar.alpha = max(bar.alpha, alpha)
+                    if major { bar.majorAlpha = max(bar.majorAlpha, alpha) }
+                    bars[position] = bar
+                }
+            }
+            return bars.values.sorted { $0.position < $1.position }
+        }
+    }
+
+    struct ScaleEase {
+        let from: Double
+        let to: Double
+        let start: Double
+        static let duration = 0.22
+
+        func progress(at time: Double) -> Double { min(1, max(0, (time - start) / Self.duration)) }
+
+        func value(at time: Double) -> Double {
+            let progress = progress(at: time)
+            if progress == 0 { return from }
+            if progress == 1 { return to }
+            let eased = 1 - pow(1 - progress, 3)
+            return exp(log(from) + log(to / from) * eased)
+        }
+    }
+
+    static func continuous(start: Double, pinchScale: Double, coarsest: Double) -> Double {
+        guard pinchScale.isFinite, pinchScale > 0 else { return start }
+        let direct = start / pinchScale
+        if direct >= 1 && direct <= coarsest { return direct }
+        let value = log(max(Double.leastNormalMagnitude, start)) - log(pinchScale)
+        let boundary = min(log(coarsest), max(0, value))
+        return exp(boundary + (value - boundary) * 0.35)
     }
 
     struct MenuEntry: Identifiable, Equatable {
@@ -1241,15 +1314,6 @@ enum HistoryRulerCoarseDrag {
 
         func position(at contentOffset: CGFloat, tickCount: Int) -> Double {
             Double((self.contentOffset(at: 0, tickCount: tickCount) - contentOffset) / spacing) * pointsPerTick
-        }
-
-        func blended(to target: Self, progress: CGFloat) -> Self {
-            func blend(_ a: CGFloat, _ b: CGFloat) -> CGFloat { a + (b - a) * progress }
-            return Self(pointsPerTick: target.pointsPerTick,
-                        spacing: blend(spacing, target.spacing),
-                        minorHeight: blend(minorHeight, target.minorHeight),
-                        majorHeight: blend(majorHeight, target.majorHeight),
-                        lineWidth: blend(lineWidth, target.lineWidth), bottom: blend(bottom, target.bottom))
         }
     }
 
@@ -1358,7 +1422,7 @@ enum HistoryRulerCoarseDrag {
     }
 }
 
-private struct HistoryRulerSurface: UIViewRepresentable {
+struct HistoryRulerSurface: UIViewRepresentable {
     var position: Double
     var tickCount: Int
     var step: Double
@@ -1376,6 +1440,7 @@ private struct HistoryRulerSurface: UIViewRepresentable {
     var onCancel: () -> Void
     var onHold: (ReplayRulerHold) -> Void
     var onScale: (Double) -> Void
+    var onContinuousScale: (RulerScaleChannel.Frame?) -> Void
     var onAdjust: (Int) -> Void
 
     func makeUIView(context: Context) -> HistoryRulerContainer {
@@ -1403,17 +1468,20 @@ private final class HistoryRulerTicks: UIView {
     var pointCount = 0
     var position: Double = 0
     var scale = HistoryRulerCoarseDrag.Scale()
+    var detents = HistoryRulerCoarseDrag.Detents(tickCount: 1, rulerWidth: 350)
     var snappedStop: Int?
     var landmarks: HistoryLandmarks? {
         didSet {
             guard oldValue !== landmarks else { return }
             widths.removeAll(keepingCapacity: true)
             symbols.removeAll(keepingCapacity: true)
+            labelLevel = nil
         }
     }
     private let font = UIFont.systemFont(ofSize: 10, weight: .medium)
     private var widths: [String: CGFloat] = [:]
     private var symbols: [Int: UIImage] = [:]
+    private var labelLevel: Int?
 
     private func measure(_ text: String) {
         if widths[text] == nil {
@@ -1454,24 +1522,23 @@ private final class HistoryRulerTicks: UIView {
             UIColor(WifiPlace.tint(for: stop.color)).withAlphaComponent(snappedStop == stop.id ? 0.85 : 0.16).setFill()
             UIBezierPath(roundedRect: frame, cornerRadius: 7).fill()
         }
-        let barPosition = position / scale.pointsPerTick
-        let radius = Int(ceil(bounds.width / scale.spacing / 2)) + 1
-        let first = max(0, Int(floor(barPosition)) - radius)
-        let last = min(Int(floor(Double(tickCount) / scale.pointsPerTick)), Int(floor(barPosition)) + radius)
-        if first <= last {
-            for tick in first...last {
-                let tickPosition = Double(tick) * scale.pointsPerTick
-                let x = center + scale.screenOffset(of: tickPosition, at: position)
-                let major = tick == 0 || tick.isMultiple(of: 5)
-                let stop = landmarks?.stop(containing: Double(tickCount) - tickPosition, pointCount: pointCount)
-                let color: UIColor = stop.map { $0.id == snappedStop } == true ? .white : .label
-                let alpha: CGFloat = stop == nil ? (major ? 0.5 : 0.25) : (snappedStop == stop?.id ? 0.95 : (major ? 0.3 : 0.15))
-                context.setStrokeColor(color.withAlphaComponent(alpha).cgColor)
-                context.setLineWidth(scale.lineWidth)
-                context.move(to: CGPoint(x: x, y: 22 + scale.bottom - (major ? scale.majorHeight : scale.minorHeight)))
-                context.addLine(to: CGPoint(x: x, y: 22 + scale.bottom))
-                context.strokePath()
-            }
+        let firstBar = min(Double(tickCount), max(0, position - halfWindow))
+        let barRange = firstBar...min(Double(tickCount), max(firstBar, position + halfWindow))
+        for bar in detents.bracket(at: scale.pointsPerTick).bars(in: barRange) {
+            let x = center + scale.screenOffset(of: bar.position, at: position)
+            let stop = landmarks?.stop(containing: Double(tickCount) - bar.position, pointCount: pointCount)
+            let snapped = stop.map { $0.id == snappedStop } == true
+            let color: UIColor = snapped ? .white : .label
+            let minorAlpha = stop == nil ? 0.25 : 0.15
+            let alpha = snapped ? 0.95 * bar.alpha
+                : max(minorAlpha * bar.alpha, 2 * minorAlpha * bar.majorAlpha)
+            let major = CGFloat(bar.majorAlpha / bar.alpha)
+            let height = scale.minorHeight + (scale.majorHeight - scale.minorHeight) * major
+            context.setStrokeColor(color.withAlphaComponent(CGFloat(alpha)).cgColor)
+            context.setLineWidth(scale.lineWidth)
+            context.move(to: CGPoint(x: x, y: 22 + scale.bottom - height))
+            context.addLine(to: CGPoint(x: x, y: 22 + scale.bottom))
+            context.strokePath()
         }
         drawLabels(in: range, stops: visibleStops, context: context)
         context.setShadow(offset: .zero, blur: 3, color: UIColor.systemBlue.withAlphaComponent(0.35).cgColor)
@@ -1521,7 +1588,14 @@ private final class HistoryRulerTicks: UIView {
             add(stop.label, at: start, priority: .stop, symbol: symbol(for: stop),
                 color: UIColor(WifiPlace.tint(for: stop.color)), fullText: fits)
         }
-        let level = landmarks.timeLevel(in: range, pointsPerBar: scale.pointsPerTick, spacing: Double(scale.spacing))
+        let proposed = landmarks.timeLevel(in: range, pointsPerBar: scale.pointsPerTick, spacing: Double(scale.spacing))
+        // Require a little extra room before restoring a finer label interval.
+        if let previous = labelLevel, proposed < previous {
+            let finer = landmarks.timeLevel(in: range, pointsPerBar: scale.pointsPerTick * 1.08,
+                                            spacing: Double(scale.spacing))
+            if finer < previous { labelLevel = finer }
+        } else { labelLevel = proposed }
+        let level = labelLevel ?? proposed
         var lastTimeX = -CGFloat.infinity
         for mark in HistoryLandmarks.visibleMarks(landmarks.timeMarks[level], in: range) {
             let x = x(at: mark.index)
@@ -1656,7 +1730,7 @@ private final class HistoryRulerCoarseBubble: UIView {
     }
 }
 
-private final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecognizerDelegate {
+final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecognizerDelegate {
     private let scrollView = HistoryRulerScrollView()
     private let contentView = UIView()
     private let ticks = HistoryRulerTicks()
@@ -1683,9 +1757,10 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestu
     private var interactionLiveEdge = Date()
     private weak var drawerSheet: UIView?
     private var scaleLink: CADisplayLink?
-    private var scaleFrom = HistoryRulerCoarseDrag.Scale()
     private var scaleTo = HistoryRulerCoarseDrag.Scale()
-    private var scaleStarted = 0.0
+    private(set) var scaleEase: HistoryRulerCoarseDrag.ScaleEase?
+    private var pendingScaleCommit: Int?
+    private var reportsContinuousScale = false
     private var lastFeedbackPosition = 0.0
     private var lastBoundary: Int?
     private var lastFeedbackTime = 0.0
@@ -1699,7 +1774,18 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestu
 #endif
 
     private var maximumOffset: CGFloat { ticks.scale.contentOffset(at: 0, tickCount: ticks.tickCount) }
-    private var position: Double { ticks.scale.position(at: scrollView.contentOffset.x, tickCount: ticks.tickCount) }
+    // UIScrollView rounds offsets to pixels. Reading a rounded offset back would move an anchored
+    // position a little on every scale frame, and could leave Live after a pinch there.
+    private var exactPosition: (offset: CGFloat, scale: HistoryRulerCoarseDrag.Scale, tickCount: Int, value: Double)?
+    private var position: Double {
+        if let exact = exactPosition, exact.offset == scrollView.contentOffset.x,
+           exact.scale == ticks.scale, exact.tickCount == ticks.tickCount { return exact.value }
+        return ticks.scale.position(at: scrollView.contentOffset.x, tickCount: ticks.tickCount)
+    }
+
+    private func setExactPosition(_ value: Double) {
+        exactPosition = (scrollView.contentOffset.x, ticks.scale, ticks.tickCount, value)
+    }
     private var motionPosition: Double { position / ticks.scale.pointsPerTick * Double(ticks.scale.spacing) }
     private var held: Bool { coarseDragging || pinching }
     private var moving: Bool { dragging || decelerating || held }
@@ -1718,7 +1804,8 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestu
     private var scaleLabel: HistoryRulerCoarseDrag.ScaleLabel {
         guard let configuration else { return .init(text: "", accessibility: "") }
         return HistoryRulerCoarseDrag.scaleLabel(
-            pointsPerTick: ticks.scale.pointsPerTick, position: position,
+            pointsPerTick: pinching ? coarseDetents.nearestStep(to: ticks.scale.pointsPerTick) : ticks.scale.pointsPerTick,
+            position: position,
             pointCount: configuration.points.count, timestampAt: { configuration.points[$0].timestamp },
             emptyInterval: configuration.retentionInterval / 48)
     }
@@ -1781,21 +1868,37 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestu
     func configure(_ configuration: HistoryRulerSurface) {
         let interrupted = appliedRevision != configuration.revision || !configuration.active
         let wasActive = self.configuration?.active ?? false
+        let scaleChanged = self.configuration.map {
+            $0.detents.steps != configuration.detents.steps || $0.tickCount != configuration.tickCount
+                || $0.step != configuration.step || $0.retentionInterval != configuration.retentionInterval
+        } ?? false
+        let completingStep = pendingScaleCommit.map { coarseDetents.steps[$0] }
+            ?? (pinching ? coarseDetents.nearestStep(to: ticks.scale.pointsPerTick) : nil)
+        let externalStep = self.configuration.map { $0.step != configuration.step } ?? false
+        // Only a pinch or its settle depends on the previous ladder; scrolling and momentum continue.
+        if interrupted || (scaleChanged && (pinching || pendingScaleCommit != nil)) { cancelMotion() }
+        if let completingStep, externalStep, completingStep != configuration.step {
+            // An incoming menu choice follows the interrupted gesture's commit.
+            configuration.onScale(configuration.step)
+        }
         self.configuration = configuration
         ticks.landmarks = configuration.landmarks
         ticks.pointCount = configuration.points.count
-        if interrupted { cancelMotion() }
         appliedRevision = configuration.revision
         if !moving { ticks.tickCount = configuration.tickCount }
         coarseDetents = configuration.detents
-        coarseLevel = coarseDetents.index(nearest: configuration.step)
-        let scale = coarseDetents.scale(at: coarseLevel)
-        if scale != scaleTo { setScale(scale, animated: configuration.active && !configuration.reduceMotion) }
+        ticks.detents = coarseDetents
+        if !pinching && pendingScaleCommit == nil {
+            let step = (interrupted || scaleChanged) && !externalStep ? completingStep ?? configuration.step : configuration.step
+            coarseLevel = coarseDetents.index(nearest: step)
+            let scale = coarseDetents.scale(at: coarseLevel)
+            if scale != scaleTo { setScale(scale, animated: configuration.active && !configuration.reduceMotion) }
+        }
         scrollView.isScrollEnabled = configuration.active && !held
         if configuration.active && !wasActive { coarseGestureCancelled = false }
         coarsePress.isEnabled = configuration.active && !pinching
         pinch.isEnabled = configuration.active
-        if configuration.reduceMotion, scaleLink != nil { setScale(scaleTo, animated: false) }
+        if configuration.reduceMotion, scaleEase != nil { finishScale() }
         scrollView.decelerationRate = configuration.reduceMotion ? .fast : .normal
         if configuration.active && held { updateCoarseBubble() }
         if !configuration.active { removeCoarseBubble() }
@@ -1834,10 +1937,16 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestu
         scrollView.contentSize = contentSize
         let offset = CGPoint(x: ticks.scale.contentOffset(at: anchor, tickCount: ticks.tickCount), y: 0)
         if scrollView.contentOffset != offset { scrollView.setContentOffset(offset, animated: false) }
+        setExactPosition(anchor)
         suppressScroll = false
     }
 
     func cancelMotion(notifying: Bool = true) {
+        if pinching && pendingScaleCommit == nil {
+            pendingScaleCommit = coarseDetents.index(nearest: ticks.scale.pointsPerTick)
+            scaleTo = coarseDetents.scale(at: pendingScaleCommit!)
+        }
+        finishScale()
         let wasMoving = moving
         let wasHeld = held
         coarseDragging = false
@@ -1861,7 +1970,6 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestu
         }
         suppressScroll = false
         coarsePress.isEnabled = configuration?.active ?? false
-        setScale(scaleTo, animated: false)
         updateAccessibility()
         if wasMoving {
             if notifying { configuration?.onCancel() }
@@ -1871,7 +1979,7 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestu
 
     func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
         guard !held else { return }
-        if scaleLink != nil { setScale(scaleTo, animated: false) }
+        finishScale()
         if let configuration, ticks.tickCount != configuration.tickCount {
             ticks.tickCount = configuration.tickCount
             updateGeometry()
@@ -1940,21 +2048,16 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestu
     }
 
     private func setScale(_ scale: HistoryRulerCoarseDrag.Scale, animated: Bool) {
-        let anchor = position
         scaleLink?.invalidate()
         scaleLink = nil
-        scaleFrom = ticks.scale
+        scaleEase = nil
         scaleTo = scale
-        // Change the represented interval immediately; only the bar geometry eases.
-        ticks.scale.pointsPerTick = scale.pointsPerTick
-        updateGeometry(at: anchor)
         guard animated, ticks.scale != scale, window != nil else {
-            ticks.scale = scale
-            updateGeometry(at: anchor)
-            redraw()
+            finishScale()
             return
         }
-        scaleStarted = ProcessInfo.processInfo.systemUptime
+        scaleEase = .init(from: ticks.scale.pointsPerTick, to: scale.pointsPerTick,
+                          start: ProcessInfo.processInfo.systemUptime)
         let target = HistoryRulerScaleFrameTarget(ruler: self)
         let link = CADisplayLink(target: target, selector: #selector(HistoryRulerScaleFrameTarget.frame(_:)))
         let maximum = Float(window?.windowScene?.screen.maximumFramesPerSecond ?? 60)
@@ -1964,18 +2067,40 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestu
         redraw()
     }
 
-    fileprivate func advanceScale(at time: Double) {
+    func advanceScale(at time: Double) {
+        guard let ease = scaleEase else { return }
+        applyScale(ease.value(at: time))
+        if ease.progress(at: time) == 1 { finishScale() }
+    }
+
+    private func applyScale(_ value: Double) {
         let anchor = position
-        let progress = min(1, max(0, (time - scaleStarted) / 0.15))
-        let eased = progress * progress * (3 - 2 * progress)
-        ticks.scale = scaleFrom.blended(to: scaleTo, progress: CGFloat(eased))
+        ticks.scale = HistoryRulerCoarseDrag.scale(step: value, coarsest: coarseDetents.steps[0])
         updateGeometry(at: anchor)
         redraw()
-        if progress == 1 {
-            scaleLink?.invalidate()
-            scaleLink = nil
+        if reportsContinuousScale {
+            configuration?.onContinuousScale(.init(pointsPerBar: value, detents: coarseDetents, width: bounds.width))
         }
     }
+
+    private func finishScale() {
+        scaleLink?.invalidate()
+        scaleLink = nil
+        scaleEase = nil
+        applyScale(scaleTo.pointsPerTick)
+        if let level = pendingScaleCommit {
+            pendingScaleCommit = nil
+            coarseLevel = level
+            configuration?.onScale(coarseDetents.steps[level])
+        }
+        if reportsContinuousScale {
+            reportsContinuousScale = false
+            configuration?.onContinuousScale(nil)
+        }
+    }
+
+    var displayedPointsPerBar: Double { ticks.scale.pointsPerTick }
+    var anchoredPosition: Double { position }
 
     // UIView's own method and the delegate's share this selector; both reach here for the ruler's recognizers.
     override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
@@ -2020,34 +2145,59 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestu
     @objc private func pinchChanged(_ pinch: UIPinchGestureRecognizer) {
         switch pinch.state {
         case .began:
-            guard !coarseDragging, configuration?.active == true else { return }
-            cancelMotion(notifying: false)
-            pinching = true
-            coarseGestureCancelled = true
-            pinchStartStep = coarseDetents.steps[coarseLevel]
-            stopSnap.reset()
-            interactionLiveEdge = configuration?.onBegin() ?? Date()
-            scrollView.isScrollEnabled = false
-            coarsePress.isEnabled = false
-            publishHoldScale()
-            coarseFeedback.prepare()
-            showCoarseBubble()
+            beginPinch()
         case .changed:
-            guard pinching else { return }
-            changeScale(to: coarseDetents.pinched(startStep: pinchStartStep, scale: Double(pinch.scale),
-                                                  previous: coarseLevel))
+            updatePinch(scale: Double(pinch.scale))
         case .ended:
-            coarseGestureCancelled = false
-            guard pinching else { return }
-            changeScale(to: coarseDetents.pinched(startStep: pinchStartStep, scale: Double(pinch.scale),
-                                                  previous: coarseLevel))
-            endCoarseDrag()
+            endPinch(scale: Double(pinch.scale), velocity: Double(pinch.velocity))
         case .cancelled, .failed:
-            if pinching { cancelMotion() }
+            endPinch(scale: Double(pinch.scale), cancelled: true)
             coarseGestureCancelled = false
         default:
             break
         }
+    }
+
+    func beginPinch() {
+        guard !held, configuration?.active == true else { return }
+        // A pinch interrupts the curve at its displayed value rather than its target.
+        let value = ticks.scale.pointsPerTick
+        scaleLink?.invalidate()
+        scaleLink = nil
+        scaleEase = nil
+        pendingScaleCommit = nil
+        let continuing = reportsContinuousScale
+        reportsContinuousScale = false
+        scaleTo = ticks.scale
+        cancelMotion(notifying: false)
+        reportsContinuousScale = true
+        pinching = true
+        coarseGestureCancelled = true
+        pinchStartStep = value
+        stopSnap.reset()
+        interactionLiveEdge = configuration?.onBegin() ?? Date()
+        scrollView.isScrollEnabled = false
+        coarsePress.isEnabled = false
+        publishHoldScale()
+        if !continuing { applyScale(value) }
+        showCoarseBubble()
+    }
+
+    func updatePinch(scale: Double) {
+        guard pinching else { return }
+        applyScale(HistoryRulerCoarseDrag.continuous(start: pinchStartStep, pinchScale: scale,
+                                                    coarsest: coarseDetents.steps[0]))
+        updateCoarseBubble()
+    }
+
+    func endPinch(scale: Double, velocity: Double = 0, cancelled: Bool = false) {
+        guard pinching else { return }
+        if !cancelled { updatePinch(scale: scale) }
+        let target = coarseDetents.settleTarget(at: ticks.scale.pointsPerTick,
+                                               velocity: cancelled ? 0 : velocity, pinchScale: scale)
+        pendingScaleCommit = target
+        setScale(coarseDetents.scale(at: target), animated: configuration?.reduceMotion != true)
+        endCoarseDrag(cancelled: cancelled)
     }
 
     @objc private func coarsePressChanged(_ press: UILongPressGestureRecognizer) {
@@ -2073,6 +2223,7 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestu
 
     private func beginCoarseDrag(at location: CGPoint) {
         guard !held, configuration?.active == true, !dragging else { return }
+        finishScale()
         if decelerating { cancelMotion() }
         coarseGestureCancelled = false
         coarseDragging = true
@@ -2122,6 +2273,7 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestu
         let bounded = min(Double(ticks.tickCount), max(0, target))
         suppressScroll = true
         scrollView.setContentOffset(CGPoint(x: ticks.scale.contentOffset(at: bounded, tickCount: ticks.tickCount), y: 0), animated: false)
+        setExactPosition(bounded)
         suppressScroll = false
         redraw()
         let now = ProcessInfo.processInfo.systemUptime
@@ -2131,7 +2283,7 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestu
         recordMotion()
     }
 
-    private func endCoarseDrag() {
+    private func endCoarseDrag(cancelled: Bool = false) {
         guard held else { return }
         let bounded = min(Double(ticks.tickCount), max(0, position))
         let wasScrubbing = coarseDragging
@@ -2145,7 +2297,8 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestu
         removeCoarseBubble()
         updateAccessibility()
         if wasScrubbing, let configuration { appliedRevision = configuration.onMove(bounded) }
-        configuration?.onEnd(bounded)
+        if cancelled { configuration?.onCancel() }
+        else { configuration?.onEnd(bounded) }
         coarsePress.isEnabled = configuration?.active ?? false
         recordMotion(force: true)
     }
@@ -2176,9 +2329,11 @@ private final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestu
 
     private func updateCoarseBubble() {
         guard held else { return }
-        coarseBubble.valueLabel.text = currentValue
+        let value = currentValue
+        if coarseBubble.valueLabel.text != value { coarseBubble.valueLabel.text = value }
         coarseBubble.setEvent(stopSnap.boundary)
-        coarseBubble.captionLabel.text = scaleLabel.text
+        let scale = scaleLabel.text
+        if coarseBubble.captionLabel.text != scale { coarseBubble.captionLabel.text = scale }
         coarseBubble.isHidden = false
         updateAccessibility()
         updateCoarseBubblePosition()

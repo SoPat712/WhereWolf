@@ -434,37 +434,6 @@ final class HistoryPlaybackTests: XCTestCase {
         XCTAssertEqual(first.map(\.longitude), second.dropLast().map(\.longitude))
     }
 
-    func testRulerPinchUsesLogarithmicMidpointsWithHysteresisBothWays() {
-        let detents = HistoryRulerCoarseDrag.Detents(tickCount: 20_000, rulerWidth: 350)
-        for index in 0..<(detents.steps.count - 1) {
-            let coarse = detents.steps[index], fine = detents.steps[index + 1]
-            let gap = log(coarse / fine)
-            XCTAssertEqual(detents.pinched(startStep: coarse, scale: exp(gap * 0.64), previous: index), index)
-            XCTAssertEqual(detents.pinched(startStep: coarse, scale: exp(gap * 0.66), previous: index), index + 1)
-            XCTAssertEqual(detents.pinched(startStep: coarse, scale: exp(gap * 0.36), previous: index + 1), index + 1)
-            XCTAssertEqual(detents.pinched(startStep: coarse, scale: exp(gap * 0.34), previous: index + 1), index)
-            XCTAssertEqual(detents.pinched(startStep: fine, scale: exp(-gap * 0.64), previous: index + 1), index + 1)
-            XCTAssertEqual(detents.pinched(startStep: fine, scale: exp(-gap * 0.66), previous: index + 1), index)
-            XCTAssertEqual(detents.nearestStep(to: fine * exp(gap * 0.49)), fine)
-            XCTAssertEqual(detents.nearestStep(to: fine * exp(gap * 0.51)), coarse)
-        }
-    }
-
-    func testRulerPinchClampsAtBothEndsAndCanCrossMultipleSteps() {
-        let detents = HistoryRulerCoarseDrag.Detents(tickCount: 20_000, rulerWidth: 350)
-        let middle = detents.index(nearest: 20)
-        XCTAssertEqual(detents.pinched(startStep: 20, scale: 1, previous: middle), middle)
-        XCTAssertEqual(detents.steps[detents.pinched(startStep: 20, scale: 4, previous: middle)], 5)
-        XCTAssertEqual(detents.steps[detents.pinched(startStep: 20, scale: 0.2, previous: middle)], 100)
-        for previous in detents.steps.indices {
-            XCTAssertEqual(detents.pinched(startStep: 20, scale: 1e100, previous: previous), detents.steps.count - 1)
-            XCTAssertEqual(detents.pinched(startStep: 20, scale: 1e-100, previous: previous), 0)
-        }
-        let single = HistoryRulerCoarseDrag.Detents(tickCount: 1, rulerWidth: 350)
-        XCTAssertEqual(single.pinched(startStep: 1, scale: 100, previous: 0), 0)
-        XCTAssertEqual(single.pinched(startStep: 1, scale: 0.01, previous: 0), 0)
-    }
-
     func testRulerMenuMapsTimeTargetsInLogSpaceAndChecksTheMatchingStep() {
         let detents = HistoryRulerCoarseDrag.Detents(tickCount: 20_000, rulerWidth: 350)
         let entries = detents.menuEntries(interval: 30, current: 20)
@@ -725,14 +694,14 @@ final class HistoryPlaybackTests: XCTestCase {
     }
 
     func testRulerScaleTweenKeepsTheNeedlePositionAndFingerMovement() {
-        let from = HistoryRulerCoarseDrag.scale(step: 1_000, coarsest: 1_000)
-        let to = HistoryRulerCoarseDrag.scale(step: 20, coarsest: 1_000)
-        for progress in [CGFloat(0), 0.25, 0.5, 1] {
-            let scale = from.blended(to: to, progress: progress)
+        let ease = HistoryRulerCoarseDrag.ScaleEase(from: 1_000, to: 20, start: 10)
+        for progress in [0.0, 0.25, 0.5, 1] {
+            let value = ease.value(at: 10 + progress * HistoryRulerCoarseDrag.ScaleEase.duration)
+            let scale = HistoryRulerCoarseDrag.scale(step: value, coarsest: 1_000)
             let position = 5_123.5
-            XCTAssertEqual(scale.pointsPerTick, to.pointsPerTick)
+            XCTAssertEqual(scale.pointsPerTick, value)
             XCTAssertEqual(scale.screenOffset(of: position, at: position), 0)
-            XCTAssertEqual(scale.spacing, from.spacing + (to.spacing - from.spacing) * progress, accuracy: 1e-9)
+            XCTAssertEqual(scale.spacing, 12 + 6 * log(value) / log(1_000), accuracy: 1e-9)
             let end = HistoryRulerCoarseDrag.position(after: position, translation: 7, tickCount: 10_000, scale: scale)
             XCTAssertEqual(scale.screenOffset(of: position, at: end), 7, accuracy: 1e-9)
         }
@@ -1970,7 +1939,372 @@ final class HistoryPlaybackTests: XCTestCase {
     }
 }
 
+final class HistoryRulerContinuousScaleTests: XCTestCase {
+    private let detents = HistoryRulerCoarseDrag.Detents(tickCount: 20_000, rulerWidth: 350)
+
+    func testPinchTracksFingersAndRubberBandsOnlyBeyondTheLadder() {
+        for scale in [0.02, 0.25, 0.7, 1, 1.3, 4, 20] {
+            XCTAssertEqual(HistoryRulerCoarseDrag.continuous(start: 20, pinchScale: scale, coarsest: 2_000),
+                           20 / scale, accuracy: 1e-9)
+        }
+        XCTAssertEqual(HistoryRulerCoarseDrag.continuous(start: 20, pinchScale: 40, coarsest: 2_000),
+                       pow(0.5, 0.35), accuracy: 1e-9)
+        XCTAssertEqual(HistoryRulerCoarseDrag.continuous(start: 20, pinchScale: 0.005, coarsest: 2_000),
+                       2_000 * pow(2, 0.35), accuracy: 1e-9)
+        XCTAssertEqual(HistoryRulerCoarseDrag.continuous(start: 20, pinchScale: 0, coarsest: 2_000), 20)
+    }
+
+    func testContinuousDensityKeepsTheNeedleAnchoredIncludingLive() {
+        for position in [0.0, 0.25, 5_123.5, 20_000] {
+            for c in [0.8, 1, 1.4, 3.7, 28, 419, 2_100] {
+                let scale = HistoryRulerCoarseDrag.scale(step: c, coarsest: 2_000)
+                let offset = scale.contentOffset(at: position, tickCount: 20_000)
+                XCTAssertEqual(scale.position(at: offset, tickCount: 20_000), position, accuracy: 1e-9)
+                XCTAssertEqual(scale.screenOffset(of: position, at: position), 0)
+                XCTAssertEqual(scale.screenOffset(of: position - 1, at: position), scale.spacing / c, accuracy: 1e-9)
+            }
+        }
+    }
+
+    func testNeighboringBarsCrossfadeAndSharedTicksDrawOnce() throws {
+        for step in detents.steps {
+            let bracket = detents.bracket(at: step)
+            XCTAssertEqual(bracket.lower, step)
+            XCTAssertEqual(bracket.upper, step)
+            XCTAssertEqual(bracket.alphas.lower, 1)
+            XCTAssertEqual(bracket.alphas.upper, 0)
+            let bars = bracket.bars(in: 0...50)
+            XCTAssertTrue(bars.allSatisfy { $0.alpha == 1 && $0.position.truncatingRemainder(dividingBy: step) == 0 })
+        }
+        let bracket = detents.bracket(at: sqrt(10))
+        XCTAssertEqual(bracket.lower, 2)
+        XCTAssertEqual(bracket.upper, 5)
+        XCTAssertEqual(bracket.t, 0.5, accuracy: 1e-9)
+        XCTAssertEqual(bracket.alphas.lower, 0.5, accuracy: 1e-9)
+        XCTAssertEqual(bracket.alphas.upper, 0.5, accuracy: 1e-9)
+        let bars = bracket.bars(in: 0...100)
+        XCTAssertEqual(Set(bars.map(\.position)).count, bars.count)
+        let shared = try XCTUnwrap(bars.first { $0.position == 10 })
+        XCTAssertEqual(shared.alpha, 0.5, accuracy: 1e-9)
+        XCTAssertEqual(shared.majorAlpha, 0.5, accuracy: 1e-9)
+        XCTAssertEqual(try XCTUnwrap(bars.first { $0.position == 5 }).majorAlpha, 0)
+        let lowerOnly = detents.bracket(at: 2 * pow(2.5, 0.2))
+        let upperOnly = detents.bracket(at: 2 * pow(2.5, 0.8))
+        XCTAssertEqual(lowerOnly.alphas.upper, 0)
+        XCTAssertEqual(upperOnly.alphas.lower, 0)
+        let mixed = detents.bracket(at: 2 * pow(2.5, 0.65))
+        let mixedShared = try XCTUnwrap(mixed.bars(in: 0...20).first { $0.position == 10 })
+        XCTAssertEqual(mixedShared.alpha, mixed.alphas.upper, accuracy: 1e-9)
+        XCTAssertEqual(mixedShared.majorAlpha, mixed.alphas.lower, accuracy: 1e-9)
+    }
+
+    func testSettleProjectsVelocityByAtMostOneStepAndCancellationUsesNearest() {
+        for value in [0.8, 1, 1.4, 3.7, 28, 419, 2_100] {
+            let nearest = detents.index(nearest: value)
+            XCTAssertEqual(detents.settleTarget(at: value), nearest)
+            XCTAssertEqual(detents.settleTarget(at: value, velocity: -10_000), max(0, nearest - 1))
+            XCTAssertEqual(detents.settleTarget(at: value, velocity: 10_000), min(detents.steps.count - 1, nearest + 1))
+        }
+        XCTAssertEqual(detents.steps[detents.settleTarget(at: 3, velocity: -3, pinchScale: 0.5)], 5)
+        XCTAssertEqual(detents.steps[detents.settleTarget(at: 3)], 2)
+    }
+
+    func testSettleCurveIsLogarithmicEaseOutWithoutOvershoot() {
+        let ease = HistoryRulerCoarseDrag.ScaleEase(from: 2, to: 20, start: 10)
+        XCTAssertEqual(ease.value(at: 9), 2)
+        XCTAssertEqual(ease.value(at: 10.11), 2 * pow(10, 0.875), accuracy: 1e-8)
+        XCTAssertEqual(ease.value(at: 11), 20)
+        var previous = 2.0
+        for frame in 0...120 {
+            let value = ease.value(at: ease.start + Double(frame) / 120 * 0.22)
+            XCTAssertGreaterThanOrEqual(value, previous)
+            XCTAssertLessThanOrEqual(value, 20)
+            previous = value
+        }
+    }
+
+    @MainActor func testPinchCommitsOnceAtSettleEndAndKeepsItsAnchor() throws {
+        for position in [0.0, 5_123.5] {
+            let harness = RulerScaleHarness(position: position)
+            defer { harness.ruler.cancelMotion() }
+            harness.ruler.beginPinch()
+            for scale in [1.2, 1.7, 2.3, 3.4] {
+                harness.ruler.updatePinch(scale: scale)
+                XCTAssertEqual(harness.ruler.displayedPointsPerBar, 20 / scale, accuracy: 1e-9)
+                XCTAssertEqual(harness.ruler.anchoredPosition, position, accuracy: 1e-8)
+                XCTAssertTrue(harness.commits.isEmpty)
+            }
+            harness.ruler.endPinch(scale: 3.4)
+            let ease = try XCTUnwrap(harness.ruler.scaleEase)
+            XCTAssertTrue(harness.commits.isEmpty)
+            harness.ruler.advanceScale(at: ease.start + 0.11)
+            XCTAssertTrue(harness.commits.isEmpty)
+            harness.ruler.advanceScale(at: ease.start + 1)
+            XCTAssertEqual(harness.commits, [5])
+            XCTAssertEqual(harness.ruler.anchoredPosition, position, accuracy: 1e-8)
+            XCTAssertNil(harness.frames.last!)
+            XCTAssertEqual(harness.events.suffix(2), ["commit", "channelEnd"])
+            harness.ruler.advanceScale(at: ease.start + 2)
+            XCTAssertEqual(harness.commits, [5])
+        }
+    }
+
+    @MainActor func testNewPinchStartsAtInFlightScaleAndScrollCommitsBeforeBeginning() throws {
+        let harness = RulerScaleHarness()
+        defer { harness.ruler.cancelMotion() }
+        harness.ruler.beginPinch()
+        harness.ruler.endPinch(scale: 3.4)
+        let ease = try XCTUnwrap(harness.ruler.scaleEase)
+        harness.ruler.advanceScale(at: ease.start + 0.07)
+        let current = harness.ruler.displayedPointsPerBar
+        let endCount = harness.events.filter { $0 == "channelEnd" }.count
+        harness.ruler.beginPinch()
+        XCTAssertEqual(harness.ruler.displayedPointsPerBar, current)
+        XCTAssertTrue(harness.commits.isEmpty)
+        XCTAssertEqual(harness.events.filter { $0 == "channelEnd" }.count, endCount)
+        harness.ruler.updatePinch(scale: 1.1)
+        XCTAssertEqual(harness.ruler.displayedPointsPerBar, current / 1.1, accuracy: 1e-9)
+        harness.ruler.endPinch(scale: 1.1)
+        let target = try XCTUnwrap(harness.ruler.scaleEase).to
+        harness.events.removeAll()
+        harness.ruler.scrollViewWillBeginDragging(UIScrollView())
+        XCTAssertEqual(harness.commits, [target])
+        XCTAssertEqual(harness.ruler.displayedPointsPerBar, target)
+        XCTAssertEqual(harness.events.suffix(3), ["commit", "channelEnd", "begin"])
+    }
+
+    @MainActor func testCancelledPinchAndConfigurationCancellationCommitNearestOnce() throws {
+        let harness = RulerScaleHarness()
+        defer { harness.ruler.cancelMotion() }
+        harness.ruler.beginPinch()
+        harness.ruler.updatePinch(scale: 6)
+        harness.ruler.endPinch(scale: 1, velocity: -100, cancelled: true)
+        XCTAssertEqual(try XCTUnwrap(harness.ruler.scaleEase).to, 5)
+        harness.configuration.active = false
+        harness.ruler.configure(harness.configuration)
+        XCTAssertEqual(harness.commits, [5])
+        XCTAssertEqual(harness.ruler.displayedPointsPerBar, 5)
+        XCTAssertNil(harness.ruler.scaleEase)
+    }
+
+    @MainActor func testMenuCommitsImmediatelyAndUsesContinuousVisualEase() throws {
+        let harness = RulerScaleHarness()
+        defer { harness.ruler.cancelMotion() }
+        // The menu commits on the model before updating the representable.
+        harness.configuration.onScale(100)
+        harness.configuration.step = 100
+        harness.ruler.configure(harness.configuration)
+        XCTAssertEqual(harness.commits, [100])
+        let ease = try XCTUnwrap(harness.ruler.scaleEase)
+        XCTAssertEqual(harness.ruler.displayedPointsPerBar, 20)
+        harness.ruler.advanceScale(at: ease.start + 0.11)
+        XCTAssertEqual(harness.ruler.displayedPointsPerBar, ease.value(at: ease.start + 0.11))
+        XCTAssertTrue(harness.frames.isEmpty)
+        harness.ruler.advanceScale(at: ease.start + 1)
+        XCTAssertEqual(harness.commits, [100])
+        XCTAssertEqual(harness.ruler.displayedPointsPerBar, 100)
+    }
+
+    @MainActor func testReduceMotionJumpsAndCommitsAtRelease() {
+        let harness = RulerScaleHarness(reduceMotion: true)
+        defer { harness.ruler.cancelMotion() }
+        harness.ruler.beginPinch()
+        harness.ruler.updatePinch(scale: 3.4)
+        XCTAssertTrue(harness.commits.isEmpty)
+        harness.ruler.endPinch(scale: 3.4)
+        XCTAssertEqual(harness.commits, [5])
+        XCTAssertEqual(harness.ruler.displayedPointsPerBar, 5)
+        XCTAssertNil(harness.ruler.scaleEase)
+    }
+}
+
+@MainActor
+private final class RulerScaleHarness {
+    let ruler = HistoryRulerContainer()
+    let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 350, height: 56))
+    var configuration: HistoryRulerSurface!
+    var commits: [Double] = []
+    var frames: [RulerScaleChannel.Frame?] = []
+    var events: [String] = []
+
+    init(position: Double = 5_123.5, reduceMotion: Bool = false) {
+        window.addSubview(ruler)
+        ruler.frame = window.bounds
+        configuration = HistoryRulerSurface(position: position, tickCount: 20_000, step: 20,
+            detents: .init(tickCount: 20_000, rulerWidth: 350), revision: 0, active: true,
+            reduceMotion: true, value: "Recorded point", points: [],
+            landmarks: HistoryLandmarks(points: [], timeline: ReplayTimeline(points: []), places: []),
+            retentionInterval: 86_400, onBegin: { [weak self] in self?.events.append("begin"); return Date() },
+            onMove: { _ in 0 }, onEnd: { [weak self] _ in self?.events.append("end") }, onCancel: {},
+            onHold: { _ in }, onScale: { [weak self] step in
+                self?.commits.append(step)
+                self?.events.append("commit")
+            }, onContinuousScale: { [weak self] frame in
+                self?.frames.append(frame)
+                if frame == nil { self?.events.append("channelEnd") }
+            }, onAdjust: { _ in })
+        ruler.configure(configuration)
+        configuration.reduceMotion = reduceMotion
+        ruler.configure(configuration)
+    }
+}
+
 final class HistoryRulerZoomTests: XCTestCase {
+    @MainActor func testChannelMatchesEveryExactStepAndCommitDoesNotEaseAgain() {
+        let detents = HistoryRulerCoarseDrag.Detents(tickCount: 101, rulerWidth: 402)
+        for step in detents.steps.reversed() {
+            var (plain, plainCoordinator, plainMap) = nativeReplay()
+            defer { tearDown(plainCoordinator, map: plainMap) }
+            plain.rulerZoom = step == 1 ? nil : detents.zoom(step: step, width: 402)
+            plainCoordinator.update(plain, animated: false)
+            let expected = plainCoordinator.rulerDistanceEase?.to ?? plainMap.camera.centerCoordinateDistance
+
+            var (surface, coordinator, map) = nativeReplay()
+            defer { tearDown(coordinator, map: map) }
+            let channel = RulerScaleChannel()
+            surface.rulerScaleChannel = channel
+            coordinator.update(surface, animated: false)
+            channel.send(.init(pointsPerBar: step, detents: detents, width: 402))
+            XCTAssertEqual(map.camera.centerCoordinateDistance, expected, accuracy: 0.1)
+            XCTAssertEqual(coordinator.parent.replayFollowDistance, 2_000)
+            XCTAssertNil(coordinator.rulerDistanceEase)
+            let settled = map.camera.centerCoordinateDistance
+            channel.send(nil)
+            surface.rulerZoom = plain.rulerZoom
+            coordinator.update(surface, animated: false)
+            XCTAssertNil(coordinator.rulerDistanceEase)
+            coordinator.advanceCameraTransition(at: .greatestFiniteMagnitude)
+            XCTAssertEqual(map.camera.centerCoordinateDistance, settled, accuracy: 0.1)
+        }
+    }
+
+    @MainActor func testChannelInterpolatesMonotonicallyAndFitsEachStepOnce() {
+        var (surface, coordinator, map) = nativeReplay()
+        defer { tearDown(coordinator, map: map) }
+        let channel = RulerScaleChannel()
+        let detents = HistoryRulerCoarseDrag.Detents(tickCount: 101, rulerWidth: 402)
+        surface.rulerScaleChannel = channel
+        coordinator.update(surface, animated: false)
+        let outer = coordinator.parent.position.camera
+        var previous = 2_000.0
+        for frame in 0...120 {
+            let c = exp(log(5) * Double(frame) / 120)
+            channel.send(.init(pointsPerBar: c, detents: detents, width: 402))
+            let distance = map.camera.centerCoordinateDistance
+            XCTAssertGreaterThanOrEqual(distance, previous - 0.1)
+            XCTAssertEqual(coordinator.parent.position.camera, outer)
+            XCTAssertNil(coordinator.rulerDistanceEase)
+            let point = map.convert(surface.selected!, toPointTo: map)
+            let target = NativeMapSurface.visibleCenter(on: map)
+            XCTAssertEqual(point.x, target.x, accuracy: 1)
+            XCTAssertEqual(point.y, target.y, accuracy: 1)
+            previous = distance
+        }
+        XCTAssertEqual(Set(coordinator.rulerScaleFitCounts.keys), Set(detents.steps))
+        XCTAssertTrue(coordinator.rulerScaleFitCounts.values.allSatisfy { $0 == 1 })
+        let counts = coordinator.rulerScaleFitCounts
+        for c in [2.0, 3, 4, 5, 3, 1, 0.8, 6] {
+            channel.send(.init(pointsPerBar: c, detents: detents, width: 402))
+        }
+        XCTAssertEqual(coordinator.rulerScaleFitCounts, counts)
+        let coarsest = map.camera.centerCoordinateDistance
+        channel.send(.init(pointsPerBar: 5, detents: detents, width: 402))
+        XCTAssertEqual(map.camera.centerCoordinateDistance, coarsest, accuracy: 0.1)
+        channel.send(.init(pointsPerBar: 0.8, detents: detents, width: 402))
+        XCTAssertEqual(map.camera.centerCoordinateDistance, 2_000, accuracy: 0.1)
+    }
+
+    func testChannelDistanceUsesLogInterpolationWithTheSameBracketAsBars() {
+        let detents = HistoryRulerCoarseDrag.Detents(tickCount: 20_000, rulerWidth: 350)
+        let bracket = detents.bracket(at: sqrt(10))
+        XCTAssertEqual(bracket.distance(lower: 2_000, upper: 200_000), 20_000, accuracy: 1e-7)
+        XCTAssertEqual(detents.bracket(at: 2).distance(lower: 2_000, upper: 200_000), 2_000)
+    }
+
+    @MainActor func testChannelCancelsADiscreteEaseAndSettlesBackToBaseWithoutASecondMove() {
+        var (surface, coordinator, map) = nativeReplay()
+        defer { tearDown(coordinator, map: map) }
+        let channel = RulerScaleChannel()
+        let detents = HistoryRulerCoarseDrag.Detents(tickCount: 101, rulerWidth: 402)
+        surface.rulerScaleChannel = channel
+        surface.rulerZoom = detents.zoom(step: 2, width: 402)
+        coordinator.update(surface, animated: false)
+        if !UIAccessibility.isReduceMotionEnabled { XCTAssertNotNil(coordinator.rulerDistanceEase) }
+        channel.send(.init(pointsPerBar: 3, detents: detents, width: 402))
+        XCTAssertNil(coordinator.rulerDistanceEase)
+        channel.send(.init(pointsPerBar: 1, detents: detents, width: 402))
+        XCTAssertEqual(map.camera.centerCoordinateDistance, 2_000, accuracy: 0.1)
+        channel.send(nil)
+        surface.rulerZoom = nil
+        coordinator.update(surface, animated: false)
+        XCTAssertNil(coordinator.rulerDistanceEase)
+        coordinator.advanceCameraTransition(at: .greatestFiniteMagnitude)
+        XCTAssertEqual(map.camera.centerCoordinateDistance, 2_000, accuracy: 0.1)
+        XCTAssertEqual(coordinator.parent.replayFollowDistance, 2_000)
+    }
+
+    @MainActor func testDiscreteChangeCanReplaceASettleBeforeItsCommitRenders() throws {
+        var (surface, coordinator, map) = nativeReplay()
+        defer { tearDown(coordinator, map: map) }
+        let channel = RulerScaleChannel()
+        let detents = HistoryRulerCoarseDrag.Detents(tickCount: 101, rulerWidth: 402)
+        surface.rulerScaleChannel = channel
+        coordinator.update(surface, animated: false)
+        channel.send(.init(pointsPerBar: 5, detents: detents, width: 402))
+        let settled = map.camera.centerCoordinateDistance
+        channel.send(nil)
+        surface.rulerZoom = detents.zoom(step: 2, width: 402)
+        coordinator.update(surface, animated: false)
+        if !UIAccessibility.isReduceMotionEnabled {
+            let ease = try XCTUnwrap(coordinator.rulerDistanceEase)
+            XCTAssertEqual(ease.from, settled, accuracy: 0.1)
+            XCTAssertEqual(ease.progress(at: ease.start + 0.3), 1, accuracy: 1e-9)
+        }
+        coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
+        XCTAssertLessThan(map.camera.centerCoordinateDistance, settled)
+    }
+
+    @MainActor func testLiveOverviewFreedCameraAndMapContactIgnoreChannelFrames() {
+        for mode in 0..<6 {
+            var (surface, coordinator, map) = nativeReplay()
+            defer { tearDown(coordinator, map: map) }
+            let channel = RulerScaleChannel()
+            surface.rulerScaleChannel = channel
+            if mode == 0 { surface.replayActive = false }
+            if mode == 1 { surface.replayOverview = true }
+            if mode == 2 { surface.replayFollowing = false }
+            if mode == 3 { surface.rulerZoomActive = false }
+            if mode == 4 { surface.scenePhase = .inactive }
+            coordinator.update(surface, animated: false)
+            if mode == 5 { coordinator.mapContactChanged(true) }
+            let before = MapCamera(map.camera)
+            let detents = HistoryRulerCoarseDrag.Detents(tickCount: 101, rulerWidth: 402)
+            for c in [1.0, 1.5, 3, 5] { channel.send(.init(pointsPerBar: c, detents: detents, width: 402)) }
+            XCTAssertEqual(MapCamera(map.camera), before)
+            XCTAssertTrue(coordinator.rulerScaleFitCounts.isEmpty)
+            channel.send(nil)
+        }
+    }
+
+    @MainActor func testMapContactDefersAChannelRestoreUntilTheFingerLifts() {
+        var (surface, coordinator, map) = nativeReplay()
+        defer { tearDown(coordinator, map: map) }
+        let channel = RulerScaleChannel()
+        let detents = HistoryRulerCoarseDrag.Detents(tickCount: 101, rulerWidth: 402)
+        surface.rulerScaleChannel = channel
+        coordinator.update(surface, animated: false)
+        channel.send(.init(pointsPerBar: 5, detents: detents, width: 402))
+        let coarse = map.camera.centerCoordinateDistance
+        coordinator.mapContactChanged(true)
+        channel.send(.init(pointsPerBar: 1, detents: detents, width: 402))
+        channel.send(nil)
+        coordinator.update(surface, animated: false)
+        XCTAssertEqual(map.camera.centerCoordinateDistance, coarse, accuracy: 0.1)
+        coordinator.mapContactChanged(false)
+        coordinator.advanceCameraTransition(at: .greatestFiniteMagnitude)
+        XCTAssertEqual(map.camera.centerCoordinateDistance, 2_000, accuracy: 0.1)
+    }
+
     func testHoldWindowAndRecomputeThreshold() {
         let hold = ReplayRulerHold(pointsPerBar: 5, visibleBars: 20)
         XCTAssertEqual(hold.halfWindow, 50)
@@ -2430,6 +2764,7 @@ final class HistoryRulerZoomTests: XCTestCase {
     }
 
     @MainActor private func tearDown(_ coordinator: NativeMapSurface.Coordinator, map: MKMapView) {
+        coordinator.detachRulerScaleChannel()
         coordinator.stopRulerZoom()
         coordinator.stopCameraTransition()
         coordinator.stopReplayHeading()

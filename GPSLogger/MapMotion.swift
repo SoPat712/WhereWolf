@@ -132,6 +132,23 @@ enum ReplayOverviewFit {
     }
 }
 
+@MainActor
+final class RulerScaleChannel {
+    struct Frame {
+        let pointsPerBar: Double
+        let detents: HistoryRulerCoarseDrag.Detents
+        let width: CGFloat
+    }
+
+    private(set) var frame: Frame?
+    var onChange: ((Frame?) -> Void)?
+
+    func send(_ frame: Frame?) {
+        self.frame = frame
+        onChange?(frame)
+    }
+}
+
 struct ReplayRulerHold: Equatable {
     static let nearBars: Double = 2
 

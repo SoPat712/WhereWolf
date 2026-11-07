@@ -517,7 +517,9 @@ Older points lie to its left and **Live** lies to its right. Drag right to brows
 older points, or left to return to Live. A tap alone does not change modes.
 Pinch to change how many recorded points each bar covers, or tap the scale
 capsule beside the time to choose **Every point**, a time interval, or **Whole
-history**. Time estimates use nearby recorded intervals. The selected point stays
+history**. The ruler and following map track your fingers continuously, with bars
+crossfading between scales; release gently settles to a scale without haptics.
+Time estimates use nearby recorded intervals. The selected point stays
 under the needle when the scale changes. The scale remains set across Live, tabs
 and playback; dragging and flicking use it too. While the map follows a replay
 point, coarser scales also zoom out to fit the nearby route. That zoom stays after

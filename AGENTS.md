@@ -252,14 +252,20 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   across Live, tabs and playback, without defaults. Spread for fewer points per bar;
   pinch together for more. Use every 1–2–5 step from one point per bar through the
   step that rounds up to cover loaded history in one ruler width, or 48 time ticks
-  before points load. Clamp when the ladder shrinks. Resolve startStep / pinchScale
-  in log space, crossing 15% beyond the midpoint before changing steps, with a soft
-  light impact. Keep the needle and selection anchored, including at Live.
-  Bar spacing (12–18), heights, width and bottom grow with log(step) / log(coarsest),
-  with zero coarseness for a one-step ladder. Ease geometry in UIKit over 0.15 seconds,
-  or jump with Reduce Motion. One-finger scrolling and momentum use the current scale;
-  ticks move with the finger 1:1. A 0.35-second hold scrubs at that scale; vertical
-  travel does nothing. Hold and pinch are exclusive; the scroll pan takes one touch.
+  before points load. Clamp when the ladder shrinks. Pinches continuously divide the
+  displayed points per bar by finger scale, with light log-space rubber banding at
+  the ends. Keep the needle and selection anchored, including at Live. Crossfade
+  neighboring ladder bars at the continuous density, drawing shared ticks once.
+  Release projects velocity by 0.12 seconds, at most one extra step, then settles in
+  log space over 0.22 seconds before committing once. Pinches and settles have no
+  haptics; a new pinch takes over the displayed scale, while other interactions
+  finish the settle first. The pinch bubble names the nearest step without animation.
+  Bar spacing (12–18), heights, width and bottom grow with log(points per bar) / log(coarsest),
+  with zero coarseness for a one-step ladder. Evaluate geometry continuously in UIKit;
+  menu and VoiceOver changes commit immediately and ease density over 0.22 seconds.
+  Reduce Motion jumps to the settled scale. One-finger scrolling and momentum use
+  the committed scale; ticks move with the finger 1:1. A 0.35-second hold scrubs at
+  that scale; vertical travel does nothing. Hold and pinch are exclusive; the scroll pan takes one touch.
   Stop held motion on release and cancel interactions when the tab, scene or ruler
   interaction revision changes. Hold and pinch show a Liquid Glass time/scale bubble
   with primary text (blur material before iOS 26), centered eight points above the
@@ -289,14 +295,17 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   bars of the needle into the overview's clear map area, never closer than D0, so mid
   detents stay close and only the coarsest fit the whole visible ruler. Compute the
   box when scale zoom starts, the scale changes or the needle moves greater than
-  half a window, never per frame. UIKit eases scale zoom in log space over 0.3 seconds,
-  including menu and VoiceOver changes. Release and gesture cancellation retain it.
+  half a window, never per frame. Pinches and settles send continuous scale through
+  a non-observed UIKit channel; interpolate neighboring step distances in log space,
+  fitting each step once per anchored gesture. Menu and VoiceOver changes ease map
+  zoom in log space over 0.3 seconds. Release and gesture cancellation retain it.
   Keep `rulerZoom` separate from gesture-only `rulerHold`, payload gating and interaction
   deferrals. Do not write the saved follow distance or outer SwiftUI camera while
-  scale zoom applies; sync once when it ends. Every point returns to D0 through the
-  existing camera transition. Leaving Tracker or the active scene restores D0
-  immediately; returning reapplies scale zoom without animation. A freed camera and
-  overview ignore the scale; resuming point following uses D0. Leaving history while
+  scale zoom applies; sync once when it ends. Every point returns to D0 with the
+  pinch settle or the existing discrete camera transition. Leaving Tracker or the
+  active scene restores D0 immediately; returning reapplies scale zoom without
+  animation. A freed camera and overview ignore the scale; resuming point following
+  uses D0. Leaving history while
   scale zoom applies, Live's flight lands at the live zoom from before history;
   otherwise it keeps the replay zoom. Live ignores scale changes; re-entering history
   reapplies scale zoom. Respect Reduce Motion.
