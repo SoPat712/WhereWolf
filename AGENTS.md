@@ -404,23 +404,24 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   Dots show only the route ahead, and none may exist at or behind the marker: logged points
   can be over 100 m apart, and the blue tail floats above the map, so anything beneath it
   shows when the two briefly disagree. Each section has its own dotted line, drawn backward
-  so the dash pattern stays put. The map's line starts at the next step ahead of the marker,
-  and a foreground `ReplayTrailLayer` draws the dots up to it in the marker's transaction.
-  They sit beneath the blue sections, which are
+  so the dash pattern stays put. Foreground `ReplayTrailLayer`s draw the whole active
+  section, split at the marker's exact pose, with dots beneath blue in the marker's
+  transaction. The other sections use MapKit overlays, which are
   bounded to 1,024 segments and 100,000 map points of length; isolate long jumps.
-  A short shared tail preserves joins. The active section's blue line is an exact
-  vertex prefix, replaced at 64-point boundaries while retaining every intervening vertex.
-  Going forward the previous prefix stays until the next boundary, so a replacement
-  never shows a gap. Scrubbing updates only crossed sections and the active prefix.
+  A short shared tail preserves joins. Marker movement changes overlays only when
+  crossing a section boundary. Layers also cover newly installed overlays, and during
+  zoom, rotation or pitch changes the blue of up to four sections behind the marker, until a
+  fully rendered map callback from a render begun after their addition, or a two-second
+  deadline that camera motion does not extend.
   Add and remove section overlays instead of changing `strokeColor`, which can take
   over a second to appear. End the foreground tail at the marker's exact pose
   coordinate. Never use `strokeEnd` percentages for replay progress.
   Blue, including trip and imported workout routes,
   is 2.5 points wide; future dots are 1.25, with
-  round caps. A bounded `ReplayTrailLayer` draws the last 128 route segments and
-  interpolated endpoint in the marker's own projection/transaction, covering
-  asynchronous overlay redraw at the moving tip. Retain the complete cached
-  route beneath it. Cache unchanged projections; hide the layer offscreen.
+  round caps. Layers cull offscreen sections and share a validated Mercator-to-screen
+  homography, including pitch, with per-point MapKit conversion when the fit fails.
+  Keep their projection within half a point of MapKit, cache unchanged projections
+  and hide the layers offscreen. Retain the complete cached route beneath them.
   Replay uses
   Apple's `MKMarkerAnnotationView`, without an entrance animation. Rotate only
   its arrow glyph along the active route segment, using the current map projection
@@ -438,7 +439,10 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   `centerOffset`, so deferred annotation positioning does not trail playback.
   Native camera follow uses that same pose, without waiting for the outer camera
   binding to catch up.
-  Rebuild route sections only when stored points change.
+  Reload the route presentation in place using stored record IDs. Appends extend only
+  the tail sections; expiry removes leading sections and rebuilds the first partial
+  section without shifting retained boundaries. Reuse unchanged overlays by identity;
+  rebuild all sections only when the retained points differ from an append or trim.
   Defer presentation reloads during ruler interaction and playback, then coalesce
   them on release or pause. Never defer raw collection or uploads. Retention changes
   force a deduplicated snapshot load, apply the current cutoff to in-flight results,

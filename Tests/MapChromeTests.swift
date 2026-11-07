@@ -32,9 +32,15 @@ final class MapChromeTests: XCTestCase {
     }
 
     func testTripRouteUsesTheReplayRouteWidth() async throws {
-        try await withMap { _, coordinator, map in
-            let line = MKPolyline(coordinates: [CLLocationCoordinate2D(latitude: 45, longitude: -122),
-                                                CLLocationCoordinate2D(latitude: 45.001, longitude: -122)], count: 2)
+        try await withMap { surface, coordinator, map in
+            var surface = surface
+            surface.coordinates = [CLLocationCoordinate2D(latitude: 45, longitude: -122),
+                                   CLLocationCoordinate2D(latitude: 45.001, longitude: -122)]
+            coordinator.update(surface, animated: false)
+            // Only the installed trip line gets the plain renderer; removed replay lines do not.
+            let line = try XCTUnwrap(map.overlays.compactMap { $0 as? MKPolyline }.first {
+                $0.pointCount == 2 && abs($0.coordinate.longitude + 122) < 0.000_001
+            })
             let renderer = try XCTUnwrap(coordinator.mapView(map, rendererFor: line) as? MKPolylineRenderer)
             XCTAssertEqual(renderer.lineWidth, ReplayRouteStyle.pastWidth)
         }
@@ -381,6 +387,39 @@ final class MapChromeTests: XCTestCase {
         }
     }
 
+    func testReplayReloadKeepsUntouchedOverlaysAndRebasedPose() async throws {
+        try await withMap { surface, coordinator, map in
+            let origin = MKMapPoint(CLLocationCoordinate2D(latitude: 45, longitude: -122))
+            let records = (0..<6_500).map { index in
+                let point = MKMapPoint(x: origin.x + Double(index) * 4, y: origin.y).coordinate
+                return RecordedLocation(id: Int64(index + 1), timestamp: Date(timeIntervalSince1970: Double(index)),
+                                        latitude: point.latitude, longitude: point.longitude)
+            }
+            var surface = surface
+            surface.replayRoute = ReplayRouteGeometry(points: Array(records.prefix(6_000)))
+            surface.replayPosition = 3_300.5
+            surface.selected = ReplayCoordinate(records[3_300].coordinate)
+                .interpolated(to: ReplayCoordinate(records[3_301].coordinate), fraction: 0.5).coordinate
+            coordinator.update(surface, animated: false)
+            let old = map.overlays.compactMap { $0 as? MKPolyline }
+            XCTAssertEqual(old.count, 5)
+            surface.replayRoute = ReplayRouteGeometry(points: Array(records.dropFirst(1_400)))
+            surface.replayPosition -= 1_400
+            coordinator.update(surface, animated: false)
+            let next = map.overlays.compactMap { $0 as? MKPolyline }
+            XCTAssertEqual(next.count, 5)
+            let kept = old.filter { previous in next.contains { $0 === previous } }
+            XCTAssertEqual(kept.count, 2, "Keep the completed middle section and untouched future section")
+            for removed in old where !next.contains(where: { $0 === removed }) {
+                XCTAssertTrue(type(of: coordinator.mapView(map, rendererFor: removed)) == MKOverlayRenderer.self)
+            }
+            let displayed = try XCTUnwrap(NativeMapSurface.displayedTrailCoordinate(on: map))
+            XCTAssertEqual(displayed.latitude, surface.selected!.latitude, accuracy: 0.0000001)
+            XCTAssertEqual(displayed.longitude, surface.selected!.longitude, accuracy: 0.0000001)
+            XCTAssertEqual(NativeMapSurface.replayAuditValues(on: map)["nativeSectionStart"], 1_672)
+        }
+    }
+
     func testNativeTrailAndMarkerStayTogetherDuringFastReplayAndZoom() async throws {
         try await withMap { surface, coordinator, map in
             let origin = MKMapPoint(CLLocationCoordinate2D(latitude: 45, longitude: -122))
@@ -411,22 +450,19 @@ final class MapChromeTests: XCTestCase {
                     surface.replayPosition = pose.position
                     surface.selected = pose.coordinate.coordinate
                     coordinator.update(surface, animated: false)
-                    let cachedIndex = Int(pose.position) / 64 * 64
-                    let cachedExpected = MKMapPoint(records[cachedIndex].coordinate)
                     let lines = map.overlays.compactMap { $0 as? MKPolyline }
                     XCTAssertTrue(lines.allSatisfy { line in
                         map.renderer(for: line).map { type(of: $0) == MKPolylineRenderer.self } ?? false
                     })
-                    XCTAssertTrue(lines.contains { line in
-                        let last = line.points()[line.pointCount - 1]
-                        return abs(last.x - cachedExpected.x) < 0.001 && abs(last.y - cachedExpected.y) < 0.001
-                    })
+                    // The active section is synchronous; only complete sections belong to MapKit.
+                    let activeStart = Int(pose.position) / 1_024 * 1_024
+                    XCTAssertEqual(NativeMapSurface.replayAuditValues(on: map)["nativeSectionStart"], Double(activeStart))
                     let endpoint = MKMapPoint(try XCTUnwrap(NativeMapSurface.displayedTrailCoordinate(on: map)))
                     let expected = MKMapPoint(pose.coordinate.coordinate)
                     XCTAssertEqual(endpoint.x, expected.x, accuracy: 0.001)
                     XCTAssertEqual(endpoint.y, expected.y, accuracy: 0.001)
                     let marker = try XCTUnwrap(map.annotations.compactMap { map.view(for: $0) }.first)
-                    let tail = try XCTUnwrap(marker.superview?.layer.sublayers?.compactMap { $0 as? ReplayTrailLayer }.first)
+                    let tail = try XCTUnwrap(marker.superview?.layer.sublayers?.compactMap { $0 as? ReplayTrailLayer }.first(where: { !$0.showsFuture }))
                     let path = try XCTUnwrap(tail.path)
                     let projected = map.convert(pose.coordinate.coordinate, toPointTo: marker.superview)
                     XCTAssertEqual(path.currentPoint.x + tail.frame.minX, projected.x, accuracy: 0.01)
@@ -434,7 +470,7 @@ final class MapChromeTests: XCTestCase {
                     XCTAssertEqual(tail.animationKeys() ?? [], [])
                     var vertices = 0
                     path.applyWithBlock { _ in vertices += 1 }
-                    XCTAssertLessThanOrEqual(vertices, 130)
+                    XCTAssertLessThanOrEqual(vertices, records.count + 6, "Includes sections awaiting MapKit's render confirmation")
                     self.assertCentered(pose.coordinate.coordinate, on: map, tolerance: 2)
                     if frame == 30 || frame == 60 {
                         let result = try XCTUnwrap(NativeMapSurface.zoom(inward: frame == 30, on: map))
@@ -453,7 +489,7 @@ final class MapChromeTests: XCTestCase {
             surface.replayAccuracy = nil
             coordinator.update(surface, animated: false)
             XCTAssertNil(halo.superlayer)
-            let tail = try XCTUnwrap(marker.superview?.layer.sublayers?.compactMap { $0 as? ReplayTrailLayer }.first)
+            let tail = try XCTUnwrap(marker.superview?.layer.sublayers?.compactMap { $0 as? ReplayTrailLayer }.first(where: { !$0.showsFuture }))
             surface.scenePhase = .background
             coordinator.update(surface, animated: false)
             XCTAssertNil(tail.superlayer)
@@ -717,7 +753,7 @@ final class MapChromeTests: XCTestCase {
             surface.selected = ReplayCoordinate(coordinates[1]).interpolated(to: ReplayCoordinate(coordinates[2]), fraction: 0.5).coordinate
             coordinator.update(surface, animated: false)
             let marker = try XCTUnwrap(map.annotations.compactMap { map.view(for: $0) }.first)
-            let tail = try XCTUnwrap(marker.superview?.layer.sublayers?.compactMap { $0 as? ReplayTrailLayer }.first)
+            let tail = try XCTUnwrap(marker.superview?.layer.sublayers?.compactMap { $0 as? ReplayTrailLayer }.first(where: { !$0.showsFuture }))
             surface.scenePhase = .inactive
             coordinator.update(surface, animated: false)
             XCTAssertNotNil(tail.superlayer)
@@ -749,7 +785,7 @@ final class MapChromeTests: XCTestCase {
             surface.selected = ReplayCoordinate(coordinates[1]).interpolated(to: ReplayCoordinate(coordinates[2]), fraction: 0.5).coordinate
             UIView.animate(withDuration: 1) { coordinator.update(surface, animated: false) }
             let marker = try XCTUnwrap(map.annotations.compactMap { map.view(for: $0) }.first)
-            let tail = try XCTUnwrap(marker.superview?.layer.sublayers?.compactMap { $0 as? ReplayTrailLayer }.first)
+            let tail = try XCTUnwrap(marker.superview?.layer.sublayers?.compactMap { $0 as? ReplayTrailLayer }.first(where: { !$0.showsFuture }))
             XCTAssertEqual(tail.animationKeys() ?? [], [])
             let projected = map.convert(surface.selected!, toPointTo: marker.superview)
             XCTAssertEqual(tail.path!.currentPoint.x + tail.frame.minX, projected.x, accuracy: 0.01)
@@ -852,6 +888,7 @@ final class MapChromeTests: XCTestCase {
         defer {
             coordinator.stopCameraTransition()
             coordinator.stopReplayHeading()
+            coordinator.stopReplayCoverageExpiry()
             coordinator.stopLiveMotion()
             coordinator.stopHeadingMode()
             map.delegate = nil

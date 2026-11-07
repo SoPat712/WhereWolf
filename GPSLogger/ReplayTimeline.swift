@@ -389,10 +389,12 @@ enum ReplayCameraFocus: Equatable {
 
 final class ReplayRouteGeometry {
     let coordinates: [CLLocationCoordinate2D]
+    let pointIDs: [Int64]
     private let directions: [CGVector?]
 
     init(points: [RecordedLocation], stays: [ReplayStay] = []) {
         coordinates = points.map(\.coordinate)
+        pointIDs = points.map(\.id)
         var directions = [CGVector?](repeating: nil, count: coordinates.count)
         let world = MKMapRect.world.width
         for index in coordinates.indices.dropFirst() {

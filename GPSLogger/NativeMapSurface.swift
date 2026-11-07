@@ -441,6 +441,7 @@ struct NativeMapSurface: UIViewRepresentable {
         coordinator.detachRulerScaleChannel()
         coordinator.stopLiveMotion()
         coordinator.stopReplayHeading()
+        coordinator.stopReplayCoverageExpiry()
         coordinator.stopHeadingMode()
         coordinator.clearMapContact()
         map.showsUserLocation = false
@@ -477,6 +478,10 @@ struct NativeMapSurface: UIViewRepresentable {
         private let replayTrailLayer = ReplayTrailLayer()
         private let replayFutureLayer = ReplayTrailLayer(future: true)
         private let replayAccuracyLayer = ReplayAccuracyLayer()
+        private var replayCoverageExpiry: DispatchWorkItem?
+        private var replayCoverageDeadline: TimeInterval?
+        private var replayCoverageGeneration = 0
+        private var replayRenderCamera: MapCamera?
         private var overviewFit: (route: ObjectIdentifier, bounds: CGRect, clear: CGRect,
                                   heading: CLLocationDirection, pitch: CGFloat, type: MKMapType, camera: MapCamera)?
         private var overviewViewport: (bounds: CGRect, safeArea: UIEdgeInsets)?
@@ -639,7 +644,12 @@ struct NativeMapSurface: UIViewRepresentable {
         }
 
         private func sameCoordinates(_ lhs: [CLLocationCoordinate2D], _ rhs: [CLLocationCoordinate2D]) -> Bool {
-            lhs.count == rhs.count && zip(lhs, rhs).allSatisfy { pair in
+            guard lhs.count == rhs.count else { return false }
+            // Retaining the Array keeps its shared storage immutable through copy-on-write.
+            if lhs.withUnsafeBufferPointer({ left in
+                rhs.withUnsafeBufferPointer { right in left.baseAddress == right.baseAddress }
+            }) { return true }
+            return zip(lhs, rhs).allSatisfy { pair in
                 pair.0.latitude == pair.1.latitude && pair.0.longitude == pair.1.longitude
             }
         }
@@ -647,17 +657,25 @@ struct NativeMapSurface: UIViewRepresentable {
         private func updateOverlays(_ map: MKMapView) {
             if replayRoute !== parent.replayRoute {
                 overviewFit = nil
-                if let replayPresentation { map.removeOverlays(replayPresentation.overlays) }
                 replayRoute = parent.replayRoute
-                replayPresentation = nil
-                if let coordinates = replayRoute?.coordinates, !coordinates.isEmpty {
-                    let presentation = ReplayRoutePresentation(coordinates: coordinates)
-                    replayPresentation = presentation
-                    _ = presentation.updateCachedTrail(position: parent.replayPosition)
-                    map.addOverlays(presentation.overlays, level: .aboveRoads)
+                if let route = replayRoute, !route.coordinates.isEmpty {
+                    if let presentation = replayPresentation {
+                        presentation.update(coordinates: route.coordinates, pointIDs: route.pointIDs,
+                            position: parent.replayPosition).apply(to: map)
+                    } else {
+                        let presentation = ReplayRoutePresentation(coordinates: route.coordinates,
+                            pointIDs: route.pointIDs, position: parent.replayPosition)
+                        replayPresentation = presentation
+                        map.addOverlays(presentation.overlays, level: .aboveRoads)
+                    }
+                } else {
+                    if let presentation = replayPresentation { map.removeOverlays(presentation.overlays) }
+                    replayPresentation = nil
+                    replayRenderCamera = nil
                 }
             }
-            replayPresentation?.updateCachedTrail(position: parent.replayPosition).apply(to: map)
+            replayPresentation?.updatePosition(parent.replayPosition).apply(to: map)
+            scheduleReplayCoverageExpiry()
             if !sameCoordinates(tripCoordinates, parent.coordinates) {
                 if let tripLine { map.removeOverlay(tripLine) }
                 tripCoordinates = parent.coordinates
@@ -665,6 +683,32 @@ struct NativeMapSurface: UIViewRepresentable {
                     ? MKPolyline(coordinates: parent.coordinates, count: parent.coordinates.count) : nil
                 if let tripLine { map.addOverlay(tripLine, level: .aboveRoads) }
             }
+        }
+
+        func stopReplayCoverageExpiry() {
+            replayCoverageGeneration &+= 1
+            replayCoverageExpiry?.cancel()
+            replayCoverageExpiry = nil
+            replayCoverageDeadline = nil
+        }
+
+        private func scheduleReplayCoverageExpiry() {
+            replayPresentation?.expireCoverage()
+            let deadline = replayPresentation?.nextCoverageDeadline
+            guard deadline != replayCoverageDeadline else { return }
+            stopReplayCoverageExpiry()
+            guard let deadline, parent.sceneVisible, parent.pageActive else { return }
+            replayCoverageDeadline = deadline
+            let generation = replayCoverageGeneration
+            let work = DispatchWorkItem { [weak self] in
+                guard let self, self.replayCoverageGeneration == generation, let map = self.map else { return }
+                self.replayCoverageDeadline = nil
+                self.replayCoverageExpiry = nil
+                self.alignMarkers(on: map)
+                self.scheduleReplayCoverageExpiry()
+            }
+            replayCoverageExpiry = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + max(0, deadline - CACurrentMediaTime()), execute: work)
         }
 
         private func updateSelection(_ map: MKMapView) {
@@ -696,6 +740,7 @@ struct NativeMapSurface: UIViewRepresentable {
 
         func alignMarkers(on map: MKMapView) {
             guard parent.sceneVisible, parent.pageActive else {
+                stopReplayCoverageExpiry()
                 liveHeading.hide()
                 replayTrailLayer.hide()
                 replayFutureLayer.hide()
@@ -713,11 +758,21 @@ struct NativeMapSurface: UIViewRepresentable {
                 liveHeading.hide()
                 align(view, to: selectedPoint.coordinate, on: map)
                 replayAccuracyLayer.update(coordinate: selectedPoint.coordinate, accuracy: parent.replayAccuracy, on: map, below: view)
-                if let presentation = replayPresentation {
+                if let presentation = replayPresentation, let container = view.superview {
+                    let screen = ReplayScreenProjection(map: map, container: container)
+                    let now = CACurrentMediaTime()
                     replayTrailLayer.update(route: presentation.fullRoute, position: parent.replayPosition,
-                        coordinate: selectedPoint.coordinate, on: map, below: view)
+                        coordinate: selectedPoint.coordinate, coverage: presentation.layerCoverage(future: false, now: now),
+                        projection: screen, on: map, below: view)
                     replayFutureLayer.update(route: presentation.fullRoute, position: parent.replayPosition,
-                        coordinate: selectedPoint.coordinate, on: map, below: view, ahead: presentation.futureCut)
+                        coordinate: selectedPoint.coordinate, coverage: presentation.layerCoverage(future: true, now: now),
+                        projection: screen, on: map, below: view)
+                    if let layers = container.layer.sublayers,
+                       let future = layers.firstIndex(of: replayFutureLayer), let trail = layers.firstIndex(of: replayTrailLayer),
+                       future > trail {
+                        container.layer.insertSublayer(replayFutureLayer, below: replayTrailLayer)
+                    }
+                    scheduleReplayCoverageExpiry()
                 } else {
                     replayTrailLayer.hide()
                     replayFutureLayer.hide()
@@ -1636,6 +1691,12 @@ struct NativeMapSurface: UIViewRepresentable {
         }
 
         func mapViewDidChangeVisibleRegion(_ mapView: MKMapView) {
+            let camera = MapCamera(mapView.camera)
+            if let previous = replayRenderCamera,
+               previous.distance != camera.distance || previous.pitch != camera.pitch || previous.heading != camera.heading {
+                replayPresentation?.coverDuringCameraChange()
+            }
+            replayRenderCamera = camera
             alignMarkers(on: mapView)
             // Reported only when it changes, not every frame.
             let rotated = NativeMapSurface.isRotated(heading: mapView.camera.heading)
@@ -1643,6 +1704,15 @@ struct NativeMapSurface: UIViewRepresentable {
             mapRotated = rotated
             let report = parent.onRotationChange
             DispatchQueue.main.async { report(rotated) }
+        }
+
+        func mapViewWillStartRenderingMap(_ mapView: MKMapView) {
+            replayPresentation?.renderingBegan()
+        }
+
+        func mapViewDidFinishRenderingMap(_ mapView: MKMapView, fullyRendered: Bool) {
+            replayPresentation?.renderingFinished(fullyRendered: fullyRendered)
+            alignMarkers(on: mapView)
         }
 
         func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
@@ -1682,8 +1752,10 @@ struct NativeMapSurface: UIViewRepresentable {
         }
 
         func mapView(_ mapView: MKMapView, rendererFor overlay: any MKOverlay) -> MKOverlayRenderer {
-            if let renderer = replayPresentation?.renderer(for: overlay) { return renderer }
-            guard let line = overlay as? MKPolyline else { return MKOverlayRenderer(overlay: overlay) }
+            if let presentation = replayPresentation, presentation.contains(overlay),
+               let renderer = presentation.renderer(for: overlay) { return renderer }
+            // A deferred renderer request for a removed replay line must not fall back to blue.
+            guard let line = overlay as? MKPolyline, line === tripLine else { return MKOverlayRenderer(overlay: overlay) }
             let renderer = MKPolylineRenderer(polyline: line)
             renderer.lineCap = .round
             renderer.lineJoin = .round
