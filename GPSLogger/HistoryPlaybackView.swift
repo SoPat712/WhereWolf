@@ -102,6 +102,7 @@ final class HistoryPlaybackModel {
     private var pointsRevision = 0
     private var payloadRevision = 0
     @ObservationIgnored private var routeCache: (revision: Int, geometry: ReplayRouteGeometry)?
+    @ObservationIgnored private var liveRulerCache: (revision: Int, geometry: LiveRulerGeometry)?
     @ObservationIgnored private var timelineCache: (revision: Int, count: Int, timeline: ReplayTimeline)?
 
     init(pointLoader: @escaping (Int64, @escaping ([RecordedLocation]) -> Void) -> Void = {
@@ -144,6 +145,15 @@ final class HistoryPlaybackModel {
         guard let next = accuracy(at: index + 1) else { return current }
         let fraction = min(1, max(0, pose.position - Double(index)))
         return current + (next - current) * fraction
+    }
+
+    var liveRulerGeometry: LiveRulerGeometry {
+        if let liveRulerCache, liveRulerCache.revision == pointsRevision {
+            return liveRulerCache.geometry
+        }
+        let geometry = LiveRulerGeometry(points: points)
+        liveRulerCache = (pointsRevision, geometry)
+        return geometry
     }
 
     var routeGeometry: ReplayRouteGeometry? {

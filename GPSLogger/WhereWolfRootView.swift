@@ -36,9 +36,9 @@ struct WhereWolfRootView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     private var rulerOwnsCamera: Bool {
-        selection == 0 && scenePhase == .active && history.isBrowsing
+        selection == 0 && scenePhase == .active
             && (history.rulerZoom != nil || history.rulerScaleChannel.frame != nil)
-            && !replayOverview && !replayCameraFree
+            && (history.isBrowsing ? !replayOverview && !replayCameraFree : camera.followsUserLocation)
     }
 
     private enum MapAppearance: String, CaseIterable {
@@ -252,6 +252,7 @@ struct WhereWolfRootView: View {
                                 rulerZoom: mapTab == 0 ? history.rulerZoom : nil,
                                 rulerScaleChannel: mapTab == 0 ? history.rulerScaleChannel : nil,
                                 rulerZoomActive: selection == 0,
+                                liveRulerGeometry: mapTab == 0 ? history.liveRulerGeometry : nil,
                                 replayStatusHeight: mapTab == 0 && history.isBrowsing
                                     ? max(speedometerHeight, replayStatusHeight) : 0,
                                 replayCameraAction: replayCameraAction, recenterAction: recenterRequest,
@@ -262,9 +263,13 @@ struct WhereWolfRootView: View {
                                 onCameraChange: cameraChanged, onInteraction: stopFollowing,
                                 onRotationChange: { mapRotated = $0 },
                                 onRulerCameraRestore: { restored, base in
-            guard history.isBrowsing, !rulerOwnsCamera else { return }
-            replayCameraDistance = base
-            if mapTab == 0, !replayOverview { camera = .camera(restored) }
+            guard !rulerOwnsCamera, mapTab == 0 else { return }
+            if history.isBrowsing {
+                replayCameraDistance = base
+                if !replayOverview { camera = .camera(restored) }
+            } else if camera.followsUserLocation {
+                camera = .userLocation(followsHeading: camera.followsUserHeading, fallback: .camera(restored))
+            }
         })
     }
 

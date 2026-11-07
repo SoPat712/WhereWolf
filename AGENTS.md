@@ -289,13 +289,18 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   announce scale changes. Hold and pinch use cached payloads; release loads the
   final selection once. Retain every stored route point.
   A Tracker replay hold or pinch recaptures a manually moved camera, preserving
-  overview mode. Replay point following uses the persistent ruler scale during
-  browsing, scrubbing, momentum and playback. One point per bar uses the saved follow
-  distance D0; coarser detents fit the route within ±(2 + (half the visible bars − 2) × coarseness²)
+  overview mode. Tracker point following uses the persistent ruler scale at Live and during
+  browsing, scrubbing, momentum and playback, with heading mode on or off. One point per
+  bar uses that mode's saved follow distance D0; coarser detents fit the route within ±(2 + (half the visible bars − 2) × coarseness²)
   bars of the needle into the overview's clear map area, never closer than D0, so mid
   detents stay close and only the coarsest fit the whole visible ruler. Compute the
   box when scale zoom starts, the scale changes or the needle moves greater than
-  half a window, never per frame. Pinches and settles send continuous scale through
+  half a window, never per frame. At Live the window ends at the newest loaded point and
+  includes the displayed live coordinate, anchored in the same clear area. Cache loaded
+  coordinates only when history reloads; draw no route at Live. Refit when new points
+  move the newest end more than half a window, not on live fixes. With no points keep D0.
+  Live motion and heading still own centering and rotation; scale changes only distance.
+  Pinches and settles send continuous scale through
   a non-observed UIKit channel; interpolate neighboring step distances in log space,
   fitting each step once per anchored gesture. Menu and VoiceOver changes ease map
   zoom in log space over 0.3 seconds. Release and gesture cancellation retain it.
@@ -305,10 +310,12 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   pinch settle or the existing discrete camera transition. Leaving Tracker or the
   active scene restores D0 immediately; returning reapplies scale zoom without
   animation. A freed camera and overview ignore the scale; resuming point following
-  uses D0. Leaving history while
-  scale zoom applies, Live's flight lands at the live zoom from before history;
-  otherwise it keeps the replay zoom. Live ignores scale changes; re-entering history
-  reapplies scale zoom. Respect Reduce Motion.
+  uses its own D0 for the fit. Live captures D0 before scale zoom starts and preserves it
+  through camera release and history; following again flies to the current Live fit.
+  Leaving history at a coarse scale lands at the Live fit using the live zoom from before
+  history as D0; without scale zoom it keeps the replay zoom. Re-entering history uses
+  replay's own D0. Zoom buttons keep following until the next refit takes back the zoom.
+  The Trip map ignores the ruler. Respect Reduce Motion.
   Trip Settings uses `ExpandingSheetBackgroundView`: glass beneath a grouped
   Settings background that eases with the sheet's visible height. Row cards use
   `settingsRowBackground()`: in the glass sheet they ease from a translucent fill to the
@@ -482,7 +489,8 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   turns with any change of heading, so the dot holds still while the map rotates.
   Every switch to following the live location flies there along `MapFlight`, van Wijk and
   Nuij's zoom-and-pan path: long moves zoom out on the way, short ones are nearly a pan,
-  0.6–2 seconds. It keeps zoom and heading and aims at the moving fix; the first camera at
+  0.6–2 seconds. It keeps heading and aims at the moving fix, landing at the Tracker ruler's
+  Live fit while scale zoom applies and otherwise keeping zoom. The first camera at
   launch and Reduce Motion jump instead. Once following, the location button switches a
   Find My style heading mode on and off where the device has a compass. `DeviceHeadingSource`
   reads the compass from its own `CLLocationManager` with a 2° filter while tracking is on,

@@ -2150,6 +2150,258 @@ private final class RulerScaleHarness {
 }
 
 final class HistoryRulerZoomTests: XCTestCase {
+    @MainActor func testLiveCoordinatesAreCachedAcrossFramesAndDoNotCreateAReplayRoute() {
+        let points = replayPoints()
+        let model = HistoryPlaybackModel(pointLoader: { _, completion in completion(points) },
+            payloadLoader: { _, completion in completion([:]) }, places: { [] },
+            clock: { Date(timeIntervalSince1970: 100) })
+        model.setConsumerActive(true)
+        defer { model.setConsumerActive(false) }
+        let geometry = model.liveRulerGeometry
+        XCTAssertNil(model.routeGeometry)
+        XCTAssertEqual(geometry.coordinates.count, points.count)
+        XCTAssertEqual(geometry.pointIDs, points.map(\.id))
+        for step in [2.0, 5, 1] {
+            model.setRulerStep(step)
+            XCTAssertTrue(model.liveRulerGeometry === geometry)
+        }
+        model.scrub(pointAt: 50)
+        XCTAssertTrue(model.liveRulerGeometry === geometry)
+        model.returnToLive()
+        XCTAssertNil(model.routeGeometry)
+        XCTAssertTrue(model.liveRulerGeometry === geometry)
+    }
+
+    @MainActor func testLiveFitEndsAtNewestPointAndIncludesTheLiveCoordinate() throws {
+        var points = replayPoints()
+        points[0] = RecordedLocation(id: 0, timestamp: points[0].timestamp, latitude: -20, longitude: 80)
+        var (surface, coordinator, map) = nativeLive(base: 3_000, points: points)
+        defer { tearDown(coordinator, map: map) }
+        let zoom = ReplayRulerHold(pointsPerBar: 2, visibleBars: 20)
+        let window = zoom.window(at: 100, count: points.count)
+        XCTAssertEqual(window, 80..<101)
+        let coordinate = map.userLocation.location!.coordinate
+        let bounds = try XCTUnwrap(ReplayHoldZoom.bounds(in: surface.liveRulerGeometry!.coordinates,
+            window: window, anchor: coordinate))
+        XCTAssertEqual(bounds.maxY, MKMapPoint(points[80].coordinate).y, accuracy: 0.001)
+        XCTAssertEqual(bounds.minY, MKMapPoint(coordinate).y, accuracy: 0.001)
+        let expected = try liveDistance(zoom, surface: surface, map: map, base: 3_000)
+        surface.rulerZoom = zoom
+        coordinator.update(surface, animated: false)
+        coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
+        XCTAssertEqual(map.camera.centerCoordinateDistance, expected, accuracy: 0.1)
+        XCTAssertGreaterThan(expected, 3_000)
+        XCTAssertEqual(coordinator.rulerFitPosition, 100)
+        XCTAssertTrue(map.overlays.isEmpty)
+        XCTAssertNil(coordinator.parent.replayRoute)
+        XCTAssertTrue(coordinator.parent.position.followsUserLocation)
+        assertLiveCentered(on: map)
+        surface.rulerZoom = nil
+        coordinator.update(surface, animated: false)
+        coordinator.advanceCameraTransition(at: .greatestFiniteMagnitude)
+        XCTAssertEqual(map.camera.centerCoordinateDistance, 3_000, accuracy: 0.1)
+        assertLiveCentered(on: map)
+    }
+
+    @MainActor func testLiveChannelZoomsEveryFrameAndFitsEachStepOnceWithHeadingOnOrOff() {
+        for heading in [false, true] {
+            var (surface, coordinator, map) = nativeLive()
+            defer { tearDown(coordinator, map: map) }
+            surface.position = .userLocation(followsHeading: heading, fallback: .automatic)
+            surface.trackingEnabled = heading
+            let channel = RulerScaleChannel()
+            let detents = HistoryRulerCoarseDrag.Detents(tickCount: 101, rulerWidth: 402)
+            surface.rulerScaleChannel = channel
+            coordinator.update(surface, animated: false)
+            if heading {
+                coordinator.receiveDeviceHeading(71, at: 10)
+                coordinator.advanceMapHeading(at: 20)
+            }
+            let originalHeading = map.camera.heading
+            let originalPitch = map.camera.pitch
+            var previous = map.camera.centerCoordinateDistance
+            for frame in 0...120 {
+                // A moving live fix must not invalidate the gesture's step fits.
+                map.liveLocation.fix = CLLocation(latitude: 45.11 + Double(frame) * 0.000001, longitude: -122)
+                channel.send(.init(pointsPerBar: exp(log(5) * Double(frame) / 120), detents: detents, width: 402))
+                XCTAssertGreaterThanOrEqual(map.camera.centerCoordinateDistance, previous - 0.1)
+                XCTAssertEqual(map.camera.heading, originalHeading, accuracy: 0.01)
+                XCTAssertEqual(map.camera.pitch, originalPitch, accuracy: 0.01)
+                XCTAssertTrue(coordinator.parent.position.followsUserLocation)
+                XCTAssertNil(coordinator.parent.position.camera)
+                XCTAssertNil(coordinator.rulerDistanceEase)
+                assertLiveCentered(on: map)
+                previous = map.camera.centerCoordinateDistance
+            }
+            XCTAssertGreaterThan(previous, 2_000)
+            XCTAssertEqual(Set(coordinator.rulerScaleFitCounts.keys), Set(detents.steps))
+            XCTAssertTrue(coordinator.rulerScaleFitCounts.values.allSatisfy { $0 == 1 })
+            let counts = coordinator.rulerScaleFitCounts
+            // These frames also model the ruler's projected settle, including a return to Every point.
+            for step in [3.0, 2, 1.5, 1] {
+                channel.send(.init(pointsPerBar: step, detents: detents, width: 402))
+            }
+            XCTAssertEqual(coordinator.rulerScaleFitCounts, counts)
+            XCTAssertEqual(map.camera.centerCoordinateDistance, 2_000, accuracy: 0.1)
+            channel.send(nil)
+            coordinator.update(surface, animated: false)
+            XCTAssertNil(coordinator.rulerDistanceEase)
+            coordinator.advanceCameraTransition(at: .greatestFiniteMagnitude)
+            XCTAssertEqual(map.camera.centerCoordinateDistance, 2_000, accuracy: 0.1)
+        }
+    }
+
+    @MainActor func testLiveChannelCommitKeepsItsFitWithoutAnotherEase() {
+        var (surface, coordinator, map) = nativeLive()
+        defer { tearDown(coordinator, map: map) }
+        let channel = RulerScaleChannel()
+        let detents = HistoryRulerCoarseDrag.Detents(tickCount: 101, rulerWidth: 402)
+        surface.rulerScaleChannel = channel
+        coordinator.update(surface, animated: false)
+        channel.send(.init(pointsPerBar: 5, detents: detents, width: 402))
+        let distance = map.camera.centerCoordinateDistance
+        channel.send(nil)
+        surface.rulerZoom = detents.zoom(step: 5, width: 402)
+        coordinator.update(surface, animated: false)
+        XCTAssertNil(coordinator.rulerDistanceEase)
+        XCTAssertEqual(map.camera.centerCoordinateDistance, distance, accuracy: 0.1)
+        XCTAssertTrue(coordinator.parent.position.followsUserLocation)
+    }
+
+    @MainActor func testLiveMenuChangeEasesDistanceInLogSpace() throws {
+        var (surface, coordinator, map) = nativeLive()
+        defer { tearDown(coordinator, map: map) }
+        let before = map.camera.centerCoordinateDistance
+        surface.rulerZoom = ReplayRulerHold(pointsPerBar: 5, visibleBars: 20)
+        let expected = try liveDistance(surface.rulerZoom!, surface: surface, map: map, base: before)
+        coordinator.update(surface, animated: true)
+        if !UIAccessibility.isReduceMotionEnabled {
+            let ease = try XCTUnwrap(coordinator.rulerDistanceEase)
+            XCTAssertEqual(ease.to, expected, accuracy: 0.1)
+            XCTAssertEqual(ease.progress(at: ease.start + 0.3), 1, accuracy: 1e-9)
+            coordinator.advanceRulerZoom(at: ease.start + 0.15)
+            XCTAssertEqual(map.camera.centerCoordinateDistance, sqrt(before * expected), accuracy: 0.1)
+            assertLiveCentered(on: map)
+        }
+        coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
+        XCTAssertEqual(map.camera.centerCoordinateDistance, expected, accuracy: 0.1)
+        XCTAssertTrue(coordinator.parent.position.followsUserLocation)
+        assertLiveCentered(on: map)
+    }
+
+    @MainActor func testLiveSceneAndTabChangesRestoreAndReapplyImmediately() {
+        var (surface, coordinator, map) = nativeLive(base: 3_000)
+        defer { tearDown(coordinator, map: map) }
+        surface.rulerZoom = ReplayRulerHold(pointsPerBar: 5, visibleBars: 20)
+        coordinator.update(surface, animated: false)
+        coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
+        let coarse = map.camera.centerCoordinateDistance
+        let geometry = surface.liveRulerGeometry
+        for exit in 0..<4 {
+            if exit == 0 { surface.scenePhase = .inactive }
+            if exit == 1 { surface.scenePhase = .background }
+            if exit == 2 { surface.pageActive = false }
+            if exit == 3 {
+                surface.rulerZoomActive = false
+                surface.rulerZoom = nil
+                surface.liveRulerGeometry = nil
+            }
+            coordinator.update(surface, animated: false)
+            XCTAssertNil(coordinator.rulerDistanceEase)
+            XCTAssertEqual(map.camera.centerCoordinateDistance, 3_000, accuracy: 0.1)
+            if exit == 3 {
+                _ = coordinator.zoom(inward: false, on: map)
+                coordinator.advanceCameraTransition(at: .greatestFiniteMagnitude)
+                XCTAssertEqual(map.camera.centerCoordinateDistance, 6_000, accuracy: 0.1)
+            }
+            surface.scenePhase = .active
+            surface.pageActive = true
+            surface.rulerZoomActive = true
+            surface.rulerZoom = ReplayRulerHold(pointsPerBar: 5, visibleBars: 20)
+            surface.liveRulerGeometry = geometry
+            coordinator.update(surface, animated: true)
+            XCTAssertNil(coordinator.rulerDistanceEase)
+            XCTAssertEqual(map.camera.centerCoordinateDistance, coarse, accuracy: 0.1)
+            assertLiveCentered(on: map)
+        }
+    }
+
+    @MainActor func testLiveRefitsOnlyAfterNewPointsMoveHalfAWindowIncludingExpiry() {
+        var (surface, coordinator, map) = nativeLive()
+        defer { tearDown(coordinator, map: map) }
+        surface.rulerZoom = ReplayRulerHold(pointsPerBar: 2, visibleBars: 20)
+        coordinator.update(surface, animated: false)
+        coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
+        for newest in 101...121 {
+            let points = ((newest - 100)...newest).map { index in
+                RecordedLocation(id: Int64(index), timestamp: Date(timeIntervalSince1970: Double(index)),
+                    latitude: 45 + Double(index) * 0.001, longitude: -122)
+            }
+            surface.liveRulerGeometry = LiveRulerGeometry(points: points)
+            coordinator.update(surface, animated: false)
+            XCTAssertEqual(coordinator.rulerLiveFitID, newest <= 120 ? 100 : 121)
+            if newest <= 120 { XCTAssertNil(coordinator.rulerDistanceEase) }
+        }
+    }
+
+    @MainActor func testLiveFreedCameraIgnoresScaleAndRecenterFliesToTheFit() throws {
+        var (surface, coordinator, map) = nativeLive(base: 3_000)
+        defer { tearDown(coordinator, map: map) }
+        surface.rulerZoom = ReplayRulerHold(pointsPerBar: 2, visibleBars: 20)
+        coordinator.update(surface, animated: false)
+        coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
+        let pan = RulerMapPan()
+        pan.held = .began
+        coordinator.gestureChanged(pan)
+        surface.position = .camera(MapCamera(centerCoordinate: CLLocationCoordinate2D(latitude: 46, longitude: -121),
+            distance: 9_000))
+        map.setCamera(MKMapCamera(surface.position.camera!), animated: false)
+        pan.held = .ended
+        coordinator.update(surface, animated: false)
+        let freed = MapCamera(map.camera)
+        XCTAssertEqual(freed.distance, 9_000, accuracy: 0.1)
+        surface.rulerZoom = ReplayRulerHold(pointsPerBar: 5, visibleBars: 20)
+        coordinator.update(surface, animated: false)
+        coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
+        XCTAssertEqual(MapCamera(map.camera), freed)
+        XCTAssertNil(coordinator.rulerFitPosition)
+        let expected = try liveDistance(surface.rulerZoom!, surface: surface, map: map, base: 3_000)
+        surface.position = .userLocation(fallback: .automatic)
+        surface.recenterAction += 1
+        coordinator.update(surface, animated: false)
+        coordinator.advanceCameraTransition(at: .greatestFiniteMagnitude)
+        XCTAssertEqual(map.camera.centerCoordinateDistance, expected, accuracy: 0.1)
+        assertLiveCentered(on: map)
+        surface.rulerZoom = nil
+        coordinator.update(surface, animated: false)
+        coordinator.advanceCameraTransition(at: .greatestFiniteMagnitude)
+        XCTAssertEqual(map.camera.centerCoordinateDistance, 3_000, accuracy: 0.1)
+    }
+
+    @MainActor func testLiveEveryPointPreservesManualZoomAndEmptyHistoryKeepsIt() throws {
+        var (surface, coordinator, map) = nativeLive(base: 6_000)
+        defer { tearDown(coordinator, map: map) }
+        _ = try XCTUnwrap(coordinator.zoom(inward: true, on: map))
+        coordinator.advanceCameraTransition(at: .greatestFiniteMagnitude)
+        let manual = map.camera.centerCoordinateDistance
+        surface.liveRulerGeometry = LiveRulerGeometry(points: [])
+        surface.rulerZoom = ReplayRulerHold(pointsPerBar: 5, visibleBars: 20)
+        coordinator.update(surface, animated: false)
+        coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
+        XCTAssertEqual(map.camera.centerCoordinateDistance, manual, accuracy: 0.1)
+        surface.liveRulerGeometry = LiveRulerGeometry(points: replayPoints())
+        coordinator.update(surface, animated: false)
+        coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
+        XCTAssertGreaterThan(map.camera.centerCoordinateDistance, manual)
+        _ = try XCTUnwrap(coordinator.zoom(inward: true, on: map))
+        coordinator.advanceCameraTransition(at: .greatestFiniteMagnitude)
+        XCTAssertTrue(coordinator.parent.position.followsUserLocation)
+        surface.rulerZoom = nil
+        coordinator.update(surface, animated: false)
+        coordinator.advanceCameraTransition(at: .greatestFiniteMagnitude)
+        XCTAssertEqual(map.camera.centerCoordinateDistance, manual, accuracy: 0.1)
+    }
+
     @MainActor func testChannelMatchesEveryExactStepAndCommitDoesNotEaseAgain() {
         let detents = HistoryRulerCoarseDrag.Detents(tickCount: 101, rulerWidth: 402)
         for step in detents.steps.reversed() {
@@ -2264,13 +2516,18 @@ final class HistoryRulerZoomTests: XCTestCase {
         XCTAssertLessThan(map.camera.centerCoordinateDistance, settled)
     }
 
-    @MainActor func testLiveOverviewFreedCameraAndMapContactIgnoreChannelFrames() {
+    @MainActor func testOverviewFreedCamerasAndMapContactIgnoreChannelFrames() {
         for mode in 0..<6 {
             var (surface, coordinator, map) = nativeReplay()
             defer { tearDown(coordinator, map: map) }
             let channel = RulerScaleChannel()
             surface.rulerScaleChannel = channel
-            if mode == 0 { surface.replayActive = false }
+            if mode == 0 {
+                surface.replayActive = false
+                surface.replayRoute = nil
+                surface.selected = nil
+                surface.liveRulerGeometry = LiveRulerGeometry(points: replayPoints())
+            }
             if mode == 1 { surface.replayOverview = true }
             if mode == 2 { surface.replayFollowing = false }
             if mode == 3 { surface.rulerZoomActive = false }
@@ -2630,19 +2887,20 @@ final class HistoryRulerZoomTests: XCTestCase {
         XCTAssertEqual(map.camera.centerCoordinateDistance, 2_000, accuracy: 0.1)
     }
 
-    @MainActor func testLiveFlightUsesTheUsersLiveZoomAndHistoryReappliesScale() {
-        var (surface, coordinator, map) = nativeReplay()
+    @MainActor func testLiveFlightLandsAtLiveFitAndHistoryReappliesItsOwnBase() throws {
+        var (surface, coordinator, map) = nativeLive(base: 6_000)
         defer { tearDown(coordinator, map: map) }
-        let route = surface.replayRoute!
-        let selected = surface.selected!
-        surface.replayActive = false
-        surface.replayRoute = nil
-        surface.selected = nil
-        surface.position = .camera(MapCamera(centerCoordinate: selected, distance: 6_000))
+        surface.rulerZoom = ReplayRulerHold(pointsPerBar: 5, visibleBars: 20)
         coordinator.update(surface, animated: false)
+        coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
+        let liveFit = map.camera.centerCoordinateDistance
+        XCTAssertGreaterThan(liveFit, 6_000)
+        let route = ReplayRouteGeometry(points: replayPoints())
         surface.replayActive = true
         surface.replayRoute = route
-        surface.selected = selected
+        surface.selected = route.coordinates[50]
+        surface.replayPosition = 50
+        surface.replayFollowDistance = 2_000
         surface.rulerZoom = ReplayRulerHold(pointsPerBar: 5, visibleBars: 20)
         coordinator.update(surface, animated: false)
         coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
@@ -2651,25 +2909,24 @@ final class HistoryRulerZoomTests: XCTestCase {
         surface.replayRoute = nil
         surface.selected = nil
         surface.position = .userLocation(fallback: .automatic)
+        let expected = try liveDistance(surface.rulerZoom!, surface: surface, map: map, base: 6_000)
         coordinator.update(surface, animated: false)
-        map.showsUserLocation = true
-        let location = CLLocation(latitude: 45.2, longitude: -121.9)
-        coordinator.receiveLiveLocation(location, on: map)
-        coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
         coordinator.advanceCameraTransition(at: .greatestFiniteMagnitude)
-        XCTAssertEqual(map.camera.centerCoordinateDistance, 6_000, accuracy: 0.1)
+        XCTAssertEqual(map.camera.centerCoordinateDistance, expected, accuracy: 0.1)
+        XCTAssertEqual(map.camera.centerCoordinateDistance, liveFit, accuracy: 0.1)
+        XCTAssertGreaterThan(expected, 6_000)
         XCTAssertEqual(coordinator.parent.replayFollowDistance, 2_000)
-        XCTAssertNil(coordinator.rulerFitPosition)
-        surface.rulerZoom = ReplayRulerHold(pointsPerBar: 20, visibleBars: 20)
-        coordinator.update(surface, animated: false)
-        XCTAssertEqual(map.camera.centerCoordinateDistance, 6_000, accuracy: 0.1)
+        XCTAssertEqual(coordinator.rulerLiveFitID, 100)
+        assertLiveCentered(on: map)
         surface.replayActive = true
         surface.replayRoute = route
-        surface.selected = selected
+        surface.selected = route.coordinates[50]
         coordinator.update(surface, animated: false)
         coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
-        XCTAssertGreaterThan(map.camera.centerCoordinateDistance, 6_000)
-        XCTAssertEqual(coordinator.parent.replayFollowDistance, 2_000)
+        surface.rulerZoom = nil
+        coordinator.update(surface, animated: false)
+        coordinator.advanceCameraTransition(at: .greatestFiniteMagnitude)
+        XCTAssertEqual(map.camera.centerCoordinateDistance, 2_000, accuracy: 0.1)
     }
 
     @MainActor func testLiveKeepsTheReplayZoomWhenNoScaleZoomApplied() {
@@ -2736,6 +2993,49 @@ final class HistoryRulerZoomTests: XCTestCase {
         coordinator.update(surface, animated: false)
         coordinator.advanceCameraTransition(at: .greatestFiniteMagnitude)
         XCTAssertEqual(MapCamera(map.camera), before)
+    }
+
+    @MainActor private func nativeLive(base: CLLocationDistance = 2_000, points: [RecordedLocation]? = nil)
+        -> (NativeMapSurface, NativeMapSurface.Coordinator, RulerLiveMapView) {
+        let map = RulerLiveMapView(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        map.insetsLayoutMarginsFromSafeArea = false
+        map.layoutMargins = .zero
+        let coordinate = map.userLocation.location!.coordinate
+        var surface = NativeMapSurface(position: .camera(MapCamera(centerCoordinate: coordinate, distance: base)),
+            mapType: .standard, coordinates: [], replayRoute: nil, replayPosition: 0,
+            liveRulerGeometry: LiveRulerGeometry(points: points ?? replayPoints()), selected: nil,
+            selectedTitle: "Recorded point", scenePhase: .active, pageActive: true,
+            onCameraChange: { _, _ in }, onInteraction: {})
+        let coordinator = NativeMapSurface.Coordinator(surface)
+        map.delegate = coordinator
+        coordinator.map = map
+        coordinator.update(surface, animated: false)
+        surface.position = .userLocation(fallback: .automatic)
+        coordinator.update(surface, animated: false)
+        coordinator.advanceCameraTransition(at: .greatestFiniteMagnitude)
+        XCTAssertEqual(map.camera.centerCoordinateDistance, base, accuracy: 0.1)
+        XCTAssertEqual(NativeMapSurface.displayedUserCoordinate(on: map)?.latitude, coordinate.latitude)
+        XCTAssertEqual(NativeMapSurface.displayedUserCoordinate(on: map)?.longitude, coordinate.longitude)
+        return (surface, coordinator, map)
+    }
+
+    @MainActor private func liveDistance(_ zoom: ReplayRulerHold, surface: NativeMapSurface,
+                                       map: MKMapView, base: CLLocationDistance) throws -> CLLocationDistance {
+        let coordinates = try XCTUnwrap(surface.liveRulerGeometry).coordinates
+        let coordinate = try XCTUnwrap(NativeMapSurface.displayedUserCoordinate(on: map))
+        let bounds = try XCTUnwrap(ReplayHoldZoom.bounds(in: coordinates,
+            window: zoom.window(at: Double(coordinates.count - 1), count: coordinates.count), anchor: coordinate))
+        let fit = try XCTUnwrap(ReplayHoldZoom.fittedDistance(bounds: bounds, anchor: coordinate, base: base, on: map,
+            clearRect: NativeMapSurface.replayClearRect(on: map), anchorPoint: NativeMapSurface.visibleCenter(on: map)))
+        return ReplayHoldZoom.distance(base: base, pointsPerBar: zoom.pointsPerBar, fitted: fit)
+    }
+
+    @MainActor private func assertLiveCentered(on map: MKMapView, file: StaticString = #filePath, line: UInt = #line) {
+        let coordinate = NativeMapSurface.displayedUserCoordinate(on: map)!
+        let point = map.convert(coordinate, toPointTo: map)
+        let target = NativeMapSurface.visibleCenter(on: map)
+        XCTAssertEqual(point.x, target.x, accuracy: 1, file: file, line: line)
+        XCTAssertEqual(point.y, target.y, accuracy: 1, file: file, line: line)
     }
 
     private func replayPoints() -> [RecordedLocation] {
@@ -2807,5 +3107,32 @@ final class HistoryRulerZoomTests: XCTestCase {
                 }
             }
         }
+    }
+}
+
+private final class RulerLiveLocation: MKUserLocation {
+    var fix = CLLocation(latitude: 45.11, longitude: -122)
+    override var location: CLLocation? { fix }
+    override var coordinate: CLLocationCoordinate2D { fix.coordinate }
+}
+
+@MainActor
+private final class RulerLiveMapView: MKMapView {
+    let liveLocation = RulerLiveLocation()
+    private var liveLocationVisible = false
+    override var userLocation: MKUserLocation { liveLocation }
+    // Overriding the location getter does not replace MapKit's delegate fixes.
+    override var showsUserLocation: Bool {
+        get { liveLocationVisible }
+        set { liveLocationVisible = newValue }
+    }
+}
+
+@MainActor
+private final class RulerMapPan: UIPanGestureRecognizer {
+    var held: UIGestureRecognizer.State = .possible
+    override var state: UIGestureRecognizer.State {
+        get { held }
+        set { held = newValue }
     }
 }

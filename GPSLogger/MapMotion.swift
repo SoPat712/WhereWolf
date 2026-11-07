@@ -149,6 +149,17 @@ final class RulerScaleChannel {
     }
 }
 
+// Live fitting needs loaded coordinates without creating or displaying a replay route.
+final class LiveRulerGeometry {
+    let coordinates: [CLLocationCoordinate2D]
+    let pointIDs: [Int64]
+
+    init(points: [RecordedLocation]) {
+        coordinates = points.map(\.coordinate)
+        pointIDs = points.map(\.id)
+    }
+}
+
 struct ReplayRulerHold: Equatable {
     static let nearBars: Double = 2
 

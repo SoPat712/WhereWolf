@@ -158,8 +158,8 @@ with one finger to browse at that scale, with momentum. Hold for a moment to
 scrub sideways; moving vertically leaves the scale unchanged.
 During a pinch or hold, a Liquid Glass bubble above the drawer shows the selected
 time and the estimated time per bar (blur material before iOS 26). Coarser scales
-zoom out around the replay point and keep that zoom after release, including
-during momentum and playback. **Every point** returns to your point-following zoom.
+zoom out around the live location or replay point and keep that zoom after release,
+including during momentum and playback. **Every point** returns to that mode's original follow zoom.
 Overview stays in overview. Holds and pinches use cached point details and load
 the final selection on release. Reaching Live keeps the gesture active so you can
 scrub back; releasing there returns to Live. Trip Settings starts
@@ -521,10 +521,12 @@ history**. The ruler and following map track your fingers continuously, with bar
 crossfading between scales; release gently settles to a scale without haptics.
 Time estimates use nearby recorded intervals. The selected point stays
 under the needle when the scale changes. The scale remains set across Live, tabs
-and playback; dragging and flicking use it too. While the map follows a replay
-point, coarser scales also zoom out to fit the nearby route. That zoom stays after
-release. Choose **Every point** to return to your point-following zoom. Live,
-overview and a manually moved camera keep their own zoom.
+and playback; dragging and flicking use it too. While the Tracker map follows your live
+location or a replay point, coarser scales also zoom out to fit the nearby recorded points.
+At Live the fit includes your current location and the newest points, with heading mode
+on or off. That zoom stays after release. Choose **Every point** to return to that mode's
+original follow zoom. Overview and a manually moved camera keep their own zoom; the
+location button resumes following at the current ruler scale. The Trip map keeps its own zoom.
 Time labels, local-midnight dividers and stop capsules help you find your way
 through the retained history. Stops use a nearby saved Wi-Fi Place’s name, icon
 and color, or show an unnamed stop’s duration. Hold for 0.35 seconds to scrub
@@ -636,8 +638,8 @@ or the selected point when close in. Further presses toggle between the two.
 Each transition takes about one second, including large changes in scale, with
 zoom and pan easing together all the way to the destination.
 Reduce Motion uses immediate camera changes. Tap Live on the ruler to return to your current
-location. The + and − buttons change the camera distance by a factor of two over
-about a third of a second. They keep the moving replay marker centered while
+location at the ruler scale's Live fit. The + and − buttons change the camera distance by a factor of two over
+about a third of a second. They keep the live location or moving replay marker centered while
 following and preserve rotation and tilt. A detached camera stays free; zooming
 from the whole-trail view returns to following the selected point.
 MapKit's Apple Maps credit and Legal link sit at the top left. The speedometer
