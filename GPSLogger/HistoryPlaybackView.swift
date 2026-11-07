@@ -576,6 +576,7 @@ final class HistoryPlaybackModel {
     func returnToLive() {
         interruptRuler()
         pause()
+        rulerStep = 1
         isBrowsing = false
         selectedIndex = nil
         payload = nil
@@ -1796,6 +1797,11 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
     private func setExactPosition(_ value: Double) {
         exactPosition = (scrollView.contentOffset.x, ticks.scale, ticks.tickCount, value)
     }
+    // Momentum and bounces settle on whole pixels, and a coarse scale's Live edge usually falls between two.
+    private var scrolledPosition: Double {
+        guard maximumOffset - scrollView.contentOffset.x >= 1 / max(1, traitCollection.displayScale) else { return 0 }
+        return min(Double(ticks.tickCount), max(0, position))
+    }
     private var motionPosition: Double { position / ticks.scale.pointsPerTick * Double(ticks.scale.spacing) }
     private var held: Bool { coarseDragging || pinching }
     private var moving: Bool { dragging || decelerating || held }
@@ -2017,7 +2023,7 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
         lastMotionTime = now
         lastMotionPosition = points
         redraw()
-        let bounded = min(Double(ticks.tickCount), max(0, position))
+        let bounded = scrolledPosition
         if let configuration { appliedRevision = configuration.onMove(bounded) }
         feedback(at: bounded, time: now)
         recordMotion()
@@ -2041,7 +2047,7 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
     }
 
     private func finishMotion() {
-        let bounded = min(Double(ticks.tickCount), max(0, position))
+        let bounded = scrolledPosition
         if let configuration { appliedRevision = configuration.onMove(bounded) }
         dragging = false
         decelerating = false

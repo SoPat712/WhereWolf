@@ -153,7 +153,8 @@ releasing saves it once.
 
 Pinch the history ruler to change its scale: spread for finer steps, or pinch
 in for coarser ones, from every recorded point to the whole loaded history.
-The scale stays where you leave it across Live, tabs and playback. Drag or flick
+The scale stays where you leave it across tabs and playback, and returning to Live
+from history resets it to every point. Drag or flick
 with one finger to browse at that scale, with momentum. Hold for a moment to
 scrub sideways; moving vertically leaves the scale unchanged.
 During a pinch or hold, a Liquid Glass bubble above the drawer shows the selected
@@ -162,7 +163,7 @@ zoom out around the live location or replay point and keep that zoom after relea
 including during momentum and playback. **Every point** returns to that mode's original follow zoom.
 Overview stays in overview. Holds and pinches use cached point details and load
 the final selection on release. Reaching Live keeps the gesture active so you can
-scrub back; releasing there returns to Live. Trip Settings starts
+scrub back; releasing or coasting there returns to Live. Trip Settings starts
 with a translucent glass background and fades toward the grouped Settings
 background as the sheet expands; collapsing reverses the fade. Cards use the
 same secondary grouped colors as the main Settings form in light and dark mode.
@@ -520,8 +521,9 @@ capsule beside the time to choose **Every point**, a time interval, or **Whole
 history**. The ruler and following map track your fingers continuously, with bars
 crossfading between scales; release gently settles to a scale without haptics.
 Time estimates use nearby recorded intervals. The selected point stays
-under the needle when the scale changes. The scale remains set across Live, tabs
-and playback; dragging and flicking use it too. While the Tracker map follows your live
+under the needle when the scale changes. The scale remains set across tabs and playback,
+and dragging and flicking use it too. Returning to Live from history resets it to **Every point**
+and zooms back in to your live zoom from before history. While the Tracker map follows your live
 location or a replay point, coarser scales also zoom out to fit the nearby recorded points.
 At Live the fit includes your current location and the newest points, with heading mode
 on or off. That zoom stays after release. Choose **Every point** to return to that mode's
@@ -638,7 +640,7 @@ or the selected point when close in. Further presses toggle between the two.
 Each transition takes about one second, including large changes in scale, with
 zoom and pan easing together all the way to the destination.
 Reduce Motion uses immediate camera changes. Tap Live on the ruler to return to your current
-location at the ruler scale's Live fit. The + and − buttons change the camera distance by a factor of two over
+location; after browsing at a coarser scale it resets the scale and zooms back in. The + and − buttons change the camera distance by a factor of two over
 about a third of a second. They keep the live location or moving replay marker centered while
 following and preserve rotation and tilt. A detached camera stays free; zooming
 from the whole-trail view returns to following the selected point.

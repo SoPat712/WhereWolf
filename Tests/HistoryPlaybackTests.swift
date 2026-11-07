@@ -509,17 +509,16 @@ final class HistoryPlaybackTests: XCTestCase {
         XCTAssertNil(model.rulerHold)
     }
 
-    @MainActor func testRulerScalePersistsAcrossLiveTabChangesPlaybackAndCancellation() {
+    @MainActor func testRulerScalePersistsAcrossTabChangesPlaybackAndCancellationUntilReturningToLive() {
         let points = locations(400)
         let model = HistoryPlaybackModel(pointLoader: { after, completion in completion(points.filter { $0.id > after }) },
             payloadLoader: { _, completion in completion([:]) })
         model.setConsumerActive(true)
         model.setRulerStep(20)
-        model.scrub(pointAt: 100)
-        model.returnToLive()
-        XCTAssertEqual(model.rulerStep, 20)
         model.setConsumerActive(false)
         model.setConsumerActive(true)
+        XCTAssertEqual(model.rulerStep, 20)
+        model.scrub(pointAt: 100)
         XCTAssertEqual(model.rulerStep, 20)
         model.togglePlayback()
         model.advancePlayback(by: 1)
@@ -531,6 +530,17 @@ final class HistoryPlaybackTests: XCTestCase {
         XCTAssertTrue(model.rulerHoldCancelled)
         XCTAssertEqual(model.rulerStep, 20)
         model.returnToLive()
+        XCTAssertEqual(model.rulerStep, 1)
+        XCTAssertNil(model.rulerZoom)
+        model.setRulerStep(20)
+        model.setConsumerActive(false)
+        model.setConsumerActive(true)
+        XCTAssertEqual(model.rulerStep, 20)
+        model.beginRulerInteraction()
+        model.scrub(rulerPosition: 0, liveEdge: Date())
+        model.endRulerInteraction(at: 0) { model.returnToLive() }
+        XCTAssertFalse(model.isBrowsing)
+        XCTAssertEqual(model.rulerStep, 1)
     }
 
     @MainActor func testRulerScaleClampsWhenLoadingOrPruningShrinksTheLadder() {
@@ -2116,6 +2126,28 @@ final class HistoryRulerContinuousScaleTests: XCTestCase {
         XCTAssertEqual(harness.ruler.displayedPointsPerBar, 5)
         XCTAssertNil(harness.ruler.scaleEase)
     }
+
+    @MainActor func testMomentumSettlingOnThePixelBeforeACoarseLiveEdgeReturnsToLive() throws {
+        let harness = RulerScaleHarness()
+        defer { harness.ruler.cancelMotion() }
+        var ends: [Double] = []
+        harness.configuration.onEnd = { ends.append($0) }
+        harness.ruler.configure(harness.configuration)
+        let scrollView = try XCTUnwrap(harness.ruler.subviews.compactMap { $0 as? UIScrollView }.first)
+        let pixel = 1 / max(1, harness.ruler.traitCollection.displayScale)
+        let maximum = scrollView.contentSize.width - scrollView.bounds.width
+        let settled = floor(maximum / pixel) * pixel
+        XCTAssertGreaterThan(maximum - settled, 0.001)
+        for offset in [settled, settled - pixel] {
+            harness.ruler.scrollViewWillBeginDragging(scrollView)
+            scrollView.contentOffset.x = offset
+            harness.ruler.scrollViewDidEndDragging(scrollView, willDecelerate: true)
+            harness.ruler.scrollViewDidEndDecelerating(scrollView)
+        }
+        XCTAssertEqual(ends.count, 2)
+        XCTAssertEqual(ends.first, 0)
+        XCTAssertGreaterThan(ends.last ?? 0, 0)
+    }
 }
 
 @MainActor
@@ -2887,7 +2919,7 @@ final class HistoryRulerZoomTests: XCTestCase {
         XCTAssertEqual(map.camera.centerCoordinateDistance, 2_000, accuracy: 0.1)
     }
 
-    @MainActor func testLiveFlightLandsAtLiveFitAndHistoryReappliesItsOwnBase() throws {
+    @MainActor func testLeavingScaledHistoryLandsAtTheLiveZoomAndHistoryReappliesItsOwnBase() throws {
         var (surface, coordinator, map) = nativeLive(base: 6_000)
         defer { tearDown(coordinator, map: map) }
         surface.rulerZoom = ReplayRulerHold(pointsPerBar: 5, visibleBars: 20)
@@ -2909,15 +2941,18 @@ final class HistoryRulerZoomTests: XCTestCase {
         surface.replayRoute = nil
         surface.selected = nil
         surface.position = .userLocation(fallback: .automatic)
-        let expected = try liveDistance(surface.rulerZoom!, surface: surface, map: map, base: 6_000)
+        // Returning to Live resets the ruler to every point.
+        surface.rulerZoom = nil
         coordinator.update(surface, animated: false)
         coordinator.advanceCameraTransition(at: .greatestFiniteMagnitude)
-        XCTAssertEqual(map.camera.centerCoordinateDistance, expected, accuracy: 0.1)
-        XCTAssertEqual(map.camera.centerCoordinateDistance, liveFit, accuracy: 0.1)
-        XCTAssertGreaterThan(expected, 6_000)
+        XCTAssertEqual(map.camera.centerCoordinateDistance, 6_000, accuracy: 0.1)
         XCTAssertEqual(coordinator.parent.replayFollowDistance, 2_000)
-        XCTAssertEqual(coordinator.rulerLiveFitID, 100)
+        XCTAssertNil(coordinator.rulerLiveFitID)
         assertLiveCentered(on: map)
+        surface.rulerZoom = ReplayRulerHold(pointsPerBar: 5, visibleBars: 20)
+        coordinator.update(surface, animated: false)
+        coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
+        XCTAssertEqual(map.camera.centerCoordinateDistance, liveFit, accuracy: 0.1)
         surface.replayActive = true
         surface.replayRoute = route
         surface.selected = route.coordinates[50]
@@ -2927,6 +2962,40 @@ final class HistoryRulerZoomTests: XCTestCase {
         coordinator.update(surface, animated: false)
         coordinator.advanceCameraTransition(at: .greatestFiniteMagnitude)
         XCTAssertEqual(map.camera.centerCoordinateDistance, 2_000, accuracy: 0.1)
+    }
+
+    @MainActor func testLeavingScaledHistoryWithAFreedCameraLandsAtTheLiveZoom() {
+        var (surface, coordinator, map) = nativeLive(base: 6_000)
+        defer { tearDown(coordinator, map: map) }
+        surface.rulerZoom = ReplayRulerHold(pointsPerBar: 5, visibleBars: 20)
+        coordinator.update(surface, animated: false)
+        coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
+        let route = ReplayRouteGeometry(points: replayPoints())
+        surface.replayActive = true
+        surface.replayRoute = route
+        surface.selected = route.coordinates[50]
+        surface.replayPosition = 50
+        surface.replayFollowDistance = 2_000
+        coordinator.update(surface, animated: false)
+        coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
+        // A map gesture frees the replay camera and the root keeps the camera it left.
+        map.setCamera(MKMapCamera(lookingAtCenter: route.coordinates[50], fromDistance: 20_000, pitch: 0, heading: 0),
+                      animated: false)
+        surface.replayFollowing = false
+        surface.position = .camera(MapCamera(map.camera))
+        coordinator.update(surface, animated: false)
+        XCTAssertEqual(map.camera.centerCoordinateDistance, 20_000, accuracy: 1)
+        surface.replayActive = false
+        surface.replayRoute = nil
+        surface.selected = nil
+        surface.rulerZoom = nil
+        surface.position = .userLocation(fallback: .automatic)
+        // Live asks for a recenter, as the root's Live action does.
+        surface.recenterAction += 1
+        coordinator.update(surface, animated: false)
+        coordinator.advanceCameraTransition(at: .greatestFiniteMagnitude)
+        XCTAssertEqual(map.camera.centerCoordinateDistance, 6_000, accuracy: 0.1)
+        assertLiveCentered(on: map)
     }
 
     @MainActor func testLiveKeepsTheReplayZoomWhenNoScaleZoomApplied() {

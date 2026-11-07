@@ -603,7 +603,7 @@ struct NativeMapSurface: UIViewRepresentable {
             if !parent.replayActive && self.parent.replayActive {
                 if parent.rulerZoom != nil || parent.rulerScaleChannel?.frame != nil {
                     liveRulerBaseDistance = replayLiveDistance
-                } else if scaledRuler == nil {
+                } else if scaledRuler == nil && self.parent.rulerZoom == nil {
                     replayLiveDistance = nil
                 }
             }

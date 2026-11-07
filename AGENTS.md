@@ -248,8 +248,8 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   Its day sections, and the stops and movements within each day, are newest first, with
   shared activity/distance calculations and Viewing on the selected row.
   Selecting a row jumps to its start and dismisses. Cancel and Go use native toolbars.
-  Pinching the history ruler changes a scale retained for the model's lifetime,
-  across Live, tabs and playback, without defaults. Spread for fewer points per bar;
+  Pinching the history ruler changes a scale retained across tabs, playback and pinches at
+  Live, without defaults; returning to Live from history resets it to every point. Spread for fewer points per bar;
   pinch together for more. Use every 1–2–5 step from one point per bar through the
   step that rounds up to cover loaded history in one ruler width, or 48 time ticks
   before points load. Clamp when the ladder shrinks. Pinches continuously divide the
@@ -273,7 +273,8 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   above the ruler if absent. Derive the scale from nearby recorded intervals, or
   retention time before points load. Remove the window bubble on release or
   cancellation without changing drawer height. Reaching Live clamps at zero
-  without ending an interaction; return to Live only when motion ends there.
+  without ending an interaction; return to Live only when motion ends there. Momentum and
+  bounces settle on whole pixels, so an end within a pixel of the Live edge counts as Live.
   Only held scrubbing coarser than one point per bar snaps within six screen points
   of a stop boundary. Hold the exact index until the finger moves over ten points,
   then rebase at the current finger without a jump. Give each snap a selection haptic;
@@ -312,8 +313,8 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   animation. A freed camera and overview ignore the scale; resuming point following
   uses its own D0 for the fit. Live captures D0 before scale zoom starts and preserves it
   through camera release and history; following again flies to the current Live fit.
-  Leaving history at a coarse scale lands at the Live fit using the live zoom from before
-  history as D0; without scale zoom it keeps the replay zoom. Re-entering history uses
+  Leaving history at a coarse scale lands at the live zoom from before history, also after a
+  freed replay camera; with every point it keeps the replay zoom. Re-entering history uses
   replay's own D0. Zoom buttons keep following until the next refit takes back the zoom.
   The Trip map ignores the ruler. Respect Reduce Motion.
   Trip Settings uses `ExpandingSheetBackgroundView`: glass beneath a grouped
