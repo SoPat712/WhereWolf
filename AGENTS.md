@@ -245,8 +245,8 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   The time beneath the ruler opens the native Go To sheet while browsing; Live keeps
   its plain label. Go To uses medium/large detents, compact date/time pickers bounded
   from the oldest retained point to now, and selects the nearest stored point.
-  Its day sections are newest first, with stops and movements chronological within
-  each day, shared activity/distance calculations, and Viewing on the selected row.
+  Its day sections, and the stops and movements within each day, are newest first, with
+  shared activity/distance calculations and Viewing on the selected row.
   Selecting a row jumps to its start and dismisses. Cancel and Go use native toolbars.
   Pinching the history ruler changes a scale retained for the model's lifetime,
   across Live, tabs and playback, without defaults. Spread for fewer points per bar;

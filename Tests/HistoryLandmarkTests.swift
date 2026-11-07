@@ -333,16 +333,16 @@ final class HistoryLandmarkTests: XCTestCase {
         }
     }
 
-    func testJourneyGroupsNewestDaysFirstAndKeepsRowsChronologicalWithinEachDay() {
+    func testJourneyListsNewestDaysAndRowsFirst() {
         let (points, places) = twoStops(start: date("2026-06-02T03:57:00Z"))
         let landmarks = makeLandmarks(points, places: places)
 
         XCTAssertEqual(landmarks.journey.map(\.id), [date("2026-06-02T04:00:00Z"), date("2026-06-01T04:00:00Z")])
-        XCTAssertEqual(landmarks.journey[0].rows.map(\.start), [3, 5, 6])
-        XCTAssertEqual(landmarks.journey[0].rows.map(\.end), [5, 6, 11])
+        XCTAssertEqual(landmarks.journey[0].rows.map(\.start), [6, 5, 3])
+        XCTAssertEqual(landmarks.journey[0].rows.map(\.end), [11, 6, 5])
         XCTAssertEqual(landmarks.journey[1].rows.map(\.start), [0])
         XCTAssertEqual(landmarks.journey[1].rows.map(\.end), [2])
-        XCTAssertEqual(landmarks.journey[0].rows.first?.title, "Home")
+        XCTAssertEqual(landmarks.journey[0].rows.last?.title, "Home")
         XCTAssertEqual(landmarks.journey[1].rows.first?.title, "Home")
         XCTAssertEqual(landmarks.viewingRow(at: 2.5)?.start, 0)
         let rows = landmarks.journey.flatMap(\.rows)
@@ -352,7 +352,7 @@ final class HistoryLandmarkTests: XCTestCase {
                 XCTAssertEqual(calendar.startOfDay(for: row.startTime), day.id)
                 XCTAssertEqual(calendar.startOfDay(for: row.endTime), day.id)
             }
-            XCTAssertTrue(zip(day.rows, day.rows.dropFirst()).allSatisfy { $0.0.startTime <= $0.1.startTime })
+            XCTAssertTrue(zip(day.rows, day.rows.dropFirst()).allSatisfy { $0.0.startTime >= $0.1.startTime })
         }
     }
 

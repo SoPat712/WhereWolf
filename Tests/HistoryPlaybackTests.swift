@@ -1942,7 +1942,7 @@ final class HistoryPlaybackTests: XCTestCase {
         model.goTo(points.last!.timestamp)
         XCTAssertEqual(model.selectedIndex, 5)
         XCTAssertNil(model.stopBoundary(1))
-        model.scrub(pointAt: previous.journey.first!.rows.last!.start)
+        model.scrub(pointAt: previous.journey.first!.rows.first!.start)
         XCTAssertEqual(model.selectedIndex, 5)
         model.scrub(pointAt: 0)
         XCTAssertEqual(model.stopBoundary(1)?.index, 5)

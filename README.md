@@ -536,7 +536,7 @@ Tap the time capsule beneath the ruler to open **Go To**. Pick a date and time t
 select the nearest recorded point, or choose a stop or movement from the day list.
 The list includes time ranges, movement type and distance, with **Viewing** beside
 your current position. It covers the oldest retained point through now; days are
-newest first and each day’s entries run chronologically.
+newest first, and so are the entries within each day.
 
 Play animates the journey at 0.25×, 0.5×, 1×, 2×, 5×, 10×, 25×, or 50× replay
 pace, with 1× as the default. These are relative playback speeds: long gaps are compressed,

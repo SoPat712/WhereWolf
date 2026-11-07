@@ -250,7 +250,8 @@ final class HistoryLandmarks {
 
     func viewingRow(at position: Double) -> HistoryJourneyRow? {
         guard position >= 0, position <= Double(timestamps.count - 1) else { return nil }
-        let rows = journey.flatMap(\.rows)
+        // Rows display newest first; search oldest first so the earlier row owns a shared boundary.
+        let rows = journey.reversed().flatMap { $0.rows.reversed() }
         if let row = rows.first(where: { $0.isStop && $0.contains(position) })
             ?? rows.first(where: { $0.contains(position) }) { return row }
         // A day split can fall between fixes; the preceding fix owns that fractional segment.
@@ -330,7 +331,7 @@ final class HistoryLandmarks {
                 start = end + 1
             }
         }
-        return grouped.keys.sorted(by: >).map { HistoryJourneyDay(id: $0, rows: grouped[$0]!) }
+        return grouped.keys.sorted(by: >).map { HistoryJourneyDay(id: $0, rows: grouped[$0]!.reversed()) }
     }
 
     private static func movement(timeline: ReplayTimeline,
