@@ -33,9 +33,9 @@ def main():
         parser.error("--resume-map requires --map-only and an existing --output result")
     devices = json.loads(run("xcrun", "simctl", "list", "devices", "-j"))["devices"]
     device = next(d for group in devices.values() for d in group if d["udid"] == args.udid)
-    if (device["name"] not in ("Overland Fake Route", "Overland UI Audit")
+    if (device["name"] not in ("WhereWolf Fake Route", "WhereWolf UI Audit")
             and device["udid"] != "42FA2C2F-F66C-41DB-A33C-A018165BB0D7"):
-        parser.error("Use Overland Regression or a disposable Overland Fake Route / Overland UI Audit simulator")
+        parser.error("Use WhereWolf Regression or a disposable WhereWolf Fake Route / WhereWolf UI Audit simulator")
     base = ["idb"]
     if os.environ.get("IDB_COMPANION"):
         base += ["--companion", os.environ["IDB_COMPANION"]]
@@ -307,7 +307,7 @@ asyncio.run(main())
             tap("Show My Location")
             record("Ruler coasts after release with monotonic, decaying position samples; replay and Live remain available")
         else:
-            limitations.append("Full ruler decay needs at least 50 ticks; seed load_replay_demo.py on Overland UI Audit.")
+            limitations.append("Full ruler decay needs at least 50 ticks; seed load_replay_demo.py on WhereWolf UI Audit.")
         handle = frame("Controls panel")
         assert handle["height"] >= 44, "Grabber target is smaller than 44 pt"
         values = drawer_geometry()

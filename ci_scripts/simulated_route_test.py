@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Exercise real simulator location delivery against a disposable local server.
 
-Creates and removes its own simulator, or reuses the shared Overland Regression phone so a
+Creates and removes its own simulator, or reuses the shared WhereWolf Regression phone so a
 first boot does not compete with the test. Never targets the owner's trial simulator.
 No screenshots, production endpoints, or persisted credentials are used.
 """
@@ -74,7 +74,7 @@ def check_history_migration(udid):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("app", type=Path)
-    parser.add_argument("--simulator-id", help="Reuse Overland Regression or a disposable Overland Fake Route / Overland UI Audit simulator; app data is reset")
+    parser.add_argument("--simulator-id", help="Reuse WhereWolf Regression or a disposable WhereWolf Fake Route / WhereWolf UI Audit simulator; app data is reset")
     parser.add_argument("--keep-on-failure", action="store_true", help="Keep the stopped disposable simulator for diagnosis if a check fails")
     parser.add_argument("--output", type=Path, default=Path("/tmp/wherewolf-fake-route-results.json"))
     args = parser.parse_args()
@@ -83,8 +83,8 @@ def main():
 
     devices = json.loads(run("xcrun", "simctl", "list", "devices", "-j"))["devices"]
     existing = next((d for group in devices.values() for d in group if d["udid"] == args.simulator_id), None)
-    if args.simulator_id and (not existing or existing["name"] not in ("Overland Regression", "Overland Fake Route", "Overland UI Audit")):
-        parser.error("Only Overland Regression, Overland Fake Route or Overland UI Audit can be reused")
+    if args.simulator_id and (not existing or existing["name"] not in ("WhereWolf Regression", "WhereWolf Fake Route", "WhereWolf UI Audit")):
+        parser.error("Only WhereWolf Regression, WhereWolf Fake Route or WhereWolf UI Audit can be reused")
     booted = [d["name"] for group in devices.values() for d in group
               if d["state"] == "Booted" and d["udid"] != args.simulator_id]
     if booted:
@@ -115,7 +115,7 @@ def main():
     threading.Thread(target=server.serve_forever, daemon=True).start()
     runtimes = json.loads(run("xcrun", "simctl", "list", "runtimes", "-j"))["runtimes"]
     runtime = next(r["identifier"] for r in runtimes if r["isAvailable"] and r["name"].startswith("iOS 27"))
-    udid = args.simulator_id or run("xcrun", "simctl", "create", "Overland Fake Route", "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro", runtime).strip()
+    udid = args.simulator_id or run("xcrun", "simctl", "create", "WhereWolf Fake Route", "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro", runtime).strip()
     companion = None
     route = None
     runtime_log = None
@@ -420,7 +420,7 @@ def main():
         tap("Stop Tracking", last=True)
         wait_for(lambda: find("Start Tracking", "Button"), "Confirmed stop did not stop tracking")
         checks.append("Ending trip restores tracking; explicit stop confirmation stops it")
-        environment = dict(os.environ, SIM="Overland Fake Route", SIM_UDID=udid,
+        environment = dict(os.environ, SIM="WhereWolf Fake Route", SIM_UDID=udid,
                            IDB_COMPANION=f"localhost:{port}", CAPTURE_SCREENSHOTS="0")
         subprocess.run(["python3", str(Path(__file__).with_name("idb_ui_test.py"))],
                        env=environment, check=True, timeout=240)
@@ -462,7 +462,7 @@ def main():
         server.shutdown()
         server.server_close()
         subprocess.run(["xcrun", "simctl", "shutdown", udid], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        if (completed or not args.keep_on_failure) and (not existing or existing["name"] == "Overland Fake Route"):
+        if (completed or not args.keep_on_failure) and (not existing or existing["name"] == "WhereWolf Fake Route"):
             subprocess.run(["xcrun", "simctl", "delete", udid], check=True)
             print(f"Removed isolated simulator; results: {args.output}", flush=True)
         else:

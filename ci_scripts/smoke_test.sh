@@ -3,7 +3,7 @@
 set -euo pipefail
 
 APP_PATH="${1:-}"
-SIM="${SIM:-Overland Regression}"
+SIM="${SIM:-WhereWolf Regression}"
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
 SHOTS="$DIR/Screenshots"
 DERIVED_DATA="${DERIVED_DATA:-/tmp/wherewolf-smoke-build}"

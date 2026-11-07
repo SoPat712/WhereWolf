@@ -9,7 +9,7 @@ import time
 from ui_accessibility import read_state
 
 root = Path(__file__).resolve().parent.parent
-sim = os.environ.get("SIM", "Overland Regression")
+sim = os.environ.get("SIM", "WhereWolf Regression")
 devices = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devices", "available", "-j"]))
 requested_udid = os.environ.get("SIM_UDID")
 matches = [d for group in devices["devices"].values() for d in group

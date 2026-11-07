@@ -8,8 +8,7 @@ workspace, scheme, targets (`WhereWolf`, `WhereWolfTests`, `WhereWolfTrackingAct
 and Swift module (`WhereWolf-Swift.h`). Overland appears only where it means the original app:
 credits to Aaron Parecki's Overland, the `upstream` remote, the upload format that Overland
 servers accept, and the `overland://` URL scheme, registered beside `wherewolf://` so setup
-links from those servers keep working. The `Overland` coordination name and simulator names
-belong to tooling shared with Light.
+links from those servers keep working.
 README screenshots live in `docs/screenshots` and are linked through
 raw.githubusercontent.com on `main`.
 GitHub Pages serves support at `https://sopat712.github.io/WhereWolf/` and privacy
@@ -23,7 +22,7 @@ Requires Xcode 27+, CocoaPods, minimum deployment target iOS 17.0.
 ```bash
 pod install
 nice -n 10 xcodebuild -jobs 1 -workspace WhereWolf.xcworkspace -scheme WhereWolf \
-  -destination 'platform=iOS Simulator,name=Overland Regression' build
+  -destination 'platform=iOS Simulator,name=WhereWolf Regression' build
 ```
 
 - Networking uses native URLSession; FMDB 2.7.12 is the only pod. `Podfile`
@@ -35,22 +34,22 @@ nice -n 10 xcodebuild -jobs 1 -workspace WhereWolf.xcworkspace -scheme WhereWolf
 - Run only one build at a time, using `nice -n 10` and `-jobs 1` to preserve
   desktop responsiveness. Two jobs is the maximum. These are scheduling controls,
   not a hard CPU-percentage cap. The smoke script defaults to `BUILD_JOBS=1`.
-- Coordinate with Iron/Light through `~/.local/share/agent-coord/`. Nothing lives
+- Coordinate with liteweight through `~/.local/share/agent-coord/`. Nothing lives
   under `~/Library/Caches`, which Mac cleaners wipe. Read the
-  Overland inbox before each build, test run or resource claim using
-  `python3 ~/.local/share/agent-coord/coord.py inbox Overland`.
-  Use `coord.py run compiler Overland 'operation, ~duration' -- COMMAND...`
-  for builds and `coord.py run check Overland 'operation, ~duration' -- COMMAND...`
+  WhereWolf inbox before each build, test run or resource claim using
+  `python3 ~/.local/share/agent-coord/coord.py inbox WhereWolf`.
+  Use `coord.py run compiler WhereWolf 'operation, ~duration' -- COMMAND...`
+  for builds and `coord.py run check WhereWolf 'operation, ~duration' -- COMMAND...`
   for simulator tests or UI checks. Checks reserve both slots so they cannot
   overlap another agent's build. Claims include the active child PID and start
   time; the helper releases them when the operation exits and permits takeover
-  after process exit or restart. Do not wait on a dead process. Send Iron/Light
-  messages with `coord.py message Iron 'message'`. This inbox does not wake an
-  idle chat. Overland and Light are Claude Code sessions, either of which may
+  after process exit or restart. Do not wait on a dead process. Send liteweight
+  messages with `coord.py message liteweight 'message'`. This inbox does not wake an
+  idle chat. WhereWolf and liteweight are Claude Code sessions, either of which may
   drive Codex workers. Message directly with `SendMessage` when the peer appears
   in `ListAgents`; the shared README records session names. Keep `coord.py` for
   resource claims. Keep one shared
-  iPhone simulator across serial checks (currently Overland Regression,
+  iPhone simulator across serial checks (currently WhereWolf Regression,
   `42FA2C2F-F66C-41DB-A33C-A018165BB0D7`). Do not boot a second phone.
   Use `ci_scripts/resource_guard.py --work-root UNIQUE_DERIVED_DATA -- COMMAND...`
   inside claims for builds/checks. For simulator checks, also pass
@@ -82,7 +81,7 @@ nice -n 10 xcodebuild -jobs 1 -workspace WhereWolf.xcworkspace -scheme WhereWolf
 
 ```bash
 nice -n 10 xcodebuild -jobs 1 -workspace WhereWolf.xcworkspace -scheme WhereWolf \
-  -destination 'platform=iOS Simulator,name=Overland Regression' \
+  -destination 'platform=iOS Simulator,name=WhereWolf Regression' \
   -parallel-testing-enabled NO test
 ```
 
@@ -92,10 +91,10 @@ before establishing connection". That result says nothing about the tests. Run
 the suite in-process with a standalone XCTest runner instead, and keep the
 XCTestSuite hierarchy intact: flattening it skips class setup, including the
 mocked URLSession configuration.
-`python3 ~/.local/share/agent-coord/overland/wherewolf/verify.py` builds for testing,
+`python3 ~/.local/share/agent-coord/wherewolf/wherewolf/verify.py` builds for testing,
 runs the standalone suite twice and checks native Forms, tabs and setup accessibility
 without screenshots. Its build log and `full-1.json` / `full-2.json` stay in that
-`wherewolf` folder; its DerivedData is isolated under `overland/three-features`.
+`wherewolf` folder; its DerivedData is isolated under `wherewolf/three-features`.
 Test the smallest thing first: `verify.py --only "Class,Class/testMethod"` builds and runs
 just those tests once (class setup intact, no screen audits, result in `focused.json`), and
 `verify.py --last-failed` reruns only what failed last time. The two full runs are for
@@ -113,7 +112,7 @@ these on a simulator containing important trial data; tests replace app preferen
 
 ## Simulator resource limit
 
-Share one booted iPhone with Light and serialize access through resource claims.
+Share one booted iPhone with liteweight and serialize access through resource claims.
 Keep it booted between adjacent checks when idle CPU is healthy. A paired Watch may run only for an essential Watch
 check. Never run tests against important trial data; preserve each app's preferences.
 
