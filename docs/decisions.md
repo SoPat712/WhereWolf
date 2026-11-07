@@ -71,6 +71,15 @@ This log lists the decisions agents made on their own while working on WhereWolf
   - leaving the Tracker tab restores the user's zoom at once, and coming back reapplies the scale's zoom without animating.
 - **Undo:** `git revert 5ae98be`.
 
+## 2026-11-07: smooth ruler pinch (5ce1d5d)
+
+- **Asked for:** "The pinch to zoom still feels so detented! any way we should have the map zoom in and out smoothly, and smoothly resize the history ruler?"
+- **Decided:**
+  - the bars and the following map track the fingers every frame; neighboring scales crossfade, and the ends stretch slightly instead of stopping hard;
+  - release carries a fast pinch at most one scale further, then settles in 0.22 seconds and commits once;
+  - pinches and settles have no haptics; the menu and VoiceOver still change scale in one step.
+- **Undo:** `git revert 5ce1d5d`, which brings back the 15% threshold between steps.
+
 ## Deferred for the owner
 
 - **Watch complication for Today:** it needs a new watch widget extension and bundle identifier, which is an Apple developer account change.
