@@ -80,6 +80,16 @@ This log lists the decisions agents made on their own while working on WhereWolf
   - pinches and settles have no haptics; the menu and VoiceOver still change scale in one step.
 - **Undo:** `git revert 5ce1d5d`, which brings back the 15% threshold between steps.
 
+## 2026-11-07: route fill and live scale zoom (31f6e16, 7c2456f)
+
+- **Asked for:** "tracks from behind are not filled in? please optimize that overall?" and "zooming out when live doesn't work! that should also zoom the map out, no?"
+- **Decided:**
+  - reloads change only the route sections whose points changed; the section under the marker is drawn by the app, so a gap behind the marker cannot wait on MapKit;
+  - a zoom covers only the blue of up to four sections behind the marker, not the whole visible route or the dots, to keep zooming cheap;
+  - at Live the scale zooms the map to the newest points around your location but draws no route, so the blue route still means history;
+  - Live and history keep separate base zooms.
+- **Undo:** `git revert 7c2456f` for the live zoom, `git revert 31f6e16` for the route drawing.
+
 ## Deferred for the owner
 
 - **Watch complication for Today:** it needs a new watch widget extension and bundle identifier, which is an Apple developer account change.
