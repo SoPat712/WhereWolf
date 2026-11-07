@@ -90,6 +90,15 @@ This log lists the decisions agents made on their own while working on WhereWolf
   - Live and history keep separate base zooms.
 - **Undo:** `git revert 7c2456f` for the live zoom, `git revert 31f6e16` for the route drawing.
 
+## 2026-11-07: coast to Live and reset the scale at Live (419bcc0)
+
+- **Asked for:** "I just inertially scrolled to the right but it's still in recap mode!" and "going back live should zoom the user back in, and reset the pinch zoom of the ruler!"
+- **Decided:**
+  - a ruler settle within one pixel of the Live edge counts as Live, because momentum stops on whole pixels;
+  - returning to Live from history resets the scale to every point and lands at the live zoom from before history, also after the replay camera was moved by hand;
+  - a pinch at Live still zooms the live map and keeps its scale until the next return from history.
+- **Undo:** `git revert 419bcc0`.
+
 ## Deferred for the owner
 
 - **Watch complication for Today:** it needs a new watch widget extension and bundle identifier, which is an Apple developer account change.
