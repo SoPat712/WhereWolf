@@ -183,6 +183,12 @@ This log lists the decisions agents made on their own while working on WhereWolf
 - **Decided:** a slot is the median interval between moving fixes, and each step outside a stop is as wide as its duration (never under one slot), so a bar covers the same time wherever the phone moved; the label and menu use the slot. Stops stay compressed blocks, as picked earlier. Long stretches are capped close up at 8 bars plus 3 per doubling, and zoomed out time past 5 minutes counts as 5 minutes × √(minutes / 5). The map's ruler fit window counts ruler bars. Sparse movement such as walking now takes more room than before.
 - **Undo:** `git revert 7f42ede` (revert the Live flight commit after it first).
 
+## 2026-11-08: even ruler ticks and compact stops (f3e6c68)
+
+- **Asked for:** the time ruler looked "terrible": ticks crammed inside a Home stop that filled the ruler.
+- **Decided:** ticks count slots back from Live, so they are even while moving and absent inside stops; close up a stop keeps 4 bars for 5 minutes plus 1.5 per doubling (about 15 for twelve hours). Only stops and silences of 5 minutes or more are stretches; shorter moving pauses keep their real time even at the finest scale.
+- **Undo:** `git revert f3e6c68`.
+
 ## Deferred for the owner
 
 - **Watch complication for Today:** it needs a new watch widget extension and bundle identifier, which is an Apple developer account change.
