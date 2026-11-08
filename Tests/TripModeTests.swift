@@ -154,3 +154,19 @@ final class TripFormatTests: XCTestCase {
         XCTAssertEqual(TripFormat.averageSpeed(distance: .nan, duration: 60, metric: false), "– mph")
     }
 }
+
+final class TripTabPolicyTests: XCTestCase {
+    func testActivationShowsEachTripOnce() {
+        var policy = TripTabPolicy()
+        let first = Date(timeIntervalSince1970: 1_000)
+        XCTAssertFalse(policy.showsTrip(onActivationWithTripStart: nil, setupPresented: false))
+        XCTAssertTrue(policy.showsTrip(onActivationWithTripStart: first, setupPresented: false))
+        // Leaving Trip and coming back to the app during the same trip keeps the chosen tab.
+        XCTAssertFalse(policy.showsTrip(onActivationWithTripStart: first, setupPresented: false))
+        XCTAssertFalse(policy.showsTrip(onActivationWithTripStart: nil, setupPresented: false))
+        let second = first.addingTimeInterval(3_600)
+        XCTAssertFalse(policy.showsTrip(onActivationWithTripStart: second, setupPresented: true))
+        XCTAssertTrue(policy.showsTrip(onActivationWithTripStart: second, setupPresented: false))
+        XCTAssertFalse(policy.showsTrip(onActivationWithTripStart: second, setupPresented: false))
+    }
+}

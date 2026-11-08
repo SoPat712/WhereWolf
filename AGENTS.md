@@ -222,6 +222,8 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   replaces the row with elapsed time, distance and average speed, the button turns into a red End Trip
   with a symbol replace and start/stop haptics, and the header's red dot breathes; Reduce Motion
   crossfades and keeps the dot still. Scrub a trip with the Tracker ruler; Trip has no point timeline.
+  `TripTabPolicy` selects Trip when the scene becomes active during a trip it hasn't shown yet,
+  once per trip start, never while active or with setup presented.
   Tracker starts with a glass history ruler and one compact control row. Live
   location details and replay point details default collapsed, with explicit
   show/hide controls. Animate content resizing without fading the timeline.

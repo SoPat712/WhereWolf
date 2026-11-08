@@ -23,6 +23,7 @@ struct WhereWolfRootView: View {
     @State private var camera = MapCameraPosition.userLocation(fallback: .automatic)
     @State private var trip = TripMapState()
     @State private var tripRevision: Int?
+    @State private var tripTab = TripTabPolicy()
     @State private var history = HistoryPlaybackModel()
     @State private var bridge = GLManagerBridge.shared
     @State private var onboarding = OnboardingModel.live()
@@ -123,6 +124,7 @@ struct WhereWolfRootView: View {
         .onChange(of: scenePhase) { _, phase in
             bridge.setSceneActive(phase == .active, id: sceneID)
             updateConsumers()
+            if phase == .active { showNewTrip() }
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WhereWolfOpenTracker"))) { _ in
             selectTab(0)
@@ -395,6 +397,14 @@ struct WhereWolfRootView: View {
                                          point: replayCameraDistance ?? 2_000, trail: trail) == .trail
     }
 
+    private func showNewTrip() {
+        guard let gl = GLManager.shared() else { return }
+        let start = gl.tripInProgress() ? gl.currentTripStart() : nil
+        if tripTab.showsTrip(onActivationWithTripStart: start, setupPresented: onboarding.isPresented), selection != 1 {
+            selectTab(1)
+        }
+    }
+
     private func selectTab(_ index: Int) {
         tabActivation += 1
         if index == 2 { settingsPath = [] }
@@ -637,5 +647,17 @@ private final class MapControlsBoundary: UIView {
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         guard self.point(inside: point, with: event) else { return nil }
         return super.hitTest(point, with: event)
+    }
+}
+
+// Opening the app during a trip shows the Trip tab once per trip, so a trip started from CarPlay,
+// a Shortcut or the watch is in view, while a tab chosen during that trip stays chosen.
+struct TripTabPolicy {
+    private var shownTrip: Date?
+
+    mutating func showsTrip(onActivationWithTripStart start: Date?, setupPresented: Bool) -> Bool {
+        guard let start, start != shownTrip, !setupPresented else { return false }
+        shownTrip = start
+        return true
     }
 }
