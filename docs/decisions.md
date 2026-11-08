@@ -129,6 +129,30 @@ This log lists the decisions agents made on their own while working on WhereWolf
 - **Decided:** lay Settings out behind the map for one pass a second after launch, and update the drawer strip's selection before a native-bar handoff.
 - **Undo:** `git revert 0df84a7`.
 
+## 2026-11-08: stop labels and no-data marks on the ruler (913fb7a)
+
+- **Asked for:** "the missing stop isn't sized right, maybe it should be labeled as a red or something? missing data? idk? but either way! fix that!"
+- **Decided:** keep the ruler's even spacing of fixes; center stop labels on narrow stops, and mark silences of 10 minutes or more (Coverage's gap length) with a red band and a red "No data" label below stop labels in priority.
+- **Undo:** `git revert 913fb7a`.
+
+## 2026-11-08: Go To movement names by distance (9645510)
+
+- **Asked for:** "the go to page says flight for something also? when the top little bubble itself says driving??"
+- **Decided:** name a movement after the activity covering the most corrected distance; a flight needs a quarter of it.
+- **Undo:** `git revert 9645510`.
+
+## 2026-11-08: Go To restyle (b394587)
+
+- **Asked for:** "make the entire go to page better and better themed as well!"
+- **Decided:** glass sheet styling, Today/Yesterday day headers with stop counts and distance, colored activity icons (Drive blue, Walk green, Cycle orange, Flight purple), time ranges, durations and a Viewing badge.
+- **Undo:** `git revert b394587`.
+
+## 2026-11-08: Trip page without a title (bf2fa64)
+
+- **Asked for:** "does the trip page need to show trip and choose a mode? Also how do you choose other trips and replace the trip mode?"
+- **Decided:** remove the title and subtitle, add Edit (Trip Modes) at the end of the mode row and move Trip Settings beside Start Trip. Changing a mode mid-trip stays out: uploads and Health keep the starting mode.
+- **Undo:** `git revert bf2fa64`.
+
 ## Deferred for the owner
 
 - **Watch complication for Today:** it needs a new watch widget extension and bundle identifier, which is an Apple developer account change.
