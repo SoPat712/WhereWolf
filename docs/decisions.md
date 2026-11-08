@@ -99,6 +99,12 @@ This log lists the decisions agents made on their own while working on WhereWolf
   - a pinch at Live still zooms the live map and keeps its scale until the next return from history.
 - **Undo:** `git revert 419bcc0`.
 
+## 2026-11-07: a flick returns to Live on arrival (b53e7eb)
+
+- **Asked for:** "it still waits for the inertia to stop before going live, is it not possible to recognize when it's just inertia vs finger holding it down?"
+- **Decided:** a flick whose momentum target is the Live edge returns to Live when it reaches the edge and stops there without bouncing; a held finger still keeps the interaction, and a flick back out of the overscroll keeps browsing.
+- **Undo:** `git revert b53e7eb`.
+
 ## Deferred for the owner
 
 - **Watch complication for Today:** it needs a new watch widget extension and bundle identifier, which is an Apple developer account change.
