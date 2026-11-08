@@ -189,6 +189,12 @@ This log lists the decisions agents made on their own while working on WhereWolf
 - **Decided:** ticks count slots back from Live, so they are even while moving and absent inside stops; close up a stop keeps 4 bars for 5 minutes plus 1.5 per doubling (about 15 for twelve hours). Only stops and silences of 5 minutes or more are stretches; shorter moving pauses keep their real time even at the finest scale.
 - **Undo:** `git revert f3e6c68`.
 
+## 2026-11-08: a time ruler (936aba7)
+
+- **Asked for:** rethink the ruler after uneven ticks and overlapping stops; the owner picked "same time everywhere" and a minute per bar at Live from rendered comparisons.
+- **Decided:** a bar is a fixed time from a clock-friendly ladder (1 s to 2 weeks), ticks on local clock multiples, taller on boundaries at least four steps long; stops tinted exactly, with back-to-back stops at the same Wi-Fi Place, or touching unnamed ones, merged when under 10 minutes apart. Live sits one bar past the newest fix. The map's scale zoom starts past a minute per bar so the live map is unchanged. This replaces the time-weighted and folded-stop rulers logged earlier today.
+- **Undo:** `git revert 936aba7`.
+
 ## Deferred for the owner
 
 - **Watch complication for Today:** it needs a new watch widget extension and bundle identifier, which is an Apple developer account change.
