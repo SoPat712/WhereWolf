@@ -165,7 +165,7 @@ final class HistoryLandmarks {
             if stops.indices.contains(stop), stops[stop].id < index { return nil }
             return HistoryGap(index: index, duration: duration)
         }
-        rulerSpacing = HistoryRulerSpacing(timestamps: timestamps, stops: stops, gaps: gaps)
+        rulerSpacing = HistoryRulerSpacing(timestamps: timestamps, stops: stops)
         let marks = Self.marks(timestamps: timestamps, calendar: calendar)
         days = marks.days
         timeMarks = marks.levels
@@ -390,50 +390,84 @@ final class HistoryLandmarks {
     }
 }
 
-// The ruler gives each fix one slot, so a stop or silence with few fixes would be a sliver. Each one gets
-// extra width spread across its time. Close up it keeps 3 bars for 5 minutes and 3 more each time its
-// length doubles. Zoomed out it shrinks with the scale like the fixes do, at the width of 150 fixes for
-// 5 minutes growing with the square root of its length, so the whole history still fits one ruler width.
-struct HistoryRulerSpacing {
-    struct Block: Equatable {
+// The ruler shows time. Each step between fixes is as wide as its duration, in slots of the typical
+// interval between moving fixes and never under one slot, so a bar covers the same time wherever the phone
+// was moving and every fix stays reachable. A stop counts as one stretch of its whole length. Close up a
+// stretch longer than 8 slots is capped at 8 bars plus 3 for each doubling, so a stop or silence is never a
+// wall of bars; zoomed out time past 5 minutes grows with its square root, so stops stay smaller than the
+// drives between them and the whole history fits one ruler width.
+final class HistoryRulerSpacing: Equatable {
+    static func == (lhs: HistoryRulerSpacing, rhs: HistoryRulerSpacing) -> Bool { lhs === rhs }
+
+    struct Stretch: Equatable {
         let start: Int
         let end: Int
         let startTime: TimeInterval
         let duration: TimeInterval
         let nearBars: Double
-        let farPoints: Double
+        let farSlots: Double
 
-        init(start: Int, end: Int, startTime: TimeInterval, duration: TimeInterval) {
-            self.start = start
-            self.end = end
-            self.startTime = startTime
-            self.duration = duration
-            let length = max(1, duration / 300)
-            nearBars = 3 + 3 * log2(length)
-            farPoints = 150 * length.squareRoot()
-        }
-
-        func bars(pointsPerBar: Double) -> Double { min(nearBars, farPoints / pointsPerBar) }
+        func bars(pointsPerBar: Double) -> Double { min(nearBars, farSlots / pointsPerBar) }
     }
 
-    static let none = HistoryRulerSpacing(blocks: [], times: [])
-    let blocks: [Block]
+    static let closeSlots = 8.0
+    static let none = HistoryRulerSpacing()
+    // Seconds per slot: the median interval between fixes outside stops.
+    let slotDuration: TimeInterval?
+    let stretches: [Stretch]
     private let times: [TimeInterval]
+    // Slots before each fix from steps that keep their proportion at every scale, then Live's slot.
+    private let slotPrefix: [Double]
+    private let uniform: Bool
 
-    private init(blocks: [Block], times: [TimeInterval]) {
-        self.blocks = blocks
-        self.times = times
+    private init() {
+        slotDuration = nil
+        stretches = []
+        times = []
+        slotPrefix = [0]
+        uniform = true
     }
 
-    init(timestamps: [Date], stops: [HistoryStop], gaps: [HistoryGap]) {
+    init(timestamps: [Date], stops: [HistoryStop]) {
         let times = timestamps.map(\.timeIntervalSince1970)
-        // A silence inside a stop is already part of the stop's width.
-        let outside = gaps.filter { gap in !stops.contains { $0.id < gap.index && gap.index <= $0.end } }
-        let blocks = stops.map { Block(start: $0.id, end: $0.end, startTime: times[$0.id],
-                                       duration: times[$0.end] - times[$0.id]) }
-            + outside.map { Block(start: $0.index - 1, end: $0.index, startTime: times[$0.index - 1], duration: $0.duration) }
-        self.blocks = blocks.filter { $0.end > $0.start && $0.duration > 0 }.sorted { $0.start < $1.start }
+        var inStop = [Bool](repeating: false, count: times.count)
+        for stop in stops where stop.end > stop.id {
+            for index in (stop.id + 1)...stop.end { inStop[index] = true }
+        }
+        let moving = times.indices.dropFirst().filter { !inStop[$0] }
+            .map { times[$0] - times[$0 - 1] }.filter { $0 > 0 }.sorted()
+        let slot = moving.isEmpty ? nil : moving[moving.count / 2]
+        var stretches = stops.filter { $0.end > $0.id }
+            .map { Self.stretch(start: $0.id, end: $0.end, times: times, slot: slot) }
+        var prefix = [0.0]
+        prefix.reserveCapacity(times.count + 1)
+        for index in times.indices.dropFirst() {
+            var width = 0.0
+            if !inStop[index] {
+                let length = slot.map { (times[index] - times[index - 1]) / $0 } ?? 1
+                if length > Self.closeSlots {
+                    stretches.append(Self.stretch(start: index - 1, end: index, times: times, slot: slot))
+                } else {
+                    width = max(1, length)
+                }
+            }
+            prefix.append(prefix.last! + width)
+        }
+        if !times.isEmpty { prefix.append(prefix.last! + 1) }
         self.times = times
+        slotPrefix = prefix
+        self.stretches = stretches.sorted { $0.start < $1.start }
+        slotDuration = slot
+        uniform = stretches.isEmpty && prefix.indices.allSatisfy { prefix[$0] == Double($0) }
+    }
+
+    private static func stretch(start: Int, end: Int, times: [TimeInterval], slot: TimeInterval?) -> Stretch {
+        let duration = times[end] - times[start]
+        let length = slot.map { duration / $0 } ?? Double(end - start)
+        let near = length <= closeSlots ? length : closeSlots + 3 * log2(length / closeSlots)
+        let far = duration <= 300 || slot == nil ? length : 300 / slot! * (duration / 300).squareRoot()
+        return Stretch(start: start, end: end, startTime: times[start], duration: duration,
+                       nearBars: max(1, near), farSlots: max(1, far))
     }
 
     func scaled(_ pointsPerBar: Double) -> Scaled { Scaled(spacing: self, pointsPerBar: pointsPerBar) }
@@ -443,12 +477,22 @@ struct HistoryRulerSpacing {
         scaled(pointsPerBar).bars(to: Double(pointCount))
     }
 
-    // How far a fractional point index is through a block's time.
-    fileprivate func fraction(of block: Block, at index: Double) -> Double {
+    // Before the oldest fix and past Live, a fix is one slot.
+    fileprivate func slots(to index: Double) -> Double {
+        let count = slotPrefix.count - 1
+        guard count > 0, index > 0 else { return index }
+        if index >= Double(count) { return slotPrefix[count] + index - Double(count) }
+        let lower = Int(index.rounded(.down))
+        return slotPrefix[lower] + (slotPrefix[lower + 1] - slotPrefix[lower]) * (index - Double(lower))
+    }
+
+    // How far a fractional point index is through a stretch's time.
+    fileprivate func fraction(of stretch: Stretch, at index: Double) -> Double {
+        guard stretch.duration > 0 else { return index >= Double(stretch.end) ? 1 : 0 }
         let lower = min(times.count - 2, max(0, Int(index.rounded(.down))))
-        // Relative to the block's start: absolute epoch seconds would cost precision.
-        let elapsed = times[lower] - block.startTime + (times[lower + 1] - times[lower]) * (index - Double(lower))
-        return min(1, max(0, elapsed / block.duration))
+        // Relative to the stretch's start: absolute epoch seconds would cost precision.
+        let elapsed = times[lower] - stretch.startTime + (times[lower + 1] - times[lower]) * (index - Double(lower))
+        return min(1, max(0, elapsed / stretch.duration))
     }
 
     // Converts between point indices, counted from the oldest fix, and bars at one scale.
@@ -457,13 +501,13 @@ struct HistoryRulerSpacing {
         private let spacing: HistoryRulerSpacing
         private let widths: [Double]
         private let prefix: [Double]
-        var isLinear: Bool { widths.isEmpty }
+        var isLinear: Bool { spacing.uniform }
 
         fileprivate init(spacing: HistoryRulerSpacing, pointsPerBar: Double) {
             let pointsPerBar = pointsPerBar.isFinite ? max(0.000_001, pointsPerBar) : 1
             self.pointsPerBar = pointsPerBar
             self.spacing = spacing
-            widths = spacing.blocks.map { $0.bars(pointsPerBar: pointsPerBar) }
+            widths = spacing.stretches.map { $0.bars(pointsPerBar: pointsPerBar) }
             var prefix = [0.0]
             prefix.reserveCapacity(widths.count + 1)
             for width in widths { prefix.append(prefix.last! + width) }
@@ -472,34 +516,25 @@ struct HistoryRulerSpacing {
 
         func bars(to index: Double) -> Double {
             guard !isLinear else { return index / pointsPerBar }
-            let blocks = spacing.blocks
-            let next = HistoryLandmarks.lowerBound(blocks.count) { Double(blocks[$0].end) > index }
-            var bars = index / pointsPerBar + prefix[next]
-            if next < blocks.count, Double(blocks[next].start) < index {
-                bars += widths[next] * spacing.fraction(of: blocks[next], at: index)
+            let stretches = spacing.stretches
+            let next = HistoryLandmarks.lowerBound(stretches.count) { Double(stretches[$0].end) > index }
+            var bars = spacing.slots(to: index) / pointsPerBar + prefix[next]
+            if next < stretches.count, Double(stretches[next].start) < index {
+                bars += widths[next] * spacing.fraction(of: stretches[next], at: index)
             }
             return bars
         }
 
+        // Bars are linear within each step, so the inverse searches steps and solves within one.
         func index(atBars bars: Double) -> Double {
             guard !isLinear else { return bars * pointsPerBar }
-            let blocks = spacing.blocks
-            let block = HistoryLandmarks.lowerBound(blocks.count) {
-                Double(blocks[$0].end) / pointsPerBar + prefix[$0 + 1] >= bars
-            }
-            guard block < blocks.count, bars > Double(blocks[block].start) / pointsPerBar + prefix[block] else {
-                return (bars - prefix[block]) * pointsPerBar
-            }
-            let span = blocks[block]
-            func barsAt(_ index: Int) -> Double {
-                Double(index) / pointsPerBar + prefix[block]
-                    + widths[block] * min(1, max(0, (spacing.times[index] - span.startTime) / span.duration))
-            }
-            let step = min(span.end - 1, span.start + HistoryLandmarks.lowerBound(span.end - span.start) {
-                barsAt(span.start + $0 + 1) > bars
-            })
-            let low = barsAt(step), high = barsAt(step + 1)
-            return Double(step) + min(1, max(0, (bars - low) / (high - low)))
+            let count = spacing.slotPrefix.count - 1
+            guard count > 0, bars > 0 else { return bars * pointsPerBar }
+            let total = self.bars(to: Double(count))
+            guard bars < total else { return Double(count) + (bars - total) * pointsPerBar }
+            let step = HistoryLandmarks.lowerBound(count) { self.bars(to: Double($0 + 1)) > bars }
+            let low = self.bars(to: Double(step)), high = self.bars(to: Double(step + 1))
+            return Double(step) + (high > low ? min(1, max(0, (bars - low) / (high - low))) : 0)
         }
 
         // Screen points between two point indices.

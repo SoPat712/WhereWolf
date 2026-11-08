@@ -260,11 +260,15 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   labels; time marks coarsen through 1/5/15 minutes, 1 hour and 6 hours to keep at least
   60 points between labels. Stop capsules use the nearest Wi-Fi Place within
   `GLWifiPlaceMatchDistance` of the stay center, otherwise gray `mappin` and a duration.
-  Every fix keeps one slot, and `HistoryRulerSpacing` gives each stop, and each silence outside a stop,
-  extra width spread across its time: close up 3 bars for 5 minutes and 3 more each time its length
-  doubles, zoomed out the width of 150 × √(minutes / 5) fixes when that is smaller, so it shrinks with the
-  scale. Time and day marks sit at their exact time between fixes. Scroll offsets, stop snapping and label
-  spacing go through that spacing; new landmarks apply only while the ruler is still. A stop's label centers
+  The ruler shows time (`HistoryRulerSpacing`). A slot is the median interval between fixes outside stops;
+  each step outside a stop is as wide as its duration in slots and never under one, so a bar covers the same
+  time wherever the phone was moving and every fix stays reachable. A stop is one stretch of its whole
+  length, with its fixes placed by time. Close up a stretch or step longer than 8 slots is capped at 8 bars
+  plus 3 for each doubling, so it is never a wall of bars; zoomed out time past 5 minutes counts as
+  5 minutes × √(minutes / 5), so stops stay smaller than the drives between them and the coarsest step still
+  fits the whole history. Time and day marks sit at their exact time between fixes. Scroll offsets, stop
+  snapping, label spacing and the map's ruler fit window go through that spacing; new landmarks apply only
+  while the ruler is still. A stop's label centers
   on it, falling back to the symbol alone where labels collide. A silence of at least Coverage's 10-minute
   gap between stored fixes outside a stop gets a red band and a red "No data" label with its length; a stop
   explains its own silences, since a phone that logs only when it moves goes quiet while parked.
@@ -301,8 +305,8 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   interaction revision changes. Hold and pinch show a Liquid Glass time/scale bubble
   with primary text (blur material before iOS 26), centered eight points above the
   drawer's `wherewolf.panel.sheet` view and below the top safe area; fall back to
-  above the ruler if absent. Derive the scale from the median nearby recorded interval, or
-  retention time before points load. Remove the window bubble on release or
+  above the ruler if absent. The capsule, bubble and menu derive a bar's time from the ruler's slot, so they
+  change only with the scale, or from retention time before points load. Remove the window bubble on release or
   cancellation without changing drawer height. Reaching Live clamps at zero
   without ending a drag or hold; return to Live when the finger lifts there, or as soon as
   momentum aimed at the Live edge arrives, stopping there without its bounce. Momentum and
@@ -325,7 +329,7 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   overview mode. Tracker point following uses the persistent ruler scale at Live and during
   browsing, scrubbing, momentum and playback, with heading mode on or off. One point per
   bar uses that mode's saved follow distance D0; coarser detents fit the route within ±(2 + (half the visible bars − 2) × coarseness²)
-  bars of the needle into the overview's clear map area, never closer than D0, so mid
+  ruler bars of the needle, measured through the ruler's spacing, into the overview's clear map area, never closer than D0, so mid
   detents stay close and only the coarsest fit the whole visible ruler. Compute the
   box when scale zoom starts, the scale changes or the needle moves greater than
   half a window, never per frame. At Live the window ends at the newest loaded point and

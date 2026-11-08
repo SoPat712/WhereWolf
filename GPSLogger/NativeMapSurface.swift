@@ -1191,7 +1191,7 @@ struct NativeMapSurface: UIViewRepresentable {
                 guard zoom.needsFit(at: source.position, since: rulerFitPosition) else { return false }
             } else if rulerFitPosition != nil, let id = rulerLiveFitID,
                       let previous = parent.liveRulerGeometry?.pointIDs.firstIndex(of: id) {
-                guard source.position - Double(previous) > zoom.halfWindow else { return false }
+                guard zoom.exceedsHalfWindow(from: Double(previous), to: source.position) else { return false }
             }
             rulerFitPosition = source.position
             rulerLiveFitID = parent.replayActive ? nil : parent.liveRulerGeometry?.pointIDs.last

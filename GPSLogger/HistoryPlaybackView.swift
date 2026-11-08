@@ -51,20 +51,18 @@ final class HistoryPlaybackModel {
         guard rulerStep != step else { return }
         rulerStep = step
         if UIAccessibility.isVoiceOverRunning {
-            let position = rulerPosition ?? (isBrowsing ? Double(points.count) - playbackIndex : 0)
-            UIAccessibility.post(notification: .announcement, argument: rulerScaleLabel(at: position).buttonAccessibility)
+            UIAccessibility.post(notification: .announcement, argument: rulerScaleLabel.buttonAccessibility)
         }
     }
 
-    func rulerScaleLabel(at position: Double) -> HistoryRulerCoarseDrag.ScaleLabel {
-        HistoryRulerCoarseDrag.scaleLabel(pointsPerTick: rulerStep, position: position,
-            pointCount: points.count, timestampAt: { self.points[$0].timestamp }, emptyInterval: retentionInterval / 48)
+    var rulerScaleLabel: HistoryRulerCoarseDrag.ScaleLabel {
+        HistoryRulerCoarseDrag.scaleLabel(pointsPerTick: rulerStep, slotDuration: landmarks.rulerSpacing.slotDuration,
+                                          pointCount: points.count, emptyInterval: retentionInterval / 48)
     }
 
-    func rulerScaleMenu(at position: Double) -> [HistoryRulerCoarseDrag.MenuEntry] {
-        let interval = HistoryRulerCoarseDrag.estimatedInterval(position: position, pointCount: points.count,
-            timestampAt: { self.points[$0].timestamp }, emptyInterval: retentionInterval / 48)
-        return rulerDetents.menuEntries(interval: interval ?? retentionInterval / 48, current: rulerStep)
+    var rulerScaleMenu: [HistoryRulerCoarseDrag.MenuEntry] {
+        let interval = points.isEmpty ? retentionInterval / 48 : landmarks.rulerSpacing.slotDuration ?? retentionInterval / 48
+        return rulerDetents.menuEntries(interval: interval, current: rulerStep)
     }
 
     var retentionInterval: TimeInterval {
@@ -1032,7 +1030,7 @@ struct HistoryRuler: View {
     private var scaleMenu: some View {
         Menu {
             Section("One bar covers") {
-                ForEach(history.rulerScaleMenu(at: position)) { entry in
+                ForEach(history.rulerScaleMenu) { entry in
                     Button {
                         history.setRulerStep(entry.step)
                     } label: {
@@ -1042,7 +1040,7 @@ struct HistoryRuler: View {
                 }
             }
         } label: {
-            Text(history.rulerScaleLabel(at: position).buttonText)
+            Text(history.rulerScaleLabel.buttonText)
                 .font(.caption2.weight(.semibold))
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
@@ -1052,7 +1050,7 @@ struct HistoryRuler: View {
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(history.rulerScaleLabel(at: position).buttonAccessibility)
+        .accessibilityLabel(history.rulerScaleLabel.buttonAccessibility)
         .disabled(history.isRulerInteracting)
     }
 
@@ -1156,8 +1154,10 @@ enum HistoryRulerCoarseDrag {
     struct Detents {
         // Ordered from whole-history coverage toward point-by-point precision.
         let steps: [Double]
+        let spacing: HistoryRulerSpacing
 
         init(tickCount: Int, rulerWidth: CGFloat, spacing: HistoryRulerSpacing = .none) {
+            self.spacing = spacing
             let width = max(1, Double(rulerWidth))
             // The coarsest step fits the whole history, stops and silences included, in one ruler width.
             func fits(_ step: Double, barSpacing: Double) -> Bool {
@@ -1204,7 +1204,7 @@ enum HistoryRulerCoarseDrag {
         func zoom(step: Double, width: CGFloat) -> ReplayRulerHold {
             let scale = HistoryRulerCoarseDrag.scale(step: step, coarsest: steps[0])
             return ReplayRulerHold(pointsPerBar: step, visibleBars: Double(width / scale.spacing),
-                coarseness: HistoryRulerCoarseDrag.coarseness(step: step, coarsest: steps[0]))
+                coarseness: HistoryRulerCoarseDrag.coarseness(step: step, coarsest: steps[0]), spacing: spacing)
         }
 
         func scale(at index: Int) -> Scale {
@@ -1393,35 +1393,13 @@ enum HistoryRulerCoarseDrag {
         return start.addingTimeInterval(timestampAt(lower + 1).timeIntervalSince(start) * (index - Double(lower)))
     }
 
-    static func estimatedInterval(position: Double, pointCount: Int, timestampAt: (Int) -> Date,
-                                  emptyInterval: TimeInterval) -> TimeInterval? {
-        if pointCount > 0 {
-            let index = min(pointCount - 1, max(0, Int(floor(Double(pointCount) - position))))
-            let lower = max(0, index - 4)
-            let upper = min(pointCount - 1, index + 4)
-            var deltas: [TimeInterval] = []
-            if lower < upper {
-                for i in lower..<upper {
-                    let delta = timestampAt(i + 1).timeIntervalSince(timestampAt(i))
-                    if delta.isFinite && delta > 0 { deltas.append(delta) }
-                }
-            }
-            guard !deltas.isEmpty else { return nil }
-            // A stop's long silence has its own width on the ruler, so the median leaves it out.
-            deltas.sort()
-            let middle = deltas.count / 2
-            return deltas.count.isMultiple(of: 2) ? (deltas[middle - 1] + deltas[middle]) / 2 : deltas[middle]
-        }
-        return emptyInterval
-    }
-
-    static func scaleLabel(pointsPerTick: Double, position: Double, pointCount: Int,
-                           timestampAt: (Int) -> Date, emptyInterval: TimeInterval) -> ScaleLabel {
+    // A bar's time is the same along the ruler outside stops, so the label changes only with the scale.
+    static func scaleLabel(pointsPerTick: Double, slotDuration: TimeInterval?, pointCount: Int,
+                           emptyInterval: TimeInterval) -> ScaleLabel {
         if pointCount > 0 && pointsPerTick == 1 {
             return ScaleLabel(text: "1 bar = 1 point", accessibility: "1 bar equals 1 point", everyPoint: true)
         }
-        guard let interval = estimatedInterval(position: position, pointCount: pointCount,
-                                              timestampAt: timestampAt, emptyInterval: emptyInterval) else {
+        guard let interval = pointCount > 0 ? slotDuration : emptyInterval, interval.isFinite, interval > 0 else {
             let points = String(format: "%.0f", pointsPerTick)
             return ScaleLabel(text: "1 bar = \(points) points", accessibility: "1 bar equals \(points) points")
         }
@@ -1870,9 +1848,8 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
         guard let configuration else { return .init(text: "", accessibility: "") }
         return HistoryRulerCoarseDrag.scaleLabel(
             pointsPerTick: pinching ? coarseDetents.nearestStep(to: ticks.scale.pointsPerTick) : ticks.scale.pointsPerTick,
-            position: position,
-            pointCount: configuration.points.count, timestampAt: { configuration.points[$0].timestamp },
-            emptyInterval: configuration.retentionInterval / 48)
+            slotDuration: (ticks.landmarks ?? configuration.landmarks).rulerSpacing.slotDuration,
+            pointCount: configuration.points.count, emptyInterval: configuration.retentionInterval / 48)
     }
 
     init() {
@@ -2337,7 +2314,8 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
         configuration?.onHold(ReplayRulerHold(pointsPerBar: scale.pointsPerTick,
                                              visibleBars: Double(bounds.width / scale.spacing),
                                              coarseness: HistoryRulerCoarseDrag.coarseness(
-                                                step: scale.pointsPerTick, coarsest: coarseDetents.steps[0])))
+                                                step: scale.pointsPerTick, coarsest: coarseDetents.steps[0]),
+                                             spacing: coarseDetents.spacing))
     }
 
     private func moveCoarse(translation: CGFloat, finger: CGFloat) {

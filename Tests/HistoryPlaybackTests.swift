@@ -727,58 +727,40 @@ final class HistoryPlaybackTests: XCTestCase {
         }
     }
 
-    func testRulerBubbleScaleUsesLocalRecordedIntervalsAndHonestRounding() {
-        let offsets = (0..<20).map { Double($0) * 45 } + (1...10).map { 855 + Double($0) * 3_600 }
-        let timestamps = offsets.map { Date(timeIntervalSince1970: $0) }
-        func label(_ step: Double, _ position: Double) -> HistoryRulerCoarseDrag.ScaleLabel {
-            HistoryRulerCoarseDrag.scaleLabel(pointsPerTick: step, position: position,
-                                             pointCount: timestamps.count, timestampAt: { timestamps[$0] },
+    func testRulerScaleLabelUsesTheRulersSlotAndHonestRounding() {
+        func label(_ step: Double, _ slot: TimeInterval) -> HistoryRulerCoarseDrag.ScaleLabel {
+            HistoryRulerCoarseDrag.scaleLabel(pointsPerTick: step, slotDuration: slot, pointCount: 30,
                                              emptyInterval: 1_800)
         }
-        XCTAssertEqual(label(20, 25).text, "1 bar ≈ 15 min")
-        XCTAssertEqual(label(20, 30).text, "1 bar ≈ 15 min")
-        XCTAssertEqual(label(2, 5).text, "1 bar ≈ 2 h")
-        XCTAssertEqual(label(2, 0).accessibility, "1 bar about 2 hours")
-        XCTAssertEqual(label(100, 25).text, "1 bar ≈ 1.3 h")
-        XCTAssertEqual(label(1, 5).text, "1 bar = 1 point")
-        XCTAssertEqual(label(1, 5).accessibility, "1 bar equals 1 point")
-        XCTAssertEqual(label(1, 5).buttonText, "Every point")
-        XCTAssertEqual(label(1, 5).buttonAccessibility, "Ruler scale, every point")
-        XCTAssertEqual(label(20, 25).buttonText, "≈ 15 min per bar")
-        XCTAssertEqual(label(20, 25).buttonAccessibility, "Ruler scale, about 15 minutes per bar")
-        let interval = HistoryRulerCoarseDrag.estimatedInterval(position: 25, pointCount: timestamps.count,
-            timestampAt: { timestamps[$0] }, emptyInterval: 1_800)
-        XCTAssertEqual(interval, 45)
+        XCTAssertEqual(label(20, 45).text, "1 bar ≈ 15 min")
+        XCTAssertEqual(label(2, 3_600).text, "1 bar ≈ 2 h")
+        XCTAssertEqual(label(2, 3_600).accessibility, "1 bar about 2 hours")
+        XCTAssertEqual(label(100, 45).text, "1 bar ≈ 1.3 h")
+        XCTAssertEqual(label(1, 45).text, "1 bar = 1 point")
+        XCTAssertEqual(label(1, 45).accessibility, "1 bar equals 1 point")
+        XCTAssertEqual(label(1, 45).buttonText, "Every point")
+        XCTAssertEqual(label(1, 45).buttonAccessibility, "Ruler scale, every point")
+        XCTAssertEqual(label(20, 45).buttonText, "≈ 15 min per bar")
+        XCTAssertEqual(label(20, 45).buttonAccessibility, "Ruler scale, about 15 minutes per bar")
         let detents = HistoryRulerCoarseDrag.Detents(tickCount: 20_000, rulerWidth: 350)
-        XCTAssertEqual(detents.menuEntries(interval: interval!, current: 20).first { $0.title == "15 minutes" }?.step, 20)
-    }
-
-    func testRulerScaleEstimateLeavesOutAStopsSilence() {
-        let offsets = (0..<10).map { Double($0) * 30 } + (0..<10).map { 3_870 + Double($0) * 30 }
-        let timestamps = offsets.map { Date(timeIntervalSince1970: $0) }
-        XCTAssertEqual(HistoryRulerCoarseDrag.estimatedInterval(position: 10, pointCount: timestamps.count,
-            timestampAt: { timestamps[$0] }, emptyInterval: 1_800), 30)
-        XCTAssertEqual(HistoryRulerCoarseDrag.scaleLabel(pointsPerTick: 20, position: 10, pointCount: timestamps.count,
-            timestampAt: { timestamps[$0] }, emptyInterval: 1_800).text, "1 bar ≈ 10 min")
+        XCTAssertEqual(detents.menuEntries(interval: 45, current: 20).first { $0.title == "15 minutes" }?.step, 20)
     }
 
     func testRulerBubbleScaleHandlesEmptySingleAndEqualTimestampHistories() {
-        let date = Date(timeIntervalSince1970: 0)
-        let empty = HistoryRulerCoarseDrag.scaleLabel(pointsPerTick: 2, position: 20, pointCount: 0,
-                                                     timestampAt: { _ in XCTFail("Empty history read"); return date },
+        let empty = HistoryRulerCoarseDrag.scaleLabel(pointsPerTick: 2, slotDuration: nil, pointCount: 0,
                                                      emptyInterval: 1_800)
         XCTAssertEqual(empty.text, "1 bar ≈ 1 h")
         XCTAssertEqual(empty.accessibility, "1 bar about 1 hour")
-        let emptyPoint = HistoryRulerCoarseDrag.scaleLabel(pointsPerTick: 1, position: 20, pointCount: 0,
-            timestampAt: { _ in XCTFail("Empty history read"); return date }, emptyInterval: 1_800)
+        let emptyPoint = HistoryRulerCoarseDrag.scaleLabel(pointsPerTick: 1, slotDuration: nil, pointCount: 0,
+                                                          emptyInterval: 1_800)
         XCTAssertEqual(emptyPoint.text, "1 bar ≈ 30 min")
         XCTAssertEqual(emptyPoint.buttonText, "Every point")
         XCTAssertEqual(emptyPoint.buttonAccessibility, "Ruler scale, every point")
-        let single = HistoryRulerCoarseDrag.scaleLabel(pointsPerTick: 1, position: 1, pointCount: 1,
-                                                      timestampAt: { _ in date }, emptyInterval: 1_800)
+        let single = HistoryRulerCoarseDrag.scaleLabel(pointsPerTick: 1, slotDuration: nil, pointCount: 1,
+                                                      emptyInterval: 1_800)
         XCTAssertEqual(single.text, "1 bar = 1 point")
-        let equal = HistoryRulerCoarseDrag.scaleLabel(pointsPerTick: 5, position: 2, pointCount: 8,
-                                                     timestampAt: { _ in date }, emptyInterval: 1_800)
+        let equal = HistoryRulerCoarseDrag.scaleLabel(pointsPerTick: 5, slotDuration: nil, pointCount: 8,
+                                                     emptyInterval: 1_800)
         XCTAssertEqual(equal.text, "1 bar = 5 points")
     }
 
@@ -2182,16 +2164,7 @@ final class HistoryRulerContinuousScaleTests: XCTestCase {
     }
 
     @MainActor func testAStopKeepsItsWidthWhileScrollingAndPinchingTheRuler() throws {
-        // A drive, about an hour parked with a few fixes and a long silence, then a drive.
-        let start = Date(timeIntervalSince1970: 1_780_000_000)
-        var points: [RecordedLocation] = []
-        func add(_ seconds: Double, north: Double) {
-            points.append(RecordedLocation(id: Int64(points.count + 1), timestamp: start.addingTimeInterval(seconds),
-                                           latitude: 45 + north / 111_195, longitude: -122))
-        }
-        for second in 0..<30 { add(Double(second), north: Double(second) * 15) }
-        for fix in 1...3 { add(29 + Double(fix) * 40, north: 435) }
-        for second in 0...30 { add(29 + 66 * 60 + Double(second), north: 505 + Double(second) * 15) }
+        let points = parkedDrivePoints()
         let landmarks = HistoryLandmarks(points: points, timeline: ReplayTimeline(points: points), places: [])
         let stop = try XCTUnwrap(landmarks.stops.first)
         let harness = RulerScaleHarness(position: Double(points.count - stop.id), points: points,
@@ -2288,6 +2261,20 @@ final class HistoryRulerContinuousScaleTests: XCTestCase {
         XCTAssertEqual(ends.last, 0)
         XCTAssertEqual(ends.count, 3)
     }
+}
+
+// A drive at a fix a second, about an hour parked with a few fixes and a long silence, then a drive.
+private func parkedDrivePoints() -> [RecordedLocation] {
+    let start = Date(timeIntervalSince1970: 1_780_000_000)
+    var points: [RecordedLocation] = []
+    func add(_ seconds: Double, north: Double) {
+        points.append(RecordedLocation(id: Int64(points.count + 1), timestamp: start.addingTimeInterval(seconds),
+                                       latitude: 45 + north / 111_195, longitude: -122))
+    }
+    for second in 0..<30 { add(Double(second), north: Double(second) * 15) }
+    for fix in 1...3 { add(29 + Double(fix) * 40, north: 435) }
+    for second in 0...30 { add(29 + 66 * 60 + Double(second), north: 505 + Double(second) * 15) }
+    return points
 }
 
 @MainActor
@@ -2751,6 +2738,22 @@ final class HistoryRulerZoomTests: XCTestCase {
         XCTAssertTrue(hold.needsFit(at: 49.999, since: 100))
     }
 
+    func testTheMapFitWindowCountsRulerBarsAcrossAStop() {
+        let points = parkedDrivePoints()
+        let spacing = HistoryLandmarks(points: points, timeline: ReplayTimeline(points: points), places: []).rulerSpacing
+        let hold = ReplayRulerHold(pointsPerBar: 1, visibleBars: 24, coarseness: 1, spacing: spacing)
+        let plain = ReplayRulerHold(pointsPerBar: 1, visibleBars: 24, coarseness: 1)
+        // In the drive the window is the same twelve bars either way.
+        XCTAssertEqual(hold.window(at: 50.5, count: points.count), 39..<63)
+        XCTAssertEqual(plain.window(at: 50.5, count: points.count), 39..<63)
+        // Next to the stop, its width uses up the bars, so the window stops at the departure.
+        XCTAssertEqual(hold.window(at: 36.5, count: points.count), 33..<49)
+        XCTAssertEqual(plain.window(at: 36.5, count: points.count), 25..<49)
+        XCTAssertFalse(hold.needsFit(at: 35, since: 34))
+        XCTAssertTrue(hold.needsFit(at: 31, since: 34), "Crossing the stop moves more than half the window.")
+        XCTAssertEqual(hold, plain, "A new spacing alone does not change the zoom.")
+    }
+
     func testMidDetentsFitOnlyTheBarsNearTheNeedle() {
         XCTAssertEqual(ReplayRulerHold(pointsPerBar: 20, visibleBars: 24, coarseness: 1).halfWindow, 240)
         XCTAssertEqual(ReplayRulerHold(pointsPerBar: 20, visibleBars: 24, coarseness: 0).halfWindow, 40)
@@ -2944,7 +2947,7 @@ final class HistoryRulerZoomTests: XCTestCase {
         model.scrub(pointAt: 50)
         var (surface, coordinator, map) = nativeReplay()
         defer { tearDown(coordinator, map: map); model.returnToLive() }
-        let entry = try XCTUnwrap(model.rulerScaleMenu(at: 51).last)
+        let entry = try XCTUnwrap(model.rulerScaleMenu.last)
         model.setRulerStep(entry.step)
         XCTAssertNil(model.rulerHold)
         XCTAssertFalse(model.isRulerInteracting)
