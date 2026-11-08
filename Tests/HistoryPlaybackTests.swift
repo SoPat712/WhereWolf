@@ -752,6 +752,22 @@ final class HistoryPlaybackTests: XCTestCase {
         XCTAssertEqual(detents.menuEntries(interval: interval!, current: 5).first { $0.title == "1 hour" }?.step, 5)
     }
 
+    func testALongStopWithFewFixesWidensPastTheNeedleWithoutOverlappingItsNeighbors() {
+        func band(_ left: CGFloat, _ right: CGFloat, minutes: Double, previous: CGFloat? = nil, next: CGFloat? = nil)
+            -> ClosedRange<CGFloat> {
+            HistoryRulerCoarseDrag.stopBand(left: left, right: right, duration: minutes * 60,
+                                            previousRight: previous, nextLeft: next)
+        }
+        XCTAssertEqual(band(100, 106, minutes: 66), 92...114, "An hour or more clears the needle.")
+        XCTAssertEqual(band(100, 106, minutes: 600), 92...114)
+        XCTAssertEqual(band(100, 106, minutes: 5), 100...106, "A short stop keeps its own width.")
+        let quarter = band(100, 106, minutes: 15)
+        XCTAssertGreaterThan(quarter.upperBound - quarter.lowerBound, 6)
+        XCTAssertLessThan(quarter.upperBound - quarter.lowerBound, 22)
+        XCTAssertEqual(band(100, 200, minutes: 300, previous: 40, next: 260), 100...200)
+        XCTAssertEqual(band(100, 106, minutes: 66, previous: 96, next: 110), 98...108, "Neighbors meet halfway.")
+    }
+
     func testRulerBubbleScaleHandlesEmptySingleAndEqualTimestampHistories() {
         let date = Date(timeIntervalSince1970: 0)
         let empty = HistoryRulerCoarseDrag.scaleLabel(pointsPerTick: 2, pointCount: 0,

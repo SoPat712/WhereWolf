@@ -261,12 +261,13 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   60 points between labels. Stop capsules use the nearest Wi-Fi Place within
   `GLWifiPlaceMatchDistance` of the stay center, otherwise gray `mappin` and a duration.
   The ruler spaces fixes evenly, so scrolling moves through what was recorded at a steady rate; a stop with
-  few fixes is narrow. Back-to-back stops at the same Wi-Fi Place, or touching unnamed ones, less than
-  Coverage's gap apart show as one. A stop's label centers on it even when its fixes are narrower than the
-  text, falling back to the symbol alone where labels collide. A silence of at least Coverage's 10-minute gap
-  between stored fixes outside a stop gets a red band and a red "No data" label with its length, since even
-  spacing cannot show it; a stop explains its own silences, since a phone that logs only when it moves goes
-  quiet while parked. Keep every stored point.
+  few fixes is narrow. Its tint widens with its length, from 6 points at 5 minutes to 22 from an hour, so the
+  needle never hides a long stop, but only halfway toward a neighbor, so stops never overlap. Back-to-back
+  stops at the same Wi-Fi Place, or touching unnamed ones, less than Coverage's gap apart show as one. A stop's
+  label centers on it even when its fixes are narrower than the text, falling back to the symbol alone where
+  labels collide. A silence of at least Coverage's 10-minute gap between stored fixes outside a stop gets a red
+  band and a red "No data" label with its length, since even spacing cannot show it; a stop explains its own
+  silences, since a phone that logs only when it moves goes quiet while parked. Keep every stored point.
   The buttons beside Play jump to the previous/next arrival or departure through the
   existing selection path; disable at the ends and name the target for VoiceOver.
   The time beneath the ruler opens the native Go To sheet while browsing; Live keeps

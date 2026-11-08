@@ -532,7 +532,8 @@ original follow zoom. Overview and a manually moved camera keep their own zoom; 
 location button resumes following at the current ruler scale. The Trip map keeps its own zoom.
 Time labels, local-midnight dividers and stop capsules help you find your way
 through the retained history. Stops use a nearby saved Wi-Fi Place’s name, icon
-and color, or show an unnamed stop’s duration. A visit split by a stray point shows once. A silence of ten minutes or more outside a stop
+and color, or show an unnamed stop’s duration. A long stop with few points is tinted wide enough to see
+past the needle, and a visit split by a stray point shows once. A silence of ten minutes or more outside a stop
 is marked in red as **No data**. Hold for 0.35 seconds to scrub
 sideways at the current scale. Coarse held scrubbing snaps within six screen points
 of arrivals and departures; move your finger over ten points away to continue.

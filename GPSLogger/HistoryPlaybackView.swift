@@ -1385,6 +1385,17 @@ enum HistoryRulerCoarseDrag {
         return start.addingTimeInterval(timestampAt(lower + 1).timeIntervalSince(start) * (index - Double(lower)))
     }
 
+    // A long stop can have so few fixes that the needle hides it. Its band widens with its length, from
+    // 6 points at 5 minutes to 22 from an hour, but only halfway toward a neighbor, so stops never overlap.
+    static func stopBand(left: CGFloat, right: CGFloat, duration: TimeInterval, previousRight: CGFloat?,
+                         nextLeft: CGFloat?) -> ClosedRange<CGFloat> {
+        let length = min(1, max(0, log(max(1, duration) / 300) / log(12)))
+        let grow = max(0, (6 + 16 * CGFloat(length) - (right - left)) / 2)
+        let lower = max(left - grow, previousRight.map { ($0 + left) / 2 } ?? -.infinity)
+        let upper = min(right + grow, nextLeft.map { (right + $0) / 2 } ?? .infinity)
+        return lower...max(lower, upper)
+    }
+
     // The history's average time per point. Bars are evenly spaced points, so a bar's time swings from
     // seconds on a drive to hours across a stop; the average names the scale and changes only with it.
     static func estimatedInterval(pointCount: Int, timestampAt: (Int) -> Date,
@@ -1515,13 +1526,18 @@ private final class HistoryRulerTicks: UIView {
         let lower = min(maximum, max(0, selected - halfWindow))
         let range = lower...min(maximum, max(lower, selected + halfWindow))
         let visibleStops: ArraySlice<HistoryStop> = pointCount > 0 ? (landmarks?.visibleStops(in: range) ?? []) : []
-        for stop in visibleStops {
-            let left = x(at: stop.id), right = x(at: stop.end)
-            let frame = CGRect(x: max(-8, left - 3), y: 18,
-                               width: max(4, min(bounds.width + 8, right + 3) - max(-8, left - 3)),
-                               height: bounds.height - 20)
+        let stops = landmarks?.stops ?? []
+        for index in visibleStops.indices {
+            let stop = stops[index]
+            let band = HistoryRulerCoarseDrag.stopBand(left: x(at: stop.id) - 3, right: x(at: stop.end) + 3,
+                duration: stop.departure.timeIntervalSince(stop.arrival),
+                previousRight: index > 0 ? x(at: stops[index - 1].end) + 3 : nil,
+                nextLeft: index + 1 < stops.count ? x(at: stops[index + 1].id) - 3 : nil)
+            let left = max(-8, band.lowerBound), right = min(bounds.width + 8, band.upperBound)
+            guard right - left >= 1 else { continue }
+            let frame = CGRect(x: left, y: 18, width: right - left, height: bounds.height - 20)
             UIColor(WifiPlace.tint(for: stop.color)).withAlphaComponent(snappedStop == stop.id ? 0.85 : 0.16).setFill()
-            UIBezierPath(roundedRect: frame, cornerRadius: 7).fill()
+            UIBezierPath(roundedRect: frame, cornerRadius: min(7, frame.width / 2)).fill()
         }
         let visibleGaps: ArraySlice<HistoryGap> = pointCount > 0 ? (landmarks?.visibleGaps(in: range) ?? []) : []
         for gap in visibleGaps where gap.index < pointCount {
