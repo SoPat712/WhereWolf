@@ -218,6 +218,10 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   settle immediately; compare its target before restarting it. Ignore measurements from replaced
   hosting roots. Fitting content has no vertical scrolling or bounce; enable
   scrolling only for content exceeding the screen's available height.
+  Trip shows a scrolling row of mode buttons above a green Start Trip button while idle. Recording
+  replaces the row with elapsed time, distance and average speed, the button turns into a red End Trip
+  with a symbol replace and start/stop haptics, and the header's red dot breathes; Reduce Motion
+  crossfades and keeps the dot still. Scrub a trip with the Tracker ruler; Trip has no point timeline.
   Tracker starts with a glass history ruler and one compact control row. Live
   location details and replay point details default collapsed, with explicit
   show/hide controls. Animate content resizing without fading the timeline.

@@ -88,11 +88,7 @@ struct WhereWolfRootView: View {
             .ignoresSafeArea(.container)
         }
         .onChange(of: camera.followsUserLocation) { _, follows in
-            if follows {
-                trip.followingLive = true
-                trip.scrubID = trip.points.last?["id"]?.int64Value
-                if history.isBrowsing { history.returnToLive() }
-            }
+            if follows, history.isBrowsing { history.returnToLive() }
         }
         .onChange(of: history.cameraCenter) { previous, center in
             focusHistoryPosition(center, from: previous)
@@ -221,25 +217,12 @@ struct WhereWolfRootView: View {
             return
         }
         trip.points = points
-        if trip.followingLive {
-            trip.scrubID = points.last?["id"]?.int64Value
-        } else if trip.scrubIndex == nil {
-            trip.scrubID = points.first?["id"]?.int64Value
-            if let coordinate = trip.scrubbedCoordinate {
-                camera = .region(MKCoordinateRegion(
-                    center: coordinate,
-                    span: MKCoordinateSpan(latitudeDelta: 0.005, longitudeDelta: 0.005)
-                ))
-            }
-        }
     }
 
     private func map() -> some View {
         let replayPose = history.renderPose
         let coords = mapTab == 1 ? trip.displayCoords : []
-        let selected = mapTab == 1 && !trip.followingLive ? trip.scrubbedCoordinate
-            : mapTab == 0 && history.isBrowsing
-                ? replayPose?.coordinate.coordinate : nil
+        let selected = mapTab == 0 && history.isBrowsing ? replayPose?.coordinate.coordinate : nil
         return NativeMapSurface(position: camera, mapType: mapAppearance.mapType,
                                 coordinates: coords,
                                 replayRoute: mapTab == 0 && replayPose != nil ? history.routeGeometry : nil,
@@ -257,7 +240,7 @@ struct WhereWolfRootView: View {
                                     ? max(speedometerHeight, replayStatusHeight) : 0,
                                 replayCameraAction: replayCameraAction, recenterAction: recenterRequest,
                                 selected: selected,
-                                selectedTitle: mapTab == 1 ? "Trip point" : "Recorded point",
+                                selectedTitle: "Recorded point",
                                 scenePhase: scenePhase, pageActive: selection < 2,
                                 trackingEnabled: bridge.trackingEnabled,
                                 onCameraChange: cameraChanged, onInteraction: stopFollowing,
@@ -402,8 +385,6 @@ struct WhereWolfRootView: View {
             camera = .userLocation(followsHeading: !camera.followsUserHeading, fallback: .automatic)
             return
         }
-        trip.followingLive = true
-        trip.scrubID = trip.points.last?["id"]?.int64Value
         returnToLive()
     }
 

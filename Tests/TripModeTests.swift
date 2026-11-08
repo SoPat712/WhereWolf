@@ -140,3 +140,17 @@ final class TripModeTests: XCTestCase {
         XCTAssertNil(TripModeStore.iconDataURI(symbol: unknown.symbol))
     }
 }
+
+final class TripFormatTests: XCTestCase {
+    func testTripStatsFormatBothUnitSystems() {
+        XCTAssertEqual(TripFormat.duration(0), "0:00:00")
+        XCTAssertEqual(TripFormat.duration(3_725.9), "1:02:05")
+        XCTAssertEqual(TripFormat.duration(-5), "0:00:00")
+        XCTAssertEqual(TripFormat.distance(1_234, metric: true), "1.23 km")
+        XCTAssertEqual(TripFormat.distance(32_186.88, metric: false), "20.0 mi")
+        XCTAssertEqual(TripFormat.averageSpeed(distance: 10_000, duration: 1_800, metric: true), "20.0 km/h")
+        XCTAssertEqual(TripFormat.averageSpeed(distance: 1_609.344, duration: 120, metric: false), "30.0 mph")
+        XCTAssertEqual(TripFormat.averageSpeed(distance: 50, duration: 0, metric: true), "– km/h")
+        XCTAssertEqual(TripFormat.averageSpeed(distance: .nan, duration: 60, metric: false), "– mph")
+    }
+}

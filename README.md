@@ -656,10 +656,10 @@ the visible map. Recorded coordinates, accuracy, timestamps and uploads keep
 their original values.
 
 Trip uses the same map and preserves its position when you switch tabs.
-Choose a travel mode and tap Start Trip to record a route. The panel shows
-distance, duration, and a timeline of the latest 1,000 points. Select a point to
-inspect it, or tap Live to return to your location. Stop Trip writes a trip record
-for upload alongside the location points. The slider button beside the Trip
+Tap a travel mode in the row of modes, then the green Start Trip button, to record
+a route. While recording, the panel shows the elapsed time, distance and average
+speed beside a pulsing red dot, and the map draws the trip's route. End Trip writes
+a trip record for upload alongside the location points. The slider button beside the Trip
 title opens Trip Settings in a sheet over the map; tap Done to return. Trip
 Settings is also listed in Settings.
 

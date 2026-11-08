@@ -6,25 +6,36 @@ struct TripView: View {
     @Binding var camera: MapCameraPosition
     @Binding var trip: TripMapState
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @ScaledMetric(relativeTo: .caption) private var timelineHeight: CGFloat = 34
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ScaledMetric(relativeTo: .caption) private var modeWidth: CGFloat = 64
     @State private var showingSettings = false
-
-
+    @State private var started = 0
+    @State private var ended = 0
+    @State private var picked = 0
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 14) {
             header
             if bridge.tripInProgress {
-                scrubber
+                stats
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.96, anchor: .bottom)))
+            } else {
+                modeRow
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.96, anchor: .bottom)))
             }
-            card
+            tripButton
         }
         .fixedSize(horizontal: false, vertical: true)
+        .animation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(duration: 0.4, bounce: 0.15),
+                   value: bridge.tripInProgress)
+        .sensoryFeedback(.start, trigger: started)
+        .sensoryFeedback(.stop, trigger: ended)
+        .sensoryFeedback(.selection, trigger: picked)
         .onAppear {
             bridge.refresh()
         }
         .onChange(of: bridge.tripMode) { _, mode in
-            guard trip.followingLive, let coordinate = GLManager.shared().lastLocation?.coordinate else { return }
+            guard let coordinate = GLManager.shared().lastLocation?.coordinate else { return }
             camera = .camera(MapKit.MapCamera(centerCoordinate: coordinate,
                 distance: TripModeStore.closeZoom(mode) ? 1_000 : 10_000))
         }
@@ -35,224 +46,170 @@ struct TripView: View {
 
     private var header: some View {
         DrawerHeader(title: "Trip",
-                     subtitle: bridge.tripInProgress ? "Recording · \(TripModeStore.name(bridge.tripMode))" : "Ready to record",
-                     indicator: bridge.tripInProgress ? .red : nil) {
+                     subtitle: bridge.tripInProgress ? "Recording · \(TripModeStore.name(bridge.tripMode))" : "Choose a mode",
+                     indicator: bridge.tripInProgress ? .red : nil,
+                     pulsesIndicator: true) {
             DrawerCircleButton(symbol: "slider.horizontal.3", label: "Trip Settings") {
                 showingSettings = true
             }
         }
     }
 
-    private var isLive: Bool { trip.followingLive }
+    // MARK: Modes
 
-    // MARK: Scrubber
-
-    private var scrubber: some View {
-        VStack(spacing: 8) {
-            HStack {
-                Text(isLive ? "Live" : timeLabel(trip.scrubIndex) ?? "--:--:--")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(isLive ? .green : .secondary)
-                Spacer()
-                if !isLive {
-                    Button("Live") {
-                        trip.followingLive = true
-                        trip.scrubID = trip.points.last?["id"]?.int64Value
-                        camera = .userLocation(fallback: .automatic)
+    private var modeRow: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 8) {
+                    ForEach(bridge.tripModes, id: \.id) { mode in
+                        modeButton(mode).id(mode.id)
                     }
-                    .font(.caption.bold())
-                    .tint(.green)
                 }
+                .padding(.horizontal, 16)
             }
-            Group {
-                if trip.points.count > 1 {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        LazyHStack(spacing: 8) {
-                            ForEach(trip.points.indices, id: \.self) { i in
-                                Button {
-                                    trip.followingLive = false
-                                    trip.scrubID = trip.points[i]["id"]?.int64Value
-                                    focusScrub()
-                                } label: { chip(i) }
-                                .buttonStyle(.plain)
-                                .id(trip.points[i]["id"]?.int64Value ?? Int64(i))
-                            }
-                        }
-                        .scrollTargetLayout()
-                        .padding(.horizontal, 4)
-                    }
-                    .scrollTargetBehavior(.viewAligned)
-                    .scrollPosition(id: Binding(
-                        get: { trip.scrubID },
-                        set: { id in
-                            guard let id, id != trip.scrubID else { return }
-                            trip.scrubID = id
-                            if id != trip.points.last?["id"]?.int64Value { trip.followingLive = false }
-                            if !trip.followingLive { focusScrub() }
-                        }
-                    ))
-                } else {
-                    Color.clear
-                        .accessibilityHidden(true)
-                }
-            }
-            .frame(height: max(34, timelineHeight))
+            .onAppear { proxy.scrollTo(bridge.tripMode, anchor: .center) }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 4)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Travel Mode")
     }
 
-    private func chip(_ i: Int) -> some View {
-        let selected = !isLive && trip.scrubIndex == i
-        let live = isLive && i == trip.points.count - 1
-        return Text(timeLabel(i) ?? "")
-            .font(.caption2.monospacedDigit())
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .frame(minHeight: max(34, timelineHeight))
-            .contentShape(Capsule())
-            .background {
-                Capsule().fill(selected ? AnyShapeStyle(.tint) : live ? AnyShapeStyle(Color.green.opacity(0.25)) : AnyShapeStyle(Color.drawerCard))
+    private func modeButton(_ mode: TripMode) -> some View {
+        let selected = mode.id == bridge.tripMode
+        return Button {
+            guard !selected else { return }
+            bridge.tripMode = mode.id
+            picked += 1
+        } label: {
+            VStack(spacing: 6) {
+                modeIcon(mode.symbol)
+                    .frame(width: 24, height: 24)
+                    .foregroundStyle(selected ? Color.white : Color.primary)
+                    .frame(width: 52, height: 52)
+                    .background(Circle().fill(selected ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.drawerCard)))
+                Text(mode.name)
+                    .font(.caption.weight(selected ? .semibold : .regular))
+                    .foregroundStyle(selected ? Color.primary : Color.secondary)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                    .minimumScaleFactor(0.8)
+                    .multilineTextAlignment(.center)
             }
-            .foregroundStyle(selected ? Color.white : live ? Color.primary : Color.secondary)
+            .frame(width: max(64, modeWidth))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.2), value: selected)
+        .accessibilityLabel(mode.name)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
-    // MARK: Trip card
-
-    private var card: some View {
-        VStack(spacing: 12) {
-            VStack(spacing: 14) {
-                if dynamicTypeSize.isAccessibilitySize {
-                    VStack(spacing: 10) {
-                        tripStat("DISTANCE", value: distText)
-                        tripStat("TIME", value: durationText)
-                    }
-                } else {
-                    HStack(spacing: 16) {
-                        tripStat("DISTANCE", value: distText)
-                        tripStat("TIME", value: durationText)
-                    }
-                }
-                Divider()
-                if dynamicTypeSize.isAccessibilitySize {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Travel Mode").font(.subheadline)
-                        modePicker
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                } else {
-                    HStack {
-                        Text("Travel Mode").font(.subheadline)
-                        Spacer()
-                        modePicker
-                    }
-                }
-            }
-            .drawerCard()
-
-            Button {
-                if bridge.tripInProgress {
-                    GLTripActions.endTripRestoringTracking()
-                    IntentDonations.tripEnded()
-                } else {
-                    GLTripActions.startTrip(withMode: nil)
-                    IntentDonations.tripStarted(mode: GLManager.shared().currentTripMode)
-                }
-                trip = TripMapState()
-                camera = .userLocation(followsHeading: camera.followsUserHeading, fallback: .automatic)
-                bridge.refresh()
-            } label: {
-                Label(bridge.tripInProgress ? "Stop Trip" : "Start Trip",
-                      systemImage: bridge.tripInProgress ? "stop.fill" : "play.fill")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-            }
-            .glassButtonStyle(prominent: true, tint: bridge.tripInProgress ? .red : .blue)
-            .padding(.horizontal, 16)
+    @ViewBuilder
+    private func modeIcon(_ symbol: String) -> some View {
+        if let image = TripModeStore.image(symbol: symbol) {
+            Image(uiImage: image).renderingMode(.template).resizable().scaledToFit()
+        } else {
+            Image(systemName: "location.fill").resizable().scaledToFit()
         }
+    }
+
+    // MARK: Recording
+
+    private var stats: some View {
+        VStack(spacing: 10) {
+            Text(TripFormat.duration(bridge.tripDuration))
+                .font(.system(.largeTitle, design: .rounded).weight(.bold).monospacedDigit())
+                .contentTransition(.numericText())
+                .animation(reduceMotion ? nil : .default, value: Int(bridge.tripDuration))
+                .accessibilityLabel("Elapsed time")
+                .accessibilityValue(TripFormat.duration(bridge.tripDuration))
+            let metric = Locale.current.measurementSystem == .metric
+            let measures = Group {
+                tripStat("Distance", value: TripFormat.distance(bridge.tripDistance, metric: metric))
+                tripStat("Avg Speed", value: TripFormat.averageSpeed(distance: bridge.tripDistance,
+                                                                     duration: bridge.tripDuration, metric: metric))
+            }
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(spacing: 10) { measures }
+            } else {
+                HStack(spacing: 16) { measures }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .drawerCard()
     }
 
     private func tripStat(_ title: String, value: String) -> some View {
         VStack(spacing: 2) {
             Text(title)
-                .font(.caption2)
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
             Text(value)
-                .font(.title3.monospacedDigit())
+                .font(.title3.weight(.semibold).monospacedDigit())
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
     }
 
-    private var modePicker: some View {
-        Picker("Travel Mode", selection: $bridge.tripMode) {
-            ForEach(bridge.tripModes, id: \.id) { mode in
-                Label {
-                    Text(mode.name)
-                } icon: {
-                    if let image = TripModeStore.image(symbol: mode.symbol) {
-                        Image(uiImage: image).renderingMode(.template).resizable().scaledToFit().frame(width: 18, height: 18)
-                    }
-                }.tag(mode.id)
+    // MARK: Start and end
+
+    private var tripButton: some View {
+        let recording = bridge.tripInProgress
+        return Button(action: toggleTrip) {
+            HStack(spacing: 8) {
+                Image(systemName: recording ? "stop.fill" : "play.fill")
+                    .contentTransition(.symbolEffect(.replace))
+                    .symbolEffect(.bounce, value: started + ended)
+                Text(recording ? "End Trip" : "Start Trip")
             }
+            .font(.headline)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
         }
-        .pickerStyle(.menu)
-        .labelsHidden()
-        .tint(.primary)
-        .font(.subheadline.weight(.medium))
-        .disabled(bridge.tripInProgress)
+        .glassButtonStyle(prominent: true, tint: recording ? .red : .green)
+        .padding(.horizontal, 16)
     }
 
-    // MARK: Data
-
-    private var distText: String {
-        let metric = (Locale.current.measurementSystem == .metric)
-        let v = metric ? bridge.tripDistance / 1000 : bridge.tripDistance / 1609.34
-        return String(format: v < 10 ? "%.2f %@" : "%.1f %@", v, metric ? "km" : "mi")
+    private func toggleTrip() {
+        if bridge.tripInProgress {
+            GLTripActions.endTripRestoringTracking()
+            IntentDonations.tripEnded()
+            ended += 1
+        } else {
+            GLTripActions.startTrip(withMode: nil)
+            IntentDonations.tripStarted(mode: GLManager.shared().currentTripMode)
+            started += 1
+        }
+        trip = TripMapState()
+        camera = .userLocation(followsHeading: camera.followsUserHeading, fallback: .automatic)
+        bridge.refresh()
     }
+}
 
-    private var durationText: String {
-        let t = Int(bridge.tripDuration)
+enum TripFormat {
+    static func duration(_ seconds: Double) -> String {
+        let t = Int(max(0, seconds))
         return String(format: "%d:%02d:%02d", t / 3600, (t / 60) % 60, t % 60)
     }
 
-    private func timeLabel(_ i: Int?) -> String? {
-        guard let i, trip.points.indices.contains(i), let ts = trip.points[i]["timestamp"]?.doubleValue else { return nil }
-        return Date(timeIntervalSince1970: ts).formatted(date: .omitted, time: .standard)
+    static func distance(_ meters: Double, metric: Bool) -> String {
+        let v = metric ? meters / 1000 : meters / 1609.344
+        return String(format: v < 10 ? "%.2f %@" : "%.1f %@", v, metric ? "km" : "mi")
     }
 
-    private func focusScrub() {
-        guard let coord = trip.scrubbedCoordinate else { return }
-        camera = .region(MKCoordinateRegion(
-            center: coord,
-            span: MKCoordinateSpan(latitudeDelta: 0.005, longitudeDelta: 0.005)
-        ))
+    static func averageSpeed(distance meters: Double, duration seconds: Double, metric: Bool) -> String {
+        let unit = metric ? "km/h" : "mph"
+        guard seconds >= 1, meters.isFinite, meters >= 0 else { return "– \(unit)" }
+        let speed = meters / seconds * (metric ? 3.6 : 2.236_936)
+        return String(format: "%.1f %@", speed, unit)
     }
-
 }
 
 struct TripMapState {
     var points: [[String: NSNumber]] = []
-    var scrubID: Int64?
-    var followingLive = true
-
-    var scrubIndex: Int? {
-        guard let scrubID else { return nil }
-        return points.firstIndex { $0["id"]?.int64Value == scrubID }
-    }
-
-    var scrubbedCoordinate: CLLocationCoordinate2D? {
-        guard let i = scrubIndex,
-              let lat = points[i]["latitude"]?.doubleValue,
-              let lon = points[i]["longitude"]?.doubleValue else { return nil }
-        return CLLocationCoordinate2D(latitude: lat, longitude: lon)
-    }
 
     var displayCoords: [CLLocationCoordinate2D] {
-        let end = followingLive ? points.count : (scrubIndex.map { $0 + 1 } ?? points.count)
-        return points.prefix(end).compactMap { point -> CLLocationCoordinate2D? in
+        points.compactMap { point -> CLLocationCoordinate2D? in
             guard let lat = point["latitude"]?.doubleValue,
                   let lon = point["longitude"]?.doubleValue else { return nil }
             return CLLocationCoordinate2D(latitude: lat, longitude: lon)

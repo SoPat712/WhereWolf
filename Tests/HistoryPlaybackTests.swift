@@ -416,22 +416,15 @@ final class HistoryPlaybackTests: XCTestCase {
         XCTAssertGreaterThan(model.playbackIndex, 2.9)
     }
 
-    func testTripLineRetainsEveryPointWhenScrubbing() {
+    func testTripLineRetainsEveryPoint() {
         let points: [[String: NSNumber]] = (0..<2401).map { index in
             ["id": NSNumber(value: index), "latitude": NSNumber(value: 45.0 + Double(index) * 0.00001),
              "longitude": NSNumber(value: -122.0 + sin(Double(index)) * 0.001)]
         }
-        var trip = TripMapState(points: points)
-        XCTAssertEqual(trip.displayCoords.count, points.count)
-        trip.followingLive = false
-        trip.scrubID = 1800
-        let first = trip.displayCoords
-        XCTAssertEqual(first.count, 1801)
-        trip.scrubID = 1801
-        let second = trip.displayCoords
-        XCTAssertEqual(second.count, 1802)
-        XCTAssertEqual(first.map(\.latitude), second.dropLast().map(\.latitude))
-        XCTAssertEqual(first.map(\.longitude), second.dropLast().map(\.longitude))
+        let coordinates = TripMapState(points: points).displayCoords
+        XCTAssertEqual(coordinates.count, points.count)
+        XCTAssertEqual(coordinates.map(\.latitude), points.map { $0["latitude"]!.doubleValue })
+        XCTAssertEqual(coordinates.map(\.longitude), points.map { $0["longitude"]!.doubleValue })
     }
 
     func testRulerMenuMapsTimeTargetsInLogSpaceAndChecksTheMatchingStep() {
