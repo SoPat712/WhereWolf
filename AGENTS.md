@@ -299,9 +299,10 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   interaction revision changes. Hold and pinch show a Liquid Glass time/scale bubble
   with primary text (blur material before iOS 26), centered eight points above the
   drawer's `wherewolf.panel.sheet` view and below the top safe area; fall back to
-  above the ruler if absent. Derive the scale from nearby recorded intervals, or
-  retention time before points load. Remove the window bubble on release or
-  cancellation without changing drawer height. Reaching Live clamps at zero
+  above the ruler if absent. The capsule, bubble and menu derive a bar's time from the history's average
+  time per point, oldest to newest fix, so they change only with the scale (≈, since a bar on a drive is
+  shorter and one across a stop longer), or from retention time before points load. Remove the window
+  bubble on release or cancellation without changing drawer height. Reaching Live clamps at zero
   without ending a drag or hold; return to Live when the finger lifts there, or as soon as
   momentum aimed at the Live edge arrives, stopping there without its bounce. Momentum and
   bounces settle on whole pixels, so an end within a pixel of the Live edge counts as Live.

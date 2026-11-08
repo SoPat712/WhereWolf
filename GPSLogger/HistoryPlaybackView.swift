@@ -48,18 +48,17 @@ final class HistoryPlaybackModel {
         guard rulerStep != step else { return }
         rulerStep = step
         if UIAccessibility.isVoiceOverRunning {
-            let position = rulerPosition ?? (isBrowsing ? Double(points.count) - playbackIndex : 0)
-            UIAccessibility.post(notification: .announcement, argument: rulerScaleLabel(at: position).buttonAccessibility)
+            UIAccessibility.post(notification: .announcement, argument: rulerScaleLabel.buttonAccessibility)
         }
     }
 
-    func rulerScaleLabel(at position: Double) -> HistoryRulerCoarseDrag.ScaleLabel {
-        HistoryRulerCoarseDrag.scaleLabel(pointsPerTick: rulerStep, position: position,
-            pointCount: points.count, timestampAt: { self.points[$0].timestamp }, emptyInterval: retentionInterval / 48)
+    var rulerScaleLabel: HistoryRulerCoarseDrag.ScaleLabel {
+        HistoryRulerCoarseDrag.scaleLabel(pointsPerTick: rulerStep, pointCount: points.count,
+            timestampAt: { self.points[$0].timestamp }, emptyInterval: retentionInterval / 48)
     }
 
-    func rulerScaleMenu(at position: Double) -> [HistoryRulerCoarseDrag.MenuEntry] {
-        let interval = HistoryRulerCoarseDrag.estimatedInterval(position: position, pointCount: points.count,
+    var rulerScaleMenu: [HistoryRulerCoarseDrag.MenuEntry] {
+        let interval = HistoryRulerCoarseDrag.estimatedInterval(pointCount: points.count,
             timestampAt: { self.points[$0].timestamp }, emptyInterval: retentionInterval / 48)
         return rulerDetents.menuEntries(interval: interval ?? retentionInterval / 48, current: rulerStep)
     }
@@ -1029,7 +1028,7 @@ struct HistoryRuler: View {
     private var scaleMenu: some View {
         Menu {
             Section("One bar covers") {
-                ForEach(history.rulerScaleMenu(at: position)) { entry in
+                ForEach(history.rulerScaleMenu) { entry in
                     Button {
                         history.setRulerStep(entry.step)
                     } label: {
@@ -1039,7 +1038,7 @@ struct HistoryRuler: View {
                 }
             }
         } label: {
-            Text(history.rulerScaleLabel(at: position).buttonText)
+            Text(history.rulerScaleLabel.buttonText)
                 .font(.caption2.weight(.semibold))
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
@@ -1049,7 +1048,7 @@ struct HistoryRuler: View {
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(history.rulerScaleLabel(at: position).buttonAccessibility)
+        .accessibilityLabel(history.rulerScaleLabel.buttonAccessibility)
         .disabled(history.isRulerInteracting)
     }
 
@@ -1386,32 +1385,23 @@ enum HistoryRulerCoarseDrag {
         return start.addingTimeInterval(timestampAt(lower + 1).timeIntervalSince(start) * (index - Double(lower)))
     }
 
-    static func estimatedInterval(position: Double, pointCount: Int, timestampAt: (Int) -> Date,
+    // The history's average time per point. Bars are evenly spaced points, so a bar's time swings from
+    // seconds on a drive to hours across a stop; the average names the scale and changes only with it.
+    static func estimatedInterval(pointCount: Int, timestampAt: (Int) -> Date,
                                   emptyInterval: TimeInterval) -> TimeInterval? {
-        if pointCount > 0 {
-            let index = min(pointCount - 1, max(0, Int(floor(Double(pointCount) - position))))
-            let lower = max(0, index - 4)
-            let upper = min(pointCount - 1, index + 4)
-            var total = 0.0
-            var count = 0
-            if lower < upper {
-                for i in lower..<upper {
-                    let delta = timestampAt(i + 1).timeIntervalSince(timestampAt(i))
-                    if delta.isFinite && delta > 0 { total += delta; count += 1 }
-                }
-            }
-            return count > 0 ? total / Double(count) : nil
-        }
-        return emptyInterval
+        guard pointCount > 0 else { return emptyInterval }
+        guard pointCount > 1 else { return nil }
+        let interval = timestampAt(pointCount - 1).timeIntervalSince(timestampAt(0)) / Double(pointCount - 1)
+        return interval.isFinite && interval > 0 ? interval : nil
     }
 
-    static func scaleLabel(pointsPerTick: Double, position: Double, pointCount: Int,
-                           timestampAt: (Int) -> Date, emptyInterval: TimeInterval) -> ScaleLabel {
+    static func scaleLabel(pointsPerTick: Double, pointCount: Int, timestampAt: (Int) -> Date,
+                           emptyInterval: TimeInterval) -> ScaleLabel {
         if pointCount > 0 && pointsPerTick == 1 {
             return ScaleLabel(text: "1 bar = 1 point", accessibility: "1 bar equals 1 point", everyPoint: true)
         }
-        guard let interval = estimatedInterval(position: position, pointCount: pointCount,
-                                              timestampAt: timestampAt, emptyInterval: emptyInterval) else {
+        guard let interval = estimatedInterval(pointCount: pointCount, timestampAt: timestampAt,
+                                              emptyInterval: emptyInterval) else {
             let points = String(format: "%.0f", pointsPerTick)
             return ScaleLabel(text: "1 bar = \(points) points", accessibility: "1 bar equals \(points) points")
         }
@@ -1845,7 +1835,6 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
         guard let configuration else { return .init(text: "", accessibility: "") }
         return HistoryRulerCoarseDrag.scaleLabel(
             pointsPerTick: pinching ? coarseDetents.nearestStep(to: ticks.scale.pointsPerTick) : ticks.scale.pointsPerTick,
-            position: position,
             pointCount: configuration.points.count, timestampAt: { configuration.points[$0].timestamp },
             emptyInterval: configuration.retentionInterval / 48)
     }

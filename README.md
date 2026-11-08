@@ -520,8 +520,8 @@ Pinch to change how many recorded points each bar covers, or tap the scale
 capsule beside the time to choose **Every point**, a time interval, or **Whole
 history**. The ruler and following map track your fingers continuously, with bars
 crossfading between scales; release gently settles to a scale without haptics.
-Bars are evenly spaced recorded points, so a drive takes room and a quiet night does not.
-Time estimates use nearby recorded intervals. The selected point stays
+Bars are evenly spaced recorded points, so a drive takes room and a quiet night does not; the
+capsule's time per bar is your history's average and stays put while you scroll. The selected point stays
 under the needle when the scale changes. The scale remains set across tabs and playback,
 and dragging and flicking use it too. Returning to Live from history resets it to **Every point**
 and zooms back in to your live zoom from before history. While the Tracker map follows your live
