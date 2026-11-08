@@ -165,6 +165,18 @@ This log lists the decisions agents made on their own while working on WhereWolf
 - **Decided:** keep up to 20 finished-trip summaries on the device (no coordinates, not in Backup & Sync), list the newest five while idle, and open a trip's start on the Tracker ruler while it is still in local history.
 - **Undo:** `git revert a614812`.
 
+## 2026-11-08: silences inside stops (0e5b96e)
+
+- **Asked for:** a properly sized 66-minute stop; earlier the owner floated marking it red as missing data.
+- **Decided:** a silence inside a detected stop is not marked as missing data, since a phone that logs only when it moves goes quiet while parked. Silences of ten minutes or more outside stops keep the red No data band.
+- **Undo:** `git revert 0e5b96e`.
+
+## 2026-11-08: stop width on the history ruler (b7fae9a)
+
+- **Asked for:** stops sized by time; the owner picked "Weighted by time" from offered options.
+- **Decided:** every fix keeps one slot, and each stop or silence outside a stop gets extra width spread across its time: 3 bars close up for 5 minutes plus 3 per doubling, or the width of 150 × √(minutes / 5) fixes when that is smaller, so it shrinks when zoomed out and the coarsest step fits the whole history. Time and day marks sit at their exact time; the scale estimate uses the median nearby interval. A fixed time weighting would either hide stops when zoomed out or turn them into multi-screen walls close up.
+- **Undo:** `git revert b7fae9a`.
+
 ## Deferred for the owner
 
 - **Watch complication for Today:** it needs a new watch widget extension and bundle identifier, which is an Apple developer account change.
