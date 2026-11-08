@@ -2847,6 +2847,9 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
         NSLog(@"Trip summary could not be saved: %@", self.db.lastError.localizedDescription);
         return;
     }
+    GLTripStatsAccumulator *stats = [self loadedTripStats];
+    [GLTripLog recordTripWithMode:self.currentTripMode start:self.currentTripStart end:end distance:distance
+                         topSpeed:stats.topSpeed climb:stats.climb];
     if(autopause) [self notify:@"Trip ended automatically" withTitle:@"Tracker"];
     [self resetStationaryAnchors];
     self.lastTripLocation = nil;

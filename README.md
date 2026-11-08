@@ -664,7 +664,8 @@ trip you haven't seen yet, such as one an automation started when CarPlay connec
 shows the Trip tab; once you switch away, it stays where you leave it until the next
 trip. The slider button beside Start Trip
 opens Trip Settings in a sheet over the map, and Edit at the end of the modes opens
-Trip Modes; tap Done to return. Trip
+Trip Modes; tap Done to return. Below Start Trip, Recent Trips lists your last five trips;
+tap one to see it on the Tracker ruler while it is still in local history. Trip
 Settings is also listed in Settings.
 
 ### Settings

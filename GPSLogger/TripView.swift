@@ -5,6 +5,8 @@ struct TripView: View {
     @State private var bridge = GLManagerBridge.shared
     @Binding var camera: MapCameraPosition
     @Binding var trip: TripMapState
+    var historyStart: Date?
+    var onShowTrip: (Date) -> Void = { _ in }
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: .caption) private var modeWidth: CGFloat = 64
@@ -27,6 +29,10 @@ struct TripView: View {
                 DrawerCircleButton(symbol: "slider.horizontal.3", label: "Trip Settings") { sheet = .settings }
             }
             .padding(.horizontal, 16)
+            if !bridge.tripInProgress && !bridge.recentTrips.isEmpty {
+                recentTrips
+                    .transition(.opacity)
+            }
         }
         .padding(.top, 4)
         .fixedSize(horizontal: false, vertical: true)
@@ -180,6 +186,64 @@ struct TripView: View {
         .accessibilityElement(children: .combine)
     }
 
+    // MARK: Recent trips
+
+    private var recentTrips: some View {
+        let metric = Locale.current.measurementSystem == .metric
+        let trips = Array(bridge.recentTrips.prefix(5))
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("Recent Trips")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 20)
+                .accessibilityAddTraits(.isHeader)
+            VStack(spacing: 0) {
+                ForEach(trips) { trip in
+                    if trip.id != trips.first?.id { Divider().padding(.leading, 58) }
+                    recentTripRow(trip, metric: metric)
+                }
+            }
+            .background(Color.drawerCard, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .padding(.horizontal, 16)
+        }
+    }
+
+    private func recentTripRow(_ trip: TripSummary, metric: Bool) -> some View {
+        // A trip that has left local history has nothing to show on the ruler.
+        let available = historyStart.map { trip.end >= $0 } ?? true
+        return Button { onShowTrip(trip.start) } label: {
+            HStack(spacing: 12) {
+                modeIcon(TripModeStore.symbol(trip.mode))
+                    .frame(width: 17, height: 17)
+                    .foregroundStyle(Color.white)
+                    .frame(width: 32, height: 32)
+                    .background(Circle().fill(.tint))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(TripModeStore.name(trip.mode)) · \(TripFormat.distance(trip.distance, metric: metric))")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.primary)
+                    Text("\(TripFormat.day(trip.start)) · \(ReplayActivity.format(trip.end.timeIntervalSince(trip.start)))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                Spacer(minLength: 8)
+                if available {
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!available)
+        .accessibilityElement(children: .combine)
+        .accessibilityHint(available ? "Shows this trip on the Tracker ruler." : "")
+    }
+
     // MARK: Start and end
 
     private var tripButton: some View {
@@ -239,6 +303,13 @@ enum TripFormat {
     // Pace reads better than speed on foot.
     static func usesPace(_ mode: String) -> Bool {
         ["walking", "running", "hiking"].contains(TripModeStore.healthWorkout(mode) ?? "")
+    }
+
+    static func day(_ date: Date, calendar: Calendar = .current) -> String {
+        let time = date.formatted(date: .omitted, time: .shortened)
+        if calendar.isDateInToday(date) { return "Today, \(time)" }
+        if calendar.isDateInYesterday(date) { return "Yesterday, \(time)" }
+        return "\(date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())), \(time)"
     }
 
     static func speed(_ metersPerSecond: Double, metric: Bool) -> String {

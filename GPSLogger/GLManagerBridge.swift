@@ -18,6 +18,7 @@ final class GLManagerBridge {
 
     private(set) var tripModes = TripModeStore.modes
     private(set) var tripModesRevision = 0
+    private(set) var recentTrips: [TripSummary] = []
     private(set) var healthRequestInFlight = false
     private(set) var healthAuthorizationError: String?
     private(set) var latestSendError: String?
@@ -204,6 +205,8 @@ final class GLManagerBridge {
         tick += 1
         let catalog = TripModeStore.modes
         if tripModes != catalog { tripModes = catalog; tripModesRevision += 1 }
+        let trips = TripLog.trips
+        if recentTrips != trips { recentTrips = trips }
         latestSendError = gl.lastSendErrorMessage
         trackingEnabled = gl.trackingEnabled
         engineStatus = ["receiving": "Receiving", "stationary": "Stationary", "authorization-limited": "Location access limited",

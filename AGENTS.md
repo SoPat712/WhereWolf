@@ -230,6 +230,10 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   The trip database stores each fix's speed and altitude with their accuracies; `TripStatsAccumulator`
   keeps the top speed with speed accuracy within 5 m/s and counts climbs of at least 5 m with vertical
   accuracy within 10 m, replaying the stored fixes after a restore or a late batch.
+  While idle, Trip lists the five newest of up to 20 finished trips from `TripLog`: mode, distance, start
+  and duration, without coordinates, on this device only and outside Backup & Sync. GLManager records each
+  after its summary commits. A row opens its start on the Tracker ruler, after history loads if needed,
+  and is disabled once the trip has left local history.
   `TripTabPolicy` selects Trip when the scene becomes active during a trip it hasn't shown yet,
   once per trip start, never while active or with setup presented.
   Tracker starts with a glass history ruler and one compact control row. Live

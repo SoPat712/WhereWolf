@@ -24,6 +24,7 @@ struct WhereWolfRootView: View {
     @State private var trip = TripMapState()
     @State private var tripRevision: Int?
     @State private var tripTab = TripTabPolicy()
+    @State private var pendingTripStart: Date?
     @State private var history = HistoryPlaybackModel()
     @State private var bridge = GLManagerBridge.shared
     @State private var onboarding = OnboardingModel.live()
@@ -108,6 +109,11 @@ struct WhereWolfRootView: View {
             if scenePhase == .active, selection == 0, tick % 60 == 0 { history.expireOldPoints() }
         }
         .onChange(of: selection) { _, _ in updateConsumers() }
+        .onChange(of: history.landmarks.timestamps.count) { _, _ in
+            guard let start = pendingTripStart, !history.landmarks.timestamps.isEmpty else { return }
+            pendingTripStart = nil
+            history.goTo(start)
+        }
         .onReceive(NotificationCenter.default.publisher(for: .recentLocationHistoryChanged)) { _ in
             history.reload()
         }
@@ -177,7 +183,7 @@ struct WhereWolfRootView: View {
         if mapTab == 0 {
             TrackerView(history: history, onLive: returnToLive)
         } else {
-            TripView(camera: $camera, trip: $trip)
+            TripView(camera: $camera, trip: $trip, historyStart: history.landmarks.timestamps.first, onShowTrip: showTrip)
         }
     }
 
@@ -395,6 +401,12 @@ struct WhereWolfRootView: View {
               let trail = NativeMapSurface.replayOverviewDistance(on: map) else { return !replayOverview }
         return ReplayCameraFocus.nearest(current: map.camera.centerCoordinateDistance,
                                          point: replayCameraDistance ?? 2_000, trail: trail) == .trail
+    }
+
+    // A recent trip opens on the Tracker ruler, once history has loaded there.
+    private func showTrip(_ start: Date) {
+        selectTab(0)
+        if history.landmarks.timestamps.isEmpty { pendingTripStart = start } else { history.goTo(start) }
     }
 
     private func showNewTrip() {

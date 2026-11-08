@@ -218,3 +218,48 @@ final class TripStatsFormatTests: XCTestCase {
         XCTAssertFalse(TripFormat.usesPace("car"))
     }
 }
+
+final class TripLogTests: XCTestCase {
+    private var saved: UserDefaults!
+
+    override func setUp() {
+        super.setUp()
+        saved = TripLog.defaults
+        TripLog.defaults = UserDefaults(suiteName: "WhereWolf.TripLogTests.\(UUID().uuidString)")!
+    }
+
+    override func tearDown() {
+        TripLog.defaults = saved
+        super.tearDown()
+    }
+
+    func testRecordsNewestFirstWithinTheLimit() {
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        for index in 0..<(TripLog.limit + 3) {
+            let begin = start.addingTimeInterval(Double(index) * 3_600)
+            TripLog.record(mode: "car", start: begin, end: begin.addingTimeInterval(600), distance: 5_000,
+                           topSpeed: index == 0 ? -1 : 20, climb: -1)
+        }
+        let trips = TripLog.trips
+        XCTAssertEqual(trips.count, TripLog.limit)
+        XCTAssertEqual(trips.first?.start, start.addingTimeInterval(Double(TripLog.limit + 2) * 3_600))
+        XCTAssertTrue(zip(trips, trips.dropFirst()).allSatisfy { $0.0.start > $0.1.start })
+        XCTAssertEqual(trips.first?.topSpeed, 20)
+        XCTAssertNil(trips.first?.climb)
+    }
+
+    func testReplacesARecordedTripAndIgnoresEmptyOnes() {
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        TripLog.record(mode: "walk", start: start, end: start.addingTimeInterval(60), distance: 80, topSpeed: 1.5, climb: 2)
+        TripLog.record(mode: "run", start: start, end: start.addingTimeInterval(90), distance: 200, topSpeed: 3, climb: 4)
+        TripLog.record(mode: "car", start: start.addingTimeInterval(500), end: start.addingTimeInterval(500), distance: 0,
+                       topSpeed: -1, climb: -1)
+        XCTAssertEqual(TripLog.trips, [TripSummary(mode: "run", start: start, end: start.addingTimeInterval(90),
+                                                   distance: 200, topSpeed: 3, climb: 4)])
+    }
+
+    func testDaysReadTodayAndYesterday() {
+        XCTAssertTrue(TripFormat.day(Date()).hasPrefix("Today, "))
+        XCTAssertTrue(TripFormat.day(Date().addingTimeInterval(-86_400)).hasPrefix("Yesterday, "))
+    }
+}
