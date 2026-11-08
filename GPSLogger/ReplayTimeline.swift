@@ -182,6 +182,7 @@ final class ReplayTimeline {
     private static let stayWidth = 60.0
     private static let stayMinimum: TimeInterval = 5 * 60
     private static let staySilence: TimeInterval = 60
+    private static let staySilentStep = 100.0
     private static let stillStep = 25.0
     private static let jumpDistance = 100.0
     static let activityWindow: TimeInterval = 30
@@ -330,7 +331,15 @@ final class ReplayTimeline {
                 let delta = offset(of: points[index], from: origin)
                 let lowX = min(minX, delta.x), highX = max(maxX, delta.x)
                 let lowY = min(minY, delta.y), highY = max(maxY, delta.y)
-                guard hypot(highX - lowX, highY - lowY) <= stayWidth else { break }
+                guard hypot(highX - lowX, highY - lowY) <= stayWidth else {
+                    // A phone that logs only when it moves goes quiet while parked and wakes wherever its
+                    // owner got moving again, such as the car across the lot. That fix ends the stay.
+                    // Closer than the box width, a later start still carries the stay through the silence.
+                    let step = distance(points[index - 1], points[index])
+                    if points[index].timestamp.timeIntervalSince(points[index - 1].timestamp) >= stayMinimum,
+                       step > stayWidth, step <= staySilentStep { end = index }
+                    break
+                }
                 (minX, maxX, minY, maxY) = (lowX, highX, lowY, highY)
                 end = index
             }

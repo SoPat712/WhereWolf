@@ -387,7 +387,9 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   camera. Do not widen this until it can hide real movement. The box must not drift, and
   any fix outside it ends the stay, since nothing distinguishes a stray fix from a trip
   that turned around. Trim a stay to end before movement begins, stopping at a silence of
-  over 60 seconds. Outside stays the marker visits every fix; segments of at most 25 m with
+  over 60 seconds. A silence of at least 5 minutes followed by a fix 60–100 m away ends the stay at that fix,
+  because a phone that logs only when it moves goes quiet while parked and wakes wherever its owner
+  got moving again, such as the car across the lot. Outside stays the marker visits every fix; segments of at most 25 m with
   a net speed under 0.5 m/s over ±30 seconds pace as stationary. Scrubbing still shows
   exact points. Retain every point, and retain fractional progress across speed changes
   and pause/resume. Keep the chosen zoom. Original timestamps and recorded speed values remain unchanged.

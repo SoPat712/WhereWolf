@@ -1021,6 +1021,58 @@ final class HistoryPlaybackTests: XCTestCase {
         }
     }
 
+    func testSilenceEndingAcrossTheLotKeepsTheStayUntilTheDeparture() throws {
+        let start = Date().addingTimeInterval(-20_000)
+        func visit(silence: TimeInterval, departure: Double) -> (points: [RecordedLocation], departure: Int, inside: Range<Int>) {
+            var points: [RecordedLocation] = []
+            func fix(north: Double, east: Double = 0, after seconds: TimeInterval) {
+                points.append(RecordedLocation(id: Int64(points.count + 1), timestamp: start.addingTimeInterval(seconds),
+                                               latitude: 45 + north / 111_195,
+                                               longitude: -122 + east / (111_195 * cos(45 * Double.pi / 180))))
+            }
+            // Drive in, sit in the car for a few minutes, then walk 65 m into a building.
+            for step in 0..<30 { fix(north: -65 - Double(29 - step) * 15, after: Double(step)) }
+            for step in 0..<22 { fix(north: -65, east: step.isMultiple(of: 2) ? 2 : -2, after: 30 + Double(step) * 10) }
+            for step in 0..<5 { fix(north: -50 + Double(step) * 10, after: 250 + Double(step) * 10) }
+            let first = points.count
+            for step in 0..<8 { fix(north: sin(Double(step)) * 3, east: cos(Double(step) * 1.7) * 4, after: 300 + Double(step) * 30) }
+            let inside = first..<points.count
+            // The phone logs nothing inside, then wakes back at the car when it drives away.
+            fix(north: departure, after: 510 + silence)
+            let left = points.count - 1
+            for step in 1...30 { fix(north: departure - Double(step) * 12, after: 510 + silence + Double(step)) }
+            return (points, left, inside)
+        }
+
+        let owner = visit(silence: 3_870, departure: -64)
+        let timeline = ReplayTimeline(points: owner.points)
+        XCTAssertEqual(timeline.stays.count, 1)
+        let stay = try XCTUnwrap(timeline.stays.first)
+        XCTAssertEqual(stay.end, owner.departure)
+        XCTAssertTrue(owner.inside.contains(stay.start), "the stay starts at \(stay.start), outside the building")
+        XCTAssertGreaterThan(stay.span, 3_600)
+        for index in owner.departure..<(owner.points.count - 1) {
+            XCTAssertNil(timeline.stay(during: index), "driving fix \(index) is inside a stay")
+        }
+
+        XCTAssertTrue(ReplayTimeline(points: visit(silence: 3_870, departure: -150).points).stays.isEmpty)
+        XCTAssertTrue(ReplayTimeline(points: visit(silence: 240, departure: -64).points).stays.isEmpty)
+
+        // Arriving and going silent at once still leaves a stay of the last fix and the departure.
+        var arrival = (0..<10).map { step in
+            RecordedLocation(id: Int64(step + 1), timestamp: start.addingTimeInterval(Double(step)),
+                             latitude: 45 - Double(9 - step) * 15 / 111_195, longitude: -122)
+        }
+        arrival += (0..<10).map { step in
+            RecordedLocation(id: Int64(step + 11), timestamp: start.addingTimeInterval(609 + Double(step)),
+                             latitude: 45 + (80 + Double(step) * 15) / 111_195, longitude: -122)
+        }
+        let quiet = ReplayTimeline(points: arrival).stays
+        XCTAssertEqual(quiet.map(\.start), [9])
+        XCTAssertEqual(quiet.map(\.end), [10])
+        XCTAssertEqual(quiet.first?.span ?? 0, 600, accuracy: 0.001)
+    }
+
     func testLocalTripsAroundHomeAreNeverSwallowedByAStay() throws {
         let start = Date().addingTimeInterval(-20_000)
         func at(_ meters: (north: Double, east: Double), after seconds: TimeInterval, id: Int) -> RecordedLocation {
