@@ -883,6 +883,12 @@ final class GLManagerBridge {
         return max(0, GLManager.shared().currentTripDuration())
     }
 
+    var tripStart: Date? {
+        _ = tick
+        guard let gl = GLManager.shared(), gl.tripInProgress() else { return nil }
+        return gl.currentTripStart()
+    }
+
     var tripTopSpeed: Double {
         _ = tick
         return GLManager.shared().currentTripTopSpeed()

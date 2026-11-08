@@ -145,12 +145,15 @@ struct TripView: View {
             }
             .foregroundStyle(.secondary)
             .accessibilityElement(children: .combine)
-            Text(TripFormat.duration(bridge.tripDuration))
-                .font(.system(.largeTitle, design: .rounded).weight(.bold).monospacedDigit())
-                .contentTransition(.numericText())
-                .animation(reduceMotion ? nil : .default, value: Int(bridge.tripDuration))
-                .accessibilityLabel("Elapsed time")
-                .accessibilityValue(TripFormat.duration(bridge.tripDuration))
+            // The app's one-second clock drifts against the trip's start, so it would sometimes show a
+            // second twice and then skip one. This redraws on each whole second since the start.
+            if let start = bridge.tripStart {
+                TimelineView(.periodic(from: start, by: 1)) { context in
+                    elapsed(context.date.timeIntervalSince(start))
+                }
+            } else {
+                elapsed(bridge.tripDuration)
+            }
             let metric = Locale.current.measurementSystem == .metric
             let distance = tripStat("Distance", value: TripFormat.distance(bridge.tripDistance, metric: metric))
             let average = TripFormat.usesPace(bridge.tripMode)
@@ -170,6 +173,17 @@ struct TripView: View {
         }
         .frame(maxWidth: .infinity)
         .drawerCard()
+    }
+
+    private func elapsed(_ seconds: Double) -> some View {
+        // Timeline entries land on exact seconds, where rounding error could show the previous one.
+        let text = TripFormat.duration(seconds + 0.001)
+        return Text(text)
+            .font(.system(.largeTitle, design: .rounded).weight(.bold).monospacedDigit())
+            .contentTransition(.numericText())
+            .animation(reduceMotion ? nil : .default, value: text)
+            .accessibilityLabel("Elapsed time")
+            .accessibilityValue(text)
     }
 
     private func tripStat(_ title: String, value: String) -> some View {

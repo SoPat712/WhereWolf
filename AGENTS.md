@@ -223,7 +223,8 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   scrolling only for content exceeding the screen's available height.
   Trip has no title: while idle a scrolling row of mode buttons, ending in Edit (Trip Modes), sits above a
   green Start Trip button beside the Trip Settings button. Recording replaces the row with a card whose
-  breathing red dot names the mode above elapsed time and a grid of distance, average speed (pace on foot),
+  breathing red dot names the mode above elapsed time, redrawn on each whole second since the start,
+  and a grid of distance, average speed (pace on foot),
   top speed and climb, and the button turns
   into a red End Trip with a symbol replace and start/stop haptics; Reduce Motion crossfades and keeps
   the dot still. Scrub a trip with the Tracker ruler; Trip has no point timeline.
