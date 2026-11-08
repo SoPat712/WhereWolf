@@ -128,6 +128,7 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
     private var contentInteracting = false
     private var position = Position.expanded
     private var controlsRevision = 0
+    private var outgoingControls: UIView?
     private var controlsContentHeight: CGFloat = 0
     private var measuredContentHeight: CGFloat = 0
     private var measuredTabsHeight: CGFloat = 60
@@ -185,6 +186,7 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
         super.viewDidLoad()
         configurePanel()
         configureHost(controlsHost, in: scrollView)
+        controlsHost.view.accessibilityIdentifier = "wherewolf.panel.controls"
         configureTabs()
 #if targetEnvironment(simulator)
         let audit = PanelGeometryAuditView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
@@ -215,8 +217,9 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
         scheduleMeasurement()
     }
 
-    func update(controls: AnyView, tabs: AnyView) {
+    func update(controls: AnyView, tabs: AnyView, crossfade: Bool = false) {
         loadViewIfNeeded()
+        let outgoing = controlsSnapshot(crossfade: crossfade)
         if barGeometry == nil { _ = freezePresentationGeometry() }
         isDragging = false
         contentInteracting = false
@@ -226,6 +229,7 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
         controlsHost.view.setNeedsLayout()
         scheduleMeasurement()
         controlsHost.view.layoutIfNeeded()
+        if let outgoing { crossfadeControls(from: outgoing) }
     }
 
     func updateTabs(_ tabs: AnyView) { tabsHost.rootView = tabs }
@@ -287,6 +291,44 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
         } else {
             view.setNeedsLayout()
         }
+    }
+
+    // MARK: - Tab crossfade
+
+    // The previous tab's controls fade out over the next tab's while the drawer resizes, so the
+    // swap is not a cut. The scroll view clips the snapshot to the drawer as it shrinks.
+    private func controlsSnapshot(crossfade: Bool) -> UIView? {
+        let shown = CGFloat(controlsHost.view.layer.presentation()?.opacity ?? 1)
+        endControlsCrossfade()
+        guard crossfade, barGeometry == nil, !view.isHidden, view.window != nil, scrollView.alpha > 0.01,
+              let snapshot = controlsHost.view.snapshotView(afterScreenUpdates: false) else { return nil }
+        snapshot.frame = controlsHost.view.frame.offsetBy(dx: 0, dy: -scrollView.contentOffset.y)
+        snapshot.alpha = shown
+        snapshot.isUserInteractionEnabled = false
+        snapshot.accessibilityIdentifier = "wherewolf.panel.outgoing-controls"
+        return snapshot
+    }
+
+    private func crossfadeControls(from outgoing: UIView) {
+        scrollView.addSubview(outgoing)
+        outgoingControls = outgoing
+        controlsHost.view.alpha = 0
+        UIView.animate(withDuration: 0.18, delay: 0, options: [.curveEaseOut]) {
+            outgoing.alpha = 0
+        } completion: { [weak self, weak outgoing] _ in
+            outgoing?.removeFromSuperview()
+            if let self, outgoingControls === outgoing { outgoingControls = nil }
+        }
+        UIView.animate(withDuration: 0.3, delay: 0.05, options: [.curveEaseInOut, .allowUserInteraction]) {
+            self.controlsHost.view.alpha = 1
+        }
+    }
+
+    private func endControlsCrossfade() {
+        outgoingControls?.removeFromSuperview()
+        outgoingControls = nil
+        controlsHost.view.layer.removeAnimation(forKey: "opacity")
+        controlsHost.view.alpha = 1
     }
 
     // MARK: - Layout

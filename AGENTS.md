@@ -216,7 +216,9 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   spring requests the screen's maximum refresh rate, with the iPhone
   ProMotion plist opt-in enabled. Freeze drawer sizing while the history ruler
   drags or coasts on the active Tracker tab; update hosted controls only when
-  their tab changes. Outside a bar tween, tab replacement releases the previous
+  their tab changes. Switching between Tracker and Trip fades a snapshot of the previous
+  controls out over the new ones inside the clipping content view while the drawer resizes; a closed
+  drawer and Settings' bar handoff swap without it. Outside a bar tween, tab replacement releases the previous
   interaction and spring. New content measurements retarget an unfinished drawer
   settle immediately; compare its target before restarting it. Ignore measurements from replaced
   hosting roots. Fitting content has no vertical scrolling or bounce; enable

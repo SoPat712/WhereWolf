@@ -141,6 +141,35 @@ final class DrawerLayoutTests: XCTestCase {
         }
     }
 
+    func testTabSwitchFadesTheOutgoingControlsOverTheNewOnes() async throws {
+        try await withDrawer { panel, _ in
+            let scroll = try XCTUnwrap(self.contentScroll(in: panel.view))
+            let host = try XCTUnwrap(self.findView(in: scroll, identifier: "wherewolf.panel.controls"))
+            panel.update(controls: AnyView(Text("Trip").frame(height: 80)),
+                         tabs: AnyView(Text("Tabs").frame(height: 60)), crossfade: true)
+            let outgoing = try XCTUnwrap(self.findView(in: scroll, identifier: "wherewolf.panel.outgoing-controls"))
+            XCTAssertFalse(outgoing.isUserInteractionEnabled)
+            XCTAssertGreaterThan(try XCTUnwrap(scroll.subviews.firstIndex(of: outgoing)),
+                                 try XCTUnwrap(scroll.subviews.firstIndex(of: host)),
+                                 "The outgoing controls fade over the incoming ones.")
+            XCTAssertEqual(host.alpha, 1, "The incoming controls animate to full opacity.")
+            try await waitForFrames("Both halves of the crossfade finished") {
+                outgoing.superview == nil && host.layer.animation(forKey: "opacity") == nil
+            }
+            try await waitForLayout(panel)
+
+            let grabber = try XCTUnwrap(self.findView(in: panel.view, label: "Controls panel"))
+            grabber.accessibilityDecrement()
+            try await waitForLayout(panel)
+            panel.update(controls: AnyView(Text("Tracker").frame(height: 80)),
+                         tabs: AnyView(Text("Tabs").frame(height: 60)), crossfade: true)
+            XCTAssertNil(self.findView(in: scroll, identifier: "wherewolf.panel.outgoing-controls"),
+                         "A closed drawer shows no controls to fade.")
+            XCTAssertEqual(host.alpha, 1)
+            XCTAssertNil(host.layer.animation(forKey: "opacity"))
+        }
+    }
+
     func testSettingsCardsStayDistinctFromTheExpandedSheetInBothAppearances() {
         let backdrop = ExpandingSheetBackgroundView()
         for style in [UIUserInterfaceStyle.light, .dark] {
@@ -274,6 +303,11 @@ final class DrawerLayoutTests: XCTestCase {
     private func findView(in view: UIView, label: String) -> UIView? {
         if view.accessibilityLabel == label { return view }
         return view.subviews.lazy.compactMap { self.findView(in: $0, label: label) }.first
+    }
+
+    private func findView(in view: UIView, identifier: String) -> UIView? {
+        if view.accessibilityIdentifier == identifier { return view }
+        return view.subviews.lazy.compactMap { self.findView(in: $0, identifier: identifier) }.first
     }
 
     private func contentScroll(in view: UIView) -> UIScrollView? {
@@ -454,6 +488,17 @@ final class WhereWolfTabRoutingTests: XCTestCase {
             }
             XCTAssertEqual(shell.tabBar.items?.map(\.title), ["Tracker", "Trip", "Settings"])
             XCTAssertEqual(shell.tabBar.items?.map(\.tag), [0, 1, 2])
+        }
+    }
+
+    func testOnlySwitchesBetweenMapTabsFadeTheDrawerControls() async throws {
+        try await withShell { shell, panel, map in
+            self.update(shell, selection: 1, map: map)
+            XCTAssertNotNil(self.outgoingControls(in: panel.view), "Tracker to Trip fades the controls.")
+            self.update(shell, selection: 2, map: map)
+            self.update(shell, selection: 0, map: map)
+            XCTAssertNil(self.outgoingControls(in: panel.view),
+                         "Settings returns through the bar handoff's own fade, without a lingering snapshot.")
         }
     }
 
@@ -776,6 +821,11 @@ final class WhereWolfTabRoutingTests: XCTestCase {
     private func findGrabber(in view: UIView) -> UIView? {
         if view.accessibilityLabel == "Controls panel" { return view }
         return view.subviews.lazy.compactMap { self.findGrabber(in: $0) }.first
+    }
+
+    private func outgoingControls(in view: UIView) -> UIView? {
+        if view.accessibilityIdentifier == "wherewolf.panel.outgoing-controls" { return view }
+        return view.subviews.lazy.compactMap { self.outgoingControls(in: $0) }.first
     }
 }
 

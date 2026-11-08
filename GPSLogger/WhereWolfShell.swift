@@ -205,7 +205,9 @@ final class WhereWolfShellController: UITabBarController, UITabBarControllerDele
             settingsHost.rootView = settings
             drawerTabs = DrawerTabStrip(selection: selection, onSelect: onSelect)
             if selection < 2 {
-                panel.update(controls: controls, tabs: AnyView(drawerTabs.tint(.blue)))
+                // Settings hands its bar to the drawer with its own fade.
+                let crossfade = selection != previousRenderedSelection && (0..<2).contains(previousRenderedSelection)
+                panel.update(controls: controls, tabs: AnyView(drawerTabs.tint(.blue)), crossfade: crossfade)
             } else {
                 panel.updateTabs(AnyView(drawerTabs.tint(.blue)))
             }
