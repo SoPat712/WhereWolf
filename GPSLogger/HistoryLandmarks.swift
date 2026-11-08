@@ -28,6 +28,14 @@ struct HistoryStop: Identifiable, Equatable {
     }
 }
 
+// A silence of at least Coverage's gap length between two stored fixes. The ruler spaces fixes evenly,
+// so it marks the silence instead of drawing its length.
+struct HistoryGap: Equatable {
+    let index: Int
+    let duration: TimeInterval
+    var label: String { "No data · \(ReplayActivity.format(duration))" }
+}
+
 struct HistoryStopBoundary: Equatable {
     let index: Int
     let stop: HistoryStop
@@ -96,6 +104,7 @@ final class HistoryLandmarks {
     let timestamps: [Date]
     let stops: [HistoryStop]
     let boundaries: [HistoryStopBoundary]
+    let gaps: [HistoryGap]
     let days: [HistoryTimeMark]
     let timeMarks: [[HistoryTimeMark]]
     let journey: [HistoryJourneyDay]
@@ -148,6 +157,10 @@ final class HistoryLandmarks {
             [HistoryStopBoundary(index: stop.id, stop: stop, isArrival: true),
              HistoryStopBoundary(index: stop.end, stop: stop, isArrival: false)]
         }.sorted { $0.index == $1.index ? !$0.isArrival && $1.isArrival : $0.index < $1.index }
+        gaps = timestamps.indices.dropFirst().compactMap { index in
+            let duration = timestamps[index].timeIntervalSince(timestamps[index - 1])
+            return duration >= CoverageReport.gapThreshold ? HistoryGap(index: index, duration: duration) : nil
+        }
         let marks = Self.marks(timestamps: timestamps, calendar: calendar)
         days = marks.days
         timeMarks = marks.levels
@@ -263,6 +276,12 @@ final class HistoryLandmarks {
         return min(first, now)...now
     }
 
+    func visibleGaps(in range: ClosedRange<Double>) -> ArraySlice<HistoryGap> {
+        let first = Self.lowerBound(gaps.count) { Double(gaps[$0].index) >= range.lowerBound }
+        let end = Self.lowerBound(gaps.count) { Double(gaps[$0].index - 1) > range.upperBound }
+        return gaps[first..<max(first, end)]
+    }
+
     func visibleStops(in range: ClosedRange<Double>) -> ArraySlice<HistoryStop> {
         let first = Self.lowerBound(stops.count) { Double(stops[$0].end) >= range.lowerBound }
         let end = Self.lowerBound(stops.count) { Double(stops[$0].id) > range.upperBound }
@@ -350,7 +369,7 @@ final class HistoryLandmarks {
 }
 
 struct HistoryRulerLabelLayout {
-    enum Priority: Int { case day, stop, time }
+    enum Priority: Int { case day, stop, gap, time }
     struct Candidate {
         let id: Int
         let priority: Priority

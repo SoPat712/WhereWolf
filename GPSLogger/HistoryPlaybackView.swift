@@ -1533,6 +1533,14 @@ private final class HistoryRulerTicks: UIView {
             UIColor(WifiPlace.tint(for: stop.color)).withAlphaComponent(snappedStop == stop.id ? 0.85 : 0.16).setFill()
             UIBezierPath(roundedRect: frame, cornerRadius: 7).fill()
         }
+        let visibleGaps: ArraySlice<HistoryGap> = pointCount > 0 ? (landmarks?.visibleGaps(in: range) ?? []) : []
+        for gap in visibleGaps where gap.index < pointCount {
+            let left = x(at: gap.index - 1), right = x(at: gap.index)
+            let width = max(4, right - left)
+            UIColor.systemRed.withAlphaComponent(0.22).setFill()
+            UIBezierPath(roundedRect: CGRect(x: (left + right - width) / 2, y: 18, width: width,
+                                             height: bounds.height - 20), cornerRadius: 4).fill()
+        }
         let firstBar = min(Double(tickCount), max(0, position - halfWindow))
         let barRange = firstBar...min(Double(tickCount), max(firstBar, position + halfWindow))
         for bar in detents.bracket(at: scale.pointsPerTick).bars(in: barRange) {
@@ -1551,13 +1559,14 @@ private final class HistoryRulerTicks: UIView {
             context.addLine(to: CGPoint(x: x, y: 22 + scale.bottom))
             context.strokePath()
         }
-        drawLabels(in: range, stops: visibleStops, context: context)
+        drawLabels(in: range, stops: visibleStops, gaps: visibleGaps, context: context)
         context.setShadow(offset: .zero, blur: 3, color: UIColor.systemBlue.withAlphaComponent(0.35).cgColor)
         UIColor.systemBlue.setFill()
         UIBezierPath(roundedRect: CGRect(x: center - 2, y: 17, width: 4, height: 34), cornerRadius: 2).fill()
     }
 
-    private func drawLabels(in range: ClosedRange<Double>, stops: ArraySlice<HistoryStop>, context: CGContext) {
+    private func drawLabels(in range: ClosedRange<Double>, stops: ArraySlice<HistoryStop>, gaps: ArraySlice<HistoryGap>,
+                            context: CGContext) {
         guard let landmarks, pointCount > 0 else { return }
         struct Label {
             let text: String
@@ -1568,16 +1577,15 @@ private final class HistoryRulerTicks: UIView {
         var labels: [Label] = []
         var candidates: [HistoryRulerLabelLayout.Candidate] = []
         func add(_ text: String, at x: CGFloat, priority: HistoryRulerLabelLayout.Priority,
-                 symbol: UIImage? = nil, color: UIColor = .secondaryLabel,
-                 fullText: Bool = true, hairline: CGFloat? = nil) {
-            if fullText { measure(text) }
-            let symbolWidth: CGFloat = symbol == nil ? 0 : 14
-            let width = fullText ? (widths[text] ?? 0) + symbolWidth : symbolWidth
+                 symbol: UIImage? = nil, symbolAt symbolX: CGFloat? = nil, color: UIColor = .secondaryLabel,
+                 hairline: CGFloat? = nil) {
+            measure(text)
+            let width = (widths[text] ?? 0) + (symbol == nil ? 0 : 14)
             let frame = CGRect(x: x, y: 0, width: width, height: 16)
             guard frame.maxX >= 0, frame.minX <= bounds.width else { return }
             candidates.append(.init(id: labels.count, priority: priority, frame: frame,
-                                    symbolFrame: symbol.map { _ in CGRect(x: x, y: 0, width: 14, height: 16) }))
-            labels.append(Label(text: fullText ? text : "", symbol: symbol, color: color, hairline: hairline))
+                                    symbolFrame: symbol.map { _ in CGRect(x: symbolX ?? x, y: 0, width: 14, height: 16) }))
+            labels.append(Label(text: text, symbol: symbol, color: color, hairline: hairline))
         }
         for day in HistoryLandmarks.visibleMarks(landmarks.days, in: range) {
             let x = x(at: day.index)
@@ -1588,16 +1596,23 @@ private final class HistoryRulerTicks: UIView {
             context.strokePath()
             add(landmarks.text(for: day), at: x + 3, priority: .day)
         }
+        // Fixes are evenly spaced, so a long stop with few fixes can be narrower than its label.
+        // The label still centers on it; the layout falls back to the symbol where labels collide.
         for stop in stops {
             let left = max(0, x(at: stop.id)), right = min(bounds.width, x(at: stop.end))
             guard right >= left else { continue }
             measure(stop.label)
-            let fullWidth = (widths[stop.label] ?? 0) + 14
-            let fits = right - left >= fullWidth + 6
-            let width = fits ? fullWidth : 14
+            let width = (widths[stop.label] ?? 0) + 14
             let start = max(0, min(bounds.width - width, (left + right - width) / 2))
             add(stop.label, at: start, priority: .stop, symbol: symbol(for: stop),
-                color: UIColor(WifiPlace.tint(for: stop.color)), fullText: fits)
+                symbolAt: max(0, min(bounds.width - 14, (left + right) / 2 - 7)),
+                color: UIColor(WifiPlace.tint(for: stop.color)))
+        }
+        for gap in gaps where gap.index < pointCount {
+            let center = (x(at: gap.index - 1) + x(at: gap.index)) / 2
+            measure(gap.label)
+            let width = widths[gap.label] ?? 0
+            add(gap.label, at: max(0, min(bounds.width - width, center - width / 2)), priority: .gap, color: .systemRed)
         }
         let proposed = landmarks.timeLevel(in: range, pointsPerBar: scale.pointsPerTick, spacing: Double(scale.spacing))
         // Require a little extra room before restoring a finer label interval.

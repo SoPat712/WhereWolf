@@ -244,11 +244,14 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   Minute marks use time-zone arithmetic and visible labels format through a bounded cache.
   Stop navigation and Go To share the existing `ReplayTimeline` stays.
   UIKit draws only visible landmarks alongside the bars, including during scale easing.
-  Local-midnight dividers and weekday labels outrank stop labels, which outrank time
+  Local-midnight dividers and weekday labels outrank stop labels, which outrank no-data labels, then time
   labels; time marks coarsen through 1/5/15 minutes, 1 hour and 6 hours to keep at least
   60 points between labels. Stop capsules use the nearest Wi-Fi Place within
   `GLWifiPlaceMatchDistance` of the stay center, otherwise gray `mappin` and a duration.
-  Use a symbol alone when the stop text does not fit. Keep every stored point.
+  A stop's label centers on it even when its evenly spaced fixes are narrower than the text,
+  falling back to the symbol alone where labels collide. A silence of at least Coverage's 10-minute gap
+  between stored fixes gets a red band and a red "No data" label with its length, since even spacing
+  cannot show it. Keep every stored point.
   The buttons beside Play jump to the previous/next arrival or departure through the
   existing selection path; disable at the ends and name the target for VoiceOver.
   The time beneath the ruler opens the native Go To sheet while browsing; Live keeps

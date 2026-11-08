@@ -128,6 +128,22 @@ final class HistoryLandmarkTests: XCTestCase {
         XCTAssertEqual(landmarks.stops[0].departure, points[10].timestamp)
     }
 
+    func testSilencesOfTenMinutesOrMoreAreMarkedAsMissingData() {
+        var points = route(count: 6, every: 60, metersPerPoint: 0)
+        let start = points[0].timestamp
+        points.append(fix(6, at: start.addingTimeInterval(300 + 540), north: 0))
+        points.append(fix(7, at: start.addingTimeInterval(840 + 3_870), north: 64))
+        let landmarks = makeLandmarks(points)
+
+        XCTAssertEqual(landmarks.gaps, [HistoryGap(index: 7, duration: 3_870)])
+        XCTAssertEqual(landmarks.gaps.first?.label, "No data · 1h 5m")
+        XCTAssertEqual(Array(landmarks.visibleGaps(in: 0...6)), landmarks.gaps)
+        XCTAssertEqual(Array(landmarks.visibleGaps(in: 7...7)), landmarks.gaps)
+        XCTAssertTrue(landmarks.visibleGaps(in: 0...5).isEmpty)
+        XCTAssertLessThan(HistoryRulerLabelLayout.Priority.stop.rawValue, HistoryRulerLabelLayout.Priority.gap.rawValue)
+        XCTAssertLessThan(HistoryRulerLabelLayout.Priority.gap.rawValue, HistoryRulerLabelLayout.Priority.time.rawValue)
+    }
+
     func testAnOutsidePlaceLeavesTheStopUnnamedAndDoesNotCreateStopsOnAMovingRoute() {
         let points = route(count: 11, every: 60, metersPerPoint: 0)
         let unnamed = makeLandmarks(points, places: [place("Outside", north: 400)])
