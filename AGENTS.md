@@ -311,6 +311,9 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   without ending a drag or hold; return to Live when the finger lifts there, or as soon as
   momentum aimed at the Live edge arrives, stopping there without its bounce. Momentum and
   bounces settle on whole pixels, so an end within a pixel of the Live edge counts as Live.
+  The Live button flies the ruler back over 0.45 seconds, easing out through its bars at the scale it
+  shows, then eases the scale to every point. A drag, pinch or hold during the flight keeps the ruler where
+  it is and gives the model back the scale it shows. Reduce Motion jumps.
   Only held scrubbing coarser than one point per bar snaps within six screen points
   of a stop boundary. Hold the exact index until the finger moves over ten points,
   then rebase at the current finger without a jump. Give each snap a selection haptic;

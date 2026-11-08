@@ -1791,6 +1791,13 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
     private var scaleLink: CADisplayLink?
     private var scaleTo = HistoryRulerCoarseDrag.Scale()
     private(set) var scaleEase: HistoryRulerCoarseDrag.ScaleEase?
+    struct LiveScroll {
+        let from: Double
+        let start: Double
+        static let duration = 0.45
+    }
+    private(set) var liveScroll: LiveScroll?
+    private var liveLink: CADisplayLink?
     private var pendingScaleCommit: Int?
     private var reportsContinuousScale = false
     private var lastFeedbackPosition = 0.0
@@ -1831,7 +1838,7 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
     }
     private var motionPosition: Double { Double(maximumOffset - contentOffset(at: position)) }
     private var held: Bool { coarseDragging || pinching }
-    private var moving: Bool { dragging || decelerating || held }
+    private var moving: Bool { dragging || decelerating || held || liveScroll != nil }
     private var coarseBubbleVisible: Bool { coarseBubble.superview != nil }
 
     private var currentValue: String {
@@ -1919,6 +1926,10 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
         let externalStep = self.configuration.map { $0.step != configuration.step } ?? false
         // Only a pinch or its settle depends on the previous ladder; scrolling and momentum continue.
         if interrupted || (scaleChanged && (pinching || pendingScaleCommit != nil)) { cancelMotion() }
+        // Live flies the ruler back at the scale it shows, then eases to the new one.
+        let shownIndex = Double(ticks.tickCount) - position
+        let returnsToLive = configuration.position == 0 && (self.configuration?.position ?? 0) > 0 && !moving
+            && position > 0 && configuration.active && !configuration.reduceMotion && window != nil
         if let completingStep, externalStep, completingStep != configuration.step {
             // An incoming menu choice follows the interrupted gesture's commit.
             configuration.onScale(configuration.step)
@@ -1931,7 +1942,7 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
         if !moving { ticks.tickCount = configuration.tickCount }
         coarseDetents = configuration.detents
         ticks.detents = coarseDetents
-        if !pinching && pendingScaleCommit == nil {
+        if !pinching && pendingScaleCommit == nil && !returnsToLive && liveScroll == nil {
             let step = (interrupted || scaleChanged) && !externalStep ? completingStep ?? configuration.step : configuration.step
             coarseLevel = coarseDetents.index(nearest: step)
             let scale = coarseDetents.scale(at: coarseLevel)
@@ -1946,11 +1957,54 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
         if configuration.active && held { updateCoarseBubble() }
         if !configuration.active { removeCoarseBubble() }
         updateAccessibility()
+        if returnsToLive {
+            updateGeometry(at: Double(ticks.tickCount) - shownIndex)
+            startLiveScroll()
+        }
         updateGeometry()
         if !moving {
             updateGeometry(at: configuration.position)
         }
         redraw()
+    }
+
+    private func startLiveScroll() {
+        liveScroll = LiveScroll(from: position, start: ProcessInfo.processInfo.systemUptime)
+        let target = HistoryRulerLiveFrameTarget(ruler: self)
+        let link = CADisplayLink(target: target, selector: #selector(HistoryRulerLiveFrameTarget.frame(_:)))
+        let maximum = Float(window?.windowScene?.screen.maximumFramesPerSecond ?? 60)
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: min(60, maximum), maximum: maximum, preferred: maximum)
+        link.add(to: .main, forMode: .common)
+        liveLink = link
+    }
+
+    // Eases out through the ruler's bars, so the flight reads evenly across stops and drives.
+    func advanceLiveScroll(at time: Double) {
+        guard let scroll = liveScroll else { return }
+        let progress = min(1, max(0, (time - scroll.start) / LiveScroll.duration))
+        let count = Double(ticks.tickCount), map = ticks.map
+        let live = map.bars(to: count)
+        let remaining = (live - map.bars(to: count - scroll.from)) * pow(1 - progress, 3)
+        updateGeometry(at: progress < 1 ? count - map.index(atBars: live - remaining) : 0)
+        redraw()
+        guard progress == 1 else { return }
+        stopLiveScroll()
+        if let configuration { configure(configuration) }
+    }
+
+    private func stopLiveScroll() {
+        liveLink?.invalidate()
+        liveLink = nil
+        liveScroll = nil
+    }
+
+    // A touch during the flight keeps the ruler where it is, at the scale it shows.
+    private func interruptLiveScroll() {
+        guard liveScroll != nil else { return }
+        stopLiveScroll()
+        if let configuration, configuration.step != ticks.scale.pointsPerTick {
+            configuration.onScale(ticks.scale.pointsPerTick)
+        }
     }
 
     override func layoutSubviews() {
@@ -1992,6 +2046,7 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
         finishScale()
         let wasMoving = moving
         let wasHeld = held
+        stopLiveScroll()
         coarseDragging = false
         pinching = false
         stopSnap.reset()
@@ -2022,6 +2077,7 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
 
     func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
         guard !held else { return }
+        interruptLiveScroll()
         finishScale()
         if let configuration, ticks.tickCount != configuration.tickCount || ticks.landmarks !== configuration.landmarks {
             let index = Double(ticks.tickCount) - position
@@ -2045,7 +2101,7 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
     }
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
-        guard !suppressScroll, moving, !held else { return }
+        guard !suppressScroll, moving, !held, liveScroll == nil else { return }
         let now = ProcessInfo.processInfo.systemUptime
         let points = motionPosition
         let elapsed = now - lastMotionTime
@@ -2223,6 +2279,7 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
 
     func beginPinch() {
         guard !held, configuration?.active == true else { return }
+        interruptLiveScroll()
         // A pinch interrupts the curve at its displayed value rather than its target.
         let value = ticks.scale.pointsPerTick
         scaleLink?.invalidate()
@@ -2286,6 +2343,7 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
 
     private func beginCoarseDrag(at location: CGPoint) {
         guard !held, configuration?.active == true, !dragging else { return }
+        interruptLiveScroll()
         finishScale()
         if decelerating { cancelMotion() }
         coarseGestureCancelled = false
@@ -2496,6 +2554,18 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
         return value
     }
 #endif
+}
+
+@MainActor
+private final class HistoryRulerLiveFrameTarget: NSObject {
+    private weak var ruler: HistoryRulerContainer?
+
+    init(ruler: HistoryRulerContainer) { self.ruler = ruler }
+
+    @objc func frame(_ link: CADisplayLink) {
+        guard let ruler else { link.invalidate(); return }
+        ruler.advanceLiveScroll(at: link.timestamp)
+    }
 }
 
 @MainActor

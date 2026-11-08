@@ -645,7 +645,7 @@ or the selected point when close in. Further presses toggle between the two.
 Each transition takes about one second, including large changes in scale, with
 zoom and pan easing together all the way to the destination.
 Reduce Motion uses immediate camera changes. Tap Live on the ruler to return to your current
-location; after browsing at a coarser scale it resets the scale and zooms back in. The + and − buttons change the camera distance by a factor of two over
+location: the ruler glides back to now, then resets the scale, and the map zooms back in. The + and − buttons change the camera distance by a factor of two over
 about a third of a second. They keep the live location or moving replay marker centered while
 following and preserve rotation and tilt. A detached camera stays free; zooming
 from the whole-trail view returns to following the selected point.

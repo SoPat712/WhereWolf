@@ -2194,6 +2194,56 @@ final class HistoryRulerContinuousScaleTests: XCTestCase {
         }
     }
 
+    @MainActor func testLiveFliesTheRulerBackAtItsScaleThenEasesToEveryPoint() throws {
+        let harness = RulerScaleHarness(position: 5_000)
+        defer { harness.ruler.cancelMotion() }
+        returnToLive(harness)
+        let flight = try XCTUnwrap(harness.ruler.liveScroll)
+        XCTAssertEqual(harness.ruler.anchoredPosition, 5_000, accuracy: 1e-6)
+        XCTAssertEqual(harness.ruler.displayedPointsPerBar, 20, "The flight keeps the scale the ruler shows.")
+        harness.ruler.advanceLiveScroll(at: flight.start + 0.1)
+        let early = harness.ruler.anchoredPosition
+        XCTAssertGreaterThan(early, 0)
+        XCTAssertLessThan(early, 5_000)
+        harness.ruler.advanceLiveScroll(at: flight.start + 0.3)
+        XCTAssertLessThan(harness.ruler.anchoredPosition, early)
+        harness.ruler.advanceLiveScroll(at: flight.start + 1)
+        XCTAssertNil(harness.ruler.liveScroll)
+        XCTAssertEqual(harness.ruler.anchoredPosition, 0)
+        XCTAssertEqual(try XCTUnwrap(harness.ruler.scaleEase).to, 1, "At Live the scale eases to every point.")
+        XCTAssertTrue(harness.commits.isEmpty)
+    }
+
+    @MainActor func testTouchingTheRulerDuringTheFlightKeepsItThereAtItsScale() throws {
+        let harness = RulerScaleHarness(position: 5_000)
+        defer { harness.ruler.cancelMotion() }
+        returnToLive(harness)
+        let flight = try XCTUnwrap(harness.ruler.liveScroll)
+        harness.ruler.advanceLiveScroll(at: flight.start + 0.1)
+        let shown = harness.ruler.anchoredPosition
+        let scrollView = try XCTUnwrap(harness.ruler.subviews.compactMap { $0 as? UIScrollView }.first)
+        harness.ruler.scrollViewWillBeginDragging(scrollView)
+        XCTAssertNil(harness.ruler.liveScroll)
+        XCTAssertEqual(harness.ruler.anchoredPosition, shown, accuracy: 1e-6)
+        XCTAssertEqual(harness.ruler.displayedPointsPerBar, 20)
+        XCTAssertEqual(harness.commits, [20], "The model takes back the scale the ruler still shows.")
+    }
+
+    @MainActor func testReduceMotionReturnsToLiveAtOnce() {
+        let harness = RulerScaleHarness(position: 5_000, reduceMotion: true)
+        defer { harness.ruler.cancelMotion() }
+        returnToLive(harness)
+        XCTAssertNil(harness.ruler.liveScroll)
+        XCTAssertEqual(harness.ruler.anchoredPosition, 0)
+    }
+
+    @MainActor private func returnToLive(_ harness: RulerScaleHarness) {
+        harness.configuration.position = 0
+        harness.configuration.step = 1
+        harness.configuration.revision += 1
+        harness.ruler.configure(harness.configuration)
+    }
+
     @MainActor func testMomentumSettlingOnThePixelBeforeACoarseLiveEdgeReturnsToLive() throws {
         let harness = RulerScaleHarness()
         defer { harness.ruler.cancelMotion() }
