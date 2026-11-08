@@ -1757,6 +1757,7 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
     private var suppressScroll = false
     private var dragging = false
     private var decelerating = false
+    private var coastsToLive = false
     private var coarseDragging = false
     private var pinching = false
     private var pinchStartStep = 1.0
@@ -1797,9 +1798,10 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
     private func setExactPosition(_ value: Double) {
         exactPosition = (scrollView.contentOffset.x, ticks.scale, ticks.tickCount, value)
     }
+    private var pixel: CGFloat { 1 / max(1, traitCollection.displayScale) }
     // Momentum and bounces settle on whole pixels, and a coarse scale's Live edge usually falls between two.
     private var scrolledPosition: Double {
-        guard maximumOffset - scrollView.contentOffset.x >= 1 / max(1, traitCollection.displayScale) else { return 0 }
+        guard maximumOffset - scrollView.contentOffset.x >= pixel else { return 0 }
         return min(Double(ticks.tickCount), max(0, position))
     }
     private var motionPosition: Double { position / ticks.scale.pointsPerTick * Double(ticks.scale.spacing) }
@@ -2003,6 +2005,7 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
         }
         dragging = true
         decelerating = false
+        coastsToLive = false
         velocity = 0
         lastMotionTime = ProcessInfo.processInfo.systemUptime
         lastMotionPosition = motionPosition
@@ -2022,6 +2025,11 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
         if elapsed > 0.001 { velocity = (points - lastMotionPosition) / elapsed }
         lastMotionTime = now
         lastMotionPosition = points
+        // Momentum aimed at Live returns there on arrival instead of after its bounce settles.
+        if decelerating && coastsToLive && scrolledPosition == 0 {
+            stopAtLive()
+            return
+        }
         redraw()
         let bounded = scrolledPosition
         if let configuration { appliedRevision = configuration.onMove(bounded) }
@@ -2032,6 +2040,8 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
     func scrollViewWillEndDragging(_ scrollView: UIScrollView, withVelocity velocity: CGPoint,
                                   targetContentOffset: UnsafeMutablePointer<CGPoint>) {
         self.velocity = -Double(velocity.x) * 1_000
+        // UIKit clamps the target to the content, so momentum that reaches Live targets its edge.
+        coastsToLive = maximumOffset - targetContentOffset.pointee.x < pixel
     }
 
     func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
@@ -2040,10 +2050,20 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
         decelerating = decelerate
         recordMotion(force: true)
         if !decelerate { finishMotion() }
+        else if coastsToLive && scrolledPosition == 0 { stopAtLive() }
     }
 
     func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
         if decelerating { finishMotion() }
+    }
+
+    private func stopAtLive() {
+        suppressScroll = true
+        scrollView.setContentOffset(CGPoint(x: maximumOffset, y: 0), animated: false)
+        setExactPosition(0)
+        suppressScroll = false
+        redraw()
+        finishMotion()
     }
 
     private func finishMotion() {

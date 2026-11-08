@@ -163,7 +163,7 @@ zoom out around the live location or replay point and keep that zoom after relea
 including during momentum and playback. **Every point** returns to that mode's original follow zoom.
 Overview stays in overview. Holds and pinches use cached point details and load
 the final selection on release. Reaching Live keeps the gesture active so you can
-scrub back; releasing or coasting there returns to Live. Trip Settings starts
+scrub back; releasing there returns to Live, and a flick returns as soon as it reaches the edge. Trip Settings starts
 with a translucent glass background and fades toward the grouped Settings
 background as the sheet expands; collapsing reverses the fade. Cards use the
 same secondary grouped colors as the main Settings form in light and dark mode.

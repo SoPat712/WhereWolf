@@ -2148,6 +2148,52 @@ final class HistoryRulerContinuousScaleTests: XCTestCase {
         XCTAssertEqual(ends.first, 0)
         XCTAssertGreaterThan(ends.last ?? 0, 0)
     }
+
+    @MainActor func testMomentumAimedAtLiveReturnsOnArrivalWithoutWaitingForItsBounce() throws {
+        let harness = RulerScaleHarness()
+        defer { harness.ruler.cancelMotion() }
+        var ends: [Double] = []
+        harness.configuration.onEnd = { ends.append($0) }
+        harness.ruler.configure(harness.configuration)
+        let scrollView = try XCTUnwrap(harness.ruler.subviews.compactMap { $0 as? UIScrollView }.first)
+        let pixel = 1 / max(1, harness.ruler.traitCollection.displayScale)
+        let maximum = scrollView.contentSize.width - scrollView.bounds.width
+        func release(at offset: CGFloat, target: CGFloat) {
+            harness.ruler.scrollViewWillBeginDragging(scrollView)
+            scrollView.contentOffset.x = offset
+            var target = CGPoint(x: target, y: 0)
+            harness.ruler.scrollViewWillEndDragging(scrollView, withVelocity: .zero, targetContentOffset: &target)
+            harness.ruler.scrollViewDidEndDragging(scrollView, willDecelerate: true)
+        }
+
+        release(at: maximum - 300, target: maximum)
+        scrollView.contentOffset.x = maximum - 40
+        XCTAssertTrue(ends.isEmpty)
+        scrollView.contentOffset.x = maximum + 6
+        XCTAssertEqual(ends, [0])
+        XCTAssertEqual(scrollView.contentOffset.x, maximum, accuracy: pixel)
+        harness.ruler.scrollViewDidEndDecelerating(scrollView)
+        XCTAssertEqual(ends, [0])
+
+        // A flick back out of the bounce keeps browsing.
+        release(at: maximum + 20, target: maximum - 300)
+        scrollView.contentOffset.x = maximum + 10
+        XCTAssertEqual(ends, [0])
+        scrollView.contentOffset.x = maximum - 300
+        harness.ruler.scrollViewDidEndDecelerating(scrollView)
+        XCTAssertEqual(ends.count, 2)
+        XCTAssertGreaterThan(ends.last ?? 0, 0)
+
+        // A finger held at the edge stays in the interaction, and lifting there returns at once.
+        harness.ruler.scrollViewWillBeginDragging(scrollView)
+        scrollView.contentOffset.x = maximum + 12
+        XCTAssertEqual(ends.count, 2)
+        var target = CGPoint(x: maximum, y: 0)
+        harness.ruler.scrollViewWillEndDragging(scrollView, withVelocity: .zero, targetContentOffset: &target)
+        harness.ruler.scrollViewDidEndDragging(scrollView, willDecelerate: true)
+        XCTAssertEqual(ends.last, 0)
+        XCTAssertEqual(ends.count, 3)
+    }
 }
 
 @MainActor

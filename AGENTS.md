@@ -273,7 +273,8 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   above the ruler if absent. Derive the scale from nearby recorded intervals, or
   retention time before points load. Remove the window bubble on release or
   cancellation without changing drawer height. Reaching Live clamps at zero
-  without ending an interaction; return to Live only when motion ends there. Momentum and
+  without ending a drag or hold; return to Live when the finger lifts there, or as soon as
+  momentum aimed at the Live edge arrives, stopping there without its bounce. Momentum and
   bounces settle on whole pixels, so an end within a pixel of the Live edge counts as Live.
   Only held scrubbing coarser than one point per bar snaps within six screen points
   of a stop boundary. Hold the exact index until the finger moves over ten points,
