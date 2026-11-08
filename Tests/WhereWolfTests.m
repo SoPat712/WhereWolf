@@ -873,7 +873,7 @@ static int denyCommit(void *context, int action, const char *first, const char *
 }
 - (void)testWifiPlacesMigrationRetainsOldKeysWhenNewSaveFails {
     TestWifiDefaults *failing = [[TestWifiDefaults alloc] initWithSuiteName:self.defaultsSuite];
-    fixtureDefaults = failing;
+    setFixtureDefaults(failing);
     failing.rejectPlaces = YES;
     NSArray *zones = @[@{@"name": @"Home", @"latitude": @45.5, @"longitude": @(-122.67)}];
     [failing setObject:zones forKey:GLWifiZonesDefaultsName];
@@ -1126,7 +1126,8 @@ static int denyCommit(void *context, int action, const char *first, const char *
     XCTAssertEqual([pruned.firstObject[@"days"] count], 0);
 }
 - (void)testWifiCatalogKeepsLastAccurateCoordinateAndWritesOnlyChanges {
-    TestWifiDefaults *defaults = [[TestWifiDefaults alloc] initWithSuiteName:self.defaultsSuite]; fixtureDefaults = defaults;
+    TestWifiDefaults *defaults = [[TestWifiDefaults alloc] initWithSuiteName:self.defaultsSuite];
+    setFixtureDefaults(defaults);
     NSDate *now = NSDate.date;
     CLLocation *good = [self wifiFixAtDistance:0 accuracy:100 date:now];
     [self.manager rememberWifiNetworkInfo:@{@"SSID": @"Home"} location:good date:now];
@@ -1916,7 +1917,7 @@ static int denyCommit(void *context, int action, const char *first, const char *
     XCTAssertTrue(self.manager.stopsAutomaticallyActive);
     // Reopen the persisted domain as a fresh launch would, without the prior defaults cache.
     XCTAssertTrue([fixtureDefaults synchronize]);
-    fixtureDefaults = [[NSUserDefaults alloc] initWithSuiteName:self.defaultsSuite];
+    setFixtureDefaults([[NSUserDefaults alloc] initWithSuiteName:self.defaultsSuite]);
     [self.manager restoreTrackingState];
     XCTAssertTrue(self.manager.trackingEnabled);
     XCTAssertTrue(self.manager.didPauseByRadius);
