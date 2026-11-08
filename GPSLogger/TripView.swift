@@ -146,15 +146,20 @@ struct TripView: View {
                 .accessibilityLabel("Elapsed time")
                 .accessibilityValue(TripFormat.duration(bridge.tripDuration))
             let metric = Locale.current.measurementSystem == .metric
-            let measures = Group {
-                tripStat("Distance", value: TripFormat.distance(bridge.tripDistance, metric: metric))
-                tripStat("Avg Speed", value: TripFormat.averageSpeed(distance: bridge.tripDistance,
-                                                                     duration: bridge.tripDuration, metric: metric))
-            }
+            let distance = tripStat("Distance", value: TripFormat.distance(bridge.tripDistance, metric: metric))
+            let average = TripFormat.usesPace(bridge.tripMode)
+                ? tripStat("Avg Pace", value: TripFormat.pace(distance: bridge.tripDistance, duration: bridge.tripDuration, metric: metric))
+                : tripStat("Avg Speed", value: TripFormat.averageSpeed(distance: bridge.tripDistance,
+                                                                       duration: bridge.tripDuration, metric: metric))
+            let top = tripStat("Top Speed", value: TripFormat.speed(bridge.tripTopSpeed, metric: metric))
+            let climb = tripStat("Climb", value: TripFormat.climb(bridge.tripClimb, metric: metric))
             if dynamicTypeSize.isAccessibilitySize {
-                VStack(spacing: 10) { measures }
+                VStack(spacing: 10) { distance; average; top; climb }
             } else {
-                HStack(spacing: 16) { measures }
+                Grid(horizontalSpacing: 16, verticalSpacing: 10) {
+                    GridRow { distance; average }
+                    GridRow { top; climb }
+                }
             }
         }
         .frame(maxWidth: .infinity)
@@ -231,6 +236,30 @@ private struct RecordingDot: View {
 }
 
 enum TripFormat {
+    // Pace reads better than speed on foot.
+    static func usesPace(_ mode: String) -> Bool {
+        ["walking", "running", "hiking"].contains(TripModeStore.healthWorkout(mode) ?? "")
+    }
+
+    static func speed(_ metersPerSecond: Double, metric: Bool) -> String {
+        let unit = metric ? "km/h" : "mph"
+        guard metersPerSecond >= 0, metersPerSecond.isFinite else { return "– \(unit)" }
+        return String(format: "%.1f %@", metersPerSecond * (metric ? 3.6 : 2.236_936), unit)
+    }
+
+    static func pace(distance meters: Double, duration seconds: Double, metric: Bool) -> String {
+        let unit = metric ? "/km" : "/mi"
+        guard seconds >= 1, meters >= 10, meters.isFinite else { return "– \(unit)" }
+        let perUnit = Int((seconds / (meters / (metric ? 1_000 : 1_609.344))).rounded())
+        guard perUnit < 100 * 60 else { return "– \(unit)" }
+        return String(format: "%d:%02d %@", perUnit / 60, perUnit % 60, unit)
+    }
+
+    static func climb(_ meters: Double, metric: Bool) -> String {
+        guard meters >= 0, meters.isFinite else { return metric ? "– m" : "– ft" }
+        return metric ? "\(Int(meters.rounded())) m" : "\(Int((meters * 3.280_84).rounded())) ft"
+    }
+
     static func duration(_ seconds: Double) -> String {
         let t = Int(max(0, seconds))
         return String(format: "%d:%02d:%02d", t / 3600, (t / 60) % 60, t % 60)
@@ -242,10 +271,8 @@ enum TripFormat {
     }
 
     static func averageSpeed(distance meters: Double, duration seconds: Double, metric: Bool) -> String {
-        let unit = metric ? "km/h" : "mph"
-        guard seconds >= 1, meters.isFinite, meters >= 0 else { return "– \(unit)" }
-        let speed = meters / seconds * (metric ? 3.6 : 2.236_936)
-        return String(format: "%.1f %@", speed, unit)
+        guard seconds >= 1, meters.isFinite, meters >= 0 else { return metric ? "– km/h" : "– mph" }
+        return speed(meters / seconds, metric: metric)
     }
 }
 

@@ -170,3 +170,51 @@ final class TripTabPolicyTests: XCTestCase {
         XCTAssertFalse(policy.showsTrip(onActivationWithTripStart: second, setupPresented: false))
     }
 }
+
+final class TripStatsAccumulatorTests: XCTestCase {
+    func testTopSpeedUsesOnlyTrustedSpeeds() {
+        let stats = TripStatsAccumulator()
+        XCTAssertEqual(stats.topSpeed, -1)
+        stats.add(speed: 12, speedAccuracy: 1, altitude: 0, verticalAccuracy: -1)
+        stats.add(speed: 40, speedAccuracy: 9, altitude: 0, verticalAccuracy: -1)
+        stats.add(speed: 50, speedAccuracy: -1, altitude: 0, verticalAccuracy: -1)
+        stats.add(speed: -1, speedAccuracy: 1, altitude: 0, verticalAccuracy: -1)
+        XCTAssertEqual(stats.topSpeed, 12)
+        stats.reset()
+        XCTAssertEqual(stats.topSpeed, -1)
+        XCTAssertEqual(stats.climb, 0)
+    }
+
+    func testClimbCountsRisesBeyondAltitudeNoise() {
+        let stats = TripStatsAccumulator()
+        // Wandering by a few meters is not climbing; a 30 m hill is, and so is a second one after a dip.
+        for altitude in [100.0, 102, 99, 103, 98, 101] {
+            stats.add(speed: -1, speedAccuracy: -1, altitude: altitude, verticalAccuracy: 4)
+        }
+        XCTAssertEqual(stats.climb, 0)
+        for altitude in [104.0, 110, 118, 128, 125, 115, 120, 126] {
+            stats.add(speed: -1, speedAccuracy: -1, altitude: altitude, verticalAccuracy: 4)
+        }
+        XCTAssertEqual(stats.climb, 30 + 11, accuracy: 0.001)
+        stats.add(speed: -1, speedAccuracy: -1, altitude: 400, verticalAccuracy: 30)
+        stats.add(speed: -1, speedAccuracy: -1, altitude: 400, verticalAccuracy: -1)
+        XCTAssertEqual(stats.climb, 41, accuracy: 0.001)
+    }
+}
+
+final class TripStatsFormatTests: XCTestCase {
+    func testSpeedPaceClimbAndDay() {
+        XCTAssertEqual(TripFormat.speed(10, metric: true), "36.0 km/h")
+        XCTAssertEqual(TripFormat.speed(10, metric: false), "22.4 mph")
+        XCTAssertEqual(TripFormat.speed(-1, metric: false), "– mph")
+        XCTAssertEqual(TripFormat.pace(distance: 5_000, duration: 1_500, metric: true), "5:00 /km")
+        XCTAssertEqual(TripFormat.pace(distance: 1_609.344, duration: 600, metric: false), "10:00 /mi")
+        XCTAssertEqual(TripFormat.pace(distance: 5, duration: 600, metric: true), "– /km")
+        XCTAssertEqual(TripFormat.climb(100, metric: true), "100 m")
+        XCTAssertEqual(TripFormat.climb(100, metric: false), "328 ft")
+        XCTAssertEqual(TripFormat.climb(-1, metric: false), "– ft")
+        XCTAssertTrue(TripFormat.usesPace("walk"))
+        XCTAssertTrue(TripFormat.usesPace("run"))
+        XCTAssertFalse(TripFormat.usesPace("car"))
+    }
+}

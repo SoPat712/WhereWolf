@@ -11,6 +11,7 @@
 #import "GLCloudFileWriter.h"
 #import "LOLDatabase.h"
 #import "fmdb/FMDatabase.h"
+#import "fmdb/FMDatabaseAdditions.h"
 #import <UIKit/UIKit.h>
 #import "GLTrackingPolicy.h"
 #import "GLLocationHealth.h"
@@ -88,6 +89,9 @@ const NSTimeInterval GLWifiPlaceHeartbeatInterval = 300;
 @property BOOL tripDistanceLoaded;
 @property CLLocationDistance tripDistanceCached;
 @property (strong, nonatomic) CLLocation *lastTripLocation;
+@property (strong, nonatomic) GLTripStatsAccumulator *tripStats;
+@property BOOL tripStatsLoaded;
+@property (weak, nonatomic) FMDatabase *tripStatsColumnsDB;
 @property BOOL engineStationary;
 @property (strong, nonatomic) CLLocation *lastMovementLocation;
 @property (strong, nonatomic) NSDate *radiusPauseDate;
@@ -2170,6 +2174,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     if(self.tripInProgress) {
         [self.tripdb open];
         self.tripDistanceLoaded = NO;
+        self.tripStatsLoaded = NO;
         [self currentTripDistance];
         _storeNextLocationAsTripStart = self.currentTripStartLocationDictionary == nil;
     }
@@ -2567,14 +2572,19 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
 
 - (BOOL)appendTripLocation:(CLLocation *)loc {
     [self currentTripDistance];
-    if(![self.tripdb executeUpdate:@"INSERT INTO trips (timestamp, latitude, longitude) VALUES (?, ?, ?)",
-         @(loc.timestamp.timeIntervalSince1970), @(loc.coordinate.latitude), @(loc.coordinate.longitude)]) return NO;
+    [self ensureTripStatsColumns];
+    if(![self.tripdb executeUpdate:@"INSERT INTO trips (timestamp, latitude, longitude, speed, speed_accuracy, altitude, vertical_accuracy) VALUES (?, ?, ?, ?, ?, ?, ?)",
+         @(loc.timestamp.timeIntervalSince1970), @(loc.coordinate.latitude), @(loc.coordinate.longitude),
+         @(loc.speed), @(loc.speedAccuracy), @(loc.altitude), @(loc.verticalAccuracy)]) return NO;
     if(!self.lastTripLocation || [loc.timestamp compare:self.lastTripLocation.timestamp] != NSOrderedAscending) {
+        if(self.tripStatsLoaded) [self.tripStats addWithSpeed:loc.speed speedAccuracy:loc.speedAccuracy
+                                                     altitude:loc.altitude verticalAccuracy:loc.verticalAccuracy];
         if(self.lastTripLocation) self.tripDistanceCached += [self.lastTripLocation distanceFromLocation:loc];
         self.lastTripLocation = loc;
         return YES;
     }
     // A delayed batch after restoration may insert before the restored endpoint.
+    self.tripStatsLoaded = NO;
     FMResultSet *before = [self.tripdb executeQuery:@"SELECT latitude, longitude FROM trips WHERE timestamp <= ? AND id != ? ORDER BY timestamp DESC, id DESC LIMIT 1",
         @(loc.timestamp.timeIntervalSince1970), @(self.tripdb.lastInsertRowId)];
     CLLocation *previous = [before next] ? [[CLLocation alloc] initWithLatitude:[before doubleForColumnIndex:0] longitude:[before doubleForColumnIndex:1]] : nil;
@@ -2586,6 +2596,46 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     if(next) self.tripDistanceCached += [loc distanceFromLocation:next];
     if(previous && next) self.tripDistanceCached -= [previous distanceFromLocation:next];
     return YES;
+}
+
+// Trip databases from earlier versions lack the speed and altitude columns.
+- (void)ensureTripStatsColumns {
+    if(self.tripStatsColumnsDB == self.tripdb || !self.tripdb.isOpen) return;
+    for(NSString *column in @[@"speed", @"speed_accuracy", @"altitude", @"vertical_accuracy"]) {
+        if([self.tripdb columnExists:column inTableWithName:@"trips"]) continue;
+        [self.tripdb executeUpdate:[NSString stringWithFormat:@"ALTER TABLE trips ADD COLUMN %@ REAL", column]];
+    }
+    self.tripStatsColumnsDB = self.tripdb;
+}
+
+// Climb depends on order, so the stats replay every stored fix after a restore or a late batch.
+- (GLTripStatsAccumulator *)loadedTripStats {
+    if(!self.tripStats) self.tripStats = [GLTripStatsAccumulator new];
+    if(self.tripStatsLoaded || !self.tripdb.isOpen) return self.tripStats;
+    [self ensureTripStatsColumns];
+    [self.tripStats reset];
+    FMResultSet *rows = [self.tripdb executeQuery:@"SELECT speed, speed_accuracy, altitude, vertical_accuracy FROM trips ORDER BY timestamp, id"];
+    while([rows next]) {
+        BOOL speed = ![rows columnIndexIsNull:0] && ![rows columnIndexIsNull:1];
+        BOOL altitude = ![rows columnIndexIsNull:2] && ![rows columnIndexIsNull:3];
+        [self.tripStats addWithSpeed:speed ? [rows doubleForColumnIndex:0] : -1
+                       speedAccuracy:speed ? [rows doubleForColumnIndex:1] : -1
+                            altitude:altitude ? [rows doubleForColumnIndex:2] : 0
+                    verticalAccuracy:altitude ? [rows doubleForColumnIndex:3] : -1];
+    }
+    [rows close];
+    self.tripStatsLoaded = rows != nil;
+    return self.tripStats;
+}
+
+- (CLLocationSpeed)currentTripTopSpeed {
+    if(!self.tripInProgress) return -1;
+    return [self loadedTripStats].topSpeed;
+}
+
+- (CLLocationDistance)currentTripClimb {
+    if(!self.tripInProgress) return -1;
+    return [self loadedTripStats].climb;
 }
 
 - (NSArray *)currentTripPoints {
@@ -2641,6 +2691,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     [[NSUserDefaults standardUserDefaults] setBool:self.trackingEnabled forKey:GLTripTrackingEnabledDefaultsName];
     self.tripDistanceCached = 0;
     self.tripDistanceLoaded = YES;
+    self.tripStatsLoaded = NO;
     self.lastTripLocation = nil;
     
     NSDate *startDate = [NSDate date];
@@ -2800,6 +2851,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     [self resetStationaryAnchors];
     self.lastTripLocation = nil;
     self.tripDistanceLoaded = NO;
+    self.tripStatsLoaded = NO;
     self.tripStartLocationDictionary = nil;
     // Before the trip start is removed, since the Health recorder reads it then.
     [[NSUserDefaults standardUserDefaults] setObject:end forKey:GLLastTripEndDefaultsName];

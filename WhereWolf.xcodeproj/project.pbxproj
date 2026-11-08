@@ -33,6 +33,7 @@
 		0FCAFE00F00D0000000000F4 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D0000000000E4 /* SettingsView.swift */; };
 		0FCAFE00F00D0000000000F5 /* EndpointView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D0000000000E5 /* EndpointView.swift */; };
 		0FCAFE00F00D0000000000F6 /* TripView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D0000000000E6 /* TripView.swift */; };
+		0FCAFE00F00D00000000A1F6 /* TripStats.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D00000000A1E6 /* TripStats.swift */; };
 		0FCAFE00F00D0000000000F7 /* TripSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D0000000000E7 /* TripSettingsView.swift */; };
 		0FCAFE00F00D0000000000F8 /* SteppedSlider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D0000000000E8 /* SteppedSlider.swift */; };
 		0FCAFE00F00D0000000000F9 /* GlassStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D0000000000E9 /* GlassStyle.swift */; };
@@ -241,6 +242,7 @@
 		0FCAFE00F00D0000000000E4 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		0FCAFE00F00D0000000000E5 /* EndpointView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndpointView.swift; sourceTree = "<group>"; };
 		0FCAFE00F00D0000000000E6 /* TripView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripView.swift; sourceTree = "<group>"; };
+		0FCAFE00F00D00000000A1E6 /* TripStats.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripStats.swift; sourceTree = "<group>"; };
 		0FCAFE00F00D0000000000E7 /* TripSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripSettingsView.swift; sourceTree = "<group>"; };
 		0FCAFE00F00D0000000000E8 /* SteppedSlider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SteppedSlider.swift; sourceTree = "<group>"; };
 		0FCAFE00F00D0000000000E9 /* GlassStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassStyle.swift; sourceTree = "<group>"; };
@@ -584,6 +586,7 @@
 				A05500000000000000000001 /* WhereWolfShell.swift */,
 				0FCAFE00F00D0000000000E5 /* EndpointView.swift */,
 				0FCAFE00F00D0000000000E6 /* TripView.swift */,
+				0FCAFE00F00D00000000A1E6 /* TripStats.swift */,
 				0FCAFE00F00D0000000000E8 /* SteppedSlider.swift */,
 				0FCAFE00F00D0000000000E7 /* TripSettingsView.swift */,
 				0FCAFE00F00D0000000000E9 /* GlassStyle.swift */,
@@ -919,6 +922,7 @@
 				A05500000000000000000002 /* WhereWolfShell.swift in Sources */,
 				0FCAFE00F00D0000000000F5 /* EndpointView.swift in Sources */,
 				0FCAFE00F00D0000000000F6 /* TripView.swift in Sources */,
+				0FCAFE00F00D00000000A1F6 /* TripStats.swift in Sources */,
 				0FCAFE00F00D0000000000F8 /* SteppedSlider.swift in Sources */,
 				0FCAFE00F00D0000000000F7 /* TripSettingsView.swift in Sources */,
 				0FCAFE00F00D0000000000F9 /* GlassStyle.swift in Sources */,

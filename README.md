@@ -657,8 +657,8 @@ their original values.
 
 Trip uses the same map and preserves its position when you switch tabs.
 Tap a travel mode in the row of modes, then the green Start Trip button, to record
-a route. While recording, the panel shows the elapsed time, distance and average
-speed under a pulsing red dot and the mode, and the map draws the trip's route. End Trip writes
+a route. While recording, the panel shows the elapsed time, distance, average
+speed (or pace on foot), top speed and climb under a pulsing red dot and the mode, and the map draws the trip's route. End Trip writes
 a trip record for upload alongside the location points. Opening the app during a
 trip you haven't seen yet, such as one an automation started when CarPlay connected,
 shows the Trip tab; once you switch away, it stays where you leave it until the next

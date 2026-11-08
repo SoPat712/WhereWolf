@@ -880,6 +880,16 @@ final class GLManagerBridge {
         return max(0, GLManager.shared().currentTripDuration())
     }
 
+    var tripTopSpeed: Double {
+        _ = tick
+        return GLManager.shared().currentTripTopSpeed()
+    }
+
+    var tripClimb: Double {
+        _ = tick
+        return GLManager.shared().currentTripClimb()
+    }
+
     var tripBatchValue: Double {
         get {
             _ = tick

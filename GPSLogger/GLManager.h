@@ -304,6 +304,9 @@ typedef NS_ENUM(NSInteger, GLSendStatus) {
 - (NSDate *)currentTripStart;
 - (NSArray *)currentTripPoints;
 - (CLLocationDistance)currentTripDistance;
+// Negative when unknown or no trip is in progress.
+- (CLLocationSpeed)currentTripTopSpeed;
+- (CLLocationDistance)currentTripClimb;
 - (NSTimeInterval)currentTripDuration;
 - (void)startTrip;
 - (void)endTrip;

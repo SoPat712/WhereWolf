@@ -664,6 +664,27 @@ static int denyCommit(void *context, int action, const char *first, const char *
     XCTAssertEqualObjects([[GLTripActions quickActionItems] valueForKey:@"type"], (@[@"stop"]));
     [NSUserDefaults.standardUserDefaults removeObjectForKey:GLTripStartTimeDefaultsName];
 }
+- (void)testTripStatsReplayStoredSpeedAndAltitude {
+    FMDatabase *trip = [FMDatabase databaseWithPath:@":memory:"];
+    [trip open];
+    [trip executeUpdate:@"CREATE TABLE trips (id INTEGER PRIMARY KEY, timestamp REAL, latitude REAL, longitude REAL)"];
+    [self.manager setValue:trip forKey:@"tripdb"];
+    [NSUserDefaults.standardUserDefaults setObject:[NSDate dateWithTimeIntervalSince1970:900] forKey:GLTripStartTimeDefaultsName];
+    [self.manager setValue:@YES forKey:@"trackingEnabled"];
+    double altitudes[] = {100, 103, 112, 120, 118};
+    NSMutableArray *locations = [NSMutableArray array];
+    for(int i = 0; i < 5; i++) {
+        [locations addObject:[[CLLocation alloc] initWithCoordinate:CLLocationCoordinate2DMake(45.5 + i * 0.001, -122.67)
+            altitude:altitudes[i] horizontalAccuracy:5 verticalAccuracy:4 course:0 courseAccuracy:-1
+            speed:(i == 2 ? 14 : 8) speedAccuracy:1 timestamp:[NSDate dateWithTimeIntervalSince1970:1000 + i * 10]]];
+    }
+    [self.manager processLocations:locations];
+    XCTAssertEqualWithAccuracy(self.manager.currentTripTopSpeed, 14, 0.001);
+    XCTAssertEqualWithAccuracy(self.manager.currentTripClimb, 20, 0.001);
+    [self.manager setValue:@NO forKey:@"tripStatsLoaded"];
+    XCTAssertEqualWithAccuracy(self.manager.currentTripClimb, 20, 0.001);
+    XCTAssertEqual(self.manager.currentTripPoints.count, 5);
+}
 - (void)testTripDistanceRestoresOnceAndAddsOnlyCommittedPoints {
     FMDatabase *trip = [FMDatabase databaseWithPath:@":memory:"];
     [trip open];
