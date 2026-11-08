@@ -3,10 +3,17 @@ import SwiftUI
 struct TripSettingsSheet: View {
     let onDone: () -> Void
     @State private var detent: PresentationDetent = .medium
+    @State private var showingModes: Bool
+
+    init(opensModes: Bool = false, onDone: @escaping () -> Void) {
+        self.onDone = onDone
+        _showingModes = State(initialValue: opensModes)
+    }
 
     var body: some View {
         NavigationStack {
             TripSettingsView()
+                .navigationDestination(isPresented: $showingModes) { TripModesView() }
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Done", action: onDone)

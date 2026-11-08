@@ -8,14 +8,13 @@ struct TripView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: .caption) private var modeWidth: CGFloat = 64
-    @State private var showingSettings = false
+    @State private var sheet: TripSheet?
     @State private var started = 0
     @State private var ended = 0
     @State private var picked = 0
 
     var body: some View {
         VStack(spacing: 14) {
-            header
             if bridge.tripInProgress {
                 stats
                     .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.96, anchor: .bottom)))
@@ -23,8 +22,13 @@ struct TripView: View {
                 modeRow
                     .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.96, anchor: .bottom)))
             }
-            tripButton
+            HStack(spacing: 10) {
+                tripButton
+                DrawerCircleButton(symbol: "slider.horizontal.3", label: "Trip Settings") { sheet = .settings }
+            }
+            .padding(.horizontal, 16)
         }
+        .padding(.top, 4)
         .fixedSize(horizontal: false, vertical: true)
         .animation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(duration: 0.4, bounce: 0.15),
                    value: bridge.tripInProgress)
@@ -39,19 +43,8 @@ struct TripView: View {
             camera = .camera(MapKit.MapCamera(centerCoordinate: coordinate,
                 distance: TripModeStore.closeZoom(mode) ? 1_000 : 10_000))
         }
-        .sheet(isPresented: $showingSettings) {
-            TripSettingsSheet { showingSettings = false }
-        }
-    }
-
-    private var header: some View {
-        DrawerHeader(title: "Trip",
-                     subtitle: bridge.tripInProgress ? "Recording · \(TripModeStore.name(bridge.tripMode))" : "Choose a mode",
-                     indicator: bridge.tripInProgress ? .red : nil,
-                     pulsesIndicator: true) {
-            DrawerCircleButton(symbol: "slider.horizontal.3", label: "Trip Settings") {
-                showingSettings = true
-            }
+        .sheet(item: $sheet) { sheet in
+            TripSettingsSheet(opensModes: sheet == .modes) { self.sheet = nil }
         }
     }
 
@@ -64,6 +57,7 @@ struct TripView: View {
                     ForEach(bridge.tripModes, id: \.id) { mode in
                         modeButton(mode).id(mode.id)
                     }
+                    editModesButton
                 }
                 .padding(.horizontal, 16)
             }
@@ -102,6 +96,26 @@ struct TripView: View {
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
+    private var editModesButton: some View {
+        Button { sheet = .modes } label: {
+            VStack(spacing: 6) {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(Color.primary)
+                    .frame(width: 52, height: 52)
+                    .background(Circle().fill(Color.drawerCard))
+                Text("Edit")
+                    .font(.caption)
+                    .foregroundStyle(Color.secondary)
+                    .lineLimit(1)
+            }
+            .frame(width: max(64, modeWidth))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Edit Trip Modes")
+    }
+
     @ViewBuilder
     private func modeIcon(_ symbol: String) -> some View {
         if let image = TripModeStore.image(symbol: symbol) {
@@ -115,6 +129,16 @@ struct TripView: View {
 
     private var stats: some View {
         VStack(spacing: 10) {
+            HStack(spacing: 6) {
+                RecordingDot()
+                modeIcon(TripModeStore.symbol(bridge.tripMode))
+                    .frame(width: 16, height: 16)
+                Text("Recording · \(TripModeStore.name(bridge.tripMode))")
+                    .font(.subheadline.weight(.medium))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(.secondary)
+            .accessibilityElement(children: .combine)
             Text(TripFormat.duration(bridge.tripDuration))
                 .font(.system(.largeTitle, design: .rounded).weight(.bold).monospacedDigit())
                 .contentTransition(.numericText())
@@ -167,7 +191,6 @@ struct TripView: View {
             .padding(.vertical, 8)
         }
         .glassButtonStyle(prominent: true, tint: recording ? .red : .green)
-        .padding(.horizontal, 16)
     }
 
     private func toggleTrip() {
@@ -183,6 +206,27 @@ struct TripView: View {
         trip = TripMapState()
         camera = .userLocation(followsHeading: camera.followsUserHeading, fallback: .automatic)
         bridge.refresh()
+    }
+}
+
+private enum TripSheet: Identifiable {
+    case settings, modes
+    var id: Self { self }
+}
+
+// Breathes while a trip records; still with Reduce Motion.
+private struct RecordingDot: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let dot = Circle().fill(.red).frame(width: 8, height: 8)
+        if reduceMotion {
+            dot
+        } else {
+            dot.phaseAnimator([1, 0.35]) { content, opacity in
+                content.opacity(opacity)
+            } animation: { _ in .easeInOut(duration: 0.8) }
+        }
     }
 }
 

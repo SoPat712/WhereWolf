@@ -406,10 +406,8 @@ struct DrawerHeader<Accessory: View>: View {
     let title: String?
     let subtitle: String
     var indicator: Color? = nil
-    var pulsesIndicator = false
     @ViewBuilder var accessory: Accessory
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(alignment: title == nil ? .center : .top, spacing: 12) {
@@ -421,14 +419,7 @@ struct DrawerHeader<Accessory: View>: View {
                 }
                 HStack(spacing: 6) {
                     if let indicator {
-                        let dot = Circle().fill(indicator).frame(width: 8, height: 8)
-                        if pulsesIndicator && !reduceMotion {
-                            dot.phaseAnimator([1, 0.35]) { content, opacity in
-                                content.opacity(opacity)
-                            } animation: { _ in .easeInOut(duration: 0.8) }
-                        } else {
-                            dot
-                        }
+                        Circle().fill(indicator).frame(width: 8, height: 8)
                     }
                     Text(subtitle)
                         .font(.subheadline)
