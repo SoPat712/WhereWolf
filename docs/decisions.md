@@ -105,6 +105,30 @@ This log lists the decisions agents made on their own while working on WhereWolf
 - **Decided:** a flick whose momentum target is the Live edge returns to Live when it reaches the edge and stops there without bouncing; a held finger still keeps the interaction, and a flick back out of the overscroll keeps browsing.
 - **Undo:** `git revert b53e7eb`.
 
+## 2026-11-08: a stop survives a silence that ends across the lot (f833b33)
+
+- **Asked for:** "did you ever find out why the 8:04-9:11 wasn't registerd as a stop? what happened there?"
+- **Decided:** a silence of at least 5 minutes followed by a fix 60–100 m away ends the stop at that fix. Closer fixes already continue a stop from a later start, and a wider rule split one evening at home into two stops.
+- **Undo:** `git revert f833b33`.
+
+## 2026-11-08: Trip tab redesign (d8e360d)
+
+- **Asked for:** "I don't really like the trip tab! … can we make the trip start button animate? fix colors? make it feel better/easier to use?"
+- **Decided:** one-tap mode buttons, a green Start Trip that becomes a red End Trip, elapsed time, distance and average speed while recording, and a breathing red dot. The timestamp chip strip was removed; the Tracker ruler scrubs trips.
+- **Undo:** `git revert d8e360d` (revert ad0f6c8 first).
+
+## 2026-11-08: open on Trip during a new trip (ad0f6c8)
+
+- **Asked for:** "should trip tab be the default when trips are running?"
+- **Decided:** yes, once per trip when the app becomes active, never while it is active or with setup showing, and never away from Trip when a trip ends.
+- **Undo:** `git revert ad0f6c8`.
+
+## 2026-11-08: first Settings switch and strip selection (0df84a7)
+
+- **Asked for:** "on app first boot, switching from trip to settings means it takes a while for the drag handle to go away" and "switching from settings to trip jiggles things just slightly".
+- **Decided:** lay Settings out behind the map for one pass a second after launch, and update the drawer strip's selection before a native-bar handoff.
+- **Undo:** `git revert 0df84a7`.
+
 ## Deferred for the owner
 
 - **Watch complication for Today:** it needs a new watch widget extension and bundle identifier, which is an Apple developer account change.
