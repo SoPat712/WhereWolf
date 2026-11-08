@@ -166,52 +166,25 @@ struct ReplayRulerHold: Equatable {
     let pointsPerBar: Double
     let visibleBars: Double
     var coarseness: Double = 1
-    // The ruler's spacing of the points the window counts; without it each point is one bar.
-    var spacing: HistoryRulerSpacing = .none
-    // The map keeps its follow distance at and below this step.
-    var baseStep: Double = 1
-
-    var keepsFollowDistance: Bool { pointsPerBar <= baseStep }
-
-    // A new spacing comes with every landmark build and alone does not change the zoom.
-    static func == (lhs: ReplayRulerHold, rhs: ReplayRulerHold) -> Bool {
-        lhs.pointsPerBar == rhs.pointsPerBar && lhs.visibleBars == rhs.visibleBars && lhs.coarseness == rhs.coarseness
-            && lhs.baseStep == rhs.baseStep
-    }
 
     // Mid detents fit only the bars near the needle, so the map stays close until the coarsest steps.
     var halfWindow: Double {
-        pointsPerBar * halfBars
-    }
-
-    private var halfBars: Double {
         let half = max(0, visibleBars / 2)
         let near = min(half, Self.nearBars)
         let weight = pow(min(1, max(0, coarseness)), 2)
-        return max(0, near + (half - near) * weight)
+        return max(0, pointsPerBar * (near + (half - near) * weight))
     }
 
     func window(at position: Double, count: Int) -> Range<Int> {
         guard count > 0 else { return 0..<0 }
-        let map = spacing.scaled(pointsPerBar)
-        let center = map.bars(to: position)
-        let lower = min(count - 1, max(0, Int(ceil(map.index(atBars: center - halfBars) - 1e-9))))
-        let upper = min(count, max(lower + 1, Int(floor(map.index(atBars: center + halfBars) + 1e-9)) + 1))
+        let lower = min(count - 1, max(0, Int(ceil(position - halfWindow))))
+        let upper = min(count, max(lower + 1, Int(floor(position + halfWindow)) + 1))
         return lower..<upper
     }
 
     func needsFit(at position: Double, since previous: Double?) -> Bool {
         guard let previous else { return true }
-        return abs(movedBars(from: previous, to: position)) > halfBars
-    }
-
-    // Bars between two point indices on the ruler.
-    func movedBars(from start: Double, to end: Double) -> Double {
-        spacing.scaled(pointsPerBar).screenDistance(from: start, to: end, spacing: 1)
-    }
-
-    func exceedsHalfWindow(from start: Double, to end: Double) -> Bool {
-        movedBars(from: start, to: end) > halfBars
+        return abs(position - previous) > halfWindow
     }
 }
 

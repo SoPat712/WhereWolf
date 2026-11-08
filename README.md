@@ -152,16 +152,15 @@ have common-value detents and selection feedback, and still support exact numeri
 releasing saves it once.
 
 Pinch the history ruler to change its scale: spread for finer steps, or pinch
-in for coarser ones, from a second per bar to the whole loaded history.
+in for coarser ones, from every recorded point to the whole loaded history.
 The scale stays where you leave it across tabs and playback, and returning to Live
-from history resets it to a minute per bar. Drag or flick
+from history resets it to every point. Drag or flick
 with one finger to browse at that scale, with momentum. Hold for a moment to
 scrub sideways; moving vertically leaves the scale unchanged.
 During a pinch or hold, a Liquid Glass bubble above the drawer shows the selected
-time and the time per bar (blur material before iOS 26). Scales coarser than a minute per bar
+time and the estimated time per bar (blur material before iOS 26). Coarser scales
 zoom out around the live location or replay point and keep that zoom after release,
-including during momentum and playback. A minute per bar or finer returns to that mode's original
-follow zoom.
+including during momentum and playback. **Every point** returns to that mode's original follow zoom.
 Overview stays in overview. Holds and pinches use cached point details and load
 the final selection on release. Reaching Live keeps the gesture active so you can
 scrub back; releasing there returns to Live, and a flick returns as soon as it reaches the edge. Trip Settings starts
@@ -517,25 +516,24 @@ scenes, and when tracking stops.
 The ruler at the top of the Tracker panel keeps the selected tick in the center.
 Older points lie to its left and **Live** lies to its right. Drag right to browse
 older points, or left to return to Live. A tap alone does not change modes.
-Every bar is the same amount of time, and ticks fall on the clock. Pinch to change how much
-time each bar covers, or tap the scale capsule beside the time to choose from **1 second** to
-**Whole history**. The ruler and following map track your fingers continuously, with bars
+Pinch to change how many recorded points each bar covers, or tap the scale
+capsule beside the time to choose **Every point**, a time interval, or **Whole
+history**. The ruler and following map track your fingers continuously, with bars
 crossfading between scales; release gently settles to a scale without haptics.
-The capsule names exactly how much time one bar covers.
-The selected point stays
+Bars are evenly spaced recorded points, so a drive takes room and a quiet night does not.
+Time estimates use nearby recorded intervals. The selected point stays
 under the needle when the scale changes. The scale remains set across tabs and playback,
-and dragging and flicking use it too. Returning to Live from history resets it to a minute per bar
+and dragging and flicking use it too. Returning to Live from history resets it to **Every point**
 and zooms back in to your live zoom from before history. While the Tracker map follows your live
-location or a replay point, scales coarser than a minute per bar also zoom out to fit the nearby
-recorded points. At Live the fit includes your current location and the newest points, with heading
-mode on or off. That zoom stays after release. Choose a minute per bar or finer to return to that
-mode's original follow zoom. Overview and a manually moved camera keep their own zoom; the
+location or a replay point, coarser scales also zoom out to fit the nearby recorded points.
+At Live the fit includes your current location and the newest points, with heading mode
+on or off. That zoom stays after release. Choose **Every point** to return to that mode's
+original follow zoom. Overview and a manually moved camera keep their own zoom; the
 location button resumes following at the current ruler scale. The Trip map keeps its own zoom.
 Time labels, local-midnight dividers and stop capsules help you find your way
 through the retained history. Stops use a nearby saved Wi-Fi Place’s name, icon
-and color, or show an unnamed stop’s duration. A stop is tinted for exactly as long as it lasted;
-a visit split by a stray point shows once. Use the arrival and departure buttons to skip a long
-stop. A silence of ten minutes or more outside a stop is marked in red as **No data**. Hold for 0.35 seconds to scrub
+and color, or show an unnamed stop’s duration. A visit split by a stray point shows once. A silence of ten minutes or more outside a stop
+is marked in red as **No data**. Hold for 0.35 seconds to scrub
 sideways at the current scale. Coarse held scrubbing snaps within six screen points
 of arrivals and departures; move your finger over ten points away to continue.
 The bubble names the event. Ordinary drags, momentum and pinches do not snap.

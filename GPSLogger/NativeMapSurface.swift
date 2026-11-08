@@ -1094,7 +1094,7 @@ struct NativeMapSurface: UIViewRepresentable {
                                        source supplied: RulerFitSource? = nil) -> CLLocationDistance? {
             guard let source = supplied ?? rulerFitSource(on: map), let base = rulerBaseDistance else { return nil }
             let coordinate = source.coordinate
-            if zoom.keepsFollowDistance {
+            if zoom.pointsPerBar <= 1 {
                 return ReplayHoldZoom.distance(base: base, pointsPerBar: zoom.pointsPerBar, fitted: nil)
             }
             var fit: CLLocationDistance?
@@ -1116,10 +1116,8 @@ struct NativeMapSurface: UIViewRepresentable {
             return rulerScaleDistances[zoom.pointsPerBar]
         }
 
-        // No committed zoom means a step no coarser than Live's, where the map keeps its follow distance.
         private func rulerScaleCommitIsCurrent(_ frame: RulerScaleChannel.Frame) -> Bool {
-            let nearest = frame.detents.nearestStep(to: frame.pointsPerBar)
-            return parent.rulerZoom.map { $0.pointsPerBar == nearest } ?? (nearest <= frame.detents.baseStep)
+            (parent.rulerZoom?.pointsPerBar ?? 1) == frame.detents.nearestStep(to: frame.pointsPerBar)
         }
 
         private func updateRulerZoom(on map: MKMapView, wasVisible: Bool, liveFlight: Bool = false) -> Bool {
@@ -1193,7 +1191,7 @@ struct NativeMapSurface: UIViewRepresentable {
                 guard zoom.needsFit(at: source.position, since: rulerFitPosition) else { return false }
             } else if rulerFitPosition != nil, let id = rulerLiveFitID,
                       let previous = parent.liveRulerGeometry?.pointIDs.firstIndex(of: id) {
-                guard zoom.exceedsHalfWindow(from: Double(previous), to: source.position) else { return false }
+                guard source.position - Double(previous) > zoom.halfWindow else { return false }
             }
             rulerFitPosition = source.position
             rulerLiveFitID = parent.replayActive ? nil : parent.liveRulerGeometry?.pointIDs.last

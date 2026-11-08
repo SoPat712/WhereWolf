@@ -7,21 +7,21 @@ final class HistoryLandmarkTests: XCTestCase {
         let points = route(count: 8_641, every: 10, metersPerPoint: 10)
         let landmarks = makeLandmarks(points)
         let range = 0.0...Double(points.count - 1)
-        let scales: [(Double, Int)] = [(10, 0), (20, 1), (120, 2), (600, 3), (3_600, 4)]
+        let scales: [(Double, Int)] = [(1, 0), (2, 1), (10, 2), (30, 3), (100, 4)]
 
-        for (secondsPerBar, expectedLevel) in scales {
-            let level = landmarks.timeLevel(in: range, pointsPerBar: secondsPerBar, spacing: 12)
-            XCTAssertEqual(level, expectedLevel, "seconds per bar: \(secondsPerBar)")
+        for (pointsPerBar, expectedLevel) in scales {
+            let level = landmarks.timeLevel(in: range, pointsPerBar: pointsPerBar, spacing: 12)
+            XCTAssertEqual(level, expectedLevel, "points per bar: \(pointsPerBar)")
             let marks = HistoryLandmarks.visibleMarks(landmarks.timeMarks[level], in: range)
             XCTAssertGreaterThan(marks.count, 1)
             for (previous, next) in zip(marks, marks.dropFirst()) {
-                XCTAssertGreaterThanOrEqual(next.time.timeIntervalSince(previous.time) * 12 / secondsPerBar, 60)
+                XCTAssertGreaterThanOrEqual(Double(next.index - previous.index) * 12 / pointsPerBar, 60)
             }
         }
         XCTAssertEqual(HistoryLandmarks.timeMinutes, [1, 5, 15, 60, 360])
     }
 
-    func testTimeLevelFollowsTimeRatherThanFixDensity() {
+    func testTimeLevelUsesTheDensityInTheVisibleWindow() {
         var points = route(count: 361, every: 10, metersPerPoint: 10)
         let start = points[0].timestamp
         points += (1...60).map {
@@ -29,9 +29,8 @@ final class HistoryLandmarkTests: XCTestCase {
         }
         let landmarks = makeLandmarks(points)
 
-        // Fixes ten seconds or a minute apart cover the same time per bar, so both label every 5 minutes.
-        XCTAssertEqual(landmarks.timeLevel(in: 0...350, pointsPerBar: 20, spacing: 12), 1)
-        XCTAssertEqual(landmarks.timeLevel(in: 361...420, pointsPerBar: 20, spacing: 12), 1)
+        XCTAssertEqual(landmarks.timeLevel(in: 0...350, pointsPerBar: 2, spacing: 12), 1)
+        XCTAssertEqual(landmarks.timeLevel(in: 361...420, pointsPerBar: 2, spacing: 12), 2)
     }
 
     func testLocalMidnightsFollowSpringAndFallDayLengths() {
@@ -145,100 +144,6 @@ final class HistoryLandmarkTests: XCTestCase {
         XCTAssertLessThan(HistoryRulerLabelLayout.Priority.gap.rawValue, HistoryRulerLabelLayout.Priority.time.rawValue)
     }
 
-    func testEveryBarIsTheSameTimeAndAStopIsAsLongAsItWas() throws {
-        let points = parkedDrive()
-        let landmarks = makeLandmarks(points)
-        let stop = try XCTUnwrap(landmarks.stops.first)
-        let start = points[0].timestamp
-        for secondsPerBar in [1.0, 60, 900] {
-            let map = landmarks.rulerSpacing.scaled(secondsPerBar)
-            for index in [0, 10, 29, 30, 32, 33, 50, points.count - 1] {
-                XCTAssertEqual(map.bars(to: Double(index)), points[index].timestamp.timeIntervalSince(start) / secondsPerBar,
-                               accuracy: 1e-9)
-            }
-            XCTAssertEqual(map.bars(to: Double(stop.end)) - map.bars(to: Double(stop.id)),
-                           stop.departure.timeIntervalSince(stop.arrival) / secondsPerBar, accuracy: 1e-9)
-            XCTAssertEqual(map.bars(to: Double(points.count)) - map.bars(to: Double(points.count - 1)), 1,
-                           accuracy: 1e-9, "Live is one bar past the newest fix.")
-            var previous = -Double.infinity
-            for index in stride(from: 0.0, through: Double(points.count), by: 0.125) {
-                let bars = map.bars(to: index)
-                XCTAssertGreaterThan(bars, previous)
-                previous = bars
-                XCTAssertEqual(map.index(atBars: bars), index, accuracy: 1e-9)
-            }
-        }
-    }
-
-    func testDenseAndSparseMovementShareOneTimeScale() {
-        // Forty seconds at a fix a second, then walking with a fix every 5 seconds.
-        var points = route(count: 41, every: 1, metersPerPoint: 15)
-        let start = points.last!.timestamp
-        points += (1...20).map { fix(40 + $0, at: start.addingTimeInterval(Double($0) * 5), north: 600 + Double($0) * 7) }
-        let spacing = makeLandmarks(points).rulerSpacing
-        for secondsPerBar in [1.0, 20] {
-            let map = spacing.scaled(secondsPerBar)
-            XCTAssertEqual(map.bars(to: 50) - map.bars(to: 45), map.bars(to: 35) - map.bars(to: 10),
-                           accuracy: 1e-9, "Five walking fixes and 25 driving fixes cover 25 seconds alike.")
-        }
-    }
-
-    func testTicksLandOnTheClockWithTallerOnesOnRoundTimes() {
-        let bracket = HistoryRulerCoarseDrag.Bracket(lower: 60, upper: 60, t: 0)
-        let offset = -4.0 * 3_600
-        let start = 1_780_000_000.0
-        let ticks = bracket.clockTicks(in: start...(start + 1_800), offset: offset)
-        XCTAssertEqual(ticks.count, 30)
-        for tick in ticks {
-            let local = tick.position + offset
-            XCTAssertEqual(local.truncatingRemainder(dividingBy: 60), 0)
-            XCTAssertEqual(tick.majorAlpha > 0, local.truncatingRemainder(dividingBy: 300) == 0, "Taller every 5 minutes.")
-        }
-    }
-
-    func testAStopSplitByAStrayFixIsShownOnce() throws {
-        // Ten minutes in one place, a fix 70 m off, then ten more minutes back in the same place.
-        let start = date("2026-06-01T04:00:00Z")
-        var points = (0..<10).map { fix($0, at: start.addingTimeInterval(Double($0) * 60), north: 0) }
-        points.append(fix(10, at: start.addingTimeInterval(570), north: 70))
-        points += (0..<10).map { fix(11 + $0, at: start.addingTimeInterval(600 + Double($0) * 60), north: 0) }
-        XCTAssertEqual(ReplayTimeline(points: points).stays.count, 2)
-
-        let home = try XCTUnwrap(makeLandmarks(points, places: [place("Home", north: 0)]).stops.first)
-        XCTAssertEqual(makeLandmarks(points, places: [place("Home", north: 0)]).stops.count, 1)
-        XCTAssertEqual(home.name, "Home")
-        XCTAssertLessThanOrEqual(home.id, 1)
-        XCTAssertGreaterThanOrEqual(home.end, 19)
-        XCTAssertEqual(makeLandmarks(points).stops.count, 2, "Unnamed stops merge only when they touch.")
-    }
-
-    func testTheTimeLadderFitsTheWholeHistoryInOneWidth() {
-        let points = parkedDrive()
-        let spacing = makeLandmarks(points).rulerSpacing
-        let detents = HistoryRulerCoarseDrag.Detents(tickCount: points.count, rulerWidth: 350, spacing: spacing)
-        XCTAssertEqual(detents.steps, [300, 120, 60, 30, 15, 10, 5, 2, 1])
-        XCTAssertLessThanOrEqual(spacing.totalBars(pointCount: points.count, pointsPerBar: 300) * 18, 350)
-        XCTAssertGreaterThan(spacing.totalBars(pointCount: points.count, pointsPerBar: 120) * 18, 350)
-        XCTAssertEqual(detents.baseStep, 60)
-        XCTAssertEqual(detents.menuEntries(interval: 1_800, current: 60).map(\.title), ["1 second", "1 minute", "5 minutes"])
-        XCTAssertEqual(detents.menuEntries(interval: 1_800, current: 60).first { $0.selected }?.title, "1 minute")
-    }
-
-    func testTimeMarksInsideASilenceSitAtTheirExactTime() {
-        let points = parkedDrive()
-        let landmarks = makeLandmarks(points)
-        let start = points[32].timestamp, end = points[33].timestamp
-        let silent = landmarks.timeMarks[0].filter { $0.index == 33 && $0.time < end }
-        XCTAssertGreaterThan(silent.count, 50)
-        for mark in silent {
-            XCTAssertEqual(landmarks.position(of: mark),
-                           32 + mark.time.timeIntervalSince(start) / end.timeIntervalSince(start), accuracy: 1e-9)
-        }
-        for mark in landmarks.timeMarks[0] where points[mark.index].timestamp == mark.time {
-            XCTAssertEqual(landmarks.position(of: mark), Double(mark.index))
-        }
-    }
-
     func testAStopExplainsItsOwnSilence() {
         var points = route(count: 6, every: 60, metersPerPoint: 0)
         let start = points[0].timestamp
@@ -312,18 +217,16 @@ final class HistoryLandmarkTests: XCTestCase {
         XCTAssertFalse(placements[0].symbolOnly)
     }
 
-    // The stop in these tests is wider than its fixes, so positions are measured in screen points.
     func testSnapEntersAtSixPointsAndHoldsUntilFingerTravelExceedsTen() {
         let points = route(count: 11, every: 60, metersPerPoint: 0)
         let landmarks = makeLandmarks(points)
-        let position = rulerPositions(landmarks, pointsPerBar: 2, spacing: 12)
         var snap = HistoryStopSnap()
 
-        let outside = snap.move(position: position(6.1, 10), translation: 0, finger: 99, pointsPerBar: 2,
+        let outside = snap.move(position: 2.01, translation: 0, finger: 99, pointsPerBar: 2,
                                 spacing: 12, pointCount: points.count, landmarks: landmarks)
-        XCTAssertEqual(outside, position(6.1, 10), accuracy: 1e-9)
+        XCTAssertEqual(outside, 2.01)
         XCTAssertNil(snap.boundary)
-        let entry = snap.move(position: position(11.9, 10), translation: -6, finger: 100, pointsPerBar: 2,
+        let entry = snap.move(position: 3, translation: -6, finger: 100, pointsPerBar: 2,
                               spacing: 12, pointCount: points.count, landmarks: landmarks)
         XCTAssertEqual(entry, 1)
         XCTAssertEqual(snap.boundary?.index, 10)
@@ -338,7 +241,7 @@ final class HistoryLandmarkTests: XCTestCase {
         XCTAssertEqual(released, held, "Escaping a stop must rebase without moving the ruler")
         XCTAssertNil(snap.boundary)
         snap.reset()
-        let arrival = snap.move(position: position(-5.9, 0), translation: 0, finger: 200, pointsPerBar: 2,
+        let arrival = snap.move(position: 10, translation: 0, finger: 200, pointsPerBar: 2,
                                 spacing: 12, pointCount: points.count, landmarks: landmarks)
         XCTAssertEqual(arrival, 11)
         XCTAssertEqual(snap.boundary?.index, 0)
@@ -348,19 +251,18 @@ final class HistoryLandmarkTests: XCTestCase {
     func testSnapDoesNotImmediatelyRecaptureAReleasedBoundary() {
         let points = route(count: 11, every: 60, metersPerPoint: 0)
         let landmarks = makeLandmarks(points)
-        let position = rulerPositions(landmarks, pointsPerBar: 2, spacing: 12)
         var snap = HistoryStopSnap()
-        let entry = snap.move(position: position(11.9, 10), translation: -6, finger: 100, pointsPerBar: 2,
+        let entry = snap.move(position: 3, translation: -6, finger: 100, pointsPerBar: 2,
                               spacing: 12, pointCount: points.count, landmarks: landmarks)
         _ = snap.move(position: entry, translation: 12, finger: 111, pointsPerBar: 2,
                       spacing: 12, pointCount: points.count, landmarks: landmarks)
         let nearby = snap.move(position: entry, translation: 3, finger: 114, pointsPerBar: 2,
                                spacing: 12, pointCount: points.count, landmarks: landmarks)
-        XCTAssertEqual(nearby, position(3, 10), accuracy: 1e-9)
+        XCTAssertEqual(nearby, 1.5)
         XCTAssertNil(snap.boundary)
         let away = snap.move(position: nearby, translation: 4, finger: 118, pointsPerBar: 2,
                              spacing: 12, pointCount: points.count, landmarks: landmarks)
-        XCTAssertEqual(away, position(7, 10), accuracy: 1e-9)
+        XCTAssertEqual(away, nearby + 4.0 / 6, accuracy: 0.000001)
         XCTAssertNil(snap.boundary)
         let returned = snap.move(position: away, translation: -4, finger: 114, pointsPerBar: 2,
                                  spacing: 12, pointCount: points.count, landmarks: landmarks)
@@ -371,9 +273,8 @@ final class HistoryLandmarkTests: XCTestCase {
     func testSnapKeepsItsFingerAnchorAcrossCoarseDetentChanges() {
         let points = route(count: 11, every: 60, metersPerPoint: 0)
         let landmarks = makeLandmarks(points)
-        let position = rulerPositions(landmarks, pointsPerBar: 2, spacing: 12)
         var snap = HistoryStopSnap()
-        let entry = snap.move(position: position(11.9, 10), translation: -6, finger: 100, pointsPerBar: 2,
+        let entry = snap.move(position: 3, translation: -6, finger: 100, pointsPerBar: 2,
                               spacing: 12, pointCount: points.count, landmarks: landmarks)
         let held = snap.move(position: entry, translation: 9, finger: 109, pointsPerBar: 5,
                              spacing: 18, pointCount: points.count, landmarks: landmarks)
@@ -388,15 +289,14 @@ final class HistoryLandmarkTests: XCTestCase {
     func testPointPrecisionAndResetClearTheSnap() {
         let points = route(count: 11, every: 60, metersPerPoint: 0)
         let landmarks = makeLandmarks(points)
-        let position = rulerPositions(landmarks, pointsPerBar: 2, spacing: 12)
         var snap = HistoryStopSnap()
-        let entry = snap.move(position: position(11.9, 10), translation: -6, finger: 100, pointsPerBar: 2,
+        let entry = snap.move(position: 3, translation: -6, finger: 100, pointsPerBar: 2,
                               spacing: 12, pointCount: points.count, landmarks: landmarks)
         let precise = snap.move(position: entry, translation: 4, finger: 104, pointsPerBar: 1,
                                 spacing: 12, pointCount: points.count, landmarks: landmarks)
-        XCTAssertEqual(precise, rulerPositions(landmarks, pointsPerBar: 1, spacing: 12)(4, 10), accuracy: 1e-9)
+        XCTAssertEqual(precise, entry + 4.0 / 12, accuracy: 0.000001)
         XCTAssertNil(snap.boundary)
-        _ = snap.move(position: position(11.9, 10), translation: -6, finger: 110, pointsPerBar: 2,
+        _ = snap.move(position: 3, translation: -6, finger: 110, pointsPerBar: 2,
                       spacing: 12, pointCount: points.count, landmarks: landmarks)
         XCTAssertNotNil(snap.boundary)
         snap.reset()
@@ -640,6 +540,22 @@ final class HistoryLandmarkTests: XCTestCase {
         XCTAssertNil(snap.boundary)
     }
 
+    func testAStopSplitByAStrayFixIsShownOnce() throws {
+        // Ten minutes in one place, a fix 70 m off, then ten more minutes back in the same place.
+        let start = date("2026-06-01T04:00:00Z")
+        var points = (0..<10).map { fix($0, at: start.addingTimeInterval(Double($0) * 60), north: 0) }
+        points.append(fix(10, at: start.addingTimeInterval(570), north: 70))
+        points += (0..<10).map { fix(11 + $0, at: start.addingTimeInterval(600 + Double($0) * 60), north: 0) }
+        XCTAssertEqual(ReplayTimeline(points: points).stays.count, 2)
+
+        let home = try XCTUnwrap(makeLandmarks(points, places: [place("Home", north: 0)]).stops.first)
+        XCTAssertEqual(makeLandmarks(points, places: [place("Home", north: 0)]).stops.count, 1)
+        XCTAssertEqual(home.name, "Home")
+        XCTAssertLessThanOrEqual(home.id, 1)
+        XCTAssertGreaterThanOrEqual(home.end, 19)
+        XCTAssertEqual(makeLandmarks(points).stops.count, 2, "Unnamed stops merge only when they touch.")
+    }
+
     // The round-1 calendar walk is the reference for arithmetic boundaries and eager text.
     private func calendarWalk(_ points: [RecordedLocation], minutes: Int?, calendar: Calendar, locale: Locale)
         -> [(index: Int, time: Date, text: String)] {
@@ -700,26 +616,6 @@ final class HistoryLandmarkTests: XCTestCase {
     private func place(_ name: String, north: Double, symbol: String = "mappin", color: String = "blue") -> WifiPlace {
         WifiPlace(id: name, name: name, latitude: 45 + north / 111_195, longitude: -122,
                   symbol: symbol, color: color)
-    }
-
-    // A drive at one fix a second, about an hour parked with a few fixes and a long silence, then a drive.
-    private func parkedDrive() -> [RecordedLocation] {
-        var points = route(count: 30, every: 1, metersPerPoint: 15)
-        let parked = points.last!.timestamp
-        points += (1...3).map { fix(29 + $0, at: parked.addingTimeInterval(Double($0) * 40), north: 435) }
-        points.append(fix(33, at: parked.addingTimeInterval(66 * 60), north: 505))
-        points += (1...30).map {
-            fix(33 + $0, at: parked.addingTimeInterval(66 * 60 + Double($0)), north: 505 + Double($0) * 15)
-        }
-        return points
-    }
-
-    // The ruler position, in fixes back from Live, a number of screen points older than a point index.
-    private func rulerPositions(_ landmarks: HistoryLandmarks, pointsPerBar: Double,
-                                spacing: Double) -> (Double, Int) -> Double {
-        let map = landmarks.rulerSpacing.scaled(pointsPerBar)
-        let count = Double(landmarks.timestamps.count)
-        return { points, index in count - map.index(atBars: map.bars(to: Double(index)) - points / spacing) }
     }
 
     private func makeLandmarks(_ points: [RecordedLocation], places: [WifiPlace] = []) -> HistoryLandmarks {
