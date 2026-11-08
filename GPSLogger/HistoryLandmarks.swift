@@ -28,8 +28,8 @@ struct HistoryStop: Identifiable, Equatable {
     }
 }
 
-// A silence of at least Coverage's gap length between two stored fixes. The ruler spaces fixes evenly,
-// so it marks the silence instead of drawing its length.
+// A silence of at least Coverage's gap length between two stored fixes outside a stop. A phone that logs
+// only when it moves goes quiet while parked, so a stop explains its own silences.
 struct HistoryGap: Equatable {
     let index: Int
     let duration: TimeInterval
@@ -159,7 +159,10 @@ final class HistoryLandmarks {
         }.sorted { $0.index == $1.index ? !$0.isArrival && $1.isArrival : $0.index < $1.index }
         gaps = timestamps.indices.dropFirst().compactMap { index in
             let duration = timestamps[index].timeIntervalSince(timestamps[index - 1])
-            return duration >= CoverageReport.gapThreshold ? HistoryGap(index: index, duration: duration) : nil
+            guard duration >= CoverageReport.gapThreshold else { return nil }
+            let stop = Self.lowerBound(stops.count) { stops[$0].end >= index }
+            if stops.indices.contains(stop), stops[stop].id < index { return nil }
+            return HistoryGap(index: index, duration: duration)
         }
         let marks = Self.marks(timestamps: timestamps, calendar: calendar)
         days = marks.days

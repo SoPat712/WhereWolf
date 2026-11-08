@@ -132,7 +132,7 @@ final class HistoryLandmarkTests: XCTestCase {
         var points = route(count: 6, every: 60, metersPerPoint: 0)
         let start = points[0].timestamp
         points.append(fix(6, at: start.addingTimeInterval(300 + 540), north: 0))
-        points.append(fix(7, at: start.addingTimeInterval(840 + 3_870), north: 64))
+        points.append(fix(7, at: start.addingTimeInterval(840 + 3_870), north: 5_000))
         let landmarks = makeLandmarks(points)
 
         XCTAssertEqual(landmarks.gaps, [HistoryGap(index: 7, duration: 3_870)])
@@ -142,6 +142,19 @@ final class HistoryLandmarkTests: XCTestCase {
         XCTAssertTrue(landmarks.visibleGaps(in: 0...5).isEmpty)
         XCTAssertLessThan(HistoryRulerLabelLayout.Priority.stop.rawValue, HistoryRulerLabelLayout.Priority.gap.rawValue)
         XCTAssertLessThan(HistoryRulerLabelLayout.Priority.gap.rawValue, HistoryRulerLabelLayout.Priority.time.rawValue)
+    }
+
+    func testAStopExplainsItsOwnSilence() {
+        var points = route(count: 6, every: 60, metersPerPoint: 0)
+        let start = points[0].timestamp
+        points.append(fix(6, at: start.addingTimeInterval(300 + 540), north: 0))
+        // Parked, then the first fix across the lot: the silence belongs to the stop.
+        points.append(fix(7, at: start.addingTimeInterval(840 + 3_870), north: 64))
+        let landmarks = makeLandmarks(points)
+
+        XCTAssertEqual(landmarks.stops.map(\.id), [0])
+        XCTAssertEqual(landmarks.stops.map(\.end), [7])
+        XCTAssertTrue(landmarks.gaps.isEmpty)
     }
 
     func testAnOutsidePlaceLeavesTheStopUnnamedAndDoesNotCreateStopsOnAMovingRoute() {

@@ -262,8 +262,9 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   `GLWifiPlaceMatchDistance` of the stay center, otherwise gray `mappin` and a duration.
   A stop's label centers on it even when its evenly spaced fixes are narrower than the text,
   falling back to the symbol alone where labels collide. A silence of at least Coverage's 10-minute gap
-  between stored fixes gets a red band and a red "No data" label with its length, since even spacing
-  cannot show it. Keep every stored point.
+  between stored fixes outside a stop gets a red band and a red "No data" label with its length, since even
+  spacing cannot show it; a stop explains its own silences, since a phone that logs only when it moves goes
+  quiet while parked. Keep every stored point.
   The buttons beside Play jump to the previous/next arrival or departure through the
   existing selection path; disable at the ends and name the target for VoiceOver.
   The time beneath the ruler opens the native Go To sheet while browsing; Live keeps
