@@ -346,7 +346,7 @@ final class HistoryLandmarks {
                     start: start, end: end, startTime: points[start].timestamp, endTime: points[end].timestamp,
                     title: span.stop?.title ?? movement?.title ?? "Moving",
                     symbol: span.stop?.symbol ?? movement?.symbol ?? ReplayActivity.moving.symbol,
-                    color: span.stop?.color ?? "gray", distance: distance, isStop: span.stop != nil))
+                    color: span.stop?.color ?? movement?.color ?? "gray", distance: distance, isStop: span.stop != nil))
                 start = end + 1
             }
         }
@@ -354,9 +354,10 @@ final class HistoryLandmarks {
     }
 
     private static func movement(timeline: ReplayTimeline,
-                                 range: ClosedRange<Int>) -> (title: String, symbol: String) {
-        let choices: [(ReplayActivity, String)] = [(.flying, "Flight"), (.driving, "Drive"),
-                                                  (.cycling, "Cycle"), (.walking, "Walk"), (.moving, "Moving")]
+                                 range: ClosedRange<Int>) -> (title: String, symbol: String, color: String) {
+        let choices: [(ReplayActivity, String, String)] = [(.flying, "Flight", "purple"), (.driving, "Drive", "blue"),
+                                                          (.cycling, "Cycle", "orange"), (.walking, "Walk", "green"),
+                                                          (.moving, "Moving", "gray")]
         var counts = [Int](repeating: 0, count: choices.count)
         var distances = [Double](repeating: 0, count: choices.count)
         for index in range {
@@ -370,7 +371,7 @@ final class HistoryLandmarks {
         let weights = total > 0 ? distances : counts.map(Double.init)
         let winner = total > 0 && distances[0] * 4 >= total ? 0
             : weights.indices.dropFirst().max { weights[$0] < weights[$1] }!
-        return (choices[winner].1, choices[winner].0.symbol)
+        return (choices[winner].1, choices[winner].0.symbol, choices[winner].2)
     }
 }
 

@@ -258,7 +258,9 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   its plain label. Go To uses medium/large detents, compact date/time pickers bounded
   from the oldest retained point to now, and selects the nearest stored point.
   Its day sections, and the stops and movements within each day, are newest first, with
-  shared activity/distance calculations and Viewing on the selected row.
+  shared activity/distance calculations and a tinted Viewing badge on the selected row. It uses the
+  glass Settings sheet styling; day headers read Today, Yesterday or the date with the day's stop count
+  and distance, and rows show a colored icon, the time range, the duration and any distance.
   Selecting a row jumps to its start and dismisses. Cancel and Go use native toolbars.
   Pinching the history ruler changes a scale retained across tabs, playback and pinches at
   Live, without defaults; returning to Live from history resets it to every point. Spread for fewer points per bar;
