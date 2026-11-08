@@ -154,12 +154,12 @@ final class HistoryLandmarkTests: XCTestCase {
         XCTAssertEqual(landmarks.stops.count, 1)
         XCTAssertEqual(stop.end, 33)
         XCTAssertEqual(spacing.slotDuration, 1, "A slot is the typical interval between moving fixes.")
-        // The stop and the 40-second step into it are stretches; the drives keep a slot per fix.
-        XCTAssertEqual(spacing.stretches.map { [$0.start, $0.end] }, [[29, 30], [stop.id, stop.end]])
-        let stretch = spacing.stretches[1]
+        // The stop is a stretch; the 40-second step into it is moving time.
+        XCTAssertEqual(spacing.stretches.map { [$0.start, $0.end] }, [[stop.id, stop.end]])
+        let stretch = spacing.stretches[0]
         let length = stop.departure.timeIntervalSince(stop.arrival)
-        XCTAssertEqual(stretch.nearBars, 8 + 3 * log2(length / 8), accuracy: 1e-9)
-        XCTAssertEqual(stretch.nearBars, 35, accuracy: 0.5, "About an hour keeps about 35 bars close up.")
+        XCTAssertEqual(stretch.nearBars, 4 + 1.5 * log2(length / 300), accuracy: 1e-9)
+        XCTAssertEqual(stretch.nearBars, 9.5, accuracy: 0.5, "About an hour keeps about 10 bars close up.")
         XCTAssertEqual(stretch.farSlots, 300 * (length / 300).squareRoot(), accuracy: 1e-9)
 
         for pointsPerBar in [1.0, 2, 20, 200, 2_000] {
@@ -182,8 +182,45 @@ final class HistoryLandmarkTests: XCTestCase {
         let map = spacing.scaled(1)
         XCTAssertEqual(map.bars(to: 32.5) - map.bars(to: 32), 2 * (map.bars(to: 32.25) - map.bars(to: 32)), accuracy: 1e-9)
         let stretches = spacing.stretches.reduce(0) { $0 + $1.bars(pointsPerBar: 1) }
-        XCTAssertEqual(spacing.totalBars(pointCount: points.count, pointsPerBar: 1), 29 + 30 + 1 + stretches,
-                       accuracy: 1e-9, "Two drives of a fix a second, Live's slot and the stretches.")
+        XCTAssertEqual(spacing.totalBars(pointCount: points.count, pointsPerBar: 1), 29 + 40 + 30 + 1 + stretches,
+                       accuracy: 1e-9, "Two drives of a fix a second, the walk in, Live's slot and the stop.")
+    }
+
+    func testTicksAreEvenAlongMovingTimeAndLeaveStopsClear() throws {
+        let points = parkedDrive()
+        let landmarks = makeLandmarks(points)
+        let stop = try XCTUnwrap(landmarks.stops.first)
+        let map = landmarks.rulerSpacing.scaled(1)
+        let live = map.slots(to: Double(points.count))
+        var previous: Double?
+        for slot in stride(from: 0.0, through: live, by: 1) {
+            let index = map.index(atSlots: slot)
+            XCTAssertEqual(map.slots(to: index), slot, accuracy: 1e-9)
+            XCTAssertFalse(index > Double(stop.id) && index < Double(stop.end), "No tick inside the stop.")
+            if let previous {
+                let gap = map.bars(to: index) - map.bars(to: previous)
+                if index <= Double(stop.id) || previous >= Double(stop.end) {
+                    XCTAssertEqual(gap, 1, accuracy: 1e-9, "One bar between ticks while moving.")
+                }
+            }
+            previous = index
+        }
+        XCTAssertEqual(map.index(atSlots: map.slots(to: Double(stop.id))), Double(stop.end),
+                       "A tick at the stop sits at its departure.")
+    }
+
+    func testANightAtHomeLeavesRoomOnTheRulerCloseUp() {
+        var points = route(count: 30, every: 1, metersPerPoint: 15)
+        let home = points.last!.timestamp
+        // Parked twelve hours with a fix every 5 minutes, then the first fix of the morning drive.
+        points += (1...144).map { fix(29 + $0, at: home.addingTimeInterval(Double($0) * 300), north: 435) }
+        points += (1...30).map {
+            fix(173 + $0, at: home.addingTimeInterval(43_200 + Double($0)), north: 435 + Double($0) * 15)
+        }
+        let spacing = makeLandmarks(points).rulerSpacing
+        let night = spacing.stretches.max { $0.duration < $1.duration }
+        XCTAssertGreaterThan(night?.duration ?? 0, 11 * 3_600)
+        XCTAssertLessThan(night?.nearBars ?? .infinity, 16, "Twelve hours stays well under a ruler's width.")
     }
 
     func testDenseAndSparseMovementShareOneTimeScale() {

@@ -261,12 +261,13 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   60 points between labels. Stop capsules use the nearest Wi-Fi Place within
   `GLWifiPlaceMatchDistance` of the stay center, otherwise gray `mappin` and a duration.
   The ruler shows time (`HistoryRulerSpacing`). A slot is the median interval between fixes outside stops;
-  each step outside a stop is as wide as its duration in slots and never under one, so a bar covers the same
-  time wherever the phone was moving and every fix stays reachable. A stop is one stretch of its whole
-  length, with its fixes placed by time. Close up a stretch or step longer than 8 slots is capped at 8 bars
-  plus 3 for each doubling, so it is never a wall of bars; zoomed out time past 5 minutes counts as
-  5 minutes × √(minutes / 5), so stops stay smaller than the drives between them and the coarsest step still
-  fits the whole history. Time and day marks sit at their exact time between fixes. Scroll offsets, stop
+  each moving step is as wide as its duration in slots and never under one, so a bar covers the same time
+  wherever the phone was moving and every fix stays reachable. A stop, or a silence of 5 minutes or more
+  outside one, is a stretch of its whole length with no slots, its fixes placed by time. Close up a stretch
+  keeps 4 bars for 5 minutes and 1.5 more for each doubling (about 15 for a night at home); zoomed out it counts
+  as 5 minutes × √(minutes / 5), when that is narrower, so stops stay smaller than the drives between them and
+  the coarsest step still fits the whole history. Bars and selection haptics count slots back from Live, so
+  they stay evenly spaced, move with the data while pinching and leave stretches clear. Time and day marks sit at their exact time between fixes. Scroll offsets, stop
   snapping, label spacing and the map's ruler fit window go through that spacing; new landmarks apply only
   while the ruler is still. A stop's label centers
   on it, falling back to the symbol alone where labels collide. A silence of at least Coverage's 10-minute

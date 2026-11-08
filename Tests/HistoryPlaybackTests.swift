@@ -2800,7 +2800,8 @@ final class HistoryRulerZoomTests: XCTestCase {
         XCTAssertEqual(hold.window(at: 36.5, count: points.count), 33..<49)
         XCTAssertEqual(plain.window(at: 36.5, count: points.count), 25..<49)
         XCTAssertFalse(hold.needsFit(at: 35, since: 34))
-        XCTAssertTrue(hold.needsFit(at: 31, since: 34), "Crossing the stop moves more than half the window.")
+        XCTAssertTrue(hold.needsFit(at: 28, since: 34), "Crossing the stop and the walk in moves past half the window.")
+        XCTAssertFalse(plain.needsFit(at: 28, since: 34))
         XCTAssertEqual(hold, plain, "A new spacing alone does not change the zoom.")
     }
 

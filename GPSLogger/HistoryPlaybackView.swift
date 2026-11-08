@@ -1546,11 +1546,14 @@ private final class HistoryRulerTicks: UIView {
             UIBezierPath(roundedRect: CGRect(x: (left + right - width) / 2, y: 18, width: width,
                                              height: bounds.height - 20), cornerRadius: 4).fill()
         }
-        let firstBar = min(Double(tickCount), max(0, Double(tickCount) - newest))
-        let barRange = firstBar...min(Double(tickCount), max(firstBar, Double(tickCount) - oldest))
+        // Bars count slots back from Live, so they stay evenly spaced and a stop's stretch has none.
+        let liveSlots = map.slots(to: Double(tickCount))
+        let firstBar = min(liveSlots, max(0, liveSlots - map.slots(to: newest)))
+        let barRange = firstBar...min(liveSlots, max(firstBar, liveSlots - map.slots(to: oldest)))
         for bar in detents.bracket(at: scale.pointsPerTick).bars(in: barRange) {
-            let x = center + CGFloat(map.bars(to: Double(tickCount) - bar.position) - selectedBars) * scale.spacing
-            let stop = landmarks?.stop(containing: Double(tickCount) - bar.position, pointCount: pointCount)
+            let index = map.index(atSlots: liveSlots - bar.position)
+            let x = center + CGFloat(map.bars(to: index) - selectedBars) * scale.spacing
+            let stop = landmarks?.stop(containing: index, pointCount: pointCount)
             let snapped = stop.map { $0.id == snappedStop } == true
             let color: UIColor = snapped ? .white : .label
             let minorAlpha = stop == nil ? 0.25 : 0.15
@@ -2505,9 +2508,11 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
 
     private func feedback(at position: Double, time: Double) {
         let edge = boundary(at: position)
-        let crossedTick = position > lastFeedbackPosition
-            ? floor(position) > floor(lastFeedbackPosition)
-            : ceil(position) < ceil(lastFeedbackPosition)
+        // A tick is a slot back from Live, so crossing a stop's stretch crosses none.
+        let count = Double(ticks.tickCount), map = ticks.map
+        let slots = map.slots(to: count) - map.slots(to: count - position)
+        let lastSlots = map.slots(to: count) - map.slots(to: count - lastFeedbackPosition)
+        let crossedTick = slots > lastSlots ? floor(slots) > floor(lastSlots) : ceil(slots) < ceil(lastSlots)
         if let edge, edge != lastBoundary {
             boundaryFeedback.impactOccurred(intensity: 0.65)
             boundaryFeedback.prepare()

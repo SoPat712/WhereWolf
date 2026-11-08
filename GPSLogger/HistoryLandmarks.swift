@@ -390,12 +390,12 @@ final class HistoryLandmarks {
     }
 }
 
-// The ruler shows time. Each step between fixes is as wide as its duration, in slots of the typical
-// interval between moving fixes and never under one slot, so a bar covers the same time wherever the phone
-// was moving and every fix stays reachable. A stop counts as one stretch of its whole length. Close up a
-// stretch longer than 8 slots is capped at 8 bars plus 3 for each doubling, so a stop or silence is never a
-// wall of bars; zoomed out time past 5 minutes grows with its square root, so stops stay smaller than the
-// drives between them and the whole history fits one ruler width.
+// The ruler shows time. Each step between moving fixes is as wide as its duration, in slots of the typical
+// interval between them and never under one slot, so a bar covers the same time wherever the phone was
+// moving and every fix stays reachable. A stop, or a silence of 5 minutes or more, is one stretch of its
+// whole length with no slots of its own. Close up a stretch keeps 4 bars for 5 minutes and 1.5 more for each
+// doubling, so even a night at home leaves room on the ruler; zoomed out it counts as 5 minutes times the
+// square root of its length in 5-minute units, so stops stay smaller than the drives between them.
 final class HistoryRulerSpacing: Equatable {
     static func == (lhs: HistoryRulerSpacing, rhs: HistoryRulerSpacing) -> Bool { lhs === rhs }
 
@@ -410,7 +410,6 @@ final class HistoryRulerSpacing: Equatable {
         func bars(pointsPerBar: Double) -> Double { min(nearBars, farSlots / pointsPerBar) }
     }
 
-    static let closeSlots = 8.0
     static let none = HistoryRulerSpacing()
     // Seconds per slot: the median interval between fixes outside stops.
     let slotDuration: TimeInterval?
@@ -444,11 +443,10 @@ final class HistoryRulerSpacing: Equatable {
         for index in times.indices.dropFirst() {
             var width = 0.0
             if !inStop[index] {
-                let length = slot.map { (times[index] - times[index - 1]) / $0 } ?? 1
-                if length > Self.closeSlots {
+                if times[index] - times[index - 1] >= 300 {
                     stretches.append(Self.stretch(start: index - 1, end: index, times: times, slot: slot))
                 } else {
-                    width = max(1, length)
+                    width = max(1, slot.map { (times[index] - times[index - 1]) / $0 } ?? 1)
                 }
             }
             prefix.append(prefix.last! + width)
@@ -463,11 +461,10 @@ final class HistoryRulerSpacing: Equatable {
 
     private static func stretch(start: Int, end: Int, times: [TimeInterval], slot: TimeInterval?) -> Stretch {
         let duration = times[end] - times[start]
-        let length = slot.map { duration / $0 } ?? Double(end - start)
-        let near = length <= closeSlots ? length : closeSlots + 3 * log2(length / closeSlots)
-        let far = duration <= 300 || slot == nil ? length : 300 / slot! * (duration / 300).squareRoot()
+        let length = max(1, duration / 300)
+        let far = slot.map { 300 / $0 * length.squareRoot() } ?? Double(end - start)
         return Stretch(start: start, end: end, startTime: times[start], duration: duration,
-                       nearBars: max(1, near), farSlots: max(1, far))
+                       nearBars: 4 + 1.5 * log2(length), farSlots: max(1, far))
     }
 
     func scaled(_ pointsPerBar: Double) -> Scaled { Scaled(spacing: self, pointsPerBar: pointsPerBar) }
@@ -484,6 +481,16 @@ final class HistoryRulerSpacing: Equatable {
         if index >= Double(count) { return slotPrefix[count] + index - Double(count) }
         let lower = Int(index.rounded(.down))
         return slotPrefix[lower] + (slotPrefix[lower + 1] - slotPrefix[lower]) * (index - Double(lower))
+    }
+
+    // The newest point index at a slot count; a stretch adds no slots, so its end is where a tick lands.
+    fileprivate func index(atSlots value: Double) -> Double {
+        let count = slotPrefix.count - 1
+        guard count > 0, value > 0 else { return value }
+        if value >= slotPrefix[count] { return Double(count) + value - slotPrefix[count] }
+        let step = HistoryLandmarks.lowerBound(count) { slotPrefix[$0 + 1] > value }
+        let low = slotPrefix[step], high = slotPrefix[step + 1]
+        return Double(step) + (high > low ? (value - low) / (high - low) : 0)
     }
 
     // How far a fractional point index is through a stretch's time.
@@ -536,6 +543,10 @@ final class HistoryRulerSpacing: Equatable {
             let low = self.bars(to: Double(step)), high = self.bars(to: Double(step + 1))
             return Double(step) + (high > low ? min(1, max(0, (bars - low) / (high - low))) : 0)
         }
+
+        // Ticks mark slots, which move with the data as the scale changes and leave stretches clear.
+        func slots(to index: Double) -> Double { isLinear ? index : spacing.slots(to: index) }
+        func index(atSlots slots: Double) -> Double { isLinear ? slots : spacing.index(atSlots: slots) }
 
         // Screen points between two point indices.
         func screenDistance(from start: Double, to end: Double, spacing: Double) -> Double {
