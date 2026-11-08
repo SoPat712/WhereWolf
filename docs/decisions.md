@@ -153,6 +153,18 @@ This log lists the decisions agents made on their own while working on WhereWolf
 - **Decided:** remove the title and subtitle, add Edit (Trip Modes) at the end of the mode row and move Trip Settings beside Start Trip. Changing a mode mid-trip stays out: uploads and Health keep the starting mode.
 - **Undo:** `git revert bf2fa64`.
 
+## 2026-11-08: live trip stats (a1cdcf6)
+
+- **Asked for:** richer live stats on the Trip page (picked from offered options).
+- **Decided:** a 2×2 grid of distance, average speed (pace for walking, running and hiking modes), top speed and climb. Current speed stays in the map's speedometer. Top speed needs speed accuracy within 5 m/s; climb counts rises of 5 m or more with vertical accuracy within 10 m.
+- **Undo:** `git revert a1cdcf6` (revert a614812 first).
+
+## 2026-11-08: recent trips (a614812)
+
+- **Asked for:** recent trips on the Trip page (picked from offered options).
+- **Decided:** keep up to 20 finished-trip summaries on the device (no coordinates, not in Backup & Sync), list the newest five while idle, and open a trip's start on the Tracker ruler while it is still in local history.
+- **Undo:** `git revert a614812`.
+
 ## Deferred for the owner
 
 - **Watch complication for Today:** it needs a new watch widget extension and bundle identifier, which is an Apple developer account change.
