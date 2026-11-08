@@ -1,6 +1,7 @@
 #import <XCTest/XCTest.h>
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
+#import <os/lock.h>
 #import <sqlite3.h>
 #import "GLManager.h"
 #import "GLTripActions.h"
@@ -208,8 +209,19 @@ static void (^requestHandler)(WhereWolfTestProtocol *);
 }
 @end
 
-// Keep fixture writes out of the running app host's preference domain.
+// Keep fixture writes out of the running app host's preference domain. Background queues, such as the
+// transition log's, read it while setUp and tearDown replace it, so a reader must retain it under the lock
+// before the old one can be released.
 static NSUserDefaults *fixtureDefaults;
+static os_unfair_lock fixtureDefaultsLock = OS_UNFAIR_LOCK_INIT;
+
+static void setFixtureDefaults(NSUserDefaults *defaults) {
+    os_unfair_lock_lock(&fixtureDefaultsLock);
+    // Released when this returns, outside the lock.
+    __attribute__((objc_precise_lifetime)) NSUserDefaults *previous = fixtureDefaults;
+    fixtureDefaults = defaults;
+    os_unfair_lock_unlock(&fixtureDefaultsLock);
+}
 
 @interface NSUserDefaults (WhereWolfTests)
 + (NSUserDefaults *)wherewolf_testDefaults;
@@ -217,7 +229,10 @@ static NSUserDefaults *fixtureDefaults;
 
 @implementation NSUserDefaults (WhereWolfTests)
 + (NSUserDefaults *)wherewolf_testDefaults {
-    return fixtureDefaults ?: [self wherewolf_testDefaults];
+    os_unfair_lock_lock(&fixtureDefaultsLock);
+    NSUserDefaults *defaults = fixtureDefaults;
+    os_unfair_lock_unlock(&fixtureDefaultsLock);
+    return defaults ?: [self wherewolf_testDefaults];
 }
 @end
 
@@ -263,8 +278,9 @@ static int denyCommit(void *context, int action, const char *first, const char *
     self.defaults = [hostDefaults persistentDomainForName:NSBundle.mainBundle.bundleIdentifier] ?: @{};
     [[GLManager sharedManager] stopAllUpdates];
     self.defaultsSuite = [@"WhereWolf.ManagerTests." stringByAppendingString:NSUUID.UUID.UUIDString];
-    fixtureDefaults = [[NSUserDefaults alloc] initWithSuiteName:self.defaultsSuite];
-    [fixtureDefaults registerDefaults:[hostDefaults volatileDomainForName:NSRegistrationDomain]];
+    NSUserDefaults *fixture = [[NSUserDefaults alloc] initWithSuiteName:self.defaultsSuite];
+    [fixture registerDefaults:[hostDefaults volatileDomainForName:NSRegistrationDomain]];
+    setFixtureDefaults(fixture);
     // The app host's pending uploads must not reach a test's request handler.
     [[GLManager sharedManager] setupHTTPClient];
     self.manager = [[TestUploadManager alloc] init];
@@ -296,7 +312,7 @@ static int denyCommit(void *context, int action, const char *first, const char *
     [NSURLProtocol unregisterClass:WhereWolfTestProtocol.class];
     self.manager = nil;
     [fixtureDefaults removePersistentDomainForName:self.defaultsSuite];
-    fixtureDefaults = nil;
+    setFixtureDefaults(nil);
     [[NSUserDefaults standardUserDefaults] setPersistentDomain:self.defaults forName:NSBundle.mainBundle.bundleIdentifier];
     [super tearDown];
 }
