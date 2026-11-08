@@ -177,6 +177,12 @@ This log lists the decisions agents made on their own while working on WhereWolf
 - **Decided:** every fix keeps one slot, and each stop or silence outside a stop gets extra width spread across its time: 3 bars close up for 5 minutes plus 3 per doubling, or the width of 150 × √(minutes / 5) fixes when that is smaller, so it shrinks when zoomed out and the coarsest step fits the whole history. Time and day marks sit at their exact time; the scale estimate uses the median nearby interval. A fixed time weighting would either hide stops when zoomed out or turn them into multi-screen walls close up.
 - **Undo:** `git revert b7fae9a`.
 
+## 2026-11-08: the history ruler shows time (7f42ede)
+
+- **Asked for:** the scale label jumped from 22 to 3.3 minutes per bar as the needle moved ("So inconsistent!").
+- **Decided:** a slot is the median interval between moving fixes, and each step outside a stop is as wide as its duration (never under one slot), so a bar covers the same time wherever the phone moved; the label and menu use the slot. Stops stay compressed blocks, as picked earlier. Long stretches are capped close up at 8 bars plus 3 per doubling, and zoomed out time past 5 minutes counts as 5 minutes × √(minutes / 5). The map's ruler fit window counts ruler bars. Sparse movement such as walking now takes more room than before.
+- **Undo:** `git revert 7f42ede` (revert the Live flight commit after it first).
+
 ## Deferred for the owner
 
 - **Watch complication for Today:** it needs a new watch widget extension and bundle identifier, which is an Apple developer account change.
