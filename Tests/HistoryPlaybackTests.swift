@@ -753,6 +753,15 @@ final class HistoryPlaybackTests: XCTestCase {
         XCTAssertEqual(detents.menuEntries(interval: interval!, current: 20).first { $0.title == "15 minutes" }?.step, 20)
     }
 
+    func testRulerScaleEstimateLeavesOutAStopsSilence() {
+        let offsets = (0..<10).map { Double($0) * 30 } + (0..<10).map { 3_870 + Double($0) * 30 }
+        let timestamps = offsets.map { Date(timeIntervalSince1970: $0) }
+        XCTAssertEqual(HistoryRulerCoarseDrag.estimatedInterval(position: 10, pointCount: timestamps.count,
+            timestampAt: { timestamps[$0] }, emptyInterval: 1_800), 30)
+        XCTAssertEqual(HistoryRulerCoarseDrag.scaleLabel(pointsPerTick: 20, position: 10, pointCount: timestamps.count,
+            timestampAt: { timestamps[$0] }, emptyInterval: 1_800).text, "1 bar ≈ 10 min")
+    }
+
     func testRulerBubbleScaleHandlesEmptySingleAndEqualTimestampHistories() {
         let date = Date(timeIntervalSince1970: 0)
         let empty = HistoryRulerCoarseDrag.scaleLabel(pointsPerTick: 2, position: 20, pointCount: 0,
@@ -2172,6 +2181,46 @@ final class HistoryRulerContinuousScaleTests: XCTestCase {
         XCTAssertNil(harness.ruler.scaleEase)
     }
 
+    @MainActor func testAStopKeepsItsWidthWhileScrollingAndPinchingTheRuler() throws {
+        // A drive, about an hour parked with a few fixes and a long silence, then a drive.
+        let start = Date(timeIntervalSince1970: 1_780_000_000)
+        var points: [RecordedLocation] = []
+        func add(_ seconds: Double, north: Double) {
+            points.append(RecordedLocation(id: Int64(points.count + 1), timestamp: start.addingTimeInterval(seconds),
+                                           latitude: 45 + north / 111_195, longitude: -122))
+        }
+        for second in 0..<30 { add(Double(second), north: Double(second) * 15) }
+        for fix in 1...3 { add(29 + Double(fix) * 40, north: 435) }
+        for second in 0...30 { add(29 + 66 * 60 + Double(second), north: 505 + Double(second) * 15) }
+        let landmarks = HistoryLandmarks(points: points, timeline: ReplayTimeline(points: points), places: [])
+        let stop = try XCTUnwrap(landmarks.stops.first)
+        let harness = RulerScaleHarness(position: Double(points.count - stop.id), points: points,
+                                        landmarks: landmarks, step: 1)
+        defer { harness.ruler.cancelMotion() }
+        let scrollView = try XCTUnwrap(harness.ruler.subviews.compactMap { $0 as? UIScrollView }.first)
+        let map = landmarks.rulerSpacing.scaled(1)
+        XCTAssertEqual(scrollView.contentSize.width - scrollView.bounds.width,
+                       CGFloat(map.bars(to: Double(points.count))) * 12, accuracy: 0.5)
+
+        var moves: [Double] = []
+        harness.configuration.onMove = { moves.append($0); return 0 }
+        harness.ruler.configure(harness.configuration)
+        harness.ruler.scrollViewWillBeginDragging(scrollView)
+        let middle = (map.bars(to: Double(stop.id)) + map.bars(to: Double(stop.end))) / 2
+        scrollView.contentOffset.x = CGFloat(middle) * 12
+        let index = Double(points.count) - (try XCTUnwrap(moves.last))
+        XCTAssertGreaterThan(index, Double(stop.end - 1), "Halfway across the stop is within its silence.")
+        XCTAssertLessThan(index, Double(stop.end))
+        harness.ruler.scrollViewDidEndDragging(scrollView, willDecelerate: false)
+
+        let anchored = harness.ruler.anchoredPosition
+        harness.ruler.beginPinch()
+        for scale in [0.8, 0.3, 0.05] {
+            harness.ruler.updatePinch(scale: scale)
+            XCTAssertEqual(harness.ruler.anchoredPosition, anchored, accuracy: 1e-6)
+        }
+    }
+
     @MainActor func testMomentumSettlingOnThePixelBeforeACoarseLiveEdgeReturnsToLive() throws {
         let harness = RulerScaleHarness()
         defer { harness.ruler.cancelMotion() }
@@ -2250,13 +2299,15 @@ private final class RulerScaleHarness {
     var frames: [RulerScaleChannel.Frame?] = []
     var events: [String] = []
 
-    init(position: Double = 5_123.5, reduceMotion: Bool = false) {
+    init(position: Double = 5_123.5, reduceMotion: Bool = false, points: [RecordedLocation] = [],
+         landmarks: HistoryLandmarks = HistoryLandmarks(points: [], timeline: ReplayTimeline(points: []), places: []),
+         step: Double = 20) {
         window.addSubview(ruler)
         ruler.frame = window.bounds
-        configuration = HistoryRulerSurface(position: position, tickCount: 20_000, step: 20,
-            detents: .init(tickCount: 20_000, rulerWidth: 350), revision: 0, active: true,
-            reduceMotion: true, value: "Recorded point", points: [],
-            landmarks: HistoryLandmarks(points: [], timeline: ReplayTimeline(points: []), places: []),
+        let tickCount = points.isEmpty ? 20_000 : points.count
+        configuration = HistoryRulerSurface(position: position, tickCount: tickCount, step: step,
+            detents: .init(tickCount: tickCount, rulerWidth: 350, spacing: landmarks.rulerSpacing), revision: 0,
+            active: true, reduceMotion: true, value: "Recorded point", points: points, landmarks: landmarks,
             retentionInterval: 86_400, onBegin: { [weak self] in self?.events.append("begin"); return Date() },
             onMove: { _ in 0 }, onEnd: { [weak self] _ in self?.events.append("end") }, onCancel: {},
             onHold: { _ in }, onScale: { [weak self] step in

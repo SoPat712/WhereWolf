@@ -520,7 +520,7 @@ Pinch to change how many recorded points each bar covers, or tap the scale
 capsule beside the time to choose **Every point**, a time interval, or **Whole
 history**. The ruler and following map track your fingers continuously, with bars
 crossfading between scales; release gently settles to a scale without haptics.
-Time estimates use nearby recorded intervals. The selected point stays
+Time estimates use the typical nearby recorded interval. The selected point stays
 under the needle when the scale changes. The scale remains set across tabs and playback,
 and dragging and flicking use it too. Returning to Live from history resets it to **Every point**
 and zooms back in to your live zoom from before history. While the Tracker map follows your live
@@ -531,7 +531,10 @@ original follow zoom. Overview and a manually moved camera keep their own zoom; 
 location button resumes following at the current ruler scale. The Trip map keeps its own zoom.
 Time labels, local-midnight dividers and stop capsules help you find your way
 through the retained history. Stops use a nearby saved Wi-Fi Place’s name, icon
-and color, or show an unnamed stop’s duration. Hold for 0.35 seconds to scrub
+and color, or show an unnamed stop’s duration. Each recorded point gets one slot, and stops get
+room for their length too: close up a longer stop is a wider block, and zoomed out stops shrink
+with the scale so the whole history still fits. A silence of ten minutes or more outside a stop
+is marked in red as **No data**. Hold for 0.35 seconds to scrub
 sideways at the current scale. Coarse held scrubbing snaps within six screen points
 of arrivals and departures; move your finger over ten points away to continue.
 The bubble names the event. Ordinary drags, momentum and pinches do not snap.

@@ -260,11 +260,15 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   labels; time marks coarsen through 1/5/15 minutes, 1 hour and 6 hours to keep at least
   60 points between labels. Stop capsules use the nearest Wi-Fi Place within
   `GLWifiPlaceMatchDistance` of the stay center, otherwise gray `mappin` and a duration.
-  A stop's label centers on it even when its evenly spaced fixes are narrower than the text,
-  falling back to the symbol alone where labels collide. A silence of at least Coverage's 10-minute gap
-  between stored fixes outside a stop gets a red band and a red "No data" label with its length, since even
-  spacing cannot show it; a stop explains its own silences, since a phone that logs only when it moves goes
-  quiet while parked. Keep every stored point.
+  Every fix keeps one slot, and `HistoryRulerSpacing` gives each stop, and each silence outside a stop,
+  extra width spread across its time: close up 3 bars for 5 minutes and 3 more each time its length
+  doubles, zoomed out the width of 150 × √(minutes / 5) fixes when that is smaller, so it shrinks with the
+  scale. Time and day marks sit at their exact time between fixes. Scroll offsets, stop snapping and label
+  spacing go through that spacing; new landmarks apply only while the ruler is still. A stop's label centers
+  on it, falling back to the symbol alone where labels collide. A silence of at least Coverage's 10-minute
+  gap between stored fixes outside a stop gets a red band and a red "No data" label with its length; a stop
+  explains its own silences, since a phone that logs only when it moves goes quiet while parked.
+  Keep every stored point.
   The buttons beside Play jump to the previous/next arrival or departure through the
   existing selection path; disable at the ends and name the target for VoiceOver.
   The time beneath the ruler opens the native Go To sheet while browsing; Live keeps
@@ -278,7 +282,7 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   Pinching the history ruler changes a scale retained across tabs, playback and pinches at
   Live, without defaults; returning to Live from history resets it to every point. Spread for fewer points per bar;
   pinch together for more. Use every 1–2–5 step from one point per bar through the
-  step that rounds up to cover loaded history in one ruler width, or 48 time ticks
+  step that rounds up to cover loaded history, stops and silences included, in one ruler width, or 48 time ticks
   before points load. Clamp when the ladder shrinks. Pinches continuously divide the
   displayed points per bar by finger scale, with light log-space rubber banding at
   the ends. Keep the needle and selection anchored, including at Live. Crossfade
@@ -297,7 +301,7 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   interaction revision changes. Hold and pinch show a Liquid Glass time/scale bubble
   with primary text (blur material before iOS 26), centered eight points above the
   drawer's `wherewolf.panel.sheet` view and below the top safe area; fall back to
-  above the ruler if absent. Derive the scale from nearby recorded intervals, or
+  above the ruler if absent. Derive the scale from the median nearby recorded interval, or
   retention time before points load. Remove the window bubble on release or
   cancellation without changing drawer height. Reaching Live clamps at zero
   without ending a drag or hold; return to Live when the finger lifts there, or as soon as

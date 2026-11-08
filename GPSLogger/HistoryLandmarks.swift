@@ -105,6 +105,7 @@ final class HistoryLandmarks {
     let stops: [HistoryStop]
     let boundaries: [HistoryStopBoundary]
     let gaps: [HistoryGap]
+    let rulerSpacing: HistoryRulerSpacing
     let days: [HistoryTimeMark]
     let timeMarks: [[HistoryTimeMark]]
     let journey: [HistoryJourneyDay]
@@ -164,6 +165,7 @@ final class HistoryLandmarks {
             if stops.indices.contains(stop), stops[stop].id < index { return nil }
             return HistoryGap(index: index, duration: duration)
         }
+        rulerSpacing = HistoryRulerSpacing(timestamps: timestamps, stops: stops, gaps: gaps)
         let marks = Self.marks(timestamps: timestamps, calendar: calendar)
         days = marks.days
         timeMarks = marks.levels
@@ -230,6 +232,15 @@ final class HistoryLandmarks {
             day = nextDay
         }
         return (days, levels)
+    }
+
+    // A mark sits at its exact time between two fixes, so marks spread across a stop's width.
+    func position(of mark: HistoryTimeMark) -> Double {
+        let index = mark.index
+        guard index > 0, index < timestamps.count, timestamps[index] > mark.time else { return Double(index) }
+        let previous = timestamps[index - 1]
+        let step = timestamps[index].timeIntervalSince(previous)
+        return Double(index - 1) + min(1, max(0, mark.time.timeIntervalSince(previous) / step))
     }
 
     func stop(containing position: Double, pointCount: Int? = nil) -> HistoryStop? {
@@ -299,10 +310,11 @@ final class HistoryLandmarks {
 
     // Coarsen until every adjacent boundary in the viewport is at least 60 screen points apart.
     func timeLevel(in range: ClosedRange<Double>, pointsPerBar: Double, spacing: Double) -> Int {
+        let map = rulerSpacing.scaled(pointsPerBar)
         for level in timeMarks.indices {
             let marks = Self.visibleMarks(timeMarks[level], in: range)
             if zip(marks, marks.dropFirst()).allSatisfy({
-                Double($0.1.index - $0.0.index) * spacing / pointsPerBar >= 60
+                map.screenDistance(from: position(of: $0.0), to: position(of: $0.1), spacing: spacing) >= 60
             }) { return level }
         }
         return timeMarks.count - 1
@@ -378,6 +390,132 @@ final class HistoryLandmarks {
     }
 }
 
+// The ruler gives each fix one slot, so a stop or silence with few fixes would be a sliver. Each one gets
+// extra width spread across its time. Close up it keeps 3 bars for 5 minutes and 3 more each time its
+// length doubles. Zoomed out it shrinks with the scale like the fixes do, at the width of 150 fixes for
+// 5 minutes growing with the square root of its length, so the whole history still fits one ruler width.
+struct HistoryRulerSpacing {
+    struct Block: Equatable {
+        let start: Int
+        let end: Int
+        let startTime: TimeInterval
+        let duration: TimeInterval
+        let nearBars: Double
+        let farPoints: Double
+
+        init(start: Int, end: Int, startTime: TimeInterval, duration: TimeInterval) {
+            self.start = start
+            self.end = end
+            self.startTime = startTime
+            self.duration = duration
+            let length = max(1, duration / 300)
+            nearBars = 3 + 3 * log2(length)
+            farPoints = 150 * length.squareRoot()
+        }
+
+        func bars(pointsPerBar: Double) -> Double { min(nearBars, farPoints / pointsPerBar) }
+    }
+
+    static let none = HistoryRulerSpacing(blocks: [], times: [])
+    let blocks: [Block]
+    private let times: [TimeInterval]
+
+    private init(blocks: [Block], times: [TimeInterval]) {
+        self.blocks = blocks
+        self.times = times
+    }
+
+    init(timestamps: [Date], stops: [HistoryStop], gaps: [HistoryGap]) {
+        let times = timestamps.map(\.timeIntervalSince1970)
+        // A silence inside a stop is already part of the stop's width.
+        let outside = gaps.filter { gap in !stops.contains { $0.id < gap.index && gap.index <= $0.end } }
+        let blocks = stops.map { Block(start: $0.id, end: $0.end, startTime: times[$0.id],
+                                       duration: times[$0.end] - times[$0.id]) }
+            + outside.map { Block(start: $0.index - 1, end: $0.index, startTime: times[$0.index - 1], duration: $0.duration) }
+        self.blocks = blocks.filter { $0.end > $0.start && $0.duration > 0 }.sorted { $0.start < $1.start }
+        self.times = times
+    }
+
+    func scaled(_ pointsPerBar: Double) -> Scaled { Scaled(spacing: self, pointsPerBar: pointsPerBar) }
+
+    // Bars from the oldest fix to Live.
+    func totalBars(pointCount: Int, pointsPerBar: Double) -> Double {
+        scaled(pointsPerBar).bars(to: Double(pointCount))
+    }
+
+    // How far a fractional point index is through a block's time.
+    fileprivate func fraction(of block: Block, at index: Double) -> Double {
+        let lower = min(times.count - 2, max(0, Int(index.rounded(.down))))
+        // Relative to the block's start: absolute epoch seconds would cost precision.
+        let elapsed = times[lower] - block.startTime + (times[lower + 1] - times[lower]) * (index - Double(lower))
+        return min(1, max(0, elapsed / block.duration))
+    }
+
+    // Converts between point indices, counted from the oldest fix, and bars at one scale.
+    struct Scaled {
+        let pointsPerBar: Double
+        private let spacing: HistoryRulerSpacing
+        private let widths: [Double]
+        private let prefix: [Double]
+        var isLinear: Bool { widths.isEmpty }
+
+        fileprivate init(spacing: HistoryRulerSpacing, pointsPerBar: Double) {
+            let pointsPerBar = pointsPerBar.isFinite ? max(0.000_001, pointsPerBar) : 1
+            self.pointsPerBar = pointsPerBar
+            self.spacing = spacing
+            widths = spacing.blocks.map { $0.bars(pointsPerBar: pointsPerBar) }
+            var prefix = [0.0]
+            prefix.reserveCapacity(widths.count + 1)
+            for width in widths { prefix.append(prefix.last! + width) }
+            self.prefix = prefix
+        }
+
+        func bars(to index: Double) -> Double {
+            guard !isLinear else { return index / pointsPerBar }
+            let blocks = spacing.blocks
+            let next = HistoryLandmarks.lowerBound(blocks.count) { Double(blocks[$0].end) > index }
+            var bars = index / pointsPerBar + prefix[next]
+            if next < blocks.count, Double(blocks[next].start) < index {
+                bars += widths[next] * spacing.fraction(of: blocks[next], at: index)
+            }
+            return bars
+        }
+
+        func index(atBars bars: Double) -> Double {
+            guard !isLinear else { return bars * pointsPerBar }
+            let blocks = spacing.blocks
+            let block = HistoryLandmarks.lowerBound(blocks.count) {
+                Double(blocks[$0].end) / pointsPerBar + prefix[$0 + 1] >= bars
+            }
+            guard block < blocks.count, bars > Double(blocks[block].start) / pointsPerBar + prefix[block] else {
+                return (bars - prefix[block]) * pointsPerBar
+            }
+            let span = blocks[block]
+            func barsAt(_ index: Int) -> Double {
+                Double(index) / pointsPerBar + prefix[block]
+                    + widths[block] * min(1, max(0, (spacing.times[index] - span.startTime) / span.duration))
+            }
+            let step = min(span.end - 1, span.start + HistoryLandmarks.lowerBound(span.end - span.start) {
+                barsAt(span.start + $0 + 1) > bars
+            })
+            let low = barsAt(step), high = barsAt(step + 1)
+            return Double(step) + min(1, max(0, (bars - low) / (high - low)))
+        }
+
+        // Screen points between two point indices.
+        func screenDistance(from start: Double, to end: Double, spacing: Double) -> Double {
+            isLinear ? (end - start) * spacing / pointsPerBar : (bars(to: end) - bars(to: start)) * spacing
+        }
+
+        // The ruler position, counted in fixes back from Live, that a sideways movement reaches.
+        func position(_ position: Double, movedBy translation: Double, spacing: Double, pointCount: Int) -> Double {
+            guard !isLinear else { return position + translation * pointsPerBar / spacing }
+            let count = Double(pointCount)
+            return count - index(atBars: bars(to: count - position) - translation / spacing)
+        }
+    }
+}
+
 struct HistoryRulerLabelLayout {
     enum Priority: Int { case day, stop, gap, time }
     struct Candidate {
@@ -419,7 +557,9 @@ struct HistoryStopSnap {
 
     mutating func move(position: Double, translation: Double, finger: Double, pointsPerBar: Double,
                        spacing: Double, pointCount: Int, landmarks: HistoryLandmarks) -> Double {
-        guard pointsPerBar > 1, pointCount > 0 else { reset(); return position + translation * pointsPerBar / spacing }
+        let map = landmarks.rulerSpacing.scaled(pointsPerBar)
+        let proposed = map.position(position, movedBy: translation, spacing: spacing, pointCount: pointCount)
+        guard pointsPerBar > 1, pointCount > 0 else { reset(); return proposed }
         boundary = boundary?.clamped(to: pointCount)
         if let boundary {
             guard abs(finger - fingerAtSnap) > 10 else { return Double(pointCount - boundary.index) }
@@ -428,9 +568,11 @@ struct HistoryStopSnap {
             releasedIndex = boundary.index
             return position
         }
-        let proposed = position + translation * pointsPerBar / spacing
         let index = Double(pointCount) - proposed
-        if let releasedIndex, abs(index - Double(releasedIndex)) * spacing / pointsPerBar > 6 {
+        func distance(to target: Int) -> Double {
+            abs(map.screenDistance(from: index, to: Double(target), spacing: spacing))
+        }
+        if let releasedIndex, distance(to: releasedIndex) > 6 {
             self.releasedIndex = nil
         }
         let next = HistoryLandmarks.lowerBound(landmarks.boundaries.count) {
@@ -439,8 +581,8 @@ struct HistoryStopSnap {
         let nearby = [next - 1, next].filter { landmarks.boundaries.indices.contains($0) }
             .compactMap { landmarks.boundaries[$0].clamped(to: pointCount) }
         if let target = nearby.filter({ $0.index != releasedIndex }).min(by: {
-            abs(Double($0.index) - index) < abs(Double($1.index) - index)
-        }), abs(Double(target.index) - index) * spacing / pointsPerBar <= 6 {
+            distance(to: $0.index) < distance(to: $1.index)
+        }), distance(to: target.index) <= 6 {
             boundary = target
             fingerAtSnap = finger
             return Double(pointCount - target.index)
