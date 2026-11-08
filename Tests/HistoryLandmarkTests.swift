@@ -399,6 +399,20 @@ final class HistoryLandmarkTests: XCTestCase {
         XCTAssertEqual(makeLandmarks(points).journey.first?.rows.first?.title, "Flight")
     }
 
+    func testAStrayFixFarOffADriveDoesNotNameItAFlight() {
+        let start = date("2026-06-01T12:00:00Z")
+        var points = (0..<40).map { fix($0, at: start.addingTimeInterval(Double($0) * 60), north: Double($0) * 900) }
+        // One sparse fix lands 10 km off the road, so its neighbors' net speeds look like flying.
+        let stray = points[20]
+        points[20] = RecordedLocation(id: stray.id, timestamp: stray.timestamp, latitude: stray.latitude,
+                                      longitude: stray.longitude + 10_000 / (111_195 * cos(45 * Double.pi / 180)))
+        let timeline = ReplayTimeline(points: points)
+        XCTAssertEqual(timeline.inferredActivity(at: 19), .flying)
+        let row = makeLandmarks(points).journey.first?.rows.first
+        XCTAssertEqual(row?.title, "Drive")
+        XCTAssertEqual(row?.symbol, "car.fill")
+    }
+
     func testJourneyDistanceUsesTheSameJumpCorrectionAsTheReplayOverlay() {
         let start = date("2026-06-01T12:00:00Z")
         let north = [0.0, 10, 20, 1_000, 40, 50, 60]

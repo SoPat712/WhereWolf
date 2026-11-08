@@ -358,12 +358,18 @@ final class HistoryLandmarks {
         let choices: [(ReplayActivity, String)] = [(.flying, "Flight"), (.driving, "Drive"),
                                                   (.cycling, "Cycle"), (.walking, "Walk"), (.moving, "Moving")]
         var counts = [Int](repeating: 0, count: choices.count)
+        var distances = [Double](repeating: 0, count: choices.count)
         for index in range {
-            let activity = timeline.inferredActivity(at: index)
-            counts[choices.firstIndex { $0.0 == activity } ?? choices.count - 1] += 1
+            let choice = choices.firstIndex { $0.0 == timeline.inferredActivity(at: index) } ?? choices.count - 1
+            counts[choice] += 1
+            // Corrected distance, so a stray fix far off a drive, which travels nowhere, cannot make it a flight.
+            if index > 0 { distances[choice] += timeline.distance(from: index - 1, through: index) }
         }
-        // As in the overlay, flying takes precedence; otherwise represent the predominant activity.
-        let winner = counts[0] > 0 ? 0 : counts.indices.max { counts[$0] < counts[$1] }!
+        // Name the activity that covered the most ground, but call it a flight once flying covers a quarter.
+        let total = distances.reduce(0, +)
+        let weights = total > 0 ? distances : counts.map(Double.init)
+        let winner = total > 0 && distances[0] * 4 >= total ? 0
+            : weights.indices.dropFirst().max { weights[$0] < weights[$1] }!
         return (choices[winner].1, choices[winner].0.symbol)
     }
 }

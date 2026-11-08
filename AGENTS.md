@@ -412,7 +412,9 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   speed on either side, which counts as the direct distance across it.
   Keep its width steady, and stack readings that do not fit instead of truncating them. Recorded motion outranks speed inference,
   except that flying speeds win. Cached Go To movement rows use inferred activity
-  because recorded motion lives in payloads; snapshot loads read only point metadata.
+  because recorded motion lives in payloads; snapshot loads read only point metadata. A row is named
+  after the activity that covered the most corrected distance, and is a flight only once flying covers
+  a quarter, so a stray fix far off a drive cannot name it a flight.
   `ReplayTimeline` shares corrected cumulative distance with those rows.
   Hide altitude when vertical accuracy is negative. Nearby
   payloads use a bounded prefetch cache and coalesced reads; a ruler hold or pinch
