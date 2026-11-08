@@ -482,7 +482,7 @@ final class HistoryPlaybackTests: XCTestCase {
         let index = model.selectedIndex
         let time = model.rulerTime
         let revision = model.rulerInteractionRevision
-        for step in [20.0, 5, 1, 50] {
+        for step in [120.0, 5, 1, 900] {
             model.setRulerStep(step)
             XCTAssertEqual(model.rulerStep, step)
             XCTAssertEqual(model.rulerPosition, 250.25)
@@ -491,7 +491,7 @@ final class HistoryPlaybackTests: XCTestCase {
             XCTAssertEqual(model.rulerTime, time)
             XCTAssertEqual(model.rulerInteractionRevision, revision)
             XCTAssertNil(model.rulerHold)
-            XCTAssertEqual(model.rulerZoom?.pointsPerBar, step > 1 ? step : nil)
+            XCTAssertEqual(model.rulerZoom?.pointsPerBar, step > HistoryRulerCoarseDrag.liveStep ? step : nil)
         }
         model.returnToLive()
         model.setRulerStep(5)
@@ -507,33 +507,34 @@ final class HistoryPlaybackTests: XCTestCase {
         let model = HistoryPlaybackModel(pointLoader: { after, completion in completion(points.filter { $0.id > after }) },
             payloadLoader: { _, completion in completion([:]) })
         model.setConsumerActive(true)
-        model.setRulerStep(20)
+        model.setRulerStep(15)
         model.setConsumerActive(false)
         model.setConsumerActive(true)
-        XCTAssertEqual(model.rulerStep, 20)
+        XCTAssertEqual(model.rulerStep, 15)
         model.scrub(pointAt: 100)
-        XCTAssertEqual(model.rulerStep, 20)
+        XCTAssertEqual(model.rulerStep, 15)
         model.togglePlayback()
         model.advancePlayback(by: 1)
-        XCTAssertEqual(model.rulerStep, 20)
+        XCTAssertEqual(model.rulerStep, 15)
         model.pause()
         model.beginRulerInteraction()
-        model.setRulerHold(ReplayRulerHold(pointsPerBar: 20, visibleBars: 20))
+        model.setRulerHold(ReplayRulerHold(pointsPerBar: 15, visibleBars: 20))
         model.endRulerInteraction()
         XCTAssertTrue(model.rulerHoldCancelled)
-        XCTAssertEqual(model.rulerStep, 20)
+        XCTAssertEqual(model.rulerStep, 15)
         model.returnToLive()
-        XCTAssertEqual(model.rulerStep, 1)
+        // Four hundred seconds of history reach 30 seconds per bar at most, the nearest to Live's minute.
+        XCTAssertEqual(model.rulerStep, 30)
         XCTAssertNil(model.rulerZoom)
-        model.setRulerStep(20)
+        model.setRulerStep(15)
         model.setConsumerActive(false)
         model.setConsumerActive(true)
-        XCTAssertEqual(model.rulerStep, 20)
+        XCTAssertEqual(model.rulerStep, 15)
         model.beginRulerInteraction()
         model.scrub(rulerPosition: 0, liveEdge: Date())
         model.endRulerInteraction(at: 0) { model.returnToLive() }
         XCTAssertFalse(model.isBrowsing)
-        XCTAssertEqual(model.rulerStep, 1)
+        XCTAssertEqual(model.rulerStep, 30)
     }
 
     @MainActor func testRulerScaleClampsWhenLoadingOrPruningShrinksTheLadder() {
@@ -547,23 +548,26 @@ final class HistoryPlaybackTests: XCTestCase {
             payloadLoader: { _, completion in completion([:]) }, clock: { clock })
         model.setRulerStep(5)
         model.setConsumerActive(true)
-        model.setRulerStep(50)
-        XCTAssertEqual(model.rulerStep, 50)
+        XCTAssertEqual(model.rulerStep, 5)
+        model.setRulerStep(900)
+        XCTAssertEqual(model.rulerStep, 900)
         clock = now.addingTimeInterval(86_400 - 1_200)
         model.expireOldPoints()
         XCTAssertEqual(model.points.count, 11)
-        XCTAssertEqual(model.rulerStep, 1)
+        XCTAssertEqual(model.rulerDetents.steps.first, 120, "Twenty minutes fit at two minutes per bar.")
+        XCTAssertEqual(model.rulerStep, 120)
 
         let short = HistoryPlaybackModel(pointLoader: { _, completion in completion(Array(points.suffix(30))) },
             payloadLoader: { _, completion in completion([:]) }, clock: { now })
-        short.setRulerStep(5)
+        short.setRulerStep(3_600)
+        XCTAssertEqual(short.rulerStep, 3_600, "Before points load the chosen step is kept.")
         short.setConsumerActive(true)
-        XCTAssertEqual(short.rulerDetents.steps, [2, 1])
-        XCTAssertEqual(short.rulerStep, 2)
+        XCTAssertEqual(short.rulerDetents.steps, [300, 120, 60, 30, 15, 10, 5, 2, 1])
+        XCTAssertEqual(short.rulerStep, 300)
     }
 
     @MainActor func testPinchScaleChangesDeferPayloadReadsUntilReleaseAndPreserveTheNeedle() {
-        let points = locations(400)
+        let points = locations(400, every: 60)
         var pending = [([Int64], ([Int64: RecordedPayload]) -> Void)]()
         let model = HistoryPlaybackModel(pointLoader: { _, completion in completion(points) },
             payloadLoader: { pending.append(($0, $1)) })
@@ -575,7 +579,7 @@ final class HistoryPlaybackTests: XCTestCase {
         model.setRulerHold(ReplayRulerHold(pointsPerBar: 1, visibleBars: 20))
         pending[0].1(payloads(pending[0].0))
         XCTAssertEqual(pending.count, 1, "An in-flight completion must not start a read during a pinch")
-        for step in [5.0, 20, 50, 2] {
+        for step in [300.0, 900, 1_800, 120] {
             model.setRulerHold(ReplayRulerHold(pointsPerBar: step, visibleBars: 20))
             model.setRulerStep(step)
             XCTAssertEqual(model.renderPose, pose)
@@ -586,8 +590,8 @@ final class HistoryPlaybackTests: XCTestCase {
         model.endRulerInteraction(at: 300, onLive: { XCTFail("Unexpected Live") })
         XCTAssertNil(model.rulerHold)
         XCTAssertFalse(model.rulerHoldCancelled)
-        XCTAssertEqual(model.rulerStep, 2)
-        XCTAssertEqual(model.rulerZoom?.pointsPerBar, 2)
+        XCTAssertEqual(model.rulerStep, 120)
+        XCTAssertEqual(model.rulerZoom?.pointsPerBar, 120)
         XCTAssertEqual(model.renderPose, pose)
         XCTAssertEqual(pending.count, 2)
         XCTAssertTrue(pending[1].0.contains(101))
@@ -727,41 +731,32 @@ final class HistoryPlaybackTests: XCTestCase {
         }
     }
 
-    func testRulerScaleLabelUsesTheRulersSlotAndHonestRounding() {
-        func label(_ step: Double, _ slot: TimeInterval) -> HistoryRulerCoarseDrag.ScaleLabel {
-            HistoryRulerCoarseDrag.scaleLabel(pointsPerTick: step, slotDuration: slot, pointCount: 30,
-                                             emptyInterval: 1_800)
+    func testRulerScaleLabelNamesTheExactTimeOfABar() {
+        func label(_ step: Double) -> HistoryRulerCoarseDrag.ScaleLabel {
+            HistoryRulerCoarseDrag.scaleLabel(pointsPerTick: step, pointCount: 30, emptyInterval: 1_800)
         }
-        XCTAssertEqual(label(20, 45).text, "1 bar ≈ 15 min")
-        XCTAssertEqual(label(2, 3_600).text, "1 bar ≈ 2 h")
-        XCTAssertEqual(label(2, 3_600).accessibility, "1 bar about 2 hours")
-        XCTAssertEqual(label(100, 45).text, "1 bar ≈ 1.3 h")
-        XCTAssertEqual(label(1, 45).text, "1 bar = 1 point")
-        XCTAssertEqual(label(1, 45).accessibility, "1 bar equals 1 point")
-        XCTAssertEqual(label(1, 45).buttonText, "Every point")
-        XCTAssertEqual(label(1, 45).buttonAccessibility, "Ruler scale, every point")
-        XCTAssertEqual(label(20, 45).buttonText, "≈ 15 min per bar")
-        XCTAssertEqual(label(20, 45).buttonAccessibility, "Ruler scale, about 15 minutes per bar")
-        let detents = HistoryRulerCoarseDrag.Detents(tickCount: 20_000, rulerWidth: 350)
-        XCTAssertEqual(detents.menuEntries(interval: 45, current: 20).first { $0.title == "15 minutes" }?.step, 20)
+        XCTAssertEqual(label(1).text, "1 bar = 1 s")
+        XCTAssertEqual(label(60).text, "1 bar = 1 min")
+        XCTAssertEqual(label(60).accessibility, "1 bar equals 1 minute")
+        XCTAssertEqual(label(60).buttonText, "1 min per bar")
+        XCTAssertEqual(label(60).buttonAccessibility, "Ruler scale, 1 minute per bar")
+        XCTAssertEqual(label(900).buttonText, "15 min per bar")
+        XCTAssertEqual(label(900).buttonAccessibility, "Ruler scale, 15 minutes per bar")
+        XCTAssertEqual(label(5_400).text, "1 bar = 1.5 h")
+        XCTAssertEqual(label(21_600).text, "1 bar = 6 h")
+        XCTAssertEqual(label(86_400).accessibility, "1 bar equals 1 day")
     }
 
-    func testRulerBubbleScaleHandlesEmptySingleAndEqualTimestampHistories() {
-        let empty = HistoryRulerCoarseDrag.scaleLabel(pointsPerTick: 2, slotDuration: nil, pointCount: 0,
-                                                     emptyInterval: 1_800)
+    func testRulerBubbleScaleHandlesEmptyAndSingleHistories() {
+        let empty = HistoryRulerCoarseDrag.scaleLabel(pointsPerTick: 2, pointCount: 0, emptyInterval: 1_800)
         XCTAssertEqual(empty.text, "1 bar ≈ 1 h")
         XCTAssertEqual(empty.accessibility, "1 bar about 1 hour")
-        let emptyPoint = HistoryRulerCoarseDrag.scaleLabel(pointsPerTick: 1, slotDuration: nil, pointCount: 0,
-                                                          emptyInterval: 1_800)
+        let emptyPoint = HistoryRulerCoarseDrag.scaleLabel(pointsPerTick: 1, pointCount: 0, emptyInterval: 1_800)
         XCTAssertEqual(emptyPoint.text, "1 bar ≈ 30 min")
         XCTAssertEqual(emptyPoint.buttonText, "Every point")
         XCTAssertEqual(emptyPoint.buttonAccessibility, "Ruler scale, every point")
-        let single = HistoryRulerCoarseDrag.scaleLabel(pointsPerTick: 1, slotDuration: nil, pointCount: 1,
-                                                      emptyInterval: 1_800)
-        XCTAssertEqual(single.text, "1 bar = 1 point")
-        let equal = HistoryRulerCoarseDrag.scaleLabel(pointsPerTick: 5, slotDuration: nil, pointCount: 8,
-                                                     emptyInterval: 1_800)
-        XCTAssertEqual(equal.text, "1 bar = 5 points")
+        let single = HistoryRulerCoarseDrag.scaleLabel(pointsPerTick: 1, pointCount: 1, emptyInterval: 1_800)
+        XCTAssertEqual(single.text, "1 bar = 1 s")
     }
 
     func testRulerBubbleTimeInterpolatesRecordedAndEmptyHistoryPositions() {
@@ -1739,10 +1734,10 @@ final class HistoryPlaybackTests: XCTestCase {
         }
     }
 
-    private func locations(_ count: Int) -> [RecordedLocation] {
-        let start = Date().addingTimeInterval(-1_000)
+    private func locations(_ count: Int, every interval: TimeInterval = 1) -> [RecordedLocation] {
+        let start = Date().addingTimeInterval(-1_000 - Double(count) * interval)
         return (0..<count).map {
-            RecordedLocation(id: Int64($0 + 1), timestamp: start.addingTimeInterval(Double($0)),
+            RecordedLocation(id: Int64($0 + 1), timestamp: start.addingTimeInterval(Double($0) * interval),
                              latitude: 45 + Double($0) * 0.0001, longitude: -122)
         }
     }
@@ -2345,6 +2340,7 @@ private final class RulerScaleHarness {
         configuration = HistoryRulerSurface(position: position, tickCount: tickCount, step: step,
             detents: .init(tickCount: tickCount, rulerWidth: 350, spacing: landmarks.rulerSpacing), revision: 0,
             active: true, reduceMotion: true, value: "Recorded point", points: points, landmarks: landmarks,
+            spacing: landmarks.rulerSpacing,
             retentionInterval: 86_400, onBegin: { [weak self] in self?.events.append("begin"); return Date() },
             onMove: { _ in 0 }, onEnd: { [weak self] _ in self?.events.append("end") }, onCancel: {},
             onHold: { _ in }, onScale: { [weak self] step in
@@ -2867,20 +2863,20 @@ final class HistoryRulerZoomTests: XCTestCase {
     }
 
     @MainActor func testScaleZoomUsesTheRulerGeometryAndSurvivesGestureReleaseAndCancellation() throws {
-        let points = replayPoints()
+        let points = replayPoints(every: 60)
         let model = HistoryPlaybackModel(pointLoader: { _, completion in completion(points) },
             payloadLoader: { _, completion in completion([:]) }, places: { [] },
             clock: { Date(timeIntervalSince1970: 100) })
         model.setConsumerActive(true)
         model.scrub(pointAt: 50)
-        model.setRulerStep(5)
+        model.setRulerStep(300)
         model.setRulerWidth(402)
         let detents = model.rulerDetents
-        let scale = detents.scale(at: detents.index(nearest: 5))
+        let scale = detents.scale(at: detents.index(nearest: 300))
         let zoom = try XCTUnwrap(model.rulerZoom)
-        XCTAssertEqual(zoom.pointsPerBar, 5)
+        XCTAssertEqual(zoom.pointsPerBar, 300)
         XCTAssertEqual(zoom.visibleBars, Double(402 / scale.spacing))
-        XCTAssertEqual(zoom.coarseness, HistoryRulerCoarseDrag.coarseness(step: 5, coarsest: detents.steps[0]))
+        XCTAssertEqual(zoom.coarseness, HistoryRulerCoarseDrag.coarseness(step: 300, coarsest: detents.steps[0]))
         var (surface, coordinator, map) = nativeReplay()
         defer { tearDown(coordinator, map: map); model.returnToLive() }
         for cancelled in [false, true] {
@@ -2937,13 +2933,13 @@ final class HistoryRulerZoomTests: XCTestCase {
     }
 
     @MainActor func testPlaybackAndMomentumRefitOnlyAfterHalfAWindow() throws {
-        let points = replayPoints()
+        let points = replayPoints(every: 60)
         let model = HistoryPlaybackModel(pointLoader: { _, completion in completion(points) },
             payloadLoader: { _, completion in completion([:]) }, places: { [] },
             clock: { Date(timeIntervalSince1970: 100) })
         model.setConsumerActive(true)
         model.scrub(pointAt: 25)
-        model.setRulerStep(2)
+        model.setRulerStep(120)
         var (surface, coordinator, map) = nativeReplay()
         defer { tearDown(coordinator, map: map); model.returnToLive() }
         surface.rulerZoom = model.rulerZoom
@@ -2953,13 +2949,14 @@ final class HistoryRulerZoomTests: XCTestCase {
         coordinator.update(surface, animated: false)
         var fittedAt = try XCTUnwrap(coordinator.rulerFitPosition)
         var refits = 0
+        model.playbackRate = 50
         model.togglePlayback()
         for _ in 0..<120 where model.isPlaying {
             model.advancePlayback(by: 0.1)
             surface.replayPosition = model.playbackIndex
             surface.selected = model.renderPose!.coordinate.coordinate
             coordinator.update(surface, animated: false)
-            if abs(surface.replayPosition - fittedAt) > zoom.halfWindow {
+            if zoom.needsFit(at: surface.replayPosition, since: fittedAt) {
                 fittedAt = surface.replayPosition
                 refits += 1
             }
@@ -2975,7 +2972,7 @@ final class HistoryRulerZoomTests: XCTestCase {
             surface.replayPosition = model.playbackIndex
             surface.selected = model.renderPose!.coordinate.coordinate
             coordinator.update(surface, animated: false)
-            if abs(index - fittedAt) > zoom.halfWindow { fittedAt = index }
+            if zoom.needsFit(at: index, since: fittedAt) { fittedAt = index }
             XCTAssertEqual(coordinator.rulerFitPosition, fittedAt)
             let easeStart = coordinator.rulerDistanceEase?.start
             for _ in 0..<3 {
@@ -2990,7 +2987,7 @@ final class HistoryRulerZoomTests: XCTestCase {
     }
 
     @MainActor func testMenuScaleChangeEasesDistanceWithoutStartingAGesture() throws {
-        let points = replayPoints()
+        let points = replayPoints(every: 60)
         let model = HistoryPlaybackModel(pointLoader: { _, completion in completion(points) },
             payloadLoader: { _, completion in completion([:]) }, places: { [] },
             clock: { Date(timeIntervalSince1970: 100) })
@@ -3303,9 +3300,9 @@ final class HistoryRulerZoomTests: XCTestCase {
         XCTAssertEqual(point.y, target.y, accuracy: 1, file: file, line: line)
     }
 
-    private func replayPoints() -> [RecordedLocation] {
+    private func replayPoints(every interval: TimeInterval = 1) -> [RecordedLocation] {
         (0...100).map { index in
-            RecordedLocation(id: Int64(index), timestamp: Date(timeIntervalSince1970: Double(index)),
+            RecordedLocation(id: Int64(index), timestamp: Date(timeIntervalSince1970: Double(index) * interval),
                              latitude: 45 + Double(index) * 0.001, longitude: -122)
         }
     }

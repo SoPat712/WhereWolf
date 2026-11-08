@@ -260,17 +260,16 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   labels; time marks coarsen through 1/5/15 minutes, 1 hour and 6 hours to keep at least
   60 points between labels. Stop capsules use the nearest Wi-Fi Place within
   `GLWifiPlaceMatchDistance` of the stay center, otherwise gray `mappin` and a duration.
-  The ruler shows time (`HistoryRulerSpacing`). A slot is the median interval between fixes outside stops;
-  each moving step is as wide as its duration in slots and never under one, so a bar covers the same time
-  wherever the phone was moving and every fix stays reachable. A stop, or a silence of 5 minutes or more
-  outside one, is a stretch of its whole length with no slots, its fixes placed by time. Close up a stretch
-  keeps 4 bars for 5 minutes and 1.5 more for each doubling (about 15 for a night at home); zoomed out it counts
-  as 5 minutes × √(minutes / 5), when that is narrower, so stops stay smaller than the drives between them and
-  the coarsest step still fits the whole history. Bars and selection haptics count slots back from Live, so
-  they stay evenly spaced, move with the data while pinching and leave stretches clear. Time and day marks sit at their exact time between fixes. Scroll offsets, stop
-  snapping, label spacing and the map's ruler fit window go through that spacing; new landmarks apply only
-  while the ruler is still. A stop's label centers
-  on it, falling back to the symbol alone where labels collide. A silence of at least Coverage's 10-minute
+  The ruler shows time (`HistoryRulerSpacing`, built from the current points so new fixes never wait for
+  landmarks): once points load a ladder step is seconds per bar, the same everywhere, so a stop is as long as
+  it was and the scale label is exact. Live sits one bar past the newest fix. Ticks fall on local clock
+  multiples of the step, taller on boundaries at least four steps long (every 5 minutes at a minute per bar);
+  a selection haptic marks each bar crossed. Time and day marks sit at their exact time between fixes. Scroll
+  offsets, stop snapping, label spacing and the map's ruler fit window go through that spacing, which with the
+  landmarks applies only while the ruler is still. A stop is tinted exactly from arrival to departure, so
+  neighbors meet without overlapping, and back-to-back stops at the same Wi-Fi Place, or touching unnamed
+  ones, less than Coverage's gap apart show as one. A stop's label centers on it, falling back to the
+  symbol alone where labels collide. A silence of at least Coverage's 10-minute
   gap between stored fixes outside a stop gets a red band and a red "No data" label with its length; a stop
   explains its own silences, since a phone that logs only when it moves goes quiet while parked.
   Keep every stored point.
@@ -285,18 +284,19 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   and distance, and rows show a colored icon, the time range, the duration and any distance.
   Selecting a row jumps to its start and dismisses. Cancel and Go use native toolbars.
   Pinching the history ruler changes a scale retained across tabs, playback and pinches at
-  Live, without defaults; returning to Live from history resets it to every point. Spread for fewer points per bar;
-  pinch together for more. Use every 1–2–5 step from one point per bar through the
-  step that rounds up to cover loaded history, stops and silences included, in one ruler width, or 48 time ticks
-  before points load. Clamp when the ladder shrinks. Pinches continuously divide the
-  displayed points per bar by finger scale, with light log-space rubber banding at
+  Live, without defaults; it opens at a minute per bar, and returning to Live from history resets it there (or
+  the nearest step a short history has). Spread for less time per bar; pinch together for more. The ladder runs
+  1, 2, 5, 10, 15 and 30 seconds, 1, 2, 5, 10, 15 and 30 minutes, 1, 2, 3, 6 and 12 hours, 1, 2 and 4 days,
+  1 and 2 weeks, through the first step that fits loaded history in one ruler width. Before points load, 48
+  time ticks use the old 1–2–5 ladder and keep the chosen step for loading. Clamp when the ladder shrinks.
+  Pinches continuously divide the displayed step by finger scale, with light log-space rubber banding at
   the ends. Keep the needle and selection anchored, including at Live. Crossfade
   neighboring ladder bars at the continuous density, drawing shared ticks once.
   Release projects velocity by 0.12 seconds, at most one extra step, then settles in
   log space over 0.22 seconds before committing once. Pinches and settles have no
   haptics; a new pinch takes over the displayed scale, while other interactions
   finish the settle first. The pinch bubble names the nearest step without animation.
-  Bar spacing (12–18), heights, width and bottom grow with log(points per bar) / log(coarsest),
+  Bar spacing (12–18), heights, width and bottom grow with log(step) / log(coarsest),
   with zero coarseness for a one-step ladder. Evaluate geometry continuously in UIKit;
   menu and VoiceOver changes commit immediately and ease density over 0.22 seconds.
   Reduce Motion jumps to the settled scale. One-finger scrolling and momentum use
@@ -313,17 +313,17 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   momentum aimed at the Live edge arrives, stopping there without its bounce. Momentum and
   bounces settle on whole pixels, so an end within a pixel of the Live edge counts as Live.
   The Live button flies the ruler back over 0.45 seconds, easing out through its bars at the scale it
-  shows, then eases the scale to every point. A drag, pinch or hold during the flight keeps the ruler where
+  shows, then eases the scale to a minute per bar. A drag, pinch or hold during the flight keeps the ruler where
   it is and gives the model back the scale it shows. Reduce Motion jumps.
-  Only held scrubbing coarser than one point per bar snaps within six screen points
+  Only held scrubbing coarser than the finest step snaps within six screen points
   of a stop boundary. Hold the exact index until the finger moves over ten points,
   then rebase at the current finger without a jump. Give each snap a selection haptic;
   its bubble adds the colored stop symbol and arrival/departure event above the scale.
   Ordinary drags, inertia and pinches never snap. The 18-point row under the ruler
   keeps the time (and at Live the hint "Pinch for scale; hold to scrub"), a scale capsule
-  styled like the Go To time, and Live; the capsule opens a native Menu headed One bar covers: Every point,
-  1 minute, 5 minutes, 15 minutes, 1 hour, 6 hours and Whole history. Map durations
-  to the nearest step in log space using the bubble's estimate, drop later duplicate
+  styled like the Go To time, and Live; the capsule opens a native Menu headed One bar covers: 1 second,
+  1 minute, 5 minutes, 15 minutes, 1 hour, 6 hours and Whole history (Every point and estimates from retention
+  before points load). Map each to the nearest step in log space, drop later duplicate
   steps and check the current entry. Menu changes anchor the needle. VoiceOver's
   value names a containing stop and its arrival; keep its
   one-point increment/decrement, add Finer Scale and Coarser Scale actions, and
@@ -331,8 +331,9 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   final selection once. Retain every stored route point.
   A Tracker replay hold or pinch recaptures a manually moved camera, preserving
   overview mode. Tracker point following uses the persistent ruler scale at Live and during
-  browsing, scrubbing, momentum and playback, with heading mode on or off. One point per
-  bar uses that mode's saved follow distance D0; coarser detents fit the route within ±(2 + (half the visible bars − 2) × coarseness²)
+  browsing, scrubbing, momentum and playback, with heading mode on or off. Steps up to a minute per
+  bar (the empty ruler's first) use that mode's saved follow distance D0, so Live's default leaves the map
+  alone; coarser detents fit the route within ±(2 + (half the visible bars − 2) × coarseness²)
   ruler bars of the needle, measured through the ruler's spacing, into the overview's clear map area, never closer than D0, so mid
   detents stay close and only the coarsest fit the whole visible ruler. Compute the
   box when scale zoom starts, the scale changes or the needle moves greater than
@@ -347,14 +348,14 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   zoom in log space over 0.3 seconds. Release and gesture cancellation retain it.
   Keep `rulerZoom` separate from gesture-only `rulerHold`, payload gating and interaction
   deferrals. Do not write the saved follow distance or outer SwiftUI camera while
-  scale zoom applies; sync once when it ends. Every point returns to D0 with the
+  scale zoom applies; sync once when it ends. A minute per bar or finer returns to D0 with the
   pinch settle or the existing discrete camera transition. Leaving Tracker or the
   active scene restores D0 immediately; returning reapplies scale zoom without
   animation. A freed camera and overview ignore the scale; resuming point following
   uses its own D0 for the fit. Live captures D0 before scale zoom starts and preserves it
   through camera release and history; following again flies to the current Live fit.
   Leaving history at a coarse scale lands at the live zoom from before history, also after a
-  freed replay camera; with every point it keeps the replay zoom. Re-entering history uses
+  freed replay camera; at a minute per bar or finer it keeps the replay zoom. Re-entering history uses
   replay's own D0. Zoom buttons keep following until the next refit takes back the zoom.
   The Trip map ignores the ruler. Respect Reduce Motion.
   Trip Settings uses `ExpandingSheetBackgroundView`: glass beneath a grouped

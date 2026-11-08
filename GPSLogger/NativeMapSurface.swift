@@ -1094,7 +1094,7 @@ struct NativeMapSurface: UIViewRepresentable {
                                        source supplied: RulerFitSource? = nil) -> CLLocationDistance? {
             guard let source = supplied ?? rulerFitSource(on: map), let base = rulerBaseDistance else { return nil }
             let coordinate = source.coordinate
-            if zoom.pointsPerBar <= 1 {
+            if zoom.keepsFollowDistance {
                 return ReplayHoldZoom.distance(base: base, pointsPerBar: zoom.pointsPerBar, fitted: nil)
             }
             var fit: CLLocationDistance?
@@ -1116,8 +1116,10 @@ struct NativeMapSurface: UIViewRepresentable {
             return rulerScaleDistances[zoom.pointsPerBar]
         }
 
+        // No committed zoom means a step no coarser than Live's, where the map keeps its follow distance.
         private func rulerScaleCommitIsCurrent(_ frame: RulerScaleChannel.Frame) -> Bool {
-            (parent.rulerZoom?.pointsPerBar ?? 1) == frame.detents.nearestStep(to: frame.pointsPerBar)
+            let nearest = frame.detents.nearestStep(to: frame.pointsPerBar)
+            return parent.rulerZoom.map { $0.pointsPerBar == nearest } ?? (nearest <= frame.detents.baseStep)
         }
 
         private func updateRulerZoom(on map: MKMapView, wasVisible: Bool, liveFlight: Bool = false) -> Bool {

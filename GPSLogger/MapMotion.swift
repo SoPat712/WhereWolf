@@ -166,12 +166,17 @@ struct ReplayRulerHold: Equatable {
     let pointsPerBar: Double
     let visibleBars: Double
     var coarseness: Double = 1
-    // The ruler's spacing of the points the window counts; without it each point is one slot.
+    // The ruler's spacing of the points the window counts; without it each point is one bar.
     var spacing: HistoryRulerSpacing = .none
+    // The map keeps its follow distance at and below this step.
+    var baseStep: Double = 1
+
+    var keepsFollowDistance: Bool { pointsPerBar <= baseStep }
 
     // A new spacing comes with every landmark build and alone does not change the zoom.
     static func == (lhs: ReplayRulerHold, rhs: ReplayRulerHold) -> Bool {
         lhs.pointsPerBar == rhs.pointsPerBar && lhs.visibleBars == rhs.visibleBars && lhs.coarseness == rhs.coarseness
+            && lhs.baseStep == rhs.baseStep
     }
 
     // Mid detents fit only the bars near the needle, so the map stays close until the coarsest steps.
