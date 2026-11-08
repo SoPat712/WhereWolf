@@ -73,6 +73,7 @@ final class WhereWolfShellController: UITabBarController, UITabBarControllerDele
     private var updatingBar = false
     private var suppressSystemBar = true
     private var barLayoutSize = CGSize.zero
+    private var settingsPrepared = false
 #if targetEnvironment(simulator)
     private let tabAudit = ShellTabAuditView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
 #endif
@@ -134,6 +135,28 @@ final class WhereWolfShellController: UITabBarController, UITabBarControllerDele
         tabAudit.value = { [weak self] in self?.tabAuditValue() ?? "" }
         view.addSubview(tabAudit)
 #endif
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        // Settings' Form takes a few hundred milliseconds to build the first time, which would hold the
+        // first switch on the map with the drawer. Build it once launch has settled.
+        guard !settingsPrepared else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.prepareSettings() }
+    }
+
+    private func prepareSettings() {
+        guard !settingsPrepared, currentSelection != 2, view.window != nil,
+              settingsHost.view.superview == nil else { return }
+        settingsPrepared = true
+        // SwiftUI builds a hosted view only inside a window, so Settings spends one layout pass behind
+        // the map and leaves before the frame is drawn.
+        UIView.performWithoutAnimation {
+            settingsHost.view.frame = view.bounds
+            view.insertSubview(settingsHost.view, at: 0)
+            settingsHost.view.layoutIfNeeded()
+            settingsHost.view.removeFromSuperview()
+        }
     }
 
     override func viewDidLayoutSubviews() {
@@ -202,6 +225,12 @@ final class WhereWolfShellController: UITabBarController, UITabBarControllerDele
         pendingNativeSelection = (index, currentActivation + 1)
         selectingNative = true
         defer { selectingNative = false }
+        // The drawer takes over from the native bar before SwiftUI publishes the selection, so its
+        // strip must already show the new tab.
+        if drawerTabs.selection != index {
+            drawerTabs = DrawerTabStrip(selection: index, onSelect: onSelect)
+            panel.updateTabs(AnyView(drawerTabs.tint(.blue)))
+        }
         apply(selection: index)
         onSelect(index)
     }

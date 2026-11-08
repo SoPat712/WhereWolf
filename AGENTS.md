@@ -198,7 +198,10 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   their size: only the strip's side insets and margins shrink to the system bar's, so
   at the handoff each icon sits on its native counterpart. UIKit lays out
   the transparent native bar from the start so Settings' safe area stays fixed;
-  the landing frame exchanges the bars without a native animation. Returning
+  the landing frame exchanges the bars without a native animation. A native bar tap updates the
+  drawer strip's selection before the handoff, since SwiftUI publishes it a few frames later. The
+  shell lays Settings out behind the map for one pass a second after it first appears, since SwiftUI
+  builds hosted views only in a window, so the first switch is as quick as later ones. Returning
   tweens from the platter to the closed drawer. Retarget from the current geometry
   on interruption; Reduce Motion swaps instantly. A completed handoff clears its
   spring and geometry; leaving native Settings starts from a fresh platter measure.
