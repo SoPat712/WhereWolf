@@ -195,6 +195,24 @@ This log lists the decisions agents made on their own while working on WhereWolf
 - **Decided:** a bar is a fixed time from a clock-friendly ladder (1 s to 2 weeks), ticks on local clock multiples, taller on boundaries at least four steps long; stops tinted exactly, with back-to-back stops at the same Wi-Fi Place, or touching unnamed ones, merged when under 10 minutes apart. Live sits one bar past the newest fix. The map's scale zoom starts past a minute per bar so the live map is unchanged. This replaces the time-weighted and folded-stop rulers logged earlier today.
 - **Undo:** `git revert 936aba7`.
 
+## 2026-11-08: back to evenly spaced points (dce73ed)
+
+- **Asked for:** the time ruler "overall works worse", "terrible to use"; scrolling was comfortable a day or two earlier, before the spacing changes.
+- **Decided:** restore the ruler from before today's spacing changes, with a bar of evenly spaced fixes and every point at Live. Keep the Live button's glide (easing through positions), silences inside a stop staying unmarked, and a visit split by a stray fix shown as one stop. A ruler of equal time is mostly empty parking on this phone, which logs about once a second while moving and every few minutes, or not at all, while parked.
+- **Undo:** `git revert dce73ed` (revert c64b3ec and 3b13ead first).
+
+## 2026-11-08: a steady scale label (c64b3ec)
+
+- **Asked for:** earlier today the scale capsule jumped from 22 to 3.3 minutes per bar as the needle moved ("So inconsistent!").
+- **Decided:** the capsule, bubble and menu use the history's average time per point (oldest to newest fix) times the points per bar, marked ≈, so they change only with the scale. A bar on a drive is shorter than that and one across a stop longer. The median interval was rejected because the phone logs about once a second while moving, so it would undersell coarse scales.
+- **Undo:** `git revert c64b3ec`.
+
+## 2026-11-08: long stops clear the needle (3b13ead)
+
+- **Asked for:** a 66-minute stop was "so small the cursor bar hides it".
+- **Decided:** a stop's tint widens with its length, from its own width at 5 minutes to 22 points from an hour, but only halfway toward a neighboring stop, and a stop squeezed under a point by its neighbors is not drawn. A fixed 22-point minimum turned the whole-history view into a green stripe of short stops. Scrolling and snapping use the stop's real position.
+- **Undo:** `git revert 3b13ead`.
+
 ## Deferred for the owner
 
 - **Watch complication for Today:** it needs a new watch widget extension and bundle identifier, which is an Apple developer account change.
