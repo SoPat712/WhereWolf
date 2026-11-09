@@ -359,7 +359,7 @@ private struct TripModeEditor: View {
                 } header: {
                     Text("Server Value")
                 } footer: {
-                    Text("Sent as trip_mode and as the trip's mode. Leave it empty to send \(modeID). Renaming the mode does not change this value.")
+                    Text("Sent as trip_mode and as the trip’s mode. Empty sends \(modeID); renaming the mode doesn’t change it.")
                 }
 
                 if saveFailed {

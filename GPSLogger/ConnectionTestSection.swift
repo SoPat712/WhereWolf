@@ -24,7 +24,7 @@ struct ConnectionTestSection: View {
                     .accessibilityIdentifier("wherewolf.testConnection.result")
             }
         } footer: {
-            Text("Saves these server edits and sends your current location as a real point, immediately, even on cellular. This test does not use the queue or change history, trips or send statistics.")
+            Text("Saves these edits and sends your current location as a real point now, even on cellular. The queue, history, trips and send statistics stay untouched.")
         }
     }
     private func isSuccess(_ result: ConnectionTestResult) -> Bool {

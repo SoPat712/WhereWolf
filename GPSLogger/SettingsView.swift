@@ -39,7 +39,7 @@ struct SettingsView: View {
             } footer: {
                 Text(bridge.tripInProgress
                      ? "Finish the current trip before applying a preset."
-                     : UsagePreset.description(bridge.usageProfile) + " Tap ⓘ for exact values.")
+                     : UsagePreset.description(bridge.usageProfile) + " Tap ⓘ to compare presets.")
             }
 
             Section {
@@ -420,7 +420,7 @@ struct SendingSettingsView: View {
         .alert("Couldn’t Delete Pending Uploads", isPresented: $showingDeleteError) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("An upload is in progress, or the queue could not be updated. Your pending records are kept. Please try again after the upload finishes.")
+            Text("An upload is in progress or the queue couldn’t be updated. Your pending records are kept; try again after the upload finishes.")
         }
         .onAppear { bridge.refresh() }
     }

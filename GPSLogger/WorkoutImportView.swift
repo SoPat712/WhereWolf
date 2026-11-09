@@ -36,7 +36,7 @@ struct WorkoutImportView: View {
             } header: {
                 Text("Workout Import")
             } footer: {
-                Text("Reads saved workout routes from Apple Workouts and apps that share routes with Health. Your watch may need time to sync. Import does not start a workout or write to Health. Automatic checks run when WhereWolf opens; they do not upload routes.")
+                Text("Copies routes that Workouts and other apps saved to Health. Nothing is written to Health or uploaded automatically, and your watch may need time to sync.")
             }
 
             Section {
@@ -59,7 +59,7 @@ struct WorkoutImportView: View {
             } header: {
                 Text("Imported Routes")
             } footer: {
-                Text("Routes stay in this separate collection until you remove them. They do not change the Tracker timeline, current location, or active trip. Each route has an explicit option to send its points to your destination.")
+                Text("Kept apart from the Tracker timeline, location and trips until you remove them. Open a route to send its points.")
             }
 
             if importer.connected {
@@ -80,7 +80,7 @@ struct WorkoutImportView: View {
                         }
                     }
                     if importer.workouts.isEmpty {
-                        Text("No readable workouts in this period. Health does not disclose whether read access was denied. You can review route and workout access in the Health app.")
+                        Text("No readable workouts in this period. Health doesn’t say whether access was denied; review it in the Health app.")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
                 } header: {
@@ -146,13 +146,13 @@ private struct ImportedWorkoutView: View {
                     if let error = importer.error ?? error { Text(error).font(.footnote).foregroundStyle(.orange) }
                     if let message = importer.message { Text(message).font(.footnote).foregroundStyle(.secondary) }
                 } footer: {
-                    Text("Sends location points through your existing queue, using your send interval. Requires All Data logging or iCloud export. Original timestamps and source identifiers are kept. Your destination must accept historical points; overlapping phone and workout routes are kept as separate sources. No workout is written back to Health.")
+                    Text("Queues the points, with original timestamps and source, to go out at your send interval. Needs All Data logging or iCloud export and a destination that accepts past points; overlapping phone points stay a separate source.")
                 }
                 Section {
                     Button("Remove Local Route", role: .destructive) { confirmRemoval = true }
                         .disabled(importer.busy)
                 } footer: {
-                    Text("Removes this local copy. Health data and points already queued or uploaded remain unchanged. You can import it again manually.")
+                    Text("Removes only this local copy; Health and queued or uploaded points stay. You can import it again.")
                 }
             }
         }

@@ -41,8 +41,8 @@ struct SettingsBackupView: View {
                 SettingsSectionHeader(title: "Settings File", topic: .backup)
             } footer: {
                 Text(includeCredentials
-                     ? "The JSON file contains your server credential and custom headers. Keep it private. It contains settings only; no locations, trips, queue, imports or Health data."
-                     : "The JSON file omits the server URL, token and custom headers. It contains settings only; no locations, trips, queue, imports or Health data.")
+                     ? "Includes your server credential and headers, so keep it private. Settings only: no locations, trips, queue, imports or Health data."
+                     : "Omits the server URL, token and headers. Settings only: no locations, trips, queue, imports or Health data.")
             }
             Section {
                 Toggle("Sync Settings with iCloud", isOn: Binding(get: { sync.enabled }, set: { sync.setEnabled($0) }))

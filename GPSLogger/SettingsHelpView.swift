@@ -43,9 +43,17 @@ struct SettingsHelpView: View {
             List {
                 ForEach(topic.entries, id: \.title) { entry in
                     Section {
-                        Text(entry.detail)
-                        Link(entry.source.title, destination: entry.source.url)
-                            .font(.footnote)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(entry.summary)
+                            ForEach(entry.pros, id: \.self) { SettingsHelpPoint(text: $0, kind: .pro) }
+                            ForEach(entry.cons, id: \.self) { SettingsHelpPoint(text: $0, kind: .con) }
+                            ForEach(entry.notes, id: \.self) { SettingsHelpPoint(text: $0, kind: .note) }
+                        }
+                        .padding(.vertical, 2)
+                        if let source = entry.source {
+                            Link(source.title, destination: source.url)
+                                .font(.footnote)
+                        }
                     } header: {
                         Text(entry.title)
                     }
@@ -62,14 +70,64 @@ struct SettingsHelpView: View {
     }
 }
 
+private struct SettingsHelpPoint: View {
+    enum Kind { case pro, con, note }
+
+    let text: String
+    let kind: Kind
+    @ScaledMetric(relativeTo: .body) private var iconWidth: CGFloat = 22
+
+    var body: some View {
+        Label {
+            Text(text)
+        } icon: {
+            switch kind {
+            case .pro: Image(systemName: "plus.circle.fill").foregroundStyle(.green)
+            case .con: Image(systemName: "minus.circle.fill").foregroundStyle(.orange)
+            // A full-size symbol scaled down keeps the dot centered on the first line.
+            case .note: Image(systemName: "circle.fill").foregroundStyle(.secondary).scaleEffect(0.35)
+            }
+        }
+        .labelStyle(SettingsHelpPointStyle(iconWidth: iconWidth))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityText)
+    }
+
+    private var accessibilityText: String {
+        switch kind {
+        case .pro: return "Advantage: \(text)"
+        case .con: return "Drawback: \(text)"
+        case .note: return text
+        }
+    }
+}
+
+private struct SettingsHelpPointStyle: LabelStyle {
+    let iconWidth: CGFloat
+
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            configuration.icon.frame(width: iconWidth)
+            configuration.title.frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
 private struct SettingExplanation {
     let title: String
-    let detail: String
-    let source: SettingsSource
+    let summary: String
+    let pros: [String]
+    let cons: [String]
+    let notes: [String]
+    let source: SettingsSource?
 
-    init(_ title: String, _ detail: String, _ source: SettingsSource) {
+    init(_ title: String, _ summary: String, pros: [String] = [], cons: [String] = [],
+         notes: [String] = [], source: SettingsSource? = nil) {
         self.title = title
-        self.detail = detail
+        self.summary = summary
+        self.pros = pros
+        self.cons = cons
+        self.notes = notes
         self.source = source
     }
 }
@@ -151,8 +209,18 @@ enum SettingsHelpTopic: String {
     private static var silentAudioEntries: [SettingExplanation] {
 #if WHEREWOLF_SILENT_AUDIO
         [
-            .init("Silent Audio", "An optional, experimental loop of digital silence using the audio playback background mode. It mixes with other audio, uses no microphone, and stops when tracking stops or location access is lost. While enabled and playing, a health check detects unexpected stops. Recovery tries up to three times with backoff, then waits for Restart Background Features. Automatic recovery waits during calls, interruptions and audio-service loss, and resumes only when allowed. This is a keepalive technique, not a guarantee or a battery improvement, and it can use more battery.", .stikDebug),
-            .init("Distribution and reliability", "Apple documents the audio background mode for audible playback. A silent keepalive may conflict with App Store review requirements, so App Store builds leave it out. These options do not bypass force-quit, permissions, system termination, or your existing stationary-pause settings. Test background recording on a physical device.", .audio)
+            .init("Silent Audio", "Experimental: plays silence to try to keep WhereWolf running in the background.",
+                  pros: ["May prevent background suspension"],
+                  cons: ["Can use more battery", "A keepalive technique, not a guarantee"],
+                  notes: ["Mixes with other audio; never uses the microphone",
+                          "Stops with tracking or lost location access",
+                          "Three retries, then waits for Restart Background Features",
+                          "Waits out calls and audio-service loss"],
+                  source: .stikDebug),
+            .init("Distribution and Reliability", "Apple documents this mode for audible playback, so App Store builds leave it out.",
+                  notes: ["Doesn’t bypass force-quit, permissions, termination or pauses",
+                          "Test on a physical device"],
+                  source: .audio)
         ]
 #else
         []
@@ -162,173 +230,636 @@ enum SettingsHelpTopic: String {
     private static var healthPermissionEntries: [SettingExplanation] {
         guard HealthTripRecorder.isAvailable else { return [] }
         return [
-            .init("Apple Health", "Health does not tell apps whether you allowed access. Reviewed means you have answered WhereWolf's request for workouts, routes and imports; it does not say which items you allowed. Save Trips to Apple Health asks when you turn it on. Change access in the Health app.", .healthKit)
+            .init("Apple Health", "Health never tells apps what you allowed, only that you answered.",
+                  notes: ["Reviewed means you answered WhereWolf’s request",
+                          "Change access in the Health app"],
+                  source: .healthKit)
         ]
     }
 
     private static var widgetEntry: SettingExplanation {
-        .init("Widgets & Shortcuts", "Add WhereWolf to the Home Screen or Lock Screen for tracking status and trip controls. Control Center controls are available on iOS 18 and later. Shortcuts and Siri can start or end trips, send queued data, change trip settings, and report tracking status." + (SharedTripState.isSharedStorageAvailable ? "" : " This build cannot share data with widgets, so they show no status."), .implementation)
+        .init("Widgets & Shortcuts", "Status and trip controls outside the app.",
+              notes: ["Widgets for the Home Screen and Lock Screen",
+                      "Control Center controls on iOS 18 and later",
+                      "Siri and Shortcuts handle trips, sending, settings and status"]
+                + (SharedTripState.isSharedStorageAvailable ? [] : ["This build can’t share data, so widgets show no status"]),
+              source: .implementation)
     }
 
     fileprivate var entries: [SettingExplanation] {
         switch self {
         case .presets:
+            // One entry per preset, in the picker's order.
             return [
-                .init("What changes", "Presets immediately change normal tracking mode, accuracy, activity, pausing, resume distance, stationary thresholds, point filters, the background indicator and visit tracking. They leave the server, credentials, logging format, send interval, batch size and trip-specific settings alone. The resume distance is shared with trips and does change. They do not start a stopped tracker. Finish an active trip before applying one. Editing a covered setting changes the selector to Custom.", .implementation),
-                .init("Everyday Detailed", "The default for new installations. Uses High Resolution's Standard updates, Best accuracy and Other activity, with automatic pausing, geofence resume, stationary stopping and visits off. The background indicator is off, and saved points must be at least 10 m apart and 5 seconds apart. These filters reduce saved points while GPS keeps running; battery savings are not guaranteed. Existing installations keep their saved settings.", .implementation),
-                .init("High Resolution", "For detailed route recording. Standard updates, Best accuracy, Other activity, automatic pausing and geofence resume off. Point filters and stationary stopping are off; the indicator is on and visits are off. Based on the README's high-resolution profile. More detail costs power; one point per second is not guaranteed.", .readme),
-                .init("Low Power", "For coarse location history. Significant-change updates, Other activity, automatic pausing on and a 500 m resume distance. The stored standard-update accuracy is 100 m, but it does not control significant-change accuracy. Pausing and resume values also concern standard updates, not the timing of significant changes. Point filters, stationary stopping, the indicator and visits are off. Based on the README's low-resolution profile; this cannot capture a detailed route.", .readme),
-                .init("Balanced", "For everyday history with more detail while moving. Both update sources, 100 m requested accuracy, Other activity, and stationary stopping within 50 m after 3 minutes. Automatic pausing and geofence resume are off; significant changes resume tracking. Point filters are off, the indicator is on and visits are off. WhereWolf's concrete starting values for the README's battery-saving/high-resolution approach; battery savings are not measured or guaranteed.", .readme),
-                .init("Walking / Running", "High Resolution with Fitness activity, to describe the expected movement to iOS. All other High Resolution values apply. This is a WhereWolf recommendation based on Apple's activity guidance, not an Apple-provided preset.", .activity),
-                .init("Driving", "High Resolution with Automotive activity and Navigation accuracy. All other High Resolution values apply. This is a WhereWolf recommendation for detailed driving tracks, not an Apple-provided preset. Navigation accuracy can use more power.", .activity)
+                .init("What a Preset Sets", "Sets many tracking options at once; editing one switches to Custom.",
+                      notes: ["Also sets Resume After Moving, shared with trips",
+                              "Leaves server, sending and trip settings alone",
+                              "Doesn’t start tracking; unavailable during a trip"],
+                      source: .implementation),
+                .init("Driving", "The most precise request, for detailed driving tracks.",
+                      pros: ["Navigation accuracy, the most precise",
+                             "Automatic pausing off, so stops stay recorded"],
+                      cons: ["Can use the most power",
+                             "Location indicator on",
+                             "Every fix saved and uploaded"],
+                      notes: ["Automotive hint; point filters and visits off"],
+                      source: .activity),
+                .init("High Resolution", "Best accuracy and no automatic pausing, for detailed routes.",
+                      pros: ["Best accuracy, every fix saved",
+                             "Automatic pausing off, so stops stay recorded"],
+                      cons: ["High battery use, even when still",
+                             "Location indicator on",
+                             "Every fix saved and uploaded"],
+                      notes: ["One fix per second isn’t guaranteed"],
+                      source: .readme),
+                .init("Walking / Running", "High Resolution with the Fitness activity hint, for outdoor exercise.",
+                      pros: ["High Resolution’s detail",
+                             "Tells iOS you’re exercising"],
+                      cons: ["High Resolution’s battery use",
+                             "Location indicator on"],
+                      source: .activity),
+                .init("Everyday Detailed", "Best accuracy without the indicator, skipping points within 10 m or 5 s.",
+                      pros: ["Best accuracy while moving",
+                             "No location indicator",
+                             "Quiet when still: fewer points to upload"],
+                      cons: ["GPS still runs, so savings aren’t guaranteed",
+                             "Loses detail under 10 m or 5 s",
+                             "Hiding the indicator needs Always access or a Live Activity"],
+                      notes: ["The default for new installs"],
+                      source: .implementation),
+                .init("Balanced", "100 m accuracy that stops standard updates when you stay put.",
+                      pros: ["100 m requests can use less power",
+                             "Stops standard updates after 3 minutes within 50 m"],
+                      cons: ["Coarser points than Best",
+                             "Departures can be recorded late",
+                             "Location indicator on"],
+                      notes: ["Uses Both mode; savings aren’t measured"],
+                      source: .readme),
+                .init("Low Power", "Significant changes only, for coarse history at the lowest power.",
+                      pros: ["Lowest power: iOS reports only larger moves",
+                             "No location indicator"],
+                      cons: ["About every 500 m, at most every 5 minutes",
+                             "No detailed route"],
+                      notes: ["Timing depends on iOS and the network",
+                              "Its accuracy and pause values affect only standard updates"],
+                      source: .readme)
             ]
         case .permissions:
             return [
-                .init("Location access", "iOS controls whether WhereWolf may obtain location. When in Use permits foreground use and some active background sessions; Always supports background location use more broadly. Denied or restricted access must be addressed in iOS Settings. Permission alone does not start tracking.", .coreLocation),
-                .init("Precise Location", "If Precise Location is disabled in iOS Settings, requesting a smaller accuracy value cannot restore precise fixes.", .accuracy),
-                .init("Motion & Fitness", "Core Motion can classify activity such as walking, running, cycling, automotive movement and stillness. Its permission is separate from Location Access. Use Allow Motion & Fitness to grant activity access; changing a tracking option never prompts, though trip step counting can also ask. Motion assist, adaptive stop confirmation, the stationary point filter, trip stop detection and trip step counting use it. Motion callbacks describe activity but cannot wake a suspended app by themselves. Denied or restricted access disables motion confirmation but does not stop ordinary location tracking. Current Activity shows the latest classification while tracking.", .motion),
-                .init("Notifications", "Shows iOS notification permission for WhereWolf. Notifications, Ask to End Trip When Stopped and Ask to Reopen When Audio Stops all need it; each switch controls its own messages.", .implementation)
+                .init("Location Access", "iOS decides whether WhereWolf may use location; access alone doesn’t start tracking.",
+                      notes: ["While Using covers the app and some background sessions",
+                              "Always supports background tracking more broadly",
+                              "Relaunch Monitoring and Hide While Audio Plays need Always"],
+                      source: .coreLocation),
+                .init("Precise Location", "With Precise Location off in iOS Settings, iOS returns only approximate locations.",
+                      notes: ["A smaller accuracy request can’t restore precise fixes"],
+                      source: .accuracy),
+                .init("Motion & Fitness", "Lets Core Motion tell walking, running, cycling, driving and stillness apart.",
+                      pros: ["Enables motion assist, adaptive stops and the stationary filter",
+                             "Trips use it for stops and steps"],
+                      notes: ["Asked only by its Allow button or trip step counting",
+                              "Can’t wake a suspended app",
+                              "Location tracking works without it"],
+                      source: .motion),
+                .init("Notifications", "iOS permission that every WhereWolf alert and prompt needs.",
+                      notes: ["Each switch still controls its own messages"],
+                      source: .implementation)
             ] + Self.healthPermissionEntries
         case .destination:
             return [
-                .init("Save Locations To", "Server sends queued records to your endpoint through the existing upload queue. iCloud Drive instead saves GeoJSON files to WhereWolf's folder in iCloud Drive; iOS manages cloud synchronization after each file is saved. Your server settings stay saved while iCloud Drive is selected.", .implementation),
-                .init("File Organization", "Choose one file per day or one file per trip. Trip files omit records outside a trip. If iCloud Drive is unavailable, enable it for WhereWolf in iOS Settings; the installed build also needs iCloud support. Unwritten data stays in the queue.", .implementation),
-                .init("Test Connection", "Saves your server edits and immediately sends your current location as a real point, even on cellular. Uses a fix at most 30 seconds old or a one-shot request with a 15-second timeout. GeoJSON marks the point test: true; OwnTracks stays plain. The test uses the uploader’s shape, headers and token without changing its queue, history, trips or statistics. The result shows HTTP status and result: ok acknowledgement, or a failure with a fix hint.", .implementation),
-                .init("Endpoint and token", "The endpoint is your receiving server's HTTP(S) URL. The access token is sent in the Authorization header: normal GeoJSON requests use Bearer authentication when a token is provided. OwnTracks uses Basic authentication with the Base64-encoded username:password you enter. Save applies the draft; Clear Server URL disconnects the endpoint without deleting queued points.", .implementation),
-                .init("Device ID / Include unique_id", "Device ID labels records and is included in location data; it is not the login username. Include unique_id adds the device's vendor identifier to supported location payloads. Leave it off if your server does not need it.", .implementation),
-                .init("Custom HTTP Headers", "Adds headers required by your server or reverse proxy. Names must be unique and values cannot contain line breaks. Authorization and transport-controlled headers are reserved. Header values can contain credentials, so treat them like your access token.", .implementation),
-                .init("Accept Any Successful HTTP Response", "When enabled, any successful 2xx response acknowledges a batch, including an empty body. Otherwise WhereWolf requires a JSON object with result set to ok. Match your server's contract: acknowledgment removes the sent records from the queue.", .implementation),
-                .init("Status and Recent Sends", "Configured means a URL is saved, not that a connection has been verified. The chart shows up to 50 outcomes from this app process: green success, orange server rejection, red network failure. It resets after relaunch.", .implementation)
+                .init("Save to Server", "Uploads queued records to your own endpoint.",
+                      pros: ["Points reach your server as they’re sent",
+                             "Works with Overland GeoJSON and OwnTracks servers"],
+                      cons: ["Needs a server you run or trust",
+                             "Uses mobile data unless Send Only on Wi-Fi is on"],
+                      source: .implementation),
+                .init("Save to iCloud Drive", "Writes GeoJSON files to WhereWolf’s iCloud Drive folder instead.",
+                      pros: ["No server needed"],
+                      cons: ["Needs iCloud Drive on and an iCloud-enabled build"],
+                      notes: ["iOS syncs each file after it’s saved",
+                              "Unwritten data stays queued; server settings stay saved"],
+                      source: .implementation),
+                .init("File Organization", "One iCloud file per day, or one per trip.",
+                      notes: ["Per trip leaves out records outside trips"],
+                      source: .implementation),
+                .init("Test Connection", "Saves your edits and sends your current location as a real point.",
+                      pros: ["Checks URL, format, headers and token",
+                             "Shows HTTP status and a fix hint"],
+                      cons: ["Your server receives a real location",
+                             "Sends even on cellular"],
+                      notes: ["Uses a fix up to 30 s old, or waits up to 15 s",
+                              "GeoJSON marks it test: true",
+                              "Queue, history, trips and statistics untouched"],
+                      source: .implementation),
+                .init("Endpoint and Token", "Your server’s HTTP(S) URL and the credential sent with each request.",
+                      notes: ["GeoJSON: Bearer token in the Authorization header",
+                              "OwnTracks: Basic auth, Base64 username:password",
+                              "Clear Server URL keeps queued points"],
+                      source: .implementation),
+                .init("Device ID and unique_id", "Device ID labels your records; it isn’t a login.",
+                      notes: ["unique_id adds the iOS vendor identifier",
+                              "Leave unique_id off unless your server needs it"],
+                      source: .implementation),
+                .init("Custom HTTP Headers", "Extra headers your server or proxy needs.",
+                      notes: ["Unique names; no line breaks in values",
+                              "Authorization and transport headers are reserved",
+                              "Guard credential values like your token"],
+                      source: .implementation),
+                .init("Accept Any Successful HTTP Response", "Counts any 2xx reply, even an empty one, as acknowledgement.",
+                      pros: ["Works with servers that don’t send result: ok"],
+                      cons: ["Clears records the server may not have stored"],
+                      notes: ["Off requires a JSON result: ok"],
+                      source: .implementation),
+                .init("Status and Recent Sends", "Configured means a URL is saved, not that it works.",
+                      notes: ["The chart shows up to 50 sends since launch",
+                              "Green success, orange rejection, red network failure"],
+                      source: .implementation)
             ]
         case .tracking:
+            // Update modes in the picker's order, most continuous first.
             return [
-                .init("Tracking Enabled", "Starts or stops collection. Stopping keeps queued records for later sending. Trips temporarily use their own tracking configuration and restore the earlier tracking state when ended.", .implementation),
-                .init("Update Mode", "Off disables standard and significant-change updates; visit tracking is separate. Standard requests regular location updates. Significant uses iOS's coarse movement service. Both enables both sources and permits WhereWolf's stationary radius/time logic to pause standard updates until significant movement.", .implementation),
-                .init("Significant changes", "iOS schedules these events, not the send interval or distance filter. Apple describes movements of around 500 m or more and says not to expect updates more often than every five minutes. Network availability affects timeliness. This is unsuitable for a detailed walking route.", .significant),
-                .init("Visit Tracking", "Records iOS-detected arrivals and departures at places. Visit events are separate from continuous route points and may arrive after the visit occurred.", .coreLocation),
+                .init("Tracking Enabled", "Starts or stops collection; stopping keeps queued records.",
+                      notes: ["Trips restore this state when they end"],
+                      source: .implementation),
+                .init("Update Mode: Standard", "Continuous location updates for detailed routes.",
+                      pros: ["The most detailed, continuous route"],
+                      cons: ["The most battery of the modes",
+                             "Runs while you’re still unless pausing is on"],
+                      source: .coreLocation),
+                .init("Update Mode: Both", "Standard updates plus significant changes, which restart them after a stop.",
+                      pros: ["Detail while moving",
+                             "Stop Within Radius can pause GPS when still"],
+                      cons: ["Departures can be recorded late"],
+                      source: .implementation),
+                .init("Update Mode: Significant", "Only iOS’s coarse movement service.",
+                      pros: ["Much lower power than GPS",
+                             "Can relaunch WhereWolf after iOS ends it"],
+                      cons: ["About every 500 m, at most every 5 minutes",
+                             "No detailed route"],
+                      notes: ["Timing depends on iOS and the network",
+                              "No relaunch after you force-quit"],
+                      source: .significant),
+                .init("Update Mode: Off", "No standard or significant-change updates.",
+                      notes: ["Visit Tracking runs separately"],
+                      source: .implementation),
+                .init("Visit Tracking", "Records iOS-detected arrivals and departures.",
+                      pros: ["A very low-power way to mark stops"],
+                      cons: ["Events can arrive late",
+                             "Can add jumps to detailed routes"],
+                      source: .coreLocation),
                 Self.widgetEntry
             ]
         case .locationRequest:
+            // Accuracy options in the picker's order, most precise first.
             return [
-                .init("Requested Accuracy / Target Accuracy", "Custom requests an accuracy in meters; a smaller value asks for a more precise fix. Best requests the best available accuracy; Navigation requests navigation-grade accuracy. These are requests, not guarantees: less accurate fixes may arrive first, and higher precision can take more time and power. The new engine lets iOS choose accuracy. This request does not change which points are saved.", .accuracy),
-                .init("Why the request and filter are separate", "A 10 m request can return a valid 20 m fix. Automatically setting the saved-point limit to 10 m would discard it and could create gaps. Requested Accuracy changes the request only. The main Usage Presets set both, with the saved-point accuracy filter Off. Custom filters stay independent of the request.", .implementation),
-                .init("Activity Type", "Tells iOS the expected activity: Other, Automotive, Fitness, other Navigation, or Airborne. It is a hint used when deciding whether updates can pause, not a motion classifier or trip label. Choose the activity you actually expect to perform.", .activity),
-                .init("Trips", "Trips have their own Requested Accuracy and Activity Type, used only while a trip is in progress. Saved-point filters still decide which returned fixes are kept.", .implementation)
+                .init("How Accuracy Requests Work", "A request to iOS, not a guarantee or a filter.",
+                      notes: ["More precision can take more time and power",
+                              "A 10 m request can return a valid 20 m fix",
+                              "Max Saved-Point Error filters separately",
+                              "The new location engine lets iOS choose"],
+                      source: .accuracy),
+                .init("Accuracy: Navigation", "The most precise request, adding other sensors for navigation.",
+                      pros: ["The highest precision iOS offers"],
+                      cons: ["Can use the most power"],
+                      source: .accuracy),
+                .init("Accuracy: Best", "The best accuracy the device can give.",
+                      pros: ["Precise fixes for detailed routes"],
+                      cons: ["More power than coarser requests"],
+                      source: .accuracy),
+                .init("Accuracy: Custom", "A Target Accuracy from 5 m to 3 km.",
+                      pros: ["Larger targets can use less power"],
+                      cons: ["Coarser points as the target grows"],
+                      source: .accuracy),
+                .init("Activity Type", "A hint about how you travel; iOS uses it to decide when to pause.",
+                      notes: ["Other: no particular activity",
+                              "Fitness: walking, running or cycling",
+                              "Automotive: driving",
+                              "Navigation: other vehicles, such as trains",
+                              "Boat (iOS 27 and later): on water",
+                              "Airborne: flying",
+                              "Not a motion classifier or trip label"],
+                      source: .activity),
+                .init("Trip Accuracy and Activity", "Trips have their own accuracy and activity, used only during a trip.",
+                      source: .implementation)
             ]
         case .savedPoints:
             return [
-                .init("Discard Points Without GPS", "Skips fixes that do not appear to come from GPS. WhereWolf estimates the source from altitude accuracy and speed.", .implementation),
-                .init("Discard Points While Stationary", "Skips points while Motion & Fitness reports that you are stationary, keeping a stopping point and an hourly heartbeat. It has no effect without Motion & Fitness access.", .motion),
-                .init("Min Distance Between Points", "Discards received points closer than this many meters to the last accepted fix. Off keeps them. This filters recorded data after delivery; it does not directly reduce GPS sampling or guarantee lower battery use.", .implementation),
-                .init("Min Time Between Points", "Discards received points less than this many seconds after the last accepted fix. Off disables this filter. It is not a request to iOS for a fixed sampling interval.", .implementation),
-                .init("Max Saved-Point Error", "Rejects fixes whose reported horizontal uncertainty exceeds this many meters. Lower values are stricter and may leave gaps indoors or during a weak fix. Off accepts any otherwise-valid accuracy. This filter applies to normal tracking and trips, independently of the accuracy requested from iOS; Trips shows its current value.", .implementation),
-                .init("Save When Any Limit Is Met", "Off keeps the distance AND time minima: a point must pass both. On saves a point when distance, time or the optional turn trigger qualifies. This changes which returned fixes are saved; it is not a request for a particular sampling interval.", .adaptive),
-                .init("Turn Trigger", "Saves a point when your direction changes by at least this many degrees. It is used only with Save When Any Limit Is Met; zero turns it off.", .adaptive),
-                .init("Reject Implausible Jumps", "The filter compares displacement, elapsed time and reported uncertainty against your maximum speed. An implausible jump is held back until another nearby fix, at least one second later, confirms relocation. Raise the limit for fast travel such as flights, or leave it off. It does not guarantee true accuracy or road-snap points.", .adaptive),
-                .init("Slider detents", "Tick marks snap to common time, distance and count settings with selection feedback. Values between the marks are still available. Tap the displayed value to enter an exact number. Dragging previews the setting; releasing the slider saves it.", .implementation)
+                .init("Discard Points Without GPS", "Skips fixes that don’t seem to come from GPS.",
+                      pros: ["Fewer coarse network fixes"],
+                      cons: ["Can leave gaps indoors"],
+                      notes: ["Judged from altitude accuracy and speed"],
+                      source: .implementation),
+                .init("Discard Points While Stationary", "Skips points while Motion & Fitness says you’re still.",
+                      pros: ["Fewer repeated points while parked"],
+                      cons: ["Does nothing without Motion & Fitness"],
+                      notes: ["Keeps a stopping point and an hourly heartbeat"],
+                      source: .motion),
+                .init("Min Distance Between Points", "Drops points closer than this to the last saved one.",
+                      pros: ["Fewer points to store and upload"],
+                      cons: ["Loses fine detail",
+                             "GPS still runs, so battery may not improve"],
+                      source: .implementation),
+                .init("Min Time Between Points", "Drops points sooner than this after the last saved one.",
+                      pros: ["Caps points saved per minute"],
+                      cons: ["Loses detail at speed"],
+                      notes: ["Not a sampling interval for iOS"],
+                      source: .implementation),
+                .init("Max Saved-Point Error", "Rejects fixes with more reported uncertainty than this.",
+                      pros: ["Removes wild indoor fixes"],
+                      cons: ["Strict values leave gaps with weak signal"],
+                      notes: ["Shared with trips; separate from Requested Accuracy"],
+                      source: .implementation),
+                .init("Save When Any Limit Is Met", "Saves when distance, time or turn qualifies; off needs distance and time.",
+                      pros: ["More points on slow stretches and turns"],
+                      cons: ["More points to store and upload"],
+                      source: .adaptive),
+                .init("Turn Trigger", "Saves a point when your heading turns this many degrees.",
+                      pros: ["Sharp corners with sparse limits"],
+                      notes: ["Needs Save When Any Limit Is Met; zero is off"],
+                      source: .adaptive),
+                .init("Reject Implausible Jumps", "Holds back fixes that would need more than Maximum Speed.",
+                      pros: ["Removes stray fixes far off your route"],
+                      cons: ["Can hold back flights; raise the limit"],
+                      notes: ["A nearby fix a second later confirms a real move",
+                              "Allows for reported uncertainty; doesn’t snap to roads"],
+                      source: .adaptive),
+                .init("Slider Detents", "Sliders snap to common values; tap a value to type it.",
+                      notes: ["Releasing the slider saves"],
+                      source: .implementation)
             ]
         case .stationary:
             return [
-                .init("Stop Within Radius / Stop After", "In Both mode, WhereWolf pauses standard updates after validated raw fixes remain within the radius for the configured time. Significant-change monitoring continues and a fresh movement event can resume them. Old callbacks cannot clear the pause. Radius Off disables this behavior. This is separate from iOS automatic pausing and does not stop an active trip.", .implementation),
-                .init("Pause Updates Automatically", "Allows iOS to decide when the original engine's standard updates can pause. Turning it off favors continuity and may use more power. The new engine manages pausing itself. WhereWolf handles pause callbacks and can install a resume region; during a trip, automatic pausing can end the trip.", .implementation),
-                .init("Resume After Moving", "After an automatic pause, WhereWolf creates a circular region around the last fix. Exiting it can resume an enabled tracker. This distance is shared by normal and trip settings, so it appears here while either one pauses automatically. Region delivery is not an exact crossing alarm. Off disables the resume region; disabling automatic pausing also clears this value.", .implementation)
+                .init("Stop Within Radius / Stop After", "In Both mode, pauses standard updates after you stay in the radius this long.",
+                      pros: ["No standard GPS updates while parked"],
+                      cons: ["Resuming waits for movement, so can be late",
+                             "Both mode only, with automatic pausing off"],
+                      notes: ["Not applied during trips"],
+                      source: .implementation),
+                .init("Pause Updates Automatically", "Lets iOS pause the original engine’s updates when you seem stopped.",
+                      pros: ["Can save power when you stop"],
+                      cons: ["Can end an active trip",
+                             "iOS decides when to pause"],
+                      notes: ["The new engine manages its own pausing"],
+                      source: .implementation),
+                .init("Resume After Moving", "After an automatic pause, moving this far from the last fix can resume.",
+                      notes: ["Shared with trips",
+                              "Region exits aren’t exact alarms"],
+                      source: .implementation)
             ]
         case .engine:
             return [
-                .init("Benefits", "The new engine automatically pauses GPS while stationary and resumes when you move. It avoids delivering the same stationary locations repeatedly. On iOS 18 and later, it also reports more detailed reasons for missing updates, such as limited accuracy or authorization.", .locationEngine),
-                .init("Tradeoffs", "iOS chooses accuracy and pause timing using your Activity Type. Desired Accuracy and Pause Updates Automatically cannot override live updates. Use the original engine to request custom or Navigation accuracy, or to disable automatic pausing. The new engine does not guarantee lower battery use, higher precision or uninterrupted recording.", .locationEngine),
-                .init("Both engines can pause", "The original engine also supports automatic pausing when Pause Updates Automatically is enabled. WhereWolf can install a resume region after a pause. The new engine handles movement-based resume itself, so pausing is not a capability unique to the new engine.", .coreLocation),
-                .init("Trip behavior", "An automatic pause ends an active trip. The new engine can pause even when the trip's Pause Updates Automatically setting is off. To disable automatic pauses during trips, leave Use new location engine off and turn the trip's Pause Updates Automatically setting off.", .implementation),
-                .init("Background and the indicator", "With Always access and the Location Indicator off, the new engine needs an active widget-backed Live Activity for background updates: Status, Minimal, or Blank with Lock Screen Card on. Blank with the card off uses the original engine in this configuration. If an activity ends, WhereWolf also falls back to the original engine without changing your preferences. Trips have a separate indicator setting. When in Use access may require the system indicator.", .locationEngine),
-                .init("Active Engine and defaults", "Active Engine shows the engine actually selected, with the reason when it differs from your choice. The toggle defaults off and does not change preset values, saved-point filters, queueing or uploads. Off preserves the existing engine selection: Best accuracy with automatic pausing can still use live updates. Disabling automatic pausing with this toggle off selects the original engine.", .implementation),
-                .init("Stream recovery", "After three retries fail, WhereWolf falls back to the original engine. This failure remains latched until an explicit start, Restart Background Features, refresh, engine change or restored location access. Foregrounding alone does not repeat the failed retry cycle.", .implementation)
+                .init("New Location Engine", "iOS 17 live updates, which pause and resume GPS themselves.",
+                      pros: ["Pauses when still, resumes when you move",
+                             "No repeated stationary locations",
+                             "iOS 18 explains missing updates"],
+                      cons: ["iOS picks accuracy and pausing from Activity Type",
+                             "Ignores Requested Accuracy and Pause Updates Automatically",
+                             "No guaranteed battery savings or gap-free recording"],
+                      notes: ["Use the original engine for Custom, Navigation or no pausing"],
+                      source: .locationEngine),
+                .init("New Engine During Trips", "Its automatic pauses end trips, whatever the trip’s pause setting.",
+                      notes: ["To avoid that, turn this off and trip pausing off"],
+                      source: .implementation),
+                .init("Background and the Indicator", "With the indicator off, the new engine needs a widget-backed Live Activity.",
+                      notes: ["Status, Minimal, or Blank with Lock Screen Card qualify",
+                              "Otherwise the original engine runs, with Always access",
+                              "While Using access may require the indicator"],
+                      source: .locationEngine),
+                .init("Active Engine", "The engine in use, and why when it differs from your choice.",
+                      notes: ["The toggle defaults off and changes no presets",
+                              "With it off, Best with pausing can still use live updates"],
+                      source: .implementation),
+                .init("Stream Recovery", "After three failed retries, WhereWolf falls back to the original engine.",
+                      notes: ["Cleared by a start, refresh, engine change or Restart Background Features",
+                              "Restored location access also clears it",
+                              "Opening the app alone doesn’t retry"],
+                      source: .implementation)
             ]
         case .motionAdaptive:
             return [
-                .init("Motion-assisted tracking", "An opt-in motion hint can help WhereWolf interpret movement and restart acquisition after a native pause. Resume Radius Pause on Movement is a separate choice and requires movement detected after that pause. Motion confidence sets the activity threshold; it does not improve location accuracy. It does not replace location or guarantee a timely callback. It needs Motion & Fitness access, which you can allow in Permissions.", .motion),
-                .init("Adaptive Tracking", "After a sustained, confirmed stop, adaptive tracking lowers the requested accuracy while retaining coarse updates and an exit region. This can save power but may delay departure detection. Moving tracking returns to the saved accuracy and pause settings. Existing trips remain unchanged unless Apply During Trips is enabled.", .adaptive),
-                .init("Adaptive thresholds", "Dwell, radius and resume-radius values describe WhereWolf's stop confirmation and movement watch. Require Motion Confirmation keeps detailed tracking active when motion is unknown or permission is unavailable. Turn it off to allow GPS-only stop confirmation. It never prompts for permission automatically.", .implementation),
-                .init("Adaptive Max Error / Idle Accuracy", "Max Error limits fixes used to confirm a stop. Idle Accuracy is the location request after that stop. Both remain separate from Max Saved-Point Error, which controls saved points. These values are thresholds and requests, not guarantees about the true position on the ground.", .implementation),
-                .init("Trip behavior", "Adaptive Tracking is independent of the existing trip controls. Enable Apply During Trips explicitly if you accept quieter trip tracking; otherwise trips retain their saved accuracy and pause behavior. Native automatic pauses still follow the trip's Pause Updates Automatically setting.", .implementation)
+                .init("Motion-Assisted Tracking", "Uses motion activity to restart GPS after a native pause.",
+                      pros: ["Can restart GPS after iOS pauses it"],
+                      cons: ["Needs Motion & Fitness",
+                             "Can’t improve accuracy or guarantee a wake"],
+                      notes: ["Resume Radius Pause on Movement needs movement after the pause",
+                              "Confidence: Medium accepts more readings; High, only sure ones"],
+                      source: .motion),
+                .init("Adaptive Tracking", "After a confirmed stop, requests coarse accuracy until you move.",
+                      pros: ["Can save power while stopped"],
+                      cons: ["Departures can be detected later"],
+                      notes: ["Keeps coarse updates and an exit region",
+                              "Trips unaffected unless Apply During Trips is on"],
+                      source: .adaptive),
+                .init("Adaptive Thresholds", "Dwell, Stop Radius and Resume Radius define a stop and leaving it.",
+                      notes: ["Require Motion Confirmation keeps detail when motion is unknown",
+                              "Off allows GPS-only stop confirmation"],
+                      source: .implementation),
+                .init("Adaptive Max Error / Idle Accuracy", "Max Error limits fixes that confirm a stop; Idle Accuracy is the stopped request.",
+                      notes: ["Separate from Max Saved-Point Error"],
+                      source: .implementation)
             ]
         case .trip:
             return [
-                .init("Trip overrides", "Accuracy, activity, logging mode, batch size, point filters, the indicator and pausing override normal settings only during a trip. Their meanings match the normal controls. Max Saved-Point Error and the resume-region distance are shared. Automatic pausing can end a trip; leave it off if you want to end trips manually.", .implementation),
-                .init("Shared settings", "Max Saved-Point Error and Resume After Moving apply to normal tracking and trips. Change them in Tracking & Accuracy; Trips shows their current values. Turning off a trip's Pause Updates Automatically also turns off resuming on movement.", .implementation),
-                .init("Ask to End Trip When Stopped", "After you stay within 75 m for 5 minutes, a notification asks whether to end the trip, and End Trip ends it when you stopped. Motion & Fitness, if allowed, keeps traffic and red lights from counting; without it the wait is 10 minutes. This needs notification permission but not the Notifications setting.", .implementation),
-                .init("Location Indicator", "Controls the location-use indicator while a trip is in progress, separately from the Location Indicator in Background Reliability.", .coreLocation),
-                .init("Prevent Screen Lock", "Keeps the display awake during an active trip. The display can consume substantial power. Ending the trip releases the override.", .implementation),
-                .init("Trip modes", "The selected mode labels the trip; it is separate from iOS Activity Type. Edit names, icons and Apple Health workouts in Trip Modes. Open a finished trip from Recent Trips on the Trip tab to see it on the Tracker ruler. Live Activity opens the trip Live Activity setting.", .implementation)
+                .init("Trip Overrides", "Trip settings replace normal ones only during a trip.",
+                      notes: ["Max Saved-Point Error and Resume After Moving are shared",
+                              "Change shared values in Tracking & Accuracy"],
+                      source: .implementation),
+                .init("Trip Location Indicator", "Shows or hides the location indicator during trips only.",
+                      pros: ["On: the most reliable background recording"],
+                      cons: ["On: an indicator in the status bar"],
+                      source: .coreLocation),
+                .init("Trip Pausing", "Lets iOS pause trip updates when you stop.",
+                      pros: ["Can save power on long stops"],
+                      cons: ["An automatic pause ends the trip"],
+                      notes: ["Off also turns off resuming on movement"],
+                      source: .implementation),
+                .init("Ask to End Trip When Stopped", "After 5 minutes within 75 m, asks whether to end the trip.",
+                      pros: ["Ends it where you stopped, not when you answer"],
+                      cons: ["Needs notification permission"],
+                      notes: ["Motion & Fitness keeps traffic stops from counting",
+                              "Without it, waits 10 minutes"],
+                      source: .implementation),
+                .init("Prevent Screen Lock", "Keeps the display awake during a trip.",
+                      pros: ["Map and stats stay in view"],
+                      cons: ["The display can use a lot of power"],
+                      source: .implementation),
+                .init("Trip Modes", "A mode labels the trip; it isn’t Activity Type.",
+                      notes: ["Edit names, icons and Health workouts in Trip Modes"],
+                      source: .implementation)
             ]
         case .wifiPlaces:
             return [
-                .init("Wi-Fi Places", "Give a place a point and one or more network names. While connected within about \(WifiPlace.distanceLabel(GLWifiPlaceMatchDistance)) of the pin, record the place’s point (on arrival, then every 5 minutes) or save nothing. If iOS can’t read the network name in the background, the match holds until a fix lands outside or another network connects. Each fix’s uncertainty adds up to 200 m; the nearer place wins when places share a network. Drag the map to move the pin. The picker shows connected, observed and configured names, with manual entry. iOS reveals only the connected network; it does not scan. Identification needs location permission and Access WiFi Information in the signing profile.", .implementation)
+                .init("Wi-Fi Places", "Connected to a place’s network near its pin, WhereWolf uses the pin instead of indoor GPS.",
+                      pros: ["No indoor GPS wander",
+                             "Stays and Coverage still see the visit"],
+                      cons: ["iOS names only the connected network",
+                             "Needs location access and a Wi-Fi-capable signing profile"],
+                      notes: ["Matches within about \(WifiPlace.distanceLabel(GLWifiPlaceMatchDistance)) of the pin, plus fix uncertainty",
+                              "The nearer place wins a shared network"],
+                      source: .implementation),
+                .init("Record: Place’s Point", "Saves the pin on arrival, then every 5 minutes while you stay.",
+                      pros: ["One steady point for the stay"],
+                      source: .implementation),
+                .init("Record: Nothing", "Saves nothing while connected near the pin.",
+                      pros: ["Keeps the place out of your history"],
+                      cons: ["No record of time there"],
+                      source: .implementation),
+                .init("When a Match Ends", "If iOS can’t read the network name, the match holds.",
+                      notes: ["A fix outside or another network ends it",
+                              "A nameless network never starts a match"],
+                      source: .implementation)
             ]
         case .sending:
+            // Logging modes in the picker's order, most of the track first.
             return [
-                .init("Logging Mode", "All Data queues GeoJSON records. Only Latest deliberately replaces queued location data with the latest update. OwnTracks uses OwnTracks JSON and sends one location per request; unsent fixes stay queued. Select the format your server accepts. Trips have their own Logging Mode and Locations per Batch.", .implementation),
-                .init("Include Tracking Stats", "Adds tracking configuration to new GeoJSON points and queues diagnostic events such as pause and resume. OwnTracks omits these stats. Applies to new records; previously saved records are unchanged.", .implementation),
-                .init("Send Interval", "Automatic sends are considered when locations arrive after this interval. This is not an exact background timer. Off means manual sending. Failed attempts retain their points; Last Sent changes only after the server acknowledges success.", .implementation),
-                .init("Locations per Batch", "Limits the number of queued records in a GeoJSON request. Smaller batches make smaller requests; larger ones can drain a backlog with fewer requests. OwnTracks sends one point at a time regardless of this setting.", .implementation),
-                .init("Send Only on Wi-Fi", "Holds automatic sends on cellular or a personal hotspot until the phone is on Wi-Fi, keeping their points queued. Send Now, widgets, Shortcuts, the Live Activity and the watch still send.", .implementation),
-                .init("Background Uploads", "An opt-in operating-system scheduler can ask WhereWolf to drain pending records while the app is not active. It has no exact interval and does not change the queue acknowledgment rules. Upload Scheduler shows its current state.", .implementation),
-                .init("Retry When Back Online", "When enabled, eligible network failures can retry when connectivity returns. Retry-After and authentication errors remain authoritative; this option does not retry a server rejection indefinitely.", .implementation),
-                .init("Upload Queue and retries", "Upload Queue counts records waiting for your destination. Failed sends keep their records and retry later; Next Retry shows when. Server authentication errors block uploads until you tap Retry Uploads.", .implementation),
-                .init("Delete Pending Uploads", "After confirmation, permanently deletes the records currently queued for your destination, including trip summaries and imported workout points. It preserves local history, saved workout routes, active tracking and the active trip. Deletion is unavailable during an upload; if the database commit fails, records and retry state are kept.", .implementation)
+                .init("Logging: All Data", "Queues every point as GeoJSON.",
+                      pros: ["Your whole track, many points per request"],
+                      cons: ["The most data to upload"],
+                      source: .implementation),
+                .init("Logging: OwnTracks", "Sends each point as OwnTracks JSON, one per request.",
+                      pros: ["Works with OwnTracks servers"],
+                      cons: ["One request per point; backlogs drain slowly",
+                             "No tracking stats"],
+                      source: .implementation),
+                .init("Logging: Only Latest", "Keeps only the newest location in the queue.",
+                      pros: ["The smallest queue and uploads"],
+                      cons: ["Discards your route between sends"],
+                      notes: ["Events and trip records stay"],
+                      source: .implementation),
+                .init("Include Tracking Stats", "Adds tracking settings and pause/resume events to new GeoJSON records.",
+                      pros: ["Helps explain gaps on your server"],
+                      cons: ["Larger records"],
+                      notes: ["OwnTracks leaves them out"],
+                      source: .implementation),
+                .init("Send Interval", "The wait between automatic sends.",
+                      pros: ["Shorter keeps your server current"],
+                      cons: ["Shorter means more requests and radio use"],
+                      notes: ["Checked as fixes arrive, not an exact timer",
+                              "Off sends only manually"],
+                      source: .implementation),
+                .init("Locations per Batch", "The most records in one GeoJSON request.",
+                      pros: ["Larger drains backlogs in fewer requests"],
+                      cons: ["Larger means bigger requests"],
+                      notes: ["OwnTracks sends one at a time"],
+                      source: .implementation),
+                .init("Send Only on Wi-Fi", "Holds automatic sends until you’re on Wi-Fi.",
+                      pros: ["Saves mobile data"],
+                      cons: ["Your server lags while you’re away"],
+                      notes: ["Send Now, widgets, Shortcuts, Live Activity and watch still send"],
+                      source: .implementation),
+                .init("Background Uploads", "Lets iOS schedule sends while WhereWolf isn’t open.",
+                      pros: ["Drains the queue without opening the app"],
+                      cons: ["iOS picks the time"],
+                      source: .implementation),
+                .init("Retry When Back Online", "Retries network failures when a connection returns.",
+                      pros: ["Catches up sooner after dead zones"],
+                      notes: ["Retry-After and authentication errors still apply"],
+                      source: .implementation),
+                .init("Upload Queue and Retries", "Counts records waiting for your destination.",
+                      notes: ["Failed sends keep their records",
+                              "Authentication errors wait for Retry Uploads"],
+                      source: .implementation),
+                .init("Delete Pending Uploads", "Permanently deletes every record waiting to be sent.",
+                      cons: ["Can’t be undone; includes trip summaries"],
+                      notes: ["Keeps history, workout routes, tracking and the active trip",
+                              "Unavailable during an upload"],
+                      source: .implementation)
             ]
         case .liveActivities:
+            // Appearances in the picker's order, richest first.
             return [
-                .init("Tracking Live Activity", "Starts while tracking is enabled and WhereWolf is in the foreground. Blank is the default for new installs; saved appearance choices remain. Minimal shows a location icon. Status adds the last successful send time in the expanded Dynamic Island. Blank keeps the Island empty, including reminders. Lock Screen Card defaults off; with it off, Blank starts an app-only activity and uses the original engine with Always access and the Location Indicator off. Turning the card on uses the widget-backed activity, like Minimal, which supports background live updates. Minimal and Status always include the rich Lock Screen card, showing tracking, fix and send times, queued records and Send Now. Active trips add distance, duration and End Trip; the trip line is omitted when a separate trip Live Activity is active. Activities expire after up to eight hours and can be dismissed. Open WhereWolf or tap Restart Background Features in Background Reliability to start another; tracking itself continues independently.", .activityKit),
-                .init("Trip Live Activity", "An optional trip card with elapsed time, distance, speed, Send Now and End Trip. It is separate from the tracking activity and its Blank appearance.", .activityKit),
-                .init("Dynamic Island priority", "WhereWolf uses a relevance score of zero and sends no Live Activity alerts. The score ranks activities from WhereWolf; it cannot give Music or another app priority. iOS chooses which activities appear attached to the Island or in a smaller bubble. WhereWolf cannot force the smaller presentation while keeping its activity active.", .activityKit),
-                .init("Hide While Audio Plays", "Off by default and shown while the tracking or trip Live Activity is on. With Always location access, two audio checks at least 15 seconds apart end tracking and trip Live Activities while another app plays audio. Without Always access they stay visible to protect background tracking. It reacts within about 15 seconds while WhereWolf is running in the background, such as while moving or with Silent Audio on. While iOS has WhereWolf suspended, it reacts at the next location update or when you open the app. When audio stops, the same confirmation allows one attempt to restore them in the background; iOS may require you to open WhereWolf. Ask to Reopen When Audio Stops can remind you to do that. Indicator-off tracking uses the original engine while hidden.", .activityKit),
-                .init("Ask to Reopen When Audio Stops", "Off by default and shown while Hide While Audio Plays is on. After audio has stopped for 15 seconds, a refused or deferred background restore schedules one silent notification five minutes later, without sound or vibration: Music stopped — Open WhereWolf to bring back its Live Activity. It can arrive while the app is suspended. Opening WhereWolf, Restart Background Features, a restored activity, renewed audio, turning either switch off, losing Always access, stopping tracking, or having no activity left to restore removes the prompt. It needs existing notification permission; only the inline Allow button requests it. Notifications and Problems Only do not control this prompt. The missed-update reminder keeps its own deadline.", .activityKit),
-                .init("Open WhereWolf reminder", "Uses the same deadline as the existing ten-minute location reminder. When it passes, Status and Minimal show the same message in the Dynamic Island asking you to open WhereWolf. Blank stays empty. Tap the activity to open Tracker. The separate notification remains controlled by Notifications, and its existing suppression rules still apply. A missed deadline cannot prove the app was killed or the server is offline. iOS controls when the warning appears, and cannot show it after the activity ends or is dismissed.", .activityKit)
+                .init("Tracking Live Activity", "Tracking status in the Dynamic Island and on the Lock Screen.",
+                      notes: ["Starts while tracking is on and WhereWolf is open",
+                              "Lasts up to eight hours; reopen WhereWolf for another",
+                              "Tracking continues without it"],
+                      source: .activityKit),
+                .init("Appearance: Status", "A location icon and On, plus the last send when expanded.",
+                      pros: ["The most at a glance",
+                             "Warns when updates stop"],
+                      cons: ["Fills both sides of the compact Island"],
+                      notes: ["Always shows the Lock Screen card"],
+                      source: .activityKit),
+                .init("Appearance: Minimal", "A location icon only.",
+                      pros: ["Warns when updates stop",
+                             "One side of the compact Island"],
+                      cons: ["No send time"],
+                      notes: ["Always shows the Lock Screen card"],
+                      source: .activityKit),
+                .init("Appearance: Blank", "An empty Island; the default for new installs.",
+                      pros: ["Nothing in the Island"],
+                      cons: ["No stopped-update warning",
+                             "Without the card, indicator-off tracking uses the original engine"],
+                      source: .activityKit),
+                .init("Lock Screen Card", "Shows tracking, last fix and send, queue count and Send Now on the Lock Screen.",
+                      pros: ["Send Now without opening the app",
+                             "Lets the new engine run in the background without the indicator"],
+                      notes: ["Off by default; only Blank can turn it off",
+                              "Trips add distance, duration and End Trip"],
+                      source: .activityKit),
+                .init("Trip Live Activity", "A separate card with time, distance, speed, Send Now and End Trip.",
+                      source: .activityKit),
+                .init("Dynamic Island Priority", "iOS decides which activity takes the Island.",
+                      notes: ["WhereWolf uses relevance zero and no alerts",
+                              "It can’t force the small bubble"],
+                      source: .activityKit),
+                .init("Hide While Audio Plays", "Ends Live Activities while another app plays audio.",
+                      pros: ["Gives Music the Dynamic Island"],
+                      cons: ["Needs Always location access",
+                             "Reacts in about 15 s only while WhereWolf runs",
+                             "Restoring may need you to open WhereWolf"],
+                      notes: ["While suspended, reacts at the next location or app open",
+                              "Indicator-off tracking uses the original engine while hidden"],
+                      source: .activityKit),
+                .init("Ask to Reopen When Audio Stops", "A silent reminder to reopen WhereWolf if its activity couldn’t return.",
+                      pros: ["Gets the Island back after music"],
+                      cons: ["Needs notification permission; use its Allow button"],
+                      notes: ["Sent five minutes after a refused restore",
+                              "Withdrawn when you reopen, audio resumes or tracking stops"],
+                      source: .activityKit),
+                .init("Open WhereWolf Reminder", "When the ten-minute reminder passes, Status and Minimal ask you to open WhereWolf.",
+                      notes: ["Blank stays empty",
+                              "iOS controls timing; ended activities can’t show it",
+                              "A missed deadline can’t prove the app was killed"],
+                      source: .activityKit)
             ]
         case .background:
             return [
-                .init("Location Indicator", "Controls the location-use indicator during background tracking. Trips have a separate setting. With Always access, turning it off releases the indicator session. The new engine needs an active Status, Minimal, or Blank-with-card Live Activity for background updates; Blank without the card or no activity uses the original engine to honor this setting. When in Use access can require the system indicator. Turning it off does not stop collection.", .coreLocation),
-                .init("Relaunch Monitoring", "An independent, default-off significant-change monitor runs alongside Standard tracking and during trips when enabled with Always access. It can give iOS a reason to relaunch WhereWolf after system termination. It does not replace precise tracking, guarantee a wake interval, override Stop or radius pause, or bypass force-quit. Events are coarse and may be delayed, and Background App Refresh restrictions can prevent relaunch. Coarse fixes still pass the existing saved-point filters. Extra callbacks may cost energy; device battery savings have not been measured.", .significant),
-                .init("Keep Always Access Active", "On iOS 18 and later, asks Core Location for an explicit authorization session for background delivery. It requires already-Always access and remains opt-in. The request does not guarantee that iOS will run the app or deliver a fix at a particular time.", .coreLocation),
-                .init("Retry Stalled Updates", "Off by default. When continuous tracking is expected but no fresh location arrives for the chosen time, WhereWolf can restart acquisition. Old or repeated readings do not reset the retry limit. Fresh readings reset it even if your saved-point filters reject them. This avoids restarting GPS just because an accuracy, distance, time or stationary filter kept a point out of the queue. Retries can use extra battery when reception is poor.", .implementation),
-                .init("Retry limits and pauses", "The default wait is two minutes, adjustable from one to thirty minutes. After the first attempt, the next waits are twice and five times your chosen wait. Each app session permits at most three attempts without a fresh reading. A manual retry, an explicit tracking restart or a retry-setting change also resets the limit. Stop, lost location access, event-only modes, automatic pauses, radius pauses and adaptive power saving prevent automatic retries. Failed new-engine streams keep their existing fallback to the original engine. Location Log shows the current state.", .implementation),
-                .init("Background App Refresh", "Shows the iOS Background App Refresh setting for WhereWolf. Restrictions can limit relaunch after system termination.", .coreLocation),
-                .init("Background continuity", "In the linked iOS 16.4 discussion, an Apple engineer describes suspension with combined standard/significant updates at low accuracy and with distance filtering. The guidance uses continuous background permission, no manager distance filter, and requested accuracy below 1,000 m, or enables the indicator. This is guidance for that configuration, not a guarantee for every device or OS release. WhereWolf's saved-point filters are separate from the manager's distance filter.", .background),
-                .init("Restart Background Features", "Clears a latched new-engine failure, selects the location engine again, and tries again to start Live Activities and their audio handling. Available while tracking is on. These options run only while tracking has location access, and iOS still decides when WhereWolf runs in the background.", .implementation)
+                .init("Location Indicator", "Shows or hides iOS’s location indicator in the background.",
+                      pros: ["On: the most reliable background recording"],
+                      cons: ["On: an indicator in the status bar"],
+                      notes: ["Off needs Always access or a Live Activity",
+                              "While Using access may require it anyway",
+                              "Turning it off doesn’t stop collection",
+                              "Trips have their own setting"],
+                      source: .coreLocation),
+                .init("Relaunch Monitoring", "Significant-change monitoring so iOS can relaunch WhereWolf after ending it.",
+                      pros: ["A way back after iOS terminates the app"],
+                      cons: ["Coarse, delayed events; no set wake time",
+                             "Extra callbacks may cost energy"],
+                      notes: ["Needs Always access; Both mode already has it",
+                              "Can’t bypass force-quit, Stop or a radius pause",
+                              "Background App Refresh limits can block relaunch"],
+                      source: .significant),
+                .init("Keep Always Access Active", "On iOS 18 and later, holds a Core Location session for background delivery.",
+                      notes: ["Needs Always access already",
+                              "No guarantee iOS runs the app on time"],
+                      source: .coreLocation),
+                .init("Retry Stalled Updates", "Restarts location updates when no fresh fix arrives in time.",
+                      pros: ["Recovers from stalled delivery",
+                             "Filter rejections never trigger it"],
+                      cons: ["Extra battery with poor reception"],
+                      notes: ["Waits 2 minutes by default; choose 1 to 30",
+                              "Later waits are twice and five times longer",
+                              "Three tries per session without a fresh fix",
+                              "Never overrides Stop, pauses, adaptive idle or event-only modes"],
+                      source: .implementation),
+                .init("Background App Refresh", "iOS’s Background App Refresh setting for WhereWolf.",
+                      notes: ["Restrictions can block relaunch"],
+                      source: .coreLocation),
+                .init("Background Continuity", "An Apple engineer on when iOS suspends low-accuracy background updates.",
+                      notes: ["Always access, no manager distance filter, accuracy under 1 km",
+                              "Or turn the indicator on",
+                              "Guidance for one setup, not a guarantee",
+                              "Saved-point filters aren’t the manager’s distance filter"],
+                      source: .background),
+                .init("Restart Background Features", "Reselects the engine and restarts Live Activities and audio handling.",
+                      notes: ["Clears a latched new-engine failure",
+                              "iOS still decides when WhereWolf runs"],
+                      source: .implementation)
             ] + Self.silentAudioEntries
         case .history:
             return [
-                .init("Keep History", "Keep between 24 hours and 7 days of points recorded by this app. Uploaded points remain available here until this window expires. Increasing the window keeps future points longer; expired points cannot be recovered. Shortening it removes older local history.", .implementation),
-                .init("Storage", "Storage depends on how often points are saved and the information in each record. Freed space may be reused for new points. The upload queue and your server’s history have their own lifetimes.", .implementation)
+                .init("Keep History", "Keeps 24 hours to 7 days of points on this iPhone for replay.",
+                      pros: ["Longer reaches further back"],
+                      cons: ["Longer uses more storage",
+                             "Shortening deletes older history for good"],
+                      source: .implementation),
+                .init("Storage", "Size depends on how often points are saved.",
+                      notes: ["The queue and your server keep their own history"],
+                      source: .implementation)
             ]
         case .health:
             return [
-                .init("Save Trips to Apple Health", "Optional workout and route export for the trip modes you choose. Health access is requested when you turn this on. It uses a separate local route store and does not remove points from the upload queue.", .healthKit),
-                .init("Choose Workouts by Trip Mode", "Each trip mode can name an Apple Health workout type. Only modes with a workout save to Health.", .implementation),
-                .init("Import Workout Routes", "Reads saved workout routes from Apple Workouts and apps that share routes with Health, after you allow read access. Imported routes stay in a separate local collection and are never uploaded or written back to Health automatically; each route has an explicit option to send its points to your destination.", .healthKit)
+                .init("Save Trips to Apple Health", "Saves trips in chosen modes as workouts with routes.",
+                      pros: ["Trips appear with your other workouts"],
+                      cons: ["Asks for Health access when turned on"],
+                      notes: ["Doesn’t take points from the upload queue"],
+                      source: .healthKit),
+                .init("Choose Workouts by Trip Mode", "Each mode can name a workout; only those modes save.",
+                      source: .implementation),
+                .init("Import Workout Routes", "Copies other apps’ Health routes into a separate local collection.",
+                      pros: ["Brings in routes WhereWolf didn’t record"],
+                      cons: ["Needs Health read access",
+                             "Watch routes may take time to sync"],
+                      notes: ["Never uploaded or written back automatically"],
+                      source: .healthKit)
             ]
         case .backup:
             return [
-                .init("Settings files", "Exports only configuration as a versioned JSON file. Include Server URL and Token defaults on and includes custom headers; the file contains your server credential. Turning it off omits all three. Import validates every known value, previews changes and confirms credential replacement. Tracking on/off, active trips and permissions are kept; finish a trip before importing.", .implementation),
-                .init("Optional iCloud sync", "Off by default. Latest changes win per setting. Server URL, token and headers use iCloud Keychain; other settings use ubiquitous key-value storage. Device ID, tracking on/off, active trips, permissions, activity IDs, queues, history and Health records stay on each iPhone. Incoming changes wait until a trip ends. Turning sync off stops this iPhone from syncing; existing iCloud values remain.", .implementation)
+                .init("Settings File", "Exports configuration, not data, as a versioned JSON file.",
+                      pros: ["Restore or move settings to another iPhone"],
+                      cons: ["With server details, it holds your credential"],
+                      notes: ["Import previews and confirms every change",
+                              "Keeps tracking state and permissions; finish trips first"],
+                      source: .implementation),
+                .init("iCloud Sync", "Keeps settings in step across your iPhones; off by default.",
+                      pros: ["Changes follow you"],
+                      notes: ["The latest change per setting wins",
+                              "Credentials sync through iCloud Keychain",
+                              "Device ID, tracking state, permissions, trips and data stay local",
+                              "Incoming changes wait until a trip ends"],
+                      source: .implementation)
             ]
         case .notifications:
             return [
-                .init("Notifications", "Controls WhereWolf's local tracking and send-related notifications. Problems Only keeps the existing missed-update reminder and upload errors, while hiding routine pause, resume and trip messages. iOS notification permission is also required. Notifications do not turn location tracking or background execution on. They are separate from the blank Island's presentation.", .implementation),
-                .init("Trip and audio prompts", "Ask to End Trip When Stopped and Ask to Reopen When Audio Stops have their own switches in Trips and Live Activities. They use iOS notification permission independently of Notifications and Problems Only.", .implementation)
+                .init("Notifications", "Local alerts about tracking and sending.",
+                      notes: ["Needs iOS notification permission",
+                              "Never turns tracking on"],
+                      source: .implementation),
+                .init("Notify About: Problems and Status", "Problems plus routine pause, resume and trip messages.",
+                      pros: ["Hear about every tracking change"],
+                      cons: ["More interruptions"],
+                      source: .implementation),
+                .init("Notify About: Problems Only", "Only the missed-update reminder and upload errors.",
+                      pros: ["Fewer interruptions"],
+                      cons: ["No routine status messages"],
+                      source: .implementation),
+                .init("Trip and Audio Prompts", "Ask to End Trip and Ask to Reopen have their own switches.",
+                      notes: ["They ignore Notifications and Problems Only"],
+                      source: .implementation)
             ]
         case .coverage:
             return [
-                .init("Recorded, paused and gaps", "Recorded spans connect accepted fixes up to ten minutes apart. A longer silence while tracking is expected marks the full interval as a gap; tap it for times and duration. Stop, tracking off, automatic and stationary pauses, event-only tracking and lost access show paused. Time before the log began is unknown. iOS suspension, reception and point filters can all cause gaps, so gaps cannot prove iOS terminated the app.", .implementation),
-                .init("Local totals", "The window is bounded by your History & Replay retention. Totals use hourly accepted-point counts and send outcomes in the window; Points Still Queued is the current pending count. Its protected, coordinate-free log keeps at most 2,000 state transitions and 20,000 sends. Nothing in the report uploads.", .implementation)
+                .init("Recorded, Paused and Gaps", "Recorded spans join accepted fixes up to ten minutes apart.",
+                      notes: ["Gap: over 10 minutes silent while recording was expected",
+                              "Paused: Stop, off, pauses, event-only modes or lost access",
+                              "Unknown: before the log began",
+                              "Gaps can come from suspension, reception or filters"],
+                      source: .implementation),
+                .init("Local Totals", "Hourly points and send outcomes in your history window.",
+                      notes: ["Coordinate-free and never uploaded"],
+                      source: .implementation)
             ]
         case .locationLog:
             return [
-                .init("Current Status", "Checks run only when iOS lets WhereWolf execute; a timer cannot wake a suspended or terminated app. Stop, automatic pauses, stationary radius pauses and adaptive power saving are respected. Retry Location Updates Now restarts acquisition and resets the retry limit; Retry Stalled Updates in Background Reliability retries automatically.", .implementation),
-                .init("What a check can do", "Relaunch Monitoring and Visit Tracking provide separate location events that may let iOS relaunch the app. The checks do not change the ten-minute notification reminder, Live Activity appearance or saved-point settings, and cannot reconstruct points that were never received.", .coreLocation),
-                .init("Saving received locations", "A short iOS background execution allowance covers queue commits and waits for already-enqueued local history and Health route writes. It ends when those writes finish or iOS expires it. This protects work already received; it does not keep tracking alive indefinitely or acknowledge an upload.", .implementation),
-                .init("Save Location Log", "Off by default and independent of Retry Stalled Updates. Saves at most 200 events from the past seven days in a protected, backup-excluded file on this device. It records observed gaps, skipped-point reasons, retries and resumed updates without coordinates, server addresses or credentials. It is never uploaded automatically. Share Location Log is an explicit sharing action. Turning logging off preserves existing entries; Clear Location Log deletes them without deleting locations. Events cannot prove why iOS stopped running the app.", .implementation),
-                .init("Recent Events", "The log describes what WhereWolf observed while it could run. Missing events do not prove that iOS terminated the app, and these checks cannot recover points that were never received.", .implementation)
+                .init("Current Status", "Checks run only when iOS lets WhereWolf run; a timer can’t wake it.",
+                      notes: ["Retry Location Updates Now restarts and resets the limit"],
+                      source: .implementation),
+                .init("What a Check Can Do", "Checks can’t recover points never received.",
+                      notes: ["Relaunch Monitoring and Visit Tracking can prompt a relaunch"],
+                      source: .coreLocation),
+                .init("Saving Received Locations", "A short iOS allowance lets received points finish saving.",
+                      notes: ["Doesn’t keep tracking alive or acknowledge uploads"],
+                      source: .implementation),
+                .init("Save Location Log", "Keeps up to 200 events from the past seven days.",
+                      pros: ["Shows gaps, skipped points and retries"],
+                      cons: ["Can’t prove why iOS stopped the app"],
+                      notes: ["No coordinates, servers or credentials",
+                              "Excluded from backups; never uploaded automatically"],
+                      source: .implementation),
+                .init("Recent Events", "What WhereWolf saw while it could run.",
+                      notes: ["Missing events don’t prove iOS ended the app"],
+                      source: .implementation)
             ]
         }
     }

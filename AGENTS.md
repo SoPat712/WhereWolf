@@ -395,8 +395,11 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   Resume After Moving while normal or trip pausing is on; Trips links to Live Activities for its
   activity switch. `SettingsDestination` routes `.stationary` to Tracking & Accuracy and `.server`
   to Destination. Section ⓘ topics live in `SettingsHelpView`; footers stay about one line and
-  longer explanations belong in the topic. Keep the `wherewolf.settings.setup`, `.backup` and
-  `.coverage` rows on the root for the UI audits.
+  longer explanations belong in the topic. Each `SettingExplanation` is a title, a one-sentence
+  summary, then short bullets: pros (green `plus.circle.fill`), cons (orange `minus.circle.fill`)
+  and notes (gray dot), with an optional source link. Option lists get one entry per option in
+  picker order. Keep bullets to a few words and caveats compressed, not dropped. Keep the
+  `wherewolf.settings.setup`, `.backup` and `.coverage` rows on the root for the UI audits.
   Option lists follow an axis, never tag order. Presets (`UsagePreset.values`, mirrored by
   `WatchStatus.presets`) run Driving, High Resolution, Walking / Running, Everyday Detailed,
   Balanced, Low Power, most accurate and power-hungry first, after Custom in Settings. Accuracy

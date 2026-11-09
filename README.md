@@ -260,8 +260,8 @@ stream gets at most three retries per activation, then switches to
 engine change, refresh, or restored location authorization. Returning to the
 foreground does not start an endless retry cycle.
 
-The Location Engine info button explains benefits, tradeoffs, pausing in both
-engines, trip behavior, background fallback and defaults. Automatic pausing ends
+The Location Engine info button lists its benefits and tradeoffs, trip behavior,
+background fallback and defaults. Automatic pausing ends
 an active trip; the new engine can pause even when the trip pause setting is off.
 
 The original engine also supports automatic pausing when enabled. With Always
@@ -688,7 +688,8 @@ Background (Live Activities, Background Reliability); Your Data (History & Repla
 Apple Health, Backup & Sync); Notifications; Troubleshooting (Coverage, Location
 Log, and Diagnostics in TestFlight builds); and Support. Each setting is edited in
 one place. The Usage Preset selector applies a set of tracking preferences. Section
-info buttons explain the controls and link to their sources.
+info buttons give each control, and each option of a list, a one-line summary with
+short advantages, drawbacks and notes, in the list's order, and link to their sources.
 
 * `Destination` chooses the server or iCloud Drive (one file per day or per trip)
   and sets the endpoint, access token, device ID, custom headers, and
