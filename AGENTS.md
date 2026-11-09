@@ -247,7 +247,8 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   height and align its intrinsic controls to the top while measurement is pending;
   otherwise SwiftUI centers the changed content inside the previous host height.
   Details uses one labeled capsule in both modes.
-  The history ruler is 56 points high, with a 16-point top label lane. Cached
+  The history ruler is 56 points high, with a 16-point top label lane. Its glass panel is not interactive:
+  interactive glass follows touches across the whole window and took presses from menus open above it. Cached
   `HistoryLandmarks` point-index metadata builds on a utility queue, coalescing new
   points to at most once per 30 seconds and promptly rebuilding for snapshots, expiry,
   retention, Wi-Fi Places, calendar or locale changes. A reload that both expires and appends

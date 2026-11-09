@@ -1141,7 +1141,9 @@ struct HistoryRuler: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
-        .glassPanel(cornerRadius: 22, interactive: true)
+        // Interactive glass follows touches anywhere in the window, so it took presses meant for a menu
+        // open above the ruler.
+        .glassPanel(cornerRadius: 22)
         .padding(.horizontal, 16)
         .onAppear { liveEdge = Date() }
         .sheet(isPresented: $showingGoTo) { HistoryGoToView(history: history) }
