@@ -84,11 +84,18 @@ element("Start Trip", "Button")
 tap("Settings")
 assert not any(e.get("subrole") == "AXMapArea" for e in state()), "Settings exposes a map"
 for _ in range(5):
-    if any(e.get("AXLabel") == "Server" and e.get("type") == "Button" and 100 < e["frame"]["y"] < 650 for e in state()):
+    if any(e.get("AXLabel") == "Destination" and e.get("type") == "Button" and 100 < e["frame"]["y"] < 650 for e in state()):
         break
     run("ui", "swipe", "70", "650", "70", "400", "--duration", "0.5")
     time.sleep(1)
-tap("Server")
+tap("Destination")
+element("Destination", "Heading")
+# The destination picker sits above the server fields, so Add Header can start below the fold.
+for _ in range(4):
+    if any(e.get("AXLabel") == "Add Header" and e.get("type") == "Button" for e in state()):
+        break
+    run("ui", "swipe", "70", "650", "70", "400", "--duration", "0.5")
+    time.sleep(1)
 element("Add Header", "Button")
 shot("verified_server.png")
 # Reset navigation without touching preferences or recording state.
@@ -97,12 +104,12 @@ subprocess.check_call(["xcrun", "simctl", "launch", udid, "me.joshpatra.WhereWol
 wait_for_app()
 tap("Settings")
 for _ in range(8):
-    row = element("Tracking & Precision", "Button")["frame"]
+    row = element("Tracking & Accuracy", "Button")["frame"]
     tab_top = element("Settings", "Button")["frame"]["y"]
     if 120 < row["y"] and row["y"] + row["height"] < tab_top - 8:
         break
     run("ui", "swipe", "70", "650", "70", "400", "--duration", "0.5")
-tap("Tracking & Precision")
+tap("Tracking & Accuracy")
 # Desired Accuracy is conditional on the preset, so use the always-present distance row.
 for _ in range(5):
     if any(e.get("AXLabel") == "Edit Min Distance Between Points" and 120 < e["frame"]["y"] < 650 for e in state()):
@@ -133,4 +140,4 @@ finally:
         tap("Save")
 assert element(value_label, "Button")["AXValue"] == original
 tap("Tracker")
-print("PASS: controls clear drawer tabs; Trip Settings sheet and Server navigation; exact slider entry and restoration")
+print("PASS: controls clear drawer tabs; Trip Settings sheet and Destination navigation; exact slider entry and restoration")

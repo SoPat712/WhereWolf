@@ -11,9 +11,9 @@ struct HistorySettingsView: View {
                 SliderRow(title: "Keep History", value: $bridge.historyRetentionHours,
                           range: 24...168, unit: "hours", format: Self.duration)
             } header: {
-                Text("On-Device Replay")
+                SettingsSectionHeader(title: "On-Device Replay", topic: .history)
             } footer: {
-                Text("Keep between 24 hours and 7 days of points recorded by this app. Uploaded points remain available here until this window expires. Increasing the window keeps future points longer; expired points cannot be recovered. Shortening it removes older local history.")
+                Text("Keep 24 hours to 7 days of points. Shortening it removes older local history.")
             }
 
             Section {
@@ -25,9 +25,9 @@ struct HistorySettingsView: View {
                     ProgressView("Reading History Storage…")
                 }
             } header: {
-                Text("Storage")
+                SettingsSectionHeader(title: "Storage", topic: .history)
             } footer: {
-                Text("Storage depends on how often points are saved and the information in each record. Freed space may be reused for new points. The upload queue and your server’s history have their own lifetimes.")
+                Text("The upload queue and your server’s history have their own lifetimes.")
             }
 
             Section {
@@ -39,7 +39,7 @@ struct HistorySettingsView: View {
                 Text("Browsing")
             }
         }
-        .navigationTitle("Local History & Replay")
+        .navigationTitle("History & Replay")
         .navigationBarTitleDisplayMode(.inline)
         .settingsFormStyle()
         .task(id: scenePhase == .active ? bridge.historyRetentionHours : 0) {

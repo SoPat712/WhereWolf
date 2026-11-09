@@ -31,6 +31,8 @@
 		0FCAFE00F00D0000000000F2 /* WhereWolfRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D0000000000E2 /* WhereWolfRootView.swift */; };
 		0FCAFE00F00D0000000000F3 /* TrackerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D0000000000E3 /* TrackerView.swift */; };
 		0FCAFE00F00D0000000000F4 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D0000000000E4 /* SettingsView.swift */; };
+		D0F500000000000000000004 /* LiveActivitySettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0F500000000000000000003 /* LiveActivitySettingsView.swift */; };
+		D0F500000000000000000002 /* PermissionsSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0F500000000000000000001 /* PermissionsSettingsView.swift */; };
 		0FCAFE00F00D0000000000F5 /* EndpointView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D0000000000E5 /* EndpointView.swift */; };
 		0FCAFE00F00D0000000000F6 /* TripView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D0000000000E6 /* TripView.swift */; };
 		0FCAFE00F00D00000000A2F6 /* TripLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D00000000A2E6 /* TripLog.swift */; };
@@ -54,7 +56,7 @@
 		2B53F8ACA6002B982BF8855A /* WorkoutImportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 888651E8875EC46EFEDD3417 /* WorkoutImportTests.swift */; };
 		33F38E25406E8CD8616FA6D9 /* WorkoutImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D7CF59CCFE98FB74F472E24 /* WorkoutImportView.swift */; };
 		4DCAFFAB3E2B1B18EAB3D470 /* TripModes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5114B6E23CBCB270BB8375EC /* TripModes.swift */; };
-		4F04FB995B6FEC63BBAD2D53 /* UpstreamIntegrationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13B6E06D1F014687E75390A3 /* UpstreamIntegrationsView.swift */; };
+		4F04FB995B6FEC63BBAD2D53 /* AppleHealthSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13B6E06D1F014687E75390A3 /* AppleHealthSettingsView.swift */; };
 		58969E383049C44ED5F83EA1 /* TripModes.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C25B528FB613DCB4FBF7D384 /* TripModes.xcassets */; };
 		5B0A8C122B2744B820E0C1AC /* HistorySettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D57439666CE09C401BE55DDB /* HistorySettingsView.swift */; };
 		5BB8EF3C5CA85922D301E133 /* SharedStateObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E3B58A80A63E1DB5824D0A8 /* SharedStateObserver.swift */; };
@@ -241,6 +243,8 @@
 		0FCAFE00F00D0000000000E2 /* WhereWolfRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhereWolfRootView.swift; sourceTree = "<group>"; };
 		0FCAFE00F00D0000000000E3 /* TrackerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackerView.swift; sourceTree = "<group>"; };
 		0FCAFE00F00D0000000000E4 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		D0F500000000000000000003 /* LiveActivitySettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivitySettingsView.swift; sourceTree = "<group>"; };
+		D0F500000000000000000001 /* PermissionsSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionsSettingsView.swift; sourceTree = "<group>"; };
 		0FCAFE00F00D0000000000E5 /* EndpointView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndpointView.swift; sourceTree = "<group>"; };
 		0FCAFE00F00D0000000000E6 /* TripView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripView.swift; sourceTree = "<group>"; };
 		0FCAFE00F00D00000000A2E6 /* TripLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripLog.swift; sourceTree = "<group>"; };
@@ -265,7 +269,7 @@
 		0FFD31771BAB7C7F009B3A03 /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
 		0FFD317D1BAB7CC7009B3A03 /* LOLDatabase.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LOLDatabase.h; sourceTree = "<group>"; };
 		0FFD317E1BAB7CC7009B3A03 /* LOLDatabase.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = LOLDatabase.m; sourceTree = "<group>"; };
-		13B6E06D1F014687E75390A3 /* UpstreamIntegrationsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = UpstreamIntegrationsView.swift; path = GPSLogger/UpstreamIntegrationsView.swift; sourceTree = "<group>"; };
+		13B6E06D1F014687E75390A3 /* AppleHealthSettingsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AppleHealthSettingsView.swift; path = GPSLogger/AppleHealthSettingsView.swift; sourceTree = "<group>"; };
 		14683DD0D7DD1163A33289AE /* WhereWolfAppIntents.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WhereWolfAppIntents.swift; path = GPSLogger/Integrations/WhereWolfAppIntents.swift; sourceTree = "<group>"; };
 		156F17CEE92C6ACFC40D1261 /* HealthTripRecorder.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = HealthTripRecorder.swift; path = GPSLogger/Integrations/HealthTripRecorder.swift; sourceTree = "<group>"; };
 		21602F0B954DE517514264C4 /* GLTripActions.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = GLTripActions.m; path = GPSLogger/GLTripActions.m; sourceTree = "<group>"; };
@@ -487,7 +491,7 @@
 				3E3B58A80A63E1DB5824D0A8 /* SharedStateObserver.swift */,
 				4CA9E95D988A1EFBA8532E4D /* TripLiveActivityController.swift */,
 				007A0E62CFBBFA8FE9DEADC3 /* TripModesView.swift */,
-				13B6E06D1F014687E75390A3 /* UpstreamIntegrationsView.swift */,
+				13B6E06D1F014687E75390A3 /* AppleHealthSettingsView.swift */,
 				5114B6E23CBCB270BB8375EC /* TripModes.swift */,
 				C0A7C4000000000000000006 /* WatchLink.swift */,
 				36D2A80EB7610335ABC4A8B1 /* TripModeIcons.swift */,
@@ -566,6 +570,8 @@
 				0FCAFE00F00D0000000000E2 /* WhereWolfRootView.swift */,
 				0FCAFE00F00D0000000000E3 /* TrackerView.swift */,
 				0FCAFE00F00D0000000000E4 /* SettingsView.swift */,
+				D0F500000000000000000003 /* LiveActivitySettingsView.swift */,
+				D0F500000000000000000001 /* PermissionsSettingsView.swift */,
 				A02200000000000000000001 /* SettingsHelpView.swift */,
 				A0BB00000000000000000001 /* NativeMapSurface.swift */,
 				D0F300000000000000000001 /* LiveHeadingBeam.swift */,
@@ -912,6 +918,8 @@
 				A0BC00000000000000000002 /* ReplayRouteRenderer.swift in Sources */,
 				0FCAFE00F00D0000000000F3 /* TrackerView.swift in Sources */,
 				0FCAFE00F00D0000000000F4 /* SettingsView.swift in Sources */,
+				D0F500000000000000000004 /* LiveActivitySettingsView.swift in Sources */,
+				D0F500000000000000000002 /* PermissionsSettingsView.swift in Sources */,
 				A02200000000000000000002 /* SettingsHelpView.swift in Sources */,
 				A04400000000000000000002 /* MapControlPanel.swift in Sources */,
 				A06600000000000000000002 /* RecentLocationHistory.swift in Sources */,
@@ -943,7 +951,7 @@
 				5BB8EF3C5CA85922D301E133 /* SharedStateObserver.swift in Sources */,
 				80437EB826C8A904ACDF70BB /* TripLiveActivityController.swift in Sources */,
 				D1DD2EEF17FE44F979CA2C48 /* TripModesView.swift in Sources */,
-				4F04FB995B6FEC63BBAD2D53 /* UpstreamIntegrationsView.swift in Sources */,
+				4F04FB995B6FEC63BBAD2D53 /* AppleHealthSettingsView.swift in Sources */,
 				B030BC96F749619DECB8DE60 /* TripModes.swift in Sources */,
 				7F1C3DEE5DAA991A0D1F7C95 /* TripModeIcons.swift in Sources */,
 				207D56F6C41685842EAECAD9 /* SharedTripState.swift in Sources */,

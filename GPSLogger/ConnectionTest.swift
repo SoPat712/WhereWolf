@@ -42,7 +42,7 @@ enum ConnectionTestResult: Equatable {
         switch status {
         case 200..<300:
             if strict && !acknowledged {
-                return .failure("HTTP \(status), without result: ok.", "The uploader requires that acknowledgement. If your server uses another response, enable Accept Any Successful HTTP Response in Settings → Server.")
+                return .failure("HTTP \(status), without result: ok.", "The uploader requires that acknowledgement. If your server uses another response, enable Accept Any Successful HTTP Response in Settings → Destination.")
             }
             return .success(status: status, acknowledged: acknowledged)
         case 401, 403: return .failure("HTTP \(status): access denied.", "Check the token or API key and custom authentication headers.")

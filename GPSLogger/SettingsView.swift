@@ -1,5 +1,4 @@
 import SwiftUI
-import UserNotifications
 
 struct SettingsView: View {
     var openSetup: () -> Void = {}
@@ -15,51 +14,6 @@ struct SettingsView: View {
                 }
                 .foregroundStyle(.primary)
                 .accessibilityIdentifier("wherewolf.settings.setup")
-            }
-            Section {
-                NavigationLink(value: SettingsDestination.server) {
-                    LabeledContent {
-                        Text(bridge.endpointSet ? "Configured" : "Not Set")
-                    } label: {
-                        SettingsRowLabel(title: "Server", symbol: "antenna.radiowaves.left.and.right",
-                                         color: bridge.endpointSet ? .green : .orange)
-                    }
-                }
-                .accessibilityLabel("Server")
-                .accessibilityIdentifier("wherewolf.settings.server")
-                .accessibilityValue(bridge.endpointSet ? "Configured" : "Not Set")
-                LabeledContent {
-                    Text(bridge.locationPermission)
-                } label: {
-                    SettingsRowLabel(title: "Location Access", symbol: "location.fill", color: .blue)
-                }
-                .accessibilityElement(children: .combine)
-                if bridge.locationPermission == "Not Determined" {
-                    Button("Allow Location Access") { bridge.requestLocationPermission() }
-                } else if bridge.locationPermission == "When in Use" {
-                    Button("Allow Background Location") { bridge.requestLocationPermission() }
-                }
-                LabeledContent {
-                    Text(bridge.motionAuthorizationStatus)
-                } label: {
-                    SettingsRowLabel(title: "Motion & Fitness", symbol: "figure.walk", color: .orange)
-                }
-                .accessibilityElement(children: .combine)
-                if bridge.motionAuthorizationStatus == "Not Requested" {
-                    Button("Allow Motion & Fitness") { bridge.requestMotionPermission() }
-                } else if bridge.motionAuthorizationStatus == "Denied" || bridge.motionAuthorizationStatus == "Restricted" {
-                    Text("Allow Motion & Fitness in iOS Settings to use motion confirmation.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-                if bridge.motionAuthorizationStatus == "Allowed" {
-                    MotionActivityStatusRow(summary: bridge.motionSummary, tracking: bridge.trackingEnabled)
-                }
-                Link("Open iOS Settings", destination: URL(string: UIApplication.openSettingsURLString)!)
-            } header: {
-                SettingsSectionHeader(title: "Connection", topic: .permissions)
-            } footer: {
-                Text("Always access lets WhereWolf record locations in the background.")
             }
 
             Section {
@@ -85,58 +39,78 @@ struct SettingsView: View {
             } footer: {
                 Text(bridge.tripInProgress
                      ? "Finish the current trip before applying a preset."
-                     : profileDescription + " Presets change normal tracking settings immediately. Tap ⓘ for exact values.")
+                     : UsagePreset.description(bridge.usageProfile) + " Tap ⓘ for exact values.")
             }
 
             Section {
-                NavigationLink {
-                    UpstreamIntegrationsView()
-                } label: {
-                    SettingsRowLabel(title: "Integrations & Exports", symbol: "square.and.arrow.up", color: .indigo)
+                NavigationLink(value: SettingsDestination.server) {
+                    LabeledContent {
+                        Text(destinationStatus)
+                    } label: {
+                        SettingsRowLabel(title: "Destination", symbol: "antenna.radiowaves.left.and.right",
+                                         color: destinationReady ? .green : .orange)
+                    }
                 }
-                NavigationLink {
-                    HistorySettingsView()
-                } label: {
-                    SettingsRowLabel(title: "Local History & Replay", symbol: "clock.arrow.circlepath", color: .blue)
+                .accessibilityLabel("Destination")
+                .accessibilityIdentifier("wherewolf.settings.server")
+                .accessibilityValue(destinationStatus)
+                NavigationLink { PermissionsSettingsView() } label: {
+                    SettingsRowLabel(title: "Permissions", symbol: "checkmark.shield.fill", color: .blue)
                 }
-                NavigationLink { CoverageView() } label: {
-                    SettingsRowLabel(title: "Coverage", symbol: "chart.bar.xaxis", color: .green)
+            }
+
+            Section {
+                NavigationLink(value: SettingsDestination.tracking) {
+                    SettingsRowLabel(title: "Tracking & Accuracy", symbol: "scope", color: .blue)
                 }
-                .accessibilityLabel("Coverage")
-                .accessibilityIdentifier("wherewolf.settings.coverage")
+                NavigationLink(value: SettingsDestination.trip) {
+                    SettingsRowLabel(title: "Trips", symbol: "figure.walk", color: .pink)
+                }
+                NavigationLink(value: SettingsDestination.wifiPlaces) {
+                    SettingsRowLabel(title: "Wi-Fi Places", symbol: "wifi", color: .blue)
+                }
+                .accessibilityIdentifier("wherewolf.settings.wifiPlaces")
+            } header: {
+                Text("Recording")
+            }
+
+            Section {
+                NavigationLink(value: SettingsDestination.sending) {
+                    SettingsRowLabel(title: "Sending", symbol: "paperplane.fill", color: .teal)
+                }
+            }
+
+            Section {
+                NavigationLink { LiveActivitySettingsView() } label: {
+                    SettingsRowLabel(title: "Live Activities", symbol: "platter.filled.top.iphone", color: .indigo)
+                }
+                NavigationLink(value: SettingsDestination.background) {
+                    SettingsRowLabel(title: "Background Reliability", symbol: "moon.stars.fill", color: .purple)
+                }
+            } header: {
+                Text("Background")
+            }
+
+            Section {
+                NavigationLink { HistorySettingsView() } label: {
+                    SettingsRowLabel(title: "History & Replay", symbol: "clock.arrow.circlepath", color: .blue)
+                }
+                // An export enabled before HealthKit left the build can still be turned off.
+                if bridge.healthAvailable || bridge.healthEnabled {
+                    NavigationLink { AppleHealthSettingsView() } label: {
+                        SettingsRowLabel(title: "Apple Health", symbol: "heart.fill", color: .pink)
+                    }
+                }
                 NavigationLink { SettingsBackupView() } label: {
                     SettingsRowLabel(title: "Backup & Sync", symbol: "icloud", color: .blue)
                 }
                 .accessibilityLabel("Backup & Sync")
                 .accessibilityIdentifier("wherewolf.settings.backup")
-                NavigationLink(value: SettingsDestination.tracking) {
-                    SettingsRowLabel(title: "Tracking & Precision", symbol: "scope", color: .blue)
-                }
-                NavigationLink(value: SettingsDestination.stationary) {
-                    SettingsRowLabel(title: "Stationary Pause", symbol: "pause.fill", color: .orange)
-                }
-                NavigationLink(value: SettingsDestination.sending) {
-                    SettingsRowLabel(title: "Sending", symbol: "paperplane.fill", color: .teal)
-                }
-                NavigationLink(value: SettingsDestination.trip) {
-                    SettingsRowLabel(title: "Trip Settings", symbol: "figure.walk", color: .pink)
-                }
-                NavigationLink(value: SettingsDestination.background) {
-                    SettingsRowLabel(title: "Background", symbol: "moon.stars.fill", color: .purple)
-                }
-                NavigationLink(destination: MotionAdaptiveTrackingSettingsView()) {
-                    SettingsRowLabel(title: "Motion & Adaptive Tracking", symbol: "figure.walk.motion", color: .orange)
-                }
-                NavigationLink(destination: PointSelectionQualitySettingsView()) {
-                    SettingsRowLabel(title: "Point Selection & Quality", symbol: "checkmark.seal", color: .green)
-                }
+            } header: {
+                Text("Your Data")
             }
 
             Section {
-                NavigationLink(value: SettingsDestination.wifiPlaces) {
-                    SettingsRowLabel(title: "Wi-Fi Places", symbol: "wifi", color: .blue)
-                }
-                .accessibilityIdentifier("wherewolf.settings.wifiPlaces")
                 Toggle(isOn: $bridge.notifications) {
                     SettingsRowLabel(title: "Notifications", symbol: "bell.badge.fill", color: .red)
                 }
@@ -147,19 +121,29 @@ struct SettingsView: View {
                     }
                 }
             } header: {
-                SettingsSectionHeader(title: "Automation", topic: .automation)
+                SettingsSectionHeader(title: "Notifications", topic: .notifications)
             } footer: {
-                Text("Optional alerts for interrupted tracking and upload errors. Problems Only hides routine pause, resume, and trip messages. Notifications do not keep the app running.")
+                Text("Alerts for interrupted tracking and upload errors.")
             }
 
-#if WHEREWOLF_TESTFLIGHT_DIAGNOSTICS
-            // TESTFLIGHT ONLY — REMOVE BEFORE APP STORE RELEASE
             Section {
+                NavigationLink { CoverageView() } label: {
+                    SettingsRowLabel(title: "Coverage", symbol: "chart.bar.xaxis", color: .green)
+                }
+                .accessibilityLabel("Coverage")
+                .accessibilityIdentifier("wherewolf.settings.coverage")
+                NavigationLink { LocationHealthView() } label: {
+                    SettingsRowLabel(title: "Location Log", symbol: "location.magnifyingglass", color: .blue)
+                }
+#if WHEREWOLF_TESTFLIGHT_DIAGNOSTICS
+                // TESTFLIGHT ONLY — REMOVE BEFORE APP STORE RELEASE
                 NavigationLink(destination: DiagnosticsView()) {
                     SettingsRowLabel(title: "Diagnostics", symbol: "waveform.path.ecg", color: .gray)
                 }
-            }
 #endif
+            } header: {
+                Text("Troubleshooting")
+            }
 
             Section {
                 Button { showingTipJar = true } label: {
@@ -187,10 +171,14 @@ struct SettingsView: View {
         }
     }
 
-    private var profileDescription: String {
-        UsagePreset.description(bridge.usageProfile)
+    private var destinationReady: Bool {
+        bridge.savesToICloudDrive ? bridge.cloudAvailable : bridge.endpointSet
     }
 
+    private var destinationStatus: String {
+        if bridge.savesToICloudDrive { return bridge.cloudAvailable ? "iCloud Drive" : "iCloud Drive Unavailable" }
+        return bridge.endpointSet ? "Server" : "Not Set"
+    }
 }
 
 struct TrackingSettingsView: View {
@@ -209,25 +197,7 @@ struct TrackingSettingsView: View {
             } header: {
                 SettingsSectionHeader(title: "Updates", topic: .tracking)
             } footer: {
-                Text("Significant-change mode records larger movements while conserving battery. Visit tracking is controlled separately.")
-            }
-
-            Section {
-                Toggle("Use new location engine", isOn: $bridge.useNewLocationEngine)
-                    .disabled(!bridge.hasContinuousUpdates)
-                LabeledContent("Active Engine", value: bridge.actualLocationEngine)
-                if !bridge.locationEngineReason.isEmpty {
-                    Text(bridge.locationEngineReason).font(.footnote).foregroundStyle(.secondary)
-                }
-                if !bridge.hasContinuousUpdates {
-                    Text("Available when continuous updates are enabled.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-            } header: {
-                SettingsSectionHeader(title: "Location Engine", topic: .engine)
-            } footer: {
-                Text("Automatic pause and resume, with more detailed diagnostics. iOS controls accuracy and pausing.")
+                Text("Significant-change mode records larger movements while conserving battery.")
             }
 
             Section {
@@ -248,9 +218,9 @@ struct TrackingSettingsView: View {
                     if #available(iOS 27.0, *) { Text("Boat").tag(5) }
                 }
             } header: {
-                SettingsSectionHeader(title: "Location Request", topic: .precision)
+                SettingsSectionHeader(title: "Location Request", topic: .locationRequest)
             } footer: {
-                Text("Requested Accuracy tells iOS how precise a location should be. It is a target, not a guarantee. The new engine lets iOS choose accuracy. This control does not change which points are saved.")
+                Text("A target for iOS, not a guarantee. It does not change which points are saved.")
             }
 
             Section {
@@ -259,23 +229,18 @@ struct TrackingSettingsView: View {
                 SliderRow(title: "Min Distance Between Points", value: $bridge.discardDistanceMeters, range: 0...1000, offBelow: 1, unit: "meters", format: SettingFormat.meters)
                 SliderRow(title: "Min Time Between Points", value: $bridge.discardSecondsValue, range: 0...600, offBelow: 1, unit: "seconds", format: SettingFormat.seconds)
                 SliderRow(title: "Max Saved-Point Error", value: $bridge.discardAccuracyMeters, range: 0...5000, offBelow: 1, unit: "meters", format: SettingFormat.meters)
+                Toggle("Save When Any Limit Is Met", isOn: advancedBoolBinding(bridge, key: "any_threshold"))
+                SliderRow(title: "Turn Trigger", value: advancedValueBinding(bridge, key: "turn_degrees"), range: 0...180, offBelow: 1, unit: "degrees", format: { "\(Int($0))°" })
+                    .disabled(!bridge.advancedBool("any_threshold"))
+                Toggle("Reject Implausible Jumps", isOn: advancedBoolBinding(bridge, key: "reject_jumps"))
+                SliderRow(title: "Maximum Speed", value: advancedValueBinding(bridge, key: "maximum_speed"), range: 5...500, unit: "m/s", format: { "\(Int($0)) m/s" })
+                    .disabled(!bridge.advancedBool("reject_jumps"))
             } header: {
-                SettingsSectionHeader(title: "Saved-Point Filters", topic: .precision)
+                SettingsSectionHeader(title: "Saved Points", topic: .savedPoints)
             } footer: {
-                Text("These filters decide which returned locations are saved. Max Saved-Point Error rejects points with a larger reported uncertainty; Off accepts any valid accuracy. A 10 m request can return a 20 m fix, so matching both limits can create gaps. Tap a value for exact entry; the slider snaps to common settings.")
+                Text("These filters decide which returned locations are saved. Tap a value to enter it exactly.")
             }
-        }
-        .navigationTitle("Tracking & Precision")
-        .navigationBarTitleDisplayMode(.inline)
-        .onAppear { bridge.refresh() }
-    }
-}
 
-struct StationarySettingsView: View {
-    @State private var bridge = GLManagerBridge.shared
-
-    var body: some View {
-        Form {
             Section {
                 SliderRow(title: "Stop Within Radius", value: $bridge.stopRadiusMeters, range: 0...1000, offBelow: 1, unit: "meters", format: SettingFormat.meters)
                     .disabled(bridge.trackingModeIndex != 3 || bridge.pausesAutomatically)
@@ -283,16 +248,99 @@ struct StationarySettingsView: View {
                     .disabled(bridge.trackingModeIndex != 3 || bridge.pausesAutomatically || bridge.stopRadiusMeters < 1)
                 Toggle("Pause Updates Automatically", isOn: $bridge.pausesAutomatically)
                     .disabled(bridge.stopRadiusMeters >= 1)
-                if bridge.pausesAutomatically {
+                // Trips show this shared distance read-only, so it stays editable here while either pauses.
+                if bridge.pausesAutomatically || bridge.tripPausesAutomatically {
                     SliderRow(title: "Resume After Moving", value: $bridge.resumeDistanceMeters, range: 0...2000, offBelow: 1, unit: "meters", format: SettingFormat.meters)
                 }
             } header: {
-                SettingsSectionHeader(title: "Stop When Stationary", topic: .stationary)
+                SettingsSectionHeader(title: "When Stopped", topic: .stationary)
             } footer: {
-                Text("In Both update mode, the radius and time pause standard updates until significant movement is detected. Automatic pausing lets iOS pause updates when stationary. The resume distance is shared with trips.")
+                Text("Stop Within Radius works in Both update mode. Resume After Moving is shared with Trips.")
+            }
+
+            Section {
+                NavigationLink("Advanced") { TrackingAdvancedSettingsView() }
+            } footer: {
+                Text("Location engine, motion assist and adaptive tracking.")
             }
         }
-        .navigationTitle("Stationary Pause")
+        .navigationTitle("Tracking & Accuracy")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear { bridge.refresh() }
+    }
+}
+
+struct TrackingAdvancedSettingsView: View {
+    @State private var bridge = GLManagerBridge.shared
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle("Use new location engine", isOn: $bridge.useNewLocationEngine)
+                    .disabled(!bridge.hasContinuousUpdates)
+                LabeledContent("Active Engine", value: bridge.actualLocationEngine)
+                if !bridge.locationEngineReason.isEmpty {
+                    Text(bridge.locationEngineReason).font(.footnote).foregroundStyle(.secondary)
+                }
+                if !bridge.hasContinuousUpdates {
+                    Text("Available when continuous updates are enabled.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            } header: {
+                SettingsSectionHeader(title: "Location Engine", topic: .engine)
+            } footer: {
+                Text("Automatic pause and resume, with more detailed diagnostics. iOS controls accuracy and pausing.")
+            }
+
+            Section {
+                Toggle("Motion-assisted tracking", isOn: advancedBoolBinding(bridge, key: "motion_assist"))
+                    .disabled(bridge.motionAuthorizationStatus != "Allowed")
+                Toggle("Resume Radius Pause on Movement", isOn: advancedBoolBinding(bridge, key: "motion_resume_radius"))
+                    .disabled(!bridge.advancedBool("motion_assist"))
+                Picker("Motion confidence", selection: advancedValueBinding(bridge, key: "motion_confidence")) {
+                    Text("Medium").tag(1.0)
+                    Text("High").tag(2.0)
+                }
+            } header: {
+                SettingsSectionHeader(title: "Motion Assist", topic: .motionAdaptive)
+            } footer: {
+                Text(bridge.motionAuthorizationStatus == "Allowed"
+                     ? "Confidence sets the activity threshold; it does not improve location accuracy."
+                     : "Allow Motion & Fitness in Permissions to use motion assist.")
+            }
+
+            Section {
+                Toggle("Adaptive Tracking", isOn: advancedBoolBinding(bridge, key: "adaptive"))
+                LabeledContent("Status", value: bridge.adaptiveTrackingStatus)
+                Toggle("Apply During Trips", isOn: advancedBoolBinding(bridge, key: "adaptive_in_trips"))
+                    .disabled(!bridge.advancedBool("adaptive"))
+                Toggle("Require Motion Confirmation", isOn: advancedBoolBinding(bridge, key: "adaptive_require_motion"))
+                    .disabled(!bridge.advancedBool("adaptive"))
+                SliderRow(title: "Confirmed Stop Dwell", value: advancedValueBinding(bridge, key: "adaptive_dwell"), range: 30...3600, unit: "seconds", format: SettingFormat.seconds)
+                    .disabled(!bridge.advancedBool("adaptive"))
+                SliderRow(title: "Stop Radius", value: advancedValueBinding(bridge, key: "adaptive_radius"), range: 10...500, unit: "meters", format: SettingFormat.meters)
+                    .disabled(!bridge.advancedBool("adaptive"))
+                SliderRow(title: "Resume Radius", value: advancedValueBinding(bridge, key: "adaptive_resume_radius"), range: 25...1000, unit: "meters", format: SettingFormat.meters)
+                    .disabled(!bridge.advancedBool("adaptive"))
+            } header: {
+                SettingsSectionHeader(title: "Adaptive Tracking", topic: .motionAdaptive)
+            } footer: {
+                Text("Lowers the requested accuracy only after a confirmed stop, so departures can be detected later.")
+            }
+
+            Section {
+                SliderRow(title: "Adaptive Max Error", value: advancedValueBinding(bridge, key: "adaptive_max_error"), range: 5...200, unit: "meters", format: SettingFormat.meters)
+                    .disabled(!bridge.advancedBool("adaptive"))
+                SliderRow(title: "Adaptive Idle Accuracy", value: advancedValueBinding(bridge, key: "adaptive_idle_accuracy"), range: 50...3000, unit: "meters", format: SettingFormat.meters)
+                    .disabled(!bridge.advancedBool("adaptive"))
+            } header: {
+                SettingsSectionHeader(title: "Adaptive Point Quality", topic: .motionAdaptive)
+            } footer: {
+                Text("Both are separate from Max Saved-Point Error, which controls saved points.")
+            }
+        }
+        .navigationTitle("Advanced")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { bridge.refresh() }
     }
@@ -311,13 +359,27 @@ struct SendingSettingsView: View {
                     Text("Only Latest").tag(1)
                     Text("OwnTracks").tag(2)
                 }
-                SliderRow(title: "Locations per Batch", value: $bridge.batchValue, range: 1...1000, format: SettingFormat.count)
+                Toggle("Include Tracking Stats", isOn: $bridge.includeTrackingStats)
+            } header: {
+                SettingsSectionHeader(title: "What to Send", topic: .sending)
+            } footer: {
+                Text("Tracking stats apply to new GeoJSON records.")
+            }
+
+            Section {
                 SliderRow(title: "Send Interval", value: $bridge.sendIntervalValue, range: 0...3600, offBelow: 1, unit: "seconds", format: SettingFormat.seconds)
+                SliderRow(title: "Locations per Batch", value: $bridge.batchValue, range: 1...1000, format: SettingFormat.count)
                 Toggle("Send Only on Wi-Fi", isOn: $bridge.sendOnlyOnWifi)
                 Toggle("Background Uploads", isOn: advancedBoolBinding(bridge, key: "background_uploads"))
-                Toggle("Retry Connectivity Failures", isOn: advancedBoolBinding(bridge, key: "connectivity_retry"))
+                Toggle("Retry When Back Online", isOn: advancedBoolBinding(bridge, key: "connectivity_retry"))
+            } header: {
+                SettingsSectionHeader(title: "When to Send", topic: .sending)
+            } footer: {
+                Text("Send Only on Wi-Fi holds automatic sends; Send Now still sends.")
+            }
+
+            Section {
                 LabeledContent("Upload Queue", value: bridge.queueCount > 0 ? "\(bridge.queueCount) queued" : "Empty")
-                LabeledContent("Upload Scheduler", value: bridge.uploadSchedulerStatus)
                 if bridge.uploadsBlocked {
                     Text("Uploads are blocked until you retry. Server authentication errors are not retried automatically.")
                         .font(.footnote)
@@ -329,31 +391,17 @@ struct SendingSettingsView: View {
                         Text(retryDate, style: .relative)
                     }
                 }
-            } header: {
-                SettingsSectionHeader(title: "Batching", topic: .batching)
-            } footer: {
-                Text("Automatic sending runs as locations arrive after this interval. Send Only on Wi-Fi holds automatic sends on cellular or a personal hotspot until the phone is on Wi-Fi; Send Now, widgets, Shortcuts and the watch still send. Background Uploads lets the operating system schedule pending-queue drains; it has no exact interval. Connectivity retry waits for eligible network failures and honors server Retry-After and authentication errors.")
-            }
-
-            Section {
-                Toggle("Include Tracking Stats", isOn: $bridge.includeTrackingStats)
-            } header: {
-                Text("Upload Metadata")
-            } footer: {
-                Text("Adds tracking configuration to GeoJSON points and queues diagnostic events such as pause and resume. OwnTracks does not include these stats. Applies to new records.")
-            }
-
-            Section {
+                LabeledContent("Upload Scheduler", value: bridge.uploadSchedulerStatus)
                 Button("Delete Pending Uploads…", role: .destructive) {
                     confirmingDelete = true
                 }
                 .disabled(bridge.queueCount == 0 || bridge.sending)
             } header: {
-                Text("Queue Management")
+                SettingsSectionHeader(title: "Queue", topic: .sending)
             } footer: {
                 Text(bridge.sending
                      ? "Wait for the current upload to finish before deleting pending records."
-                     : "Deletes queued records, including trip summaries and imported workout points. Local history, saved workout routes, and active tracking are kept.")
+                     : "Deleting keeps local history, saved workout routes and active tracking.")
             }
         }
         .navigationTitle("Sending")
@@ -377,221 +425,64 @@ struct SendingSettingsView: View {
 
 struct BackgroundSettingsView: View {
     @State private var bridge = GLManagerBridge.shared
-    @Environment(\.scenePhase) private var scenePhase
-    @State private var audioNotificationsAllowed = true
-    @State private var requestingAudioNotifications = false
 
     var body: some View {
         Form {
             Section {
-                Toggle("Show Background Indicator", isOn: $bridge.backgroundIndicator)
+                Toggle("Location Indicator", isOn: $bridge.backgroundIndicator)
             } header: {
                 SettingsSectionHeader(title: "Indicator", topic: .background)
             } footer: {
-                Text("Trips have a separate indicator setting. Always location access is required to hide the indicator when no Live Activity is active.")
+                Text("Without a Live Activity, hiding it needs Always location access. Trips have their own setting.")
             }
 
             Section {
-                Toggle("Tracking Live Activity", isOn: $bridge.liveActivityEnabled)
-                // Both switches act on the tracking and trip activities, so they need one of them.
-                if bridge.liveActivityEnabled || bridge.tripLiveActivityEnabled {
-                    Toggle("Hide While Audio Plays", isOn: $bridge.hideLiveActivityWhileAudioPlays)
-                    if bridge.hideLiveActivityWhileAudioPlays {
-                        Toggle("Ask to Reopen When Audio Stops", isOn: $bridge.askToReopenAfterAudio)
-                        Text("Off by default. If the Live Activity cannot return after music stops, a silent notification about five minutes later asks you to open WhereWolf. This needs notification permission, independently of Notifications and Problems Only.")
-                            .font(.footnote).foregroundStyle(.secondary)
-                        if bridge.askToReopenAfterAudio && !audioNotificationsAllowed {
-                            HStack {
-                                Text("Allow notifications for this prompt.")
-                                Spacer()
-                                Button("Allow") {
-                                    requestingAudioNotifications = true
-                                    Task {
-                                        _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
-                                        await refreshAudioNotificationPermission()
-                                        requestingAudioNotifications = false
-                                    }
-                                }
-                                .disabled(requestingAudioNotifications)
-                            }
-                        }
-                    }
+                Toggle("Relaunch Monitoring", isOn: advancedBoolBinding(bridge, key: "background_recovery"))
+                if #available(iOS 18.0, *) {
+                    Toggle("Keep Always Access Active", isOn: advancedBoolBinding(bridge, key: "explicit_service_session"))
+                } else {
+                    LabeledContent("Keep Always Access Active", value: "Requires iOS 18")
                 }
-                LabeledContent("Active Engine", value: bridge.actualLocationEngine)
-                if !bridge.locationEngineReason.isEmpty {
-                    Text(bridge.locationEngineReason).font(.footnote).foregroundStyle(.secondary)
+                Toggle("Retry Stalled Updates", isOn: advancedBoolBinding(bridge, key: "automatic_location_retry"))
+                if bridge.advancedBool("automatic_location_retry") {
+                    SliderRow(title: "Retry After", value: advancedValueBinding(bridge, key: "location_retry_after"),
+                              range: 60...1800, unit: "seconds", format: SettingFormat.seconds)
                 }
-                if bridge.liveActivityEnabled {
-                    Picker("Dynamic Island Appearance", selection: $bridge.liveActivityAppearance) {
-                        Text("Status").tag("status")
-                        Text("Minimal").tag("minimal")
-                        Text("Blank").tag("blank")
-                    }
-                    Toggle("Lock Screen Card", isOn: Binding(
-                        get: { bridge.liveActivityPresentation.cardOn },
-                        set: { bridge.liveActivityLockScreenCard = $0 }))
-                        .disabled(!bridge.liveActivityPresentation.cardEditable)
-                    if bridge.liveActivityPresentation.cardRequired {
-                        Text("Minimal and Status always include the Lock Screen card.")
-                            .font(.footnote).foregroundStyle(.secondary)
-                    }
-                    LabeledContent("Live Activity", value: bridge.liveActivityStatus)
-                        .font(.footnote).foregroundStyle(.secondary)
-                }
+                LabeledContent("Background App Refresh", value: bridge.backgroundRefreshStatus)
+            } header: {
+                SettingsSectionHeader(title: "Staying Active", topic: .background)
+            } footer: {
+                Text("These help WhereWolf keep recording in the background; iOS still decides when it runs.")
+            }
+
 #if WHEREWOLF_SILENT_AUDIO
-                Toggle("Silent Audio (Experimental)", isOn: $bridge.silentAudioEnabled)
+            Section {
+                Toggle("Silent Audio", isOn: $bridge.silentAudioEnabled)
                 if bridge.silentAudioEnabled {
                     LabeledContent("Audio", value: bridge.silentAudioStatus)
                         .font(.footnote).foregroundStyle(.secondary)
                 }
+            } header: {
+                SettingsSectionHeader(title: "Silent Audio", topic: .background)
+            } footer: {
+                Text("Experimental. Plays silence to keep WhereWolf running and can use more battery.")
+            }
 #endif
-                if #available(iOS 18.0, *) {
-                    Toggle("Explicit Service Session", isOn: advancedBoolBinding(bridge, key: "explicit_service_session"))
-                } else {
-                    LabeledContent("Explicit Service Session", value: "Requires iOS 18")
-                }
-                Text("On iOS 18 and later, this requests an authorization session for background location. It requires already-Always access and does not guarantee background execution.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                Toggle("Background Recovery Monitoring", isOn: advancedBoolBinding(bridge, key: "background_recovery"))
-                NavigationLink(destination: LocationHealthView()) {
-                    SettingsRowLabel(title: "Location Updates & Recovery", symbol: "location.magnifyingglass", color: .blue)
-                }
-                LabeledContent("Background App Refresh", value: bridge.backgroundRefreshStatus)
-                Text("Recovery monitoring keeps significant-change location monitoring alongside Standard tracking, including trips. It requires Always location access and can help iOS relaunch WhereWolf after system termination. Events are coarse and may be delayed; Background App Refresh restrictions can limit relaunch. More wakeups can use additional battery.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                Button("Retry Background Helpers") { bridge.retryBackgroundRuntime() }
+
+            Section {
+                Button("Restart Background Features") { bridge.retryBackgroundRuntime() }
                     .disabled(!bridge.trackingEnabled)
-            } header: {
-                SettingsSectionHeader(title: "Background Runtime", topic: .runtime)
             } footer: {
-                Text("Hide While Audio Plays needs Always location access. It reacts within about 15 seconds while WhereWolf runs in the background (moving or with Silent Audio on). While suspended, it reacts at the next location update or app open. After audio stops, iOS may require you to open WhereWolf to restore the activities. Blank is the default appearance for new installs. It keeps the Island empty; Lock Screen Card defaults off. With the card off and Always access, indicator-off tracking uses the original engine. With the card on, Blank supports background live updates like Minimal. Silent audio can use more battery. Explicit Service Session requests authorization on iOS 18 and later and does not guarantee background execution. These options run only while tracking has location access.")
+                Text("Restarts the location engine and Live Activities while tracking is on.")
             }
         }
-        .navigationTitle("Background")
-        .navigationBarTitleDisplayMode(.inline)
-        .onAppear { bridge.refresh() }
-        .task { await refreshAudioNotificationPermission() }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active { Task { await refreshAudioNotificationPermission() } }
-        }
-    }
-
-    private func refreshAudioNotificationPermission() async {
-        let settings = await UNUserNotificationCenter.current().notificationSettings()
-        audioNotificationsAllowed = [.authorized, .provisional, .ephemeral].contains(settings.authorizationStatus)
-    }
-}
-
-struct MotionAdaptiveTrackingSettingsView: View {
-    @State private var bridge = GLManagerBridge.shared
-
-    var body: some View {
-        Form {
-            Section {
-                LabeledContent {
-                    Text(bridge.motionAuthorizationStatus)
-                } label: {
-                    SettingsRowLabel(title: "Motion Access", symbol: "figure.walk", color: .orange)
-                }
-                if bridge.motionAuthorizationStatus == "Allowed" {
-                    MotionActivityStatusRow(summary: bridge.motionSummary, tracking: bridge.trackingEnabled)
-                }
-                if bridge.motionAuthorizationStatus == "Not Requested" {
-                    Button("Allow Motion & Fitness") { bridge.requestMotionPermission() }
-                } else if bridge.motionAuthorizationStatus == "Denied" || bridge.motionAuthorizationStatus == "Restricted" {
-                    Link("Open iOS Settings", destination: URL(string: UIApplication.openSettingsURLString)!)
-                }
-            } header: {
-                SettingsSectionHeader(title: "Motion & Fitness", topic: .motionAdaptive)
-            } footer: {
-                Text("Motion callbacks describe activity but cannot wake a suspended app by themselves. Use the button above to allow activity access; changing a tracking option never prompts automatically. Trip step counting also uses Motion & Fitness permission.")
-            }
-
-            Section {
-                Toggle("Motion-assisted tracking", isOn: advancedBoolBinding(bridge, key: "motion_assist"))
-                    .disabled(bridge.motionAuthorizationStatus != "Allowed")
-                Toggle("Resume Radius Pause on Movement", isOn: advancedBoolBinding(bridge, key: "motion_resume_radius"))
-                    .disabled(!bridge.advancedBool("motion_assist"))
-                Picker("Motion confidence", selection: advancedValueBinding(bridge, key: "motion_confidence")) {
-                    Text("Medium").tag(1.0)
-                    Text("High").tag(2.0)
-                }
-            } header: {
-                SettingsSectionHeader(title: "Motion Assist", topic: .motionAdaptive)
-            } footer: {
-                Text("Motion assistance can restart acquisition after a native pause. Resuming a radius pause is a separate choice and requires movement detected after that pause. Confidence sets the activity threshold; it does not improve location accuracy.")
-            }
-
-            Section {
-                Toggle("Adaptive Tracking", isOn: advancedBoolBinding(bridge, key: "adaptive"))
-                LabeledContent("Status", value: bridge.adaptiveTrackingStatus)
-                Toggle("Apply During Trips", isOn: advancedBoolBinding(bridge, key: "adaptive_in_trips"))
-                    .disabled(!bridge.advancedBool("adaptive"))
-                Toggle("Require Motion Confirmation", isOn: advancedBoolBinding(bridge, key: "adaptive_require_motion"))
-                    .disabled(!bridge.advancedBool("adaptive"))
-                SliderRow(title: "Confirmed Stop Dwell", value: advancedValueBinding(bridge, key: "adaptive_dwell"), range: 30...3600, unit: "seconds", format: SettingFormat.seconds)
-                    .disabled(!bridge.advancedBool("adaptive"))
-                SliderRow(title: "Stop Radius", value: advancedValueBinding(bridge, key: "adaptive_radius"), range: 10...500, unit: "meters", format: SettingFormat.meters)
-                    .disabled(!bridge.advancedBool("adaptive"))
-                SliderRow(title: "Resume Radius", value: advancedValueBinding(bridge, key: "adaptive_resume_radius"), range: 25...1000, unit: "meters", format: SettingFormat.meters)
-                    .disabled(!bridge.advancedBool("adaptive"))
-            } header: {
-                SettingsSectionHeader(title: "Adaptive Accuracy", topic: .motionAdaptive)
-            } footer: {
-                Text("Adaptive tracking reduces the requested accuracy only after a sustained, confirmed stop. It keeps coarse updates and an exit region, so departure detection can be delayed. While moving, your saved accuracy and pause settings remain in effect. Existing trips are unchanged unless Apply During Trips is enabled; native automatic pauses still follow the existing trip setting.")
-            }
-        }
-        .navigationTitle("Motion & Adaptive Tracking")
+        .navigationTitle("Background Reliability")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { bridge.refresh() }
     }
 }
 
-struct PointSelectionQualitySettingsView: View {
-    @State private var bridge = GLManagerBridge.shared
-
-    var body: some View {
-        Form {
-            Section {
-                Toggle("Any threshold", isOn: advancedBoolBinding(bridge, key: "any_threshold"))
-                SliderRow(title: "Turn Trigger", value: advancedValueBinding(bridge, key: "turn_degrees"), range: 0...180, offBelow: 1, unit: "degrees", format: { "\(Int($0))°" })
-                    .disabled(!bridge.advancedBool("any_threshold"))
-            } header: {
-                SettingsSectionHeader(title: "Point Thresholds", topic: .quality)
-            } footer: {
-                Text("Off preserves the current distance AND time minima. On accepts a point when distance OR time OR the turn trigger qualifies. Turn Trigger is disabled at zero and is used only with Any threshold.")
-            }
-
-            Section {
-                Toggle("Reject Implausible Jumps", isOn: advancedBoolBinding(bridge, key: "reject_jumps"))
-                SliderRow(title: "Maximum Speed", value: advancedValueBinding(bridge, key: "maximum_speed"), range: 5...500, unit: "m/s", format: { "\(Int($0)) m/s" })
-                    .disabled(!bridge.advancedBool("reject_jumps"))
-            } header: {
-                SettingsSectionHeader(title: "Jump Filtering", topic: .quality)
-            } footer: {
-                Text("An implausible jump is held back until a second nearby fix, at least one second later, confirms relocation. Flight users may raise the speed limit or leave filtering off. This filter does not road-snap points or guarantee true accuracy.")
-            }
-
-            Section {
-                SliderRow(title: "Adaptive Max Error", value: advancedValueBinding(bridge, key: "adaptive_max_error"), range: 5...200, unit: "meters", format: SettingFormat.meters)
-                    .disabled(!bridge.advancedBool("adaptive"))
-                SliderRow(title: "Adaptive Idle Accuracy", value: advancedValueBinding(bridge, key: "adaptive_idle_accuracy"), range: 50...3000, unit: "meters", format: SettingFormat.meters)
-                    .disabled(!bridge.advancedBool("adaptive"))
-            } header: {
-                SettingsSectionHeader(title: "Adaptive Point Quality", topic: .quality)
-            } footer: {
-                Text("Adaptive Max Error limits the fixes used to confirm a stop. Adaptive Idle Accuracy is the location request after that stop is confirmed. Both are independent of Max Saved-Point Error, which controls saved points.")
-            }
-        }
-        .navigationTitle("Point Selection & Quality")
-        .navigationBarTitleDisplayMode(.inline)
-        .onAppear { bridge.refresh() }
-    }
-}
-
-private struct MotionActivityStatusRow: View {
+struct MotionActivityStatusRow: View {
     let summary: String
     let tracking: Bool
 

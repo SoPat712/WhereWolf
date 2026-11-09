@@ -49,8 +49,10 @@ struct SettingsBackupView: View {
                     .disabled(!sync.available && !sync.enabled)
                     .accessibilityIdentifier("wherewolf.backup.sync")
                 Text(sync.status).font(.footnote).foregroundStyle(.secondary)
+            } header: {
+                SettingsSectionHeader(title: "iCloud Sync", topic: .backup)
             } footer: {
-                Text("Off by default. Sync uses the latest change to each setting. Server URL, token and custom headers use iCloud Keychain; other settings use iCloud key-value storage. Tracking on/off, active trips, permissions and device state stay on each iPhone. Incoming changes wait until a trip ends. Turning this off stops syncing on this iPhone; previously synced values remain in iCloud.")
+                Text("Server credentials sync through iCloud Keychain. Tracking on/off and permissions stay on each iPhone.")
             }
             if let message { Section { Text(message).foregroundStyle(.secondary) } }
         }

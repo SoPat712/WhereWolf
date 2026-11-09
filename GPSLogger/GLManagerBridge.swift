@@ -627,7 +627,7 @@ final class GLManagerBridge {
             return "Allow location access to resume tracking."
         }
         if WhereWolfLocationEngine.shared.liveUpdatesFailed {
-            return "The new location engine stopped after repeated failures; the original location manager is collecting fixes. Tap Retry Background Helpers to try the new engine again."
+            return "The new location engine stopped after repeated failures; the original location manager is collecting fixes. Tap Restart Background Features in Background Reliability to try the new engine again."
         }
         let adaptiveStatus = gl.adaptiveTrackingStatus.lowercased()
         if adaptiveStatus.contains("quiet") || adaptiveStatus.contains("stationary") || adaptiveStatus.contains("lower accuracy") {

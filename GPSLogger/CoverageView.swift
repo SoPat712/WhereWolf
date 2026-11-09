@@ -1,6 +1,5 @@
 import SwiftUI
 import Charts
-import CoreLocation
 
 struct CoverageView: View {
     @State private var bridge = GLManagerBridge.shared
@@ -20,7 +19,7 @@ struct CoverageView: View {
             } header: {
                 SettingsSectionHeader(title: "History Window", topic: .coverage)
             } footer: {
-                Text("Bounded by your \(HistorySettingsView.duration(bridge.historyRetentionHours)) history retention. Coverage before the state log began is unknown. A gap is more than 10 minutes without an accepted fix while tracking was on and not paused. iOS suspension, reception and point filters can all cause gaps.")
+                Text("Bounded by your \(HistorySettingsView.duration(bridge.historyRetentionHours)) history retention. A gap is over 10 minutes without an accepted fix while tracking was on and not paused.")
             }
             if let report {
                 Section("Timeline") {
@@ -67,11 +66,10 @@ struct CoverageView: View {
             } else {
                 Section { ProgressView("Reading Coverage…").accessibilityIdentifier("wherewolf.coverage.loading") }
             }
-            keepAlive
             Section {
                 Button("Refresh") { Task { await load() } }.disabled(loading)
             } footer: {
-                Text("Totals cover this window. Send logging starts with this version and retains at most 20,000 attempts. Queued points are the current pending count. Recorded spans connect accepted fixes up to 10 minutes apart; longer silence marks the full interval as a gap. Paused includes Stop, tracking off, automatic and stationary pauses, event-only modes and missing location access. Nothing in this report is uploaded.")
+                Text("Totals cover this window. Nothing in this report is uploaded.")
             }
         }
         .navigationTitle("Coverage")
@@ -85,7 +83,7 @@ struct CoverageView: View {
                     LabeledContent("Start", value: span.start.formatted(date: .complete, time: .standard))
                     LabeledContent("End", value: span.end.formatted(date: .complete, time: .standard))
                     LabeledContent("Duration", value: duration(span.duration))
-                    Text("No accepted fix for over 10 minutes while tracking was on and not paused. Review keep-alive settings, location access and point filters.")
+                    Text("No accepted fix for over 10 minutes while tracking was on and not paused. Check Background Reliability, Permissions, and the Saved Points filters in Tracking & Accuracy.")
                 }
                 .navigationTitle("Recording Gap")
                 .navigationBarTitleDisplayMode(.inline)
@@ -94,37 +92,6 @@ struct CoverageView: View {
             .presentationDetents([.medium, .large])
         }
     }
-    private var keepAlive: some View {
-        Section("Keep-alive in Use") {
-            NavigationLink { BackgroundSettingsView() } label: {
-                LabeledContent("Live Activity", value: bridge.liveActivityEnabled ? bridge.liveActivityAppearance.capitalized : "Off")
-            }
-            NavigationLink { BackgroundSettingsView() } label: {
-                LabeledContent("Lock Screen Card", value: bridge.liveActivityEnabled && bridge.liveActivityPresentation.cardOn ? "On" : "Off")
-            }
-            NavigationLink { BackgroundSettingsView() } label: { LabeledContent("Indicator", value: indicator ? "On" : "Off") }
-            NavigationLink { BackgroundSettingsView() } label: { LabeledContent("Background Recovery", value: onOff("background_recovery")) }
-            NavigationLink { BackgroundSettingsView() } label: { LabeledContent("Service Session", value: serviceSessionStatus) }
-            NavigationLink { LocationHealthView() } label: { LabeledContent("Retry", value: onOff("automatic_location_retry")) }
-#if WHEREWOLF_SILENT_AUDIO
-            NavigationLink { BackgroundSettingsView() } label: { LabeledContent("Silent Audio", value: bridge.silentAudioEnabled ? bridge.silentAudioStatus : "Off") }
-#endif
-            Link(destination: URL(string: UIApplication.openSettingsURLString)!) {
-                LabeledContent("Always Location", value: bridge.locationPermission == "Always" ? "Allowed" : bridge.locationPermission)
-            }
-            Link(destination: URL(string: UIApplication.openSettingsURLString)!) {
-                LabeledContent("Precise Location", value: bridge.hasLocationAccess ? (GLManager.shared().locationManager.accuracyAuthorization == .fullAccuracy ? "On" : "Off") : "No Access")
-            }
-            Text(bridge.trackingEnabled ? bridge.liveActivityStatus : "Tracking is off. Background helpers are inactive.")
-                .font(.footnote).foregroundStyle(.secondary)
-        }
-    }
-    private var serviceSessionStatus: String {
-        if #available(iOS 18, *) { return onOff("explicit_service_session") }
-        return "Requires iOS 18"
-    }
-    private var indicator: Bool { bridge.tripInProgress ? bridge.tripBackgroundIndicator : bridge.backgroundIndicator }
-    private func onOff(_ key: String) -> String { bridge.advancedBool(key) ? "On" : "Off" }
     private func legend(_ color: Color, _ title: String) -> some View {
         HStack(spacing: 3) { Circle().fill(color).frame(width: 5, height: 5); Text(title) }
     }

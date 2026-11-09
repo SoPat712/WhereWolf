@@ -211,7 +211,7 @@ private final class SilentAudioWorker: NSObject, AVAudioPlayerDelegate, @uncheck
         cancelRecovery()
         guard let delay = recovery.nextDelay() else {
             requiresReenable = true
-            publish("\(message). Tap Retry to try again.", playing: false)
+            publish("\(message). Tap Restart Background Features to try again.", playing: false)
             return
         }
         let generation = recoveryGeneration

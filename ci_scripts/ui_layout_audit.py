@@ -789,10 +789,10 @@ asyncio.run(main())
 
         if args.start_at == "server":
             tap("Settings")
-        scroll_to("Server", "Button", direction="down")
-        tap("Server")
+        scroll_to("Destination", "Button", direction="down")
+        tap("Destination")
         scroll_to("Clear Server URL", "Button")
-        record("Last Server action scrolls clear of the system tab bar")
+        record("Last Destination action scrolls clear of the system tab bar")
 
         tap("Tracker")
         for appearance in ("dark", "light"):

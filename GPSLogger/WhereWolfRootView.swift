@@ -200,10 +200,8 @@ struct WhereWolfRootView: View {
                         WifiPlaceListView()
                     case .trip:
                         TripSettingsView()
-                    case .tracking:
+                    case .tracking, .stationary:
                         TrackingSettingsView()
-                    case .stationary:
-                        StationarySettingsView()
                     case .sending:
                         SendingSettingsView()
                     case .background:

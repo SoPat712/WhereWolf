@@ -17,6 +17,32 @@ struct EndpointView: View {
     var body: some View {
         Form {
             Section {
+                Picker("Save Locations To", selection: $bridge.savesToICloudDrive) {
+                    Text("Server").tag(false)
+                    Text("iCloud Drive").tag(true)
+                }
+                if bridge.savesToICloudDrive {
+                    Picker("File Organization", selection: $bridge.cloudFileMode) {
+                        Text("One File per Day").tag(0)
+                        Text("One File per Trip").tag(1)
+                    }
+                    if !bridge.cloudAvailable {
+                        Label("iCloud Drive is unavailable", systemImage: "icloud.slash")
+                            .foregroundStyle(.orange)
+                        Text("Turn on iCloud Drive for WhereWolf in iOS Settings. Unwritten data stays in the queue.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } header: {
+                SettingsSectionHeader(title: "Location Destination", topic: .destination)
+            } footer: {
+                Text(bridge.savesToICloudDrive
+                     ? "Saves GeoJSON files to iCloud Drive. Your server settings below stay saved."
+                     : "Sends through the upload queue to the server below.")
+            }
+
+            Section {
                 if dynamicTypeSize.isAccessibilitySize {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Status")
@@ -44,7 +70,7 @@ struct EndpointView: View {
                 }
                 sendChart
             } header: {
-                SettingsSectionHeader(title: "Connection", topic: .server)
+                SettingsSectionHeader(title: "Server", topic: .destination)
             }
 
             Section {
@@ -53,7 +79,7 @@ struct EndpointView: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
             } header: {
-                SettingsSectionHeader(title: "Server Endpoint", topic: .server)
+                SettingsSectionHeader(title: "Server Endpoint", topic: .destination)
             } footer: {
                 if !url.isEmpty && !validURL {
                     Text("Not a valid http(s) URL").foregroundStyle(.red)
@@ -67,9 +93,9 @@ struct EndpointView: View {
                     .autocorrectionDisabled()
                 Toggle("Include unique_id", isOn: $uniqueId)
             } header: {
-                SettingsSectionHeader(title: "Authentication", topic: .server)
+                SettingsSectionHeader(title: "Authentication", topic: .destination)
             } footer: {
-                Text("The access token is sent in the Authorization header. Device ID is included in location data. OwnTracks expects a Base64-encoded username:password token.")
+                Text("OwnTracks expects a Base64-encoded username:password token.")
             }
 
             Section {
@@ -87,7 +113,7 @@ struct EndpointView: View {
                 }
                 Button("Add Header") { headers.append(HeaderField()) }
             } header: {
-                SettingsSectionHeader(title: "Custom HTTP Headers", topic: .server)
+                SettingsSectionHeader(title: "Custom HTTP Headers", topic: .destination)
             } footer: {
                 Text(headersValid ? "Sent with each request, including authentication required by a reverse proxy." : "Use unique HTTP header names and values without line breaks. Host, Content-Length, Connection, Transfer-Encoding, and Authorization are reserved.")
                     .foregroundStyle(headersValid ? Color.secondary : .red)
@@ -126,7 +152,7 @@ struct EndpointView: View {
                 Section { Text("Saved").foregroundStyle(.secondary) }
             }
         }
-        .navigationTitle("Server")
+        .navigationTitle("Destination")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
         .onChange(of: url) { _, _ in saved = false }

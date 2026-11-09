@@ -24,7 +24,7 @@ struct LocationHealthEntry: Identifiable, Sendable {
 
     var title: String {
         switch kind {
-        case "logging_started": return "Health Log Enabled"
+        case "logging_started": return "Location Log Enabled"
         case "app_launched": return "WhereWolf Opened"
         case "monitor_resumed": return "Checking Location Updates"
         case "monitor_paused": return "Location Checks Paused"
@@ -88,20 +88,6 @@ struct LocationHealthView: View {
     var body: some View {
         Form {
             Section {
-                Toggle("Automatically Retry Location Updates", isOn: option("automatic_location_retry"))
-                if bridge.advancedBool("automatic_location_retry") {
-                    SliderRow(title: "Retry After No Fresh Location", value: Binding(
-                        get: { bridge.advancedValue("location_retry_after") },
-                        set: { bridge.setAdvancedValue($0, forKey: "location_retry_after") }
-                    ), range: 60...1800, unit: "seconds", format: SettingFormat.seconds)
-                }
-            } header: {
-                SettingsSectionHeader(title: "Automatic Retry", topic: .locationHealth)
-            } footer: {
-                Text("Tries restarting continuous tracking when locations stop arriving or only old readings arrive. Retries are limited to three, with increasing delays. Fresh readings reset the limit. Your point filters and tracking settings stay in effect. Retries can use extra battery when reception is poor.")
-            }
-
-            Section {
                 LabeledContent {
                     Text(status).multilineTextAlignment(.trailing)
                 } label: {
@@ -120,26 +106,26 @@ struct LocationHealthView: View {
                 Button("Retry Location Updates Now") { bridge.retryLocationUpdates() }
                     .disabled(!bridge.trackingEnabled || !bridge.hasContinuousUpdates || state == "paused")
             } header: {
-                Text("Current Status")
+                SettingsSectionHeader(title: "Current Status", topic: .locationLog)
             } footer: {
-                Text("Checks run when iOS gives WhereWolf execution time. They cannot wake a suspended app. Stop, automatic pauses, stationary radius pauses, and adaptive power saving are respected. Background Recovery Monitoring remains a separate option.")
+                Text("Retry Stalled Updates in Background Reliability retries automatically.")
             }
 
             Section {
-                Toggle("Save Location Health Log", isOn: option("location_health_log"))
+                Toggle("Save Location Log", isOn: option("location_health_log"))
                 if !entries.isEmpty {
-                    ShareLink(item: report) { Label("Share Health Log", systemImage: "square.and.arrow.up") }
-                    Button("Clear Health Log…", role: .destructive) { confirmingClear = true }
+                    ShareLink(item: report) { Label("Share Location Log", systemImage: "square.and.arrow.up") }
+                    Button("Clear Location Log…", role: .destructive) { confirmingClear = true }
                 }
             } header: {
-                Text("Local Health Log")
+                SettingsSectionHeader(title: "Saved Log", topic: .locationLog)
             } footer: {
-                Text("Keeps up to 200 events for seven days on this device. Records gaps, retry attempts and reasons points were skipped. Coordinates, server addresses and credentials are excluded. Nothing is uploaded automatically. Turning this off stops new entries; Clear Health Log removes saved entries.")
+                Text("Keeps up to 200 events for seven days on this device, without coordinates or credentials.")
             }
 
             Section {
                 if entries.isEmpty {
-                    Text("No events saved. Enable the health log to record future gaps and recovery attempts.")
+                    Text("No events saved. Turn on Save Location Log to record future gaps and recovery attempts.")
                         .foregroundStyle(.secondary)
                 }
                 ForEach(entries.reversed()) { entry in
@@ -156,10 +142,10 @@ struct LocationHealthView: View {
             } header: {
                 Text("Recent Events")
             } footer: {
-                Text("The log describes what WhereWolf observed while it could run. Missing events do not prove that iOS terminated the app. These checks cannot recover points that were never received.")
+                Text("Missing events do not prove that iOS terminated the app.")
             }
         }
-        .navigationTitle("Location Updates & Recovery")
+        .navigationTitle("Location Log")
         .navigationBarTitleDisplayMode(.inline)
         .task(id: reloadRevision) {
             let loaded = await bridge.loadLocationHealthLog()
@@ -170,13 +156,13 @@ struct LocationHealthView: View {
             reloadRevision += 1
         }
         .onAppear { bridge.refresh() }
-        .alert("Clear the health log?", isPresented: $confirmingClear) {
+        .alert("Clear the location log?", isPresented: $confirmingClear) {
             Button("Cancel", role: .cancel) {}
-            Button("Clear Health Log", role: .destructive) {
+            Button("Clear Location Log", role: .destructive) {
                 Task { await bridge.clearLocationHealthLog(); reloadRevision += 1 }
             }
         } message: {
-            Text("Removes the saved health events from this device. Recorded locations and pending uploads are kept.")
+            Text("Removes the saved events from this device. Recorded locations and pending uploads are kept.")
         }
     }
 
@@ -185,7 +171,7 @@ struct LocationHealthView: View {
     }
 
     private var report: String {
-        (["WhereWolf Location Health Log"] + entries.map {
+        (["WhereWolf Location Log"] + entries.map {
             "\($0.date.formatted(date: .numeric, time: .standard)) — \($0.title)\($0.detail.isEmpty ? "" : ": " + $0.detail)"
         }).joined(separator: "\n")
     }

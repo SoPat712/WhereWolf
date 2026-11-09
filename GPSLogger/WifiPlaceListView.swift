@@ -98,7 +98,7 @@ struct WifiPlaceListView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) { SettingsHelpButton(topic: .automation) }
+            ToolbarItem(placement: .topBarTrailing) { SettingsHelpButton(topic: .wifiPlaces) }
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Add Place", systemImage: "plus") { addingPlace = true }
             }

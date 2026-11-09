@@ -12,7 +12,7 @@ struct TripSettingsSheet: View {
 
     var body: some View {
         NavigationStack {
-            TripSettingsView()
+            TripSettingsView(title: "Trip Settings")
                 .navigationDestination(isPresented: $showingModes) { TripModesView() }
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {
@@ -27,22 +27,24 @@ struct TripSettingsSheet: View {
 }
 
 struct TripSettingsView: View {
+    // The Trip tab's sheet keeps the name of the button that opens it.
+    var title = "Trips"
     @State private var bridge = GLManagerBridge.shared
 
     var body: some View {
         Form {
             Section {
                 NavigationLink("Trip Modes") { TripModesView() }
-                Toggle("Trip Live Activity", isOn: $bridge.tripLiveActivityEnabled)
-            } footer: {
-                Text("An optional trip card with elapsed time, distance, speed, Send Now and End Trip. It is separate from the tracking activity and its Blank appearance.")
+                NavigationLink { LiveActivitySettingsView() } label: {
+                    LabeledContent("Live Activity", value: bridge.tripLiveActivityEnabled ? "On" : "Off")
+                }
             }
             .settingsRowBackground()
 
             Section {
                 Toggle("Ask to End Trip When Stopped", isOn: $bridge.tripAskToEndWhenStopped)
             } footer: {
-                Text("After you stay within 75 m for 5 minutes, a notification asks whether to end the trip, and End Trip ends it when you stopped. Motion & Fitness, if allowed, keeps traffic and red lights from counting; without it the wait is 10 minutes. This needs notification permission but not the Notifications setting.")
+                Text("After 5 minutes within 75 m, a notification asks whether to end the trip.")
             }
             .settingsRowBackground()
 
@@ -64,9 +66,9 @@ struct TripSettingsView: View {
                     if #available(iOS 27.0, *) { Text("Boat").tag(5) }
                 }
             } header: {
-                SettingsSectionHeader(title: "Accuracy", topic: .precision)
+                SettingsSectionHeader(title: "Location Request", topic: .locationRequest)
             } footer: {
-                Text("Requests location precision while a trip is in progress. Saved-point filters below decide which returned fixes are kept. The new engine lets iOS choose accuracy.")
+                Text("Used while a trip is in progress.")
             }
             .settingsRowBackground()
 
@@ -78,7 +80,7 @@ struct TripSettingsView: View {
                 }
                 SliderRow(title: "Locations per Batch", value: $bridge.tripBatchValue, range: 1...1000, format: SettingFormat.count)
             } header: {
-                SettingsSectionHeader(title: "Batching", topic: .batching)
+                SettingsSectionHeader(title: "Sending", topic: .sending)
             }
             .settingsRowBackground()
 
@@ -87,24 +89,26 @@ struct TripSettingsView: View {
                 Toggle("Discard Points While Stationary", isOn: $bridge.tripDiscardStationary)
                 SliderRow(title: "Min Distance Between Points", value: $bridge.tripDiscardDistanceMeters, range: 0...1000, offBelow: 1, unit: "meters", format: SettingFormat.meters)
                 SliderRow(title: "Min Time Between Points", value: $bridge.tripDiscardSecondsValue, range: 0...600, offBelow: 1, unit: "seconds", format: SettingFormat.seconds)
-                SliderRow(title: "Max Saved-Point Error", value: $bridge.discardAccuracyMeters, range: 0...5000, offBelow: 1, unit: "meters", format: SettingFormat.meters)
+                LabeledContent("Max Saved-Point Error", value: Self.meters(bridge.discardAccuracyMeters))
             } header: {
-                SettingsSectionHeader(title: "Discard Filters", topic: .precision)
+                SettingsSectionHeader(title: "Saved Points", topic: .savedPoints)
             } footer: {
-                Text("Skip points that are too close together in space or time. Max Saved-Point Error rejects fixes with larger reported uncertainty and is shared with normal tracking. The sliders snap to common settings; tap a value for exact entry. GPS filtering estimates the source from altitude accuracy and speed. Stationary filtering needs Motion & Fitness access and keeps a stopping point and an hourly heartbeat.")
+                Text("Max Saved-Point Error is shared with Tracking & Accuracy.")
             }
             .settingsRowBackground()
 
             Section {
-                Toggle("Show Background Indicator", isOn: $bridge.tripBackgroundIndicator)
+                Toggle("Location Indicator", isOn: $bridge.tripBackgroundIndicator)
                 Toggle("Pause Updates Automatically", isOn: $bridge.tripPausesAutomatically)
                 if bridge.tripPausesAutomatically {
-                    SliderRow(title: "Resume After Moving", value: $bridge.resumeDistanceMeters, range: 0...2000, offBelow: 1, unit: "meters", format: SettingFormat.meters)
+                    LabeledContent("Resume After Moving", value: Self.meters(bridge.resumeDistanceMeters))
                 }
             } header: {
-                SettingsSectionHeader(title: "Privacy", topic: .stationary)
+                SettingsSectionHeader(title: "Background & Pausing", topic: .trip)
             } footer: {
-                Text("The resume distance is shared with normal tracking. Turning off automatic pausing also disables resuming on movement.")
+                Text(bridge.tripPausesAutomatically
+                     ? "Resume After Moving is shared with Tracking & Accuracy."
+                     : "Automatic pausing can end a trip.")
             }
             .settingsRowBackground()
 
@@ -118,8 +122,12 @@ struct TripSettingsView: View {
             .settingsRowBackground()
         }
         .settingsFormStyle()
-        .navigationTitle("Trip Settings")
+        .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { bridge.refresh() }
+    }
+
+    private static func meters(_ value: Double) -> String {
+        value < 1 ? "Off" : SettingFormat.meters(value)
     }
 }

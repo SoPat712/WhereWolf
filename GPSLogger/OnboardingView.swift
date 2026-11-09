@@ -420,13 +420,13 @@ struct OnboardingView: View {
 
     private var sending: some View {
         VStack(spacing: 14) {
-            segmented("FORMAT") {
-                Picker("Format", selection: $bridge.loggingModeIndex) {
+            segmented("LOGGING MODE") {
+                Picker("Logging Mode", selection: $bridge.loggingModeIndex) {
                     Text("All Data").tag(0); Text("Only Latest").tag(1); Text("OwnTracks").tag(2)
                 }
             }
-            segmented("SEND EVERY") {
-                Picker("Send Every", selection: $bridge.sendIntervalValue) {
+            segmented("SEND INTERVAL") {
+                Picker("Send Interval", selection: $bridge.sendIntervalValue) {
                     ForEach([30.0, 60, 300, 900, 0], id: \.self) { value in
                         Text(intervalLabel(value)).tag(value)
                     }
@@ -494,10 +494,10 @@ struct OnboardingView: View {
             }
             if bridge.liveActivityEnabled || bridge.tripLiveActivityEnabled {
                 group {
-                    toggleRow("Hide While Music Plays", "Gives Music the island. Needs Always.", isOn: $bridge.hideLiveActivityWhileAudioPlays, verticalPadding: 8)
+                    toggleRow("Hide While Audio Plays", "Gives Music the island. Needs Always.", isOn: $bridge.hideLiveActivityWhileAudioPlays, verticalPadding: 8)
                     if bridge.hideLiveActivityWhileAudioPlays {
                         separator()
-                        toggleRow("Ask to Reopen", "A nudge to bring it back after music.", isOn: $bridge.askToReopenAfterAudio, verticalPadding: 8)
+                        toggleRow("Ask to Reopen When Audio Stops", "A nudge to bring it back.", isOn: $bridge.askToReopenAfterAudio, verticalPadding: 8)
                     }
                 }
             }
@@ -508,9 +508,9 @@ struct OnboardingView: View {
         group {
             helper("Location Indicator", "Blue arrow in the status bar. Most reliable.", "location.fill", .blue, $bridge.backgroundIndicator)
             separator(icon: true)
-            helper("Background Recovery", "Helps iOS relaunch after system termination", "arrow.clockwise", .green, advanced("background_recovery"))
+            helper("Relaunch Monitoring", "Helps iOS relaunch after system termination", "arrow.clockwise", .green, advanced("background_recovery"))
             separator(icon: true)
-            helper("Service Session", "Retains already-Always access", "checkmark.shield.fill", .indigo, advanced("explicit_service_session"))
+            helper("Keep Always Access Active", "Retains already-Always access", "checkmark.shield.fill", .indigo, advanced("explicit_service_session"))
                 .disabled(!serviceSessionAvailable)
             separator(icon: true)
             helper("Retry Stalled Updates", "Restarts GPS if fixes stop, up to 3 times", "arrow.clockwise", .orange, advanced("automatic_location_retry"))
@@ -627,7 +627,7 @@ struct OnboardingView: View {
                 }
             } footer: {
                 Text(useSetupLink ? "Paste a wherewolf:// or overland:// setup link from your server."
-                     : "OwnTracks uses a Base64-encoded username:password token. More options are in Settings → Server.")
+                     : "OwnTracks uses a Base64-encoded username:password token. More options are in Settings → Destination.")
             }
             ConnectionTestSection(enabled: useSetupLink ? !setupLink.isEmpty : GLManager.isValidEndpoint(endpoint)) {
                 bridge.applyOnboardingDestination(useSetupLink ? .setupLink(setupLink) : .server(endpoint: endpoint, token: token, ownTracks: ownTracks))
