@@ -21,6 +21,8 @@ final class HistoryPlaybackModel {
     private(set) var rulerHold: ReplayRulerHold?
     private(set) var rulerHoldCancelled = false
     private(set) var rulerStep = 1.0
+    // The trip opened from the Trip tab, highlighted on the map and ruler until returning to Live.
+    private(set) var highlightedTrip: ClosedRange<Date>?
     @ObservationIgnored let rulerScaleChannel = RulerScaleChannel()
     private var rulerWidth: CGFloat = 350
     private(set) var consumerActive = false
@@ -575,6 +577,7 @@ final class HistoryPlaybackModel {
     func returnToLive() {
         interruptRuler()
         pause()
+        highlightedTrip = nil
         rulerStep = 1
         isBrowsing = false
         selectedIndex = nil
@@ -611,6 +614,28 @@ final class HistoryPlaybackModel {
     func goTo(_ time: Date) {
         guard let index = landmarks.nearestPoint(to: time, pointCount: points.count) else { return }
         scrub(pointAt: index)
+    }
+
+    func showTrip(_ trip: ClosedRange<Date>) {
+        highlightedTrip = trip
+        goTo(trip.lowerBound)
+    }
+
+    // Points stay in time order, so the trip's fixes are one run found by its start and end.
+    var highlightedRange: ClosedRange<Int>? {
+        guard let trip = highlightedTrip else { return nil }
+        func first(after date: Date, inclusive: Bool) -> Int {
+            var lower = 0, upper = points.count
+            while lower < upper {
+                let middle = (lower + upper) / 2
+                let before = inclusive ? points[middle].timestamp < date : points[middle].timestamp <= date
+                if before { lower = middle + 1 } else { upper = middle }
+            }
+            return lower
+        }
+        let start = first(after: trip.lowerBound, inclusive: true)
+        let end = first(after: trip.upperBound, inclusive: false) - 1
+        return start <= end ? start...end : nil
     }
 
     func togglePlayback() {
@@ -1086,7 +1111,7 @@ struct HistoryRuler: View {
                 } else {
                     history.scrub(pointAt: history.points.count - target)
                 }
-            })
+            }, highlight: history.highlightedRange)
             .frame(height: 56)
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { history.setRulerWidth($0) }
             HStack {
@@ -1455,6 +1480,7 @@ struct HistoryRulerSurface: UIViewRepresentable {
     var onScale: (Double) -> Void
     var onContinuousScale: (RulerScaleChannel.Frame?) -> Void
     var onAdjust: (Int) -> Void
+    var highlight: ClosedRange<Int>? = nil
 
     func makeUIView(context: Context) -> HistoryRulerContainer {
         HistoryRulerContainer()
@@ -1483,6 +1509,7 @@ private final class HistoryRulerTicks: UIView {
     var scale = HistoryRulerCoarseDrag.Scale()
     var detents = HistoryRulerCoarseDrag.Detents(tickCount: 1, rulerWidth: 350)
     var snappedStop: Int?
+    var highlight: ClosedRange<Int>?
     var landmarks: HistoryLandmarks? {
         didSet {
             guard oldValue !== landmarks else { return }
@@ -1526,6 +1553,14 @@ private final class HistoryRulerTicks: UIView {
         let maximum = Double(max(0, tickCount - 1))
         let lower = min(maximum, max(0, selected - halfWindow))
         let range = lower...min(maximum, max(lower, selected + halfWindow))
+        if pointCount > 0, let trip = highlight, trip.lowerBound <= Int(range.upperBound), trip.upperBound >= Int(range.lowerBound) {
+            let left = max(-8, x(at: trip.lowerBound) - 3), right = min(bounds.width + 8, x(at: trip.upperBound) + 3)
+            if right - left >= 1 {
+                UIColor.systemRed.withAlphaComponent(0.3).setFill()
+                UIBezierPath(roundedRect: CGRect(x: left, y: 18, width: right - left, height: bounds.height - 20),
+                             cornerRadius: min(7, (right - left) / 2)).fill()
+            }
+        }
         let visibleStops: ArraySlice<HistoryStop> = pointCount > 0 ? (landmarks?.visibleStops(in: range) ?? []) : []
         let stops = landmarks?.stops ?? []
         for index in visibleStops.indices {
@@ -1935,6 +1970,7 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
         }
         self.configuration = configuration
         ticks.landmarks = configuration.landmarks
+        ticks.highlight = configuration.highlight
         ticks.pointCount = configuration.points.count
         appliedRevision = configuration.revision
         if !moving { ticks.tickCount = configuration.tickCount }

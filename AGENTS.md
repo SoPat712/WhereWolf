@@ -238,8 +238,11 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   after its summary commits. Retained history tags every fix with its trip, so trips whose summaries never
   saved are rebuilt from those fixes on a utility read when Trip appears or a trip ends; a saved summary
   starting within a second wins, and the trip in progress is left out. See All, shown when more trips exist,
-  opens a sheet of every trip grouped by day in Go To's style. A row opens its start on the Tracker ruler,
-  after history loads if needed, and is disabled once the trip has left local history.
+  opens a sheet of every trip grouped by day in Go To's style. A row opens the trip on the Tracker, after
+  history loads if needed: the ruler starts at the trip, the replay overview fits only the trip's fixes, and
+  the model's `highlightedTrip` span draws red until returning to Live, as a faint band on the ruler under
+  stop tints and as a foreground trail layer 4 points wide above the blue, below the marker. A row is
+  disabled once the trip has left local history.
   `TripTabPolicy` selects Trip when the scene becomes active during a trip it hasn't shown yet,
   once per trip start, never while active or with setup presented.
   Tracker starts with a glass history ruler and one compact control row. Live
@@ -469,7 +472,7 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   over a second to appear. End the foreground tail at the marker's exact pose
   coordinate. Never use `strokeEnd` percentages for replay progress.
   Blue, including trip and imported workout routes,
-  is 2.5 points wide; future dots are 1.25, with
+  is 2.5 points wide; an opened trip's red is 4; future dots are 1.25, with
   round caps. Layers cull offscreen sections and share a validated Mercator-to-screen
   homography, including pitch, with per-point MapKit conversion when the fit fails.
   Keep their projection within half a point of MapKit, cache unchanged projections

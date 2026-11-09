@@ -6,12 +6,12 @@ struct TripView: View {
     @Binding var camera: MapCameraPosition
     @Binding var trip: TripMapState
     var historyStart: Date?
-    var onShowTrip: (Date) -> Void = { _ in }
+    var onShowTrip: (ClosedRange<Date>) -> Void = { _ in }
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: .caption) private var modeWidth: CGFloat = 64
     @State private var sheet: TripSheet?
-    @State private var shownTrip: Date?
+    @State private var shownTrip: ClosedRange<Date>?
     @State private var started = 0
     @State private var ended = 0
     @State private var picked = 0
@@ -56,11 +56,11 @@ struct TripView: View {
         }
         // The Tracker opens once the sheet has gone, so the tab switch does not race its dismissal.
         .sheet(item: $sheet, onDismiss: {
-            if let start = shownTrip { shownTrip = nil; onShowTrip(start) }
+            if let trip = shownTrip { shownTrip = nil; onShowTrip(trip) }
         }) { sheet in
             if sheet == .trips {
-                AllTripsView(trips: bridge.recentTrips, historyStart: historyStart) { start in
-                    shownTrip = start
+                AllTripsView(trips: bridge.recentTrips, historyStart: historyStart) { trip in
+                    shownTrip = trip
                     self.sheet = nil
                 }
             } else {
@@ -231,7 +231,7 @@ struct TripView: View {
                     if trip.id != trips.first?.id { Divider().padding(.leading, 58) }
                     RecentTripButton(trip: trip, metric: metric, historyStart: historyStart, showsDay: true,
                                      insets: EdgeInsets(top: 9, leading: 14, bottom: 9, trailing: 14)) {
-                        onShowTrip(trip.start)
+                        onShowTrip(trip.start...trip.end)
                     }
                 }
             }
@@ -339,7 +339,7 @@ private struct RecentTripButton: View {
 private struct AllTripsView: View {
     let trips: [TripSummary]
     let historyStart: Date?
-    let onShow: (Date) -> Void
+    let onShow: (ClosedRange<Date>) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var detent: PresentationDetent = .large
 
@@ -364,7 +364,7 @@ private struct AllTripsView: View {
                     Section(title(day.day)) {
                         ForEach(day.trips) { trip in
                             RecentTripButton(trip: trip, metric: metric, historyStart: historyStart, showsDay: false) {
-                                onShow(trip.start)
+                                onShow(trip.start...trip.end)
                             }
                         }
                     }

@@ -1880,6 +1880,32 @@ final class HistoryPlaybackTests: XCTestCase {
         XCTAssertEqual(model.selectedIndex, points.count - 1)
     }
 
+    @MainActor func testAnOpenedTripCoversItsFixesUntilReturningToLive() {
+        let start = Date().addingTimeInterval(-1_200)
+        let points = (0...10).map {
+            RecordedLocation(id: Int64($0 + 1), timestamp: start.addingTimeInterval(Double($0) * 60),
+                             latitude: 45, longitude: -122)
+        }
+        let model = HistoryPlaybackModel(pointLoader: { _, completion in completion(points) },
+            payloadLoader: { _, completion in completion([:]) }, places: { [] }, landmarkBuilder: immediateLandmarks)
+        model.setConsumerActive(true)
+        XCTAssertNil(model.highlightedRange)
+        model.showTrip(start.addingTimeInterval(170)...start.addingTimeInterval(420))
+        XCTAssertEqual(model.highlightedRange, 3...7)
+        XCTAssertTrue(model.isBrowsing)
+        XCTAssertEqual(model.selectedIndex, 3)
+        model.scrub(pointAt: 9)
+        XCTAssertEqual(model.highlightedRange, 3...7, "Scrubbing away keeps the trip highlighted")
+        model.showTrip(start.addingTimeInterval(120)...start.addingTimeInterval(120))
+        XCTAssertEqual(model.highlightedRange, 2...2)
+        model.showTrip(start.addingTimeInterval(130)...start.addingTimeInterval(170))
+        XCTAssertNil(model.highlightedRange, "A trip between two fixes has none of its own")
+        model.showTrip(start...start.addingTimeInterval(600))
+        model.returnToLive()
+        XCTAssertNil(model.highlightedTrip)
+        XCTAssertNil(model.highlightedRange)
+    }
+
     @MainActor func testReturningAfterExpiryBuildsLandmarksWithTheNewPointsAndGoToRefreshes() {
         var now = Date()
         let start = now.addingTimeInterval(-1_000)

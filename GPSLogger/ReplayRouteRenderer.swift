@@ -4,6 +4,8 @@ enum ReplayRouteStyle {
     static let pastWidth: CGFloat = 2.5
     static let futureWidth: CGFloat = 1.25
     static let futureColor = UIColor.systemTeal.withAlphaComponent(0.55)
+    // Wider than blue so an opened trip covers its own blue and dots completely.
+    static let highlightWidth: CGFloat = 4
 }
 
 @MainActor
@@ -429,6 +431,7 @@ struct ReplayScreenProjection {
 final class ReplayTrailLayer: CAShapeLayer {
     private(set) var coordinate: CLLocationCoordinate2D?
     private(set) var showsFuture = false
+    private var tint: UIColor?
     private struct Projection: Equatable {
         let route: ObjectIdentifier
         let position: Double
@@ -459,6 +462,14 @@ final class ReplayTrailLayer: CAShapeLayer {
         lineWidth = ReplayRouteStyle.futureWidth
         lineCap = .round
         lineDashPattern = [1, 5]
+    }
+
+    convenience init(highlight: Bool) {
+        self.init()
+        guard highlight else { return }
+        tint = .systemRed
+        lineWidth = ReplayRouteStyle.highlightWidth
+        lineCap = .round
     }
 
     override init(layer: Any) { super.init(layer: layer) }
@@ -520,7 +531,7 @@ final class ReplayTrailLayer: CAShapeLayer {
         if superlayer !== container.layer { container.layer.insertSublayer(self, below: marker.layer) }
         frame = container.bounds
         contentsScale = map.traitCollection.displayScale
-        strokeColor = (showsFuture ? ReplayRouteStyle.futureColor : UIColor.systemBlue)
+        strokeColor = (tint ?? (showsFuture ? ReplayRouteStyle.futureColor : UIColor.systemBlue))
             .resolvedColor(with: map.traitCollection).cgColor
         self.path = path
         self.coordinate = coordinate

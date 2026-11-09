@@ -314,6 +314,8 @@ struct NativeMapSurface: UIViewRepresentable {
     var replayFollowing = true
     var replayFollowDistance: CLLocationDistance? = nil
     var replayOverview = false
+    // The trip opened from the Trip tab, as route indices: drawn red, and fitted by the overview.
+    var replayHighlight: ClosedRange<Int>? = nil
     var rulerZoom: ReplayRulerHold? = nil
     var rulerScaleChannel: RulerScaleChannel? = nil
     var rulerZoomActive = true
@@ -478,12 +480,14 @@ struct NativeMapSurface: UIViewRepresentable {
         private var replayPresentation: ReplayRoutePresentation?
         private let replayTrailLayer = ReplayTrailLayer()
         private let replayFutureLayer = ReplayTrailLayer(future: true)
+        private let replayHighlightLayer = ReplayTrailLayer(highlight: true)
+        private var highlightBounds: (route: ObjectIdentifier, range: ClosedRange<Int>, bounds: CGRect)?
         private let replayAccuracyLayer = ReplayAccuracyLayer()
         private var replayCoverageExpiry: DispatchWorkItem?
         private var replayCoverageDeadline: TimeInterval?
         private var replayCoverageGeneration = 0
         private var replayRenderCamera: MapCamera?
-        private var overviewFit: (route: ObjectIdentifier, bounds: CGRect, clear: CGRect,
+        private var overviewFit: (route: ObjectIdentifier, highlight: ClosedRange<Int>?, bounds: CGRect, clear: CGRect,
                                   heading: CLLocationDirection, pitch: CGFloat, type: MKMapType, camera: MapCamera)?
         private var overviewViewport: (bounds: CGRect, safeArea: UIEdgeInsets)?
 #if targetEnvironment(simulator)
@@ -777,6 +781,7 @@ struct NativeMapSurface: UIViewRepresentable {
                 liveHeading.hide()
                 replayTrailLayer.hide()
                 replayFutureLayer.hide()
+                replayHighlightLayer.hide()
                 replayAccuracyLayer.hide()
                 return
             }
@@ -805,15 +810,27 @@ struct NativeMapSurface: UIViewRepresentable {
                        future > trail {
                         container.layer.insertSublayer(replayFutureLayer, below: replayTrailLayer)
                     }
+                    if let span = highlightCoverage(presentation.fullRoute) {
+                        replayHighlightLayer.update(route: presentation.fullRoute, position: parent.replayPosition,
+                            coordinate: selectedPoint.coordinate, coverage: [span], projection: screen, on: map, below: view)
+                        if let layers = container.layer.sublayers, let highlight = layers.firstIndex(of: replayHighlightLayer),
+                           let trail = layers.firstIndex(of: replayTrailLayer), highlight < trail {
+                            container.layer.insertSublayer(replayHighlightLayer, above: replayTrailLayer)
+                        }
+                    } else {
+                        replayHighlightLayer.hide()
+                    }
                     scheduleReplayCoverageExpiry()
                 } else {
                     replayTrailLayer.hide()
                     replayFutureLayer.hide()
+                    replayHighlightLayer.hide()
                 }
                 updateReplayDirection(view, coordinate: selectedPoint.coordinate, on: map)
             } else {
                 replayTrailLayer.hide()
                 replayFutureLayer.hide()
+                replayHighlightLayer.hide()
                 replayAccuracyLayer.hide()
                 if map.showsUserLocation, let coordinate = displayedLiveCoordinate ?? map.userLocation.location?.coordinate,
                    let view = map.view(for: map.userLocation) as? MKUserLocationView {
@@ -1399,12 +1416,37 @@ struct NativeMapSurface: UIViewRepresentable {
         fileprivate func replayOverviewCamera(on map: MKMapView) -> MapCamera? {
             guard let route = replayRoute else { return nil }
             let clear = NativeMapSurface.replayClearRect(on: map)
-            if let fit = overviewFit, fit.route == ObjectIdentifier(route), fit.bounds == map.bounds,
+            let highlight = parent.replayHighlight.flatMap { range in
+                range.upperBound < route.coordinates.count ? range : nil
+            }
+            if let fit = overviewFit, fit.route == ObjectIdentifier(route), fit.highlight == highlight, fit.bounds == map.bounds,
                fit.clear == clear, fit.heading == map.camera.heading, fit.pitch == map.camera.pitch,
                fit.type == map.mapType { return fit.camera }
-            guard let camera = ReplayOverviewFit.camera(for: route.coordinates, on: map, clearRect: clear) else { return nil }
-            overviewFit = (ObjectIdentifier(route), map.bounds, clear, map.camera.heading, map.camera.pitch, map.mapType, camera)
+            // An opened trip fits only its own fixes.
+            let coordinates = highlight.map { Array(route.coordinates[$0]) } ?? route.coordinates
+            guard let camera = ReplayOverviewFit.camera(for: coordinates, on: map, clearRect: clear) else { return nil }
+            overviewFit = (ObjectIdentifier(route), highlight, map.bounds, clear, map.camera.heading, map.camera.pitch,
+                           map.mapType, camera)
             return camera
+        }
+
+        private func highlightCoverage(_ route: MKPolyline) -> ReplayRoutePresentation.Coverage? {
+            guard let range = parent.replayHighlight, range.lowerBound >= 0, range.upperBound < route.pointCount else {
+                highlightBounds = nil
+                return nil
+            }
+            let id = ObjectIdentifier(route)
+            if highlightBounds?.route != id || highlightBounds?.range != range {
+                var minX = Double.infinity, minY = Double.infinity, maxX = -Double.infinity, maxY = -Double.infinity
+                for index in range {
+                    let point = route.points()[index]
+                    minX = min(minX, point.x); maxX = max(maxX, point.x)
+                    minY = min(minY, point.y); maxY = max(maxY, point.y)
+                }
+                highlightBounds = (id, range, CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY))
+            }
+            return ReplayRoutePresentation.Coverage(start: range.lowerBound, end: range.upperBound, prefix: false,
+                                                    marker: false, bounds: highlightBounds?.bounds ?? .zero)
         }
 
         // Map points per screen point in the middle of the map, and the coordinate there.

@@ -24,7 +24,7 @@ struct WhereWolfRootView: View {
     @State private var trip = TripMapState()
     @State private var tripRevision: Int?
     @State private var tripTab = TripTabPolicy()
-    @State private var pendingTripStart: Date?
+    @State private var pendingTrip: ClosedRange<Date>?
     @State private var history = HistoryPlaybackModel()
     @State private var bridge = GLManagerBridge.shared
     @State private var onboarding = OnboardingModel.live()
@@ -110,9 +110,9 @@ struct WhereWolfRootView: View {
         }
         .onChange(of: selection) { _, _ in updateConsumers() }
         .onChange(of: history.landmarks.timestamps.count) { _, _ in
-            guard let start = pendingTripStart, !history.landmarks.timestamps.isEmpty else { return }
-            pendingTripStart = nil
-            history.goTo(start)
+            guard let trip = pendingTrip, !history.landmarks.timestamps.isEmpty else { return }
+            pendingTrip = nil
+            openTrip(trip)
         }
         .onReceive(NotificationCenter.default.publisher(for: .recentLocationHistoryChanged)) { _ in
             history.reload()
@@ -240,6 +240,7 @@ struct WhereWolfRootView: View {
                                 replayFollowing: !replayCameraFree,
                                 replayFollowDistance: replayCameraDistance ?? 2_000,
                                 replayOverview: mapTab == 0 && replayOverview,
+                                replayHighlight: mapTab == 0 ? history.highlightedRange : nil,
                                 rulerZoom: mapTab == 0 ? history.rulerZoom : nil,
                                 rulerScaleChannel: mapTab == 0 ? history.rulerScaleChannel : nil,
                                 rulerZoomActive: selection == 0,
@@ -404,9 +405,19 @@ struct WhereWolfRootView: View {
     }
 
     // A recent trip opens on the Tracker ruler, once history has loaded there.
-    private func showTrip(_ start: Date) {
+    private func showTrip(_ trip: ClosedRange<Date>) {
         selectTab(0)
-        if history.landmarks.timestamps.isEmpty { pendingTripStart = start } else { history.goTo(start) }
+        if history.landmarks.timestamps.isEmpty { pendingTrip = trip } else { openTrip(trip) }
+    }
+
+    // The ruler starts at the trip and the map fits all of it; the location button then follows the marker.
+    private func openTrip(_ trip: ClosedRange<Date>) {
+        history.showTrip(trip)
+        withAnimation(.easeInOut(duration: 0.45)) {
+            replayCameraFree = false
+            replayOverview = true
+            replayCameraAction &+= 1
+        }
     }
 
     private func showNewTrip() {

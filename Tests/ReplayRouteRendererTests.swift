@@ -235,6 +235,33 @@ final class ReplayRouteRendererTests: XCTestCase {
         XCTAssertNil(blue.path)
     }
 
+    func testAnOpenedTripDrawsItsWholeSpanInRedOverTheBlue() throws {
+        let values = coordinates(count: 400)
+        let route = ReplayRoutePresentation(coordinates: values, now: 10)
+        let map = MKMapView(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        map.region = MKCoordinateRegion(center: values[200], latitudinalMeters: 1_000, longitudinalMeters: 1_000)
+        map.layoutIfNeeded()
+        let marker = MKAnnotationView()
+        map.addSubview(marker)
+        let red = ReplayTrailLayer(highlight: true)
+        let rect = route.fullRoute.boundingMapRect
+        let span = ReplayRoutePresentation.Coverage(start: 120, end: 260, prefix: false, marker: false,
+            bounds: CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: rect.height))
+        let screen = ReplayScreenProjection(map: map, container: map)
+        red.update(route: route.fullRoute, position: 300, coordinate: values[300], coverage: [span],
+                   projection: screen, on: map, below: marker)
+        let path = try XCTUnwrap(red.path)
+        var count = 0
+        path.applyWithBlock { _ in count += 1 }
+        XCTAssertEqual(count, 141, "Every fix of the trip, and none past it toward the marker")
+        let end = map.convert(values[260], toPointTo: map)
+        XCTAssertEqual(path.currentPoint.x, end.x, accuracy: 0.5)
+        XCTAssertEqual(path.currentPoint.y, end.y, accuracy: 0.5)
+        XCTAssertEqual(red.lineWidth, ReplayRouteStyle.highlightWidth)
+        XCTAssertEqual(red.strokeColor, UIColor.systemRed.resolvedColor(with: map.traitCollection).cgColor)
+        XCTAssertNil(red.lineDashPattern)
+    }
+
     func testProjectionMatchesMapKitWithinHalfAPointAcrossZoomHeadingPitchAndDateline() {
         let map = MKMapView(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
         for longitude in [-122.0, 179.999] {
