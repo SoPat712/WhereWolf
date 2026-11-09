@@ -43,6 +43,10 @@ struct TripView: View {
         .sensoryFeedback(.selection, trigger: picked)
         .onAppear {
             bridge.refresh()
+            bridge.loadRecordedTrips()
+        }
+        .onChange(of: bridge.tripInProgress) { _, recording in
+            if !recording { bridge.loadRecordedTrips() }
         }
         .onChange(of: bridge.tripMode) { _, mode in
             guard let coordinate = GLManager.shared().lastLocation?.coordinate else { return }

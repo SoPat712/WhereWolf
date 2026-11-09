@@ -161,6 +161,8 @@ final class GLManagerBridge {
     @ObservationIgnored private var timer: Timer?
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
     @ObservationIgnored private var activeScenes: Set<UUID> = []
+    @ObservationIgnored private var recordedTrips: [TripSummary] = []
+    @ObservationIgnored private var loadingRecordedTrips = false
 
     private init() {
         let nc = NotificationCenter.default
@@ -168,7 +170,7 @@ final class GLManagerBridge {
                      GLSettingsChangedNotification, GLAuthorizationStatusChangedNotification, GLNewActivityNotification,
                      GLTrackingStateChangedNotification, GLUploadStateChangedNotification,
                      "WhereWolfEngineStateChanged", "WhereWolfLiveUpdatesFailed", "WhereWolfUploadSchedulerStateChanged",
-                     "WhereWolfLocationHealthChanged"] {
+                     "WhereWolfLocationHealthChanged", TripLog.changed.rawValue] {
             observers.append(nc.addObserver(forName: Notification.Name(name), object: nil, queue: .main) { [weak self] _ in
                 guard let self, !self.activeScenes.isEmpty else { return }
                 self.refresh()
@@ -191,6 +193,20 @@ final class GLManagerBridge {
         }
     }
 
+    // Trips rebuilt from retained history list the ones whose summaries were never saved. Reading every
+    // trip fix waits for the Trip tab rather than running on each refresh.
+    func loadRecordedTrips() {
+        guard !loadingRecordedTrips else { return }
+        loadingRecordedTrips = true
+        RecentLocationHistory.shared.loadTripFixes { [weak self] fixes in
+            guard let self else { return }
+            self.loadingRecordedTrips = false
+            let current = GLManager.shared().flatMap { $0.tripInProgress() ? $0.currentTripStart() : nil }
+            self.recordedTrips = TripLog.recordedTrips(fixes, excluding: current)
+            self.refresh()
+        }
+    }
+
     private func refreshClock() {
         guard let gl = GLManager.shared() else { return }
         clockTick += 1
@@ -205,7 +221,7 @@ final class GLManagerBridge {
         tick += 1
         let catalog = TripModeStore.modes
         if tripModes != catalog { tripModes = catalog; tripModesRevision += 1 }
-        let trips = TripLog.trips
+        let trips = TripLog.merged(TripLog.trips, recorded: recordedTrips)
         if recentTrips != trips { recentTrips = trips }
         latestSendError = gl.lastSendErrorMessage
         trackingEnabled = gl.trackingEnabled

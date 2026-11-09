@@ -262,4 +262,41 @@ final class TripLogTests: XCTestCase {
         XCTAssertTrue(TripFormat.day(Date()).hasPrefix("Today, "))
         XCTAssertTrue(TripFormat.day(Date().addingTimeInterval(-86_400)).hasPrefix("Yesterday, "))
     }
+
+    func testTripsAreRebuiltFromTheirTaggedHistoryFixes() {
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        func fix(_ tag: String, _ seconds: Double, north meters: Double, speed: Double = -1, altitude: Double = 0) -> RecordedTripFix {
+            RecordedTripFix(trip: tag, mode: "car", timestamp: start.addingTimeInterval(seconds),
+                            latitude: 40 + meters / 111_195, longitude: -74, speed: speed, speedAccuracy: 1,
+                            altitude: altitude, verticalAccuracy: 5)
+        }
+        let first = "2027-01-15T08:00:00Z", second = "2027-01-15T09:00:00Z"
+        let fixes = [fix(first, 0, north: 0, speed: 10, altitude: 10), fix(first, 60, north: 500, speed: 25, altitude: 18),
+                     fix(first, 120, north: 1_000, speed: 15, altitude: 12),
+                     fix(second, 3_600, north: 0), fix(second, 3_660, north: 300), fix("not a date", 7_200, north: 0)]
+        let trips = TripLog.recordedTrips(fixes)
+        XCTAssertEqual(trips.count, 2)
+        XCTAssertEqual(trips[0].start, start)
+        XCTAssertEqual(trips[0].end, start.addingTimeInterval(120))
+        XCTAssertEqual(trips[0].distance, 1_000, accuracy: 5)
+        XCTAssertEqual(trips[0].topSpeed, 25)
+        XCTAssertEqual(trips[0].climb, 8)
+        XCTAssertEqual(trips[1].distance, 300, accuracy: 5)
+        XCTAssertNil(trips[1].topSpeed)
+        XCTAssertEqual(TripLog.recordedTrips(fixes, excluding: start.addingTimeInterval(3_600)).count, 1,
+                       "The trip in progress has not finished")
+    }
+
+    func testSavedSummariesWinOverTripsRebuiltFromHistory() {
+        let start = Date(timeIntervalSince1970: 1_800_000_000.4)
+        let saved = [TripSummary(mode: "walk", start: start, end: start.addingTimeInterval(600), distance: 900,
+                                 topSpeed: 2, climb: 3)]
+        let recorded = [TripSummary(mode: "car", start: start.addingTimeInterval(-0.4), end: start.addingTimeInterval(590),
+                                    distance: 880, topSpeed: nil, climb: 0),
+                        TripSummary(mode: "car", start: start.addingTimeInterval(3_600), end: start.addingTimeInterval(4_000),
+                                    distance: 4_000, topSpeed: nil, climb: 0)]
+        let merged = TripLog.merged(saved, recorded: recorded)
+        XCTAssertEqual(merged.map(\.mode), ["car", "walk"])
+        XCTAssertEqual(merged.last, saved[0])
+    }
 }

@@ -235,8 +235,10 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   accuracy within 10 m, replaying the stored fixes after a restore or a late batch.
   While idle, Trip lists the five newest of up to 20 finished trips from `TripLog`: mode, distance, start
   and duration, without coordinates, on this device only and outside Backup & Sync. GLManager records each
-  after its summary commits. A row opens its start on the Tracker ruler, after history loads if needed,
-  and is disabled once the trip has left local history.
+  after its summary commits. Retained history tags every fix with its trip, so trips whose summaries never
+  saved are rebuilt from those fixes on a utility read when Trip appears or a trip ends; a saved summary
+  starting within a second wins, and the trip in progress is left out. A row opens its start on the Tracker
+  ruler, after history loads if needed, and is disabled once the trip has left local history.
   `TripTabPolicy` selects Trip when the scene becomes active during a trip it hasn't shown yet,
   once per trip start, never while active or with setup presented.
   Tracker starts with a glass history ruler and one compact control row. Live

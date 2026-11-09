@@ -237,6 +237,13 @@ final class RecentLocationHistory: NSObject {
         }
     }
 
+    func loadTripFixes(completion: @escaping ([RecordedTripFix]) -> Void) {
+        queue.async(qos: .utility) {
+            let fixes = self.fetchTripFixes()
+            DispatchQueue.main.async { completion(fixes) }
+        }
+    }
+
     private func isCurrentRetentionRequest(_ generation: Int, hours: Int) -> Bool {
         retentionLock.lock()
         let currentGeneration = retentionGeneration
@@ -512,6 +519,37 @@ final class RecentLocationHistory: NSObject {
             }
         }
         return result
+    }
+
+    // Only GeoJSON records carry a trip tag; the text match skips decoding every other payload.
+    private func fetchTripFixes() -> [RecordedTripFix] {
+        guard let database = open() else { return [] }
+        let sql = """
+        SELECT timestamp, latitude, longitude, payload FROM points
+        WHERE timestamp >= ? AND format != 1 AND CAST(payload AS TEXT) LIKE '%"trip_id"%' ORDER BY timestamp, id
+        """
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK, let statement else { return [] }
+        defer { sqlite3_finalize(statement) }
+        sqlite3_bind_double(statement, 1, clock().timeIntervalSince1970 - retentionDuration())
+        var fixes: [RecordedTripFix] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard let blob = sqlite3_column_blob(statement, 3),
+                  let value = try? JSONSerialization.jsonObject(
+                      with: Data(bytes: blob, count: Int(sqlite3_column_bytes(statement, 3)))) as? [String: Any],
+                  let properties = value["properties"] as? [String: Any],
+                  let trip = properties["trip_id"] as? String else { continue }
+            func number(_ key: String, _ fallback: Double) -> Double {
+                (properties[key] as? NSNumber)?.doubleValue ?? fallback
+            }
+            fixes.append(RecordedTripFix(
+                trip: trip, mode: properties["trip_mode"] as? String ?? "",
+                timestamp: Date(timeIntervalSince1970: sqlite3_column_double(statement, 0)),
+                latitude: sqlite3_column_double(statement, 1), longitude: sqlite3_column_double(statement, 2),
+                speed: number("speed", -1), speedAccuracy: number("speed_accuracy", -1),
+                altitude: number("altitude", 0), verticalAccuracy: number("vertical_accuracy", -1)))
+        }
+        return fixes
     }
 
     // A negative vertical accuracy means CoreLocation has no valid altitude for the fix.
