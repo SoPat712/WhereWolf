@@ -431,7 +431,7 @@ final class GLManagerBridge {
     var usesRecommendedSettings: Bool {
         _ = tick
         guard let gl = GLManager.shared() else { return false }
-        let options = gl.advancedTrackingOptions
+        let options = gl.advancedTrackingOptions ?? [:]
         return gl.usageProfile() == 6 && gl.discardPointsWithoutGPS
             && GLManager.recommendedTrackingOptions().allSatisfy { options[$0]?.boolValue == true }
     }
