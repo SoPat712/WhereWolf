@@ -248,6 +248,8 @@ typedef void (^CaseBlock)(void);
 - (void)requestNotificationPermissionWithCompletion:(void (^ _Nullable)(BOOL granted))completion NS_SWIFT_NAME(requestNotificationPermission(completion:));
 - (NSInteger)usageProfile;
 - (void)applyUsageProfile:(NSInteger)profile;
++ (NSArray<NSString *> *)recommendedTrackingOptions;
+- (void)applyRecommendedSettings;
 
 - (BOOL)saveNewAPIEndpoint:(NSString *)endpoint andAccessToken:(NSString *)accessToken;
 - (NSString *)apiEndpointURL;

@@ -1324,6 +1324,29 @@ static int denyCommit(void *context, int action, const char *first, const char *
     XCTAssertEqual(self.manager.usageProfile, 0);
 }
 
+- (void)testRecommendedSettingsMatchANewInstallAndKeepEverythingElse {
+    [self.manager applyUsageProfile:1];
+    self.manager.discardPointsWithoutGPS = NO;
+    for(NSString *key in GLManager.recommendedTrackingOptions) [self.manager setAdvancedTrackingOption:@NO forKey:key];
+    [self.manager setAdvancedTrackingOption:@YES forKey:@"adaptive"];
+    [self.manager replaceWifiPlaces:@[[self wifiPlace:@"Home" latitude:45.5]]];
+    [self.manager applyRecommendedSettings];
+    XCTAssertEqual(self.manager.usageProfile, 6);
+    XCTAssertEqual(self.manager.discardPointsOutsideAccuracy, 50);
+    XCTAssertTrue(self.manager.discardPointsWithoutGPS);
+    for(NSString *key in GLManager.recommendedTrackingOptions) {
+        XCTAssertTrue([self.manager.advancedTrackingOptions[key] boolValue], @"%@", key);
+    }
+    XCTAssertTrue([self.manager.advancedTrackingOptions[@"adaptive"] boolValue], @"Options outside the recommendation stay");
+    XCTAssertEqual(self.manager.wifiPlaces.count, 1);
+
+    // The same setup a new install starts with.
+    [NSUserDefaults.standardUserDefaults removePersistentDomainForName:self.defaultsSuite];
+    [GLManager initializeUsageProfileDefaults:NSUserDefaults.standardUserDefaults domainName:self.defaultsSuite];
+    NSDictionary *fresh = self.manager.advancedTrackingOptions;
+    for(NSString *key in GLManager.recommendedTrackingOptions) XCTAssertTrue([fresh[key] boolValue], @"%@", key);
+}
+
 - (void)testFreshPreferencesDefaultToEverydayDetailedWithoutStartingTracking {
     [NSUserDefaults.standardUserDefaults removePersistentDomainForName:self.defaultsSuite];
     [GLManager initializeUsageProfileDefaults:NSUserDefaults.standardUserDefaults domainName:self.defaultsSuite];

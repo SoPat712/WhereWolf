@@ -687,7 +687,11 @@ Permissions; Recording (Tracking & Accuracy, Trips, Wi-Fi Places); Sending;
 Background (Live Activities, Background Reliability); Your Data (History & Replay,
 Apple Health, Backup & Sync); Notifications; Troubleshooting (Coverage, Location
 Log, and Diagnostics in TestFlight builds); and Support. Each setting is edited in
-one place. The Usage Preset selector applies a set of tracking preferences. Section
+one place. The Usage Preset selector applies a set of tracking preferences, and
+Restore Recommended Settings applies the setup a new install starts with: Everyday
+Detailed with a 50 m error limit, Reject Jumps, Discard Points Without GPS, Retry
+Stalled Updates, Relaunch Monitoring, Keep Always Access Active, Background Uploads
+and Retry When Back Online, keeping your history, places, server and other choices. Section
 info buttons give each control, and each option of a list, a one-line summary with
 short advantages, drawbacks and notes, in the list's order, and link to their sources.
 

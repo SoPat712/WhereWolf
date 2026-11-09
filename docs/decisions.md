@@ -279,6 +279,12 @@ This log lists the decisions agents made on their own while working on WhereWolf
 - **Decided:** a new install's first launch turns on Retry Stalled Updates, Relaunch Monitoring, Keep Always Access Active, Reject Jumps, Discard Points Without GPS, Background Uploads and Retry When Back Online, matching the owner's own setup, whose week had no gaps while moving and 3 stray spikes. The option defaults stay off, so existing installs keep their settings. Raising the minimum distance to 20 m was offered and not chosen.
 - **Undo:** `git revert 0690394`.
 
+## 2026-11-09: Restore Recommended Settings (pending)
+
+- **Asked for:** the new default settings on an existing install without losing anything else ("ye that's probably a good idea?").
+- **Decided:** a confirmed Settings row under Usage Preset applies the new-install recording setup in place (Everyday Detailed with 50 m, plus the reliability, cleanup and delivery options), sharing one option list with first launch. History, Wi-Fi Places, the server, retention, trips, Live Activities and audio keep their settings. The row reads Using Recommended Settings when they already match and is disabled during a trip.
+- **Undo:** `git revert` this commit.
+
 ## Deferred for the owner
 
 - **Watch complication for Today:** it needs a new watch widget extension and bundle identifier, which is an Apple developer account change.

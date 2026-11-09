@@ -428,6 +428,19 @@ final class GLManagerBridge {
         set { GLManager.shared().useNewLocationEngine = newValue; refresh() }
     }
 
+    var usesRecommendedSettings: Bool {
+        _ = tick
+        guard let gl = GLManager.shared() else { return false }
+        let options = gl.advancedTrackingOptions
+        return gl.usageProfile() == 6 && gl.discardPointsWithoutGPS
+            && GLManager.recommendedTrackingOptions().allSatisfy { options[$0]?.boolValue == true }
+    }
+
+    func applyRecommendedSettings() {
+        GLManager.shared().applyRecommendedSettings()
+        refresh()
+    }
+
     func advancedBool(_ key: String) -> Bool {
         _ = tick
         return GLManager.shared().advancedTrackingOptions[key]?.boolValue ?? false

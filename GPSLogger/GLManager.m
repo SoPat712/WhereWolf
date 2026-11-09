@@ -840,11 +840,26 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     // New installs start with the reliability, point-cleanup and delivery options on. The option defaults stay
     // off, so an existing installation keeps what it has.
     NSMutableDictionary *options = [[self normalizedTrackingOptions:nil] mutableCopy];
-    for(NSString *key in @[@"automatic_location_retry", @"background_recovery", @"explicit_service_session",
-                           @"reject_jumps", @"background_uploads", @"connectivity_retry"]) options[key] = @YES;
+    for(NSString *key in self.recommendedTrackingOptions) options[key] = @YES;
     domain[GLAdvancedTrackingDefaultsName] = options;
     domain[GLDiscardPointsWithoutGPSDefaultsName] = @YES;
     [defaults setPersistentDomain:domain forName:domainName];
+}
+
++ (NSArray<NSString *> *)recommendedTrackingOptions {
+    return @[@"automatic_location_retry", @"background_recovery", @"explicit_service_session",
+             @"reject_jumps", @"background_uploads", @"connectivity_retry"];
+}
+
+// Gives an existing install the recording setup a new install starts with. Data, places, the server,
+// history retention, trips, Live Activities and audio keep their settings.
+- (void)applyRecommendedSettings {
+    if(self.tripInProgress) return;
+    [self applyUsageProfile:6];
+    self.discardPointsWithoutGPS = YES;
+    NSMutableDictionary *options = [self.advancedTrackingOptions mutableCopy];
+    for(NSString *key in GLManager.recommendedTrackingOptions) options[key] = @YES;
+    self.advancedTrackingOptions = options;
 }
 
 - (NSInteger)usageProfile {

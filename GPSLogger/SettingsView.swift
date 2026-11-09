@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     var openSetup: () -> Void = {}
     @State private var confirmingStop = false
+    @State private var confirmingRecommended = false
     @State private var showingTipJar = false
     @State private var bridge = GLManagerBridge.shared
 
@@ -34,6 +35,21 @@ struct SettingsView: View {
                     SettingsRowLabel(title: "Usage Preset", symbol: "dial.medium.fill", color: .indigo)
                 }
                 .disabled(bridge.tripInProgress)
+                Button { confirmingRecommended = true } label: {
+                    SettingsRowLabel(title: bridge.usesRecommendedSettings ? "Using Recommended Settings"
+                                                                           : "Restore Recommended Settings",
+                                     symbol: "checkmark.seal.fill", color: .green)
+                }
+                .foregroundStyle(.primary)
+                .disabled(bridge.tripInProgress || bridge.usesRecommendedSettings)
+                .accessibilityIdentifier("wherewolf.settings.recommended")
+                .confirmationDialog("Restore Recommended Settings?", isPresented: $confirmingRecommended,
+                                    titleVisibility: .visible) {
+                    Button("Restore") { bridge.applyRecommendedSettings() }
+                    Button("Cancel", role: .cancel) { }
+                } message: {
+                    Text("Everyday Detailed with a 50 m error limit, plus Reject Jumps, Discard Points Without GPS, Retry Stalled Updates, Relaunch Monitoring, Keep Always Access Active, Background Uploads and Retry When Back Online. History, Wi-Fi Places, your server, trips, Live Activities and audio stay as they are.")
+                }
             } header: {
                 SettingsSectionHeader(title: "Tracking", topic: .presets)
             } footer: {

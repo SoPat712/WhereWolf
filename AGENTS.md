@@ -382,8 +382,8 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   storefronts show his credit and GitHub link. `TipDonation` validates amounts
   and builds the three payment URLs. The app has no main storyboard; the launch
   storyboard remains.
-- **Settings** is a native Form root: Setup Guide; Tracking (on/off, Usage Preset); Destination
-  (`EndpointView`: Save Locations To, iCloud file organization, server fields and Test Connection,
+- **Settings** is a native Form root: Setup Guide; Tracking (on/off, Usage Preset, Restore Recommended
+  Settings); Destination (`EndpointView`: Save Locations To, iCloud file organization, server fields and Test Connection,
   with a root value of Server, iCloud Drive or Not Set) and Permissions (location, Precise Location,
   Motion & Fitness, notification and Health request status, Open iOS Settings); Recording (Tracking
   & Accuracy, whose Advanced page holds the engine, motion assist and adaptive tracking; Trips, the
@@ -682,6 +682,9 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   They default off and are independent of all six Usage Presets; a new install's first launch writes
   Retry Stalled Updates, Relaunch Monitoring, Keep Always Access Active, Reject Jumps, Background Uploads
   and Retry When Back Online on, with Discard Points Without GPS, so existing installs keep theirs.
+  Restore Recommended Settings (`applyRecommendedSettings`, confirmed, not during a trip) gives an existing
+  install that recording setup with Everyday Detailed, leaving data, places, server, retention, trips, Live
+  Activities and audio alone; the row reads Using Recommended Settings once they match.
   Keep acquisition, point selection and upload scheduling separate. Adaptive tracking confirms a
   stop from fresh raw fixes before WiFi replacement, then requests coarse accuracy
   through the original engine; movement restores saved engine settings. Retain
