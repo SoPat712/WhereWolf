@@ -107,7 +107,9 @@
 	</dict>
 	<key>UIBackgroundModes</key>
 	<array>
+#if !WHEREWOLF_APP_STORE_YES
 		<string>audio</string>
+#endif
 		<string>location</string>
 		<string>processing</string>
 	</array>

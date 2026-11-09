@@ -514,8 +514,10 @@ struct OnboardingView: View {
                 .disabled(!serviceSessionAvailable)
             separator(icon: true)
             helper("Retry Stalled Updates", "Restarts GPS if fixes stop, up to 3 times", "arrow.clockwise", .orange, advanced("automatic_location_retry"))
+#if WHEREWOLF_SILENT_AUDIO
             separator(icon: true)
             helper("Silent Audio", "Experimental. Plays silence to stay awake.", "waveform", .pink, $bridge.silentAudioEnabled)
+#endif
         }
     }
 

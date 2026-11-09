@@ -75,13 +75,18 @@ private struct SettingExplanation {
 }
 
 private enum SettingsSource {
-    case accuracy, activity, significant, background, coreLocation, locationEngine, motion, adaptive, readme, implementation, activityKit, audio, stikDebug
+    case accuracy, activity, significant, background, coreLocation, locationEngine, motion, adaptive, readme, implementation, activityKit, audio
+#if WHEREWOLF_SILENT_AUDIO
+    case stikDebug
+#endif
 
     var title: String {
         switch self {
         case .activityKit: return "Apple: Live Activities"
         case .audio: return "Apple: Background execution modes"
+#if WHEREWOLF_SILENT_AUDIO
         case .stikDebug: return "StikDebug: Silent audio implementation"
+#endif
         case .accuracy: return "Apple: Desired accuracy"
         case .activity: return "Apple: Activity type"
         case .significant: return "Apple: Significant-change monitoring"
@@ -100,7 +105,9 @@ private enum SettingsSource {
         switch self {
         case .activityKit: path = "https://developer.apple.com/documentation/activitykit/displaying-live-data-with-live-activities"
         case .audio: path = "https://developer.apple.com/documentation/xcode/configuring-background-execution-modes"
+#if WHEREWOLF_SILENT_AUDIO
         case .stikDebug: path = "https://github.com/StikDebug/StikDebug/blob/main/StikDebug/Services/BackgroundAudioManager.swift"
+#endif
         case .accuracy: path = "https://developer.apple.com/documentation/corelocation/cllocationmanager/desiredaccuracy"
         case .activity: path = "https://developer.apple.com/documentation/corelocation/cllocationmanager/activitytype"
         case .significant: path = "https://developer.apple.com/documentation/corelocation/cllocationmanager/startmonitoringsignificantlocationchanges()"
@@ -134,6 +141,18 @@ enum SettingsHelpTopic: String {
     case server = "Server Configuration"
     case trip = "Trip Settings"
     case locationHealth = "Location Updates & Recovery"
+
+    // Only builds that ship silent audio explain it.
+    private static var silentAudioEntries: [SettingExplanation] {
+#if WHEREWOLF_SILENT_AUDIO
+        [
+            .init("Silent Audio", "An optional loop of digital silence using the audio playback background mode. It mixes with other audio, uses no microphone, and stops when tracking stops or location access is lost. While enabled and playing, a health check detects unexpected stops. Recovery tries up to three times with backoff, then waits for Retry Background Helpers. Automatic recovery waits during calls, interruptions and audio-service loss, and resumes only when allowed. This is an experimental keepalive technique, not a guarantee or a battery improvement.", .stikDebug),
+            .init("Distribution and reliability", "Apple documents the audio background mode for audible playback. A silent keepalive may conflict with App Store review requirements, so App Store builds leave it out. These options do not bypass force-quit, permissions, system termination, or your existing stationary-pause settings. Test background recording on a physical device.", .audio)
+        ]
+#else
+        []
+#endif
+    }
 
     fileprivate var entries: [SettingExplanation] {
         switch self {
@@ -223,12 +242,10 @@ enum SettingsHelpTopic: String {
                 .init("Background Recovery Monitoring", "An independent, default-off significant-change monitor runs alongside Standard tracking and during trips when enabled with Always access. It can give iOS a reason to relaunch WhereWolf after system termination. It does not replace precise tracking, guarantee a wake interval, override Stop or radius pause, or bypass force-quit. Background App Refresh restrictions can prevent relaunch. Coarse fixes still pass the existing saved-point filters. Extra callbacks may cost energy; device battery savings have not been measured.", .significant),
                 .init("Tracking Live Activity", "Starts while tracking is enabled and WhereWolf is in the foreground. Blank is the default for new installs; saved appearance choices remain. Minimal shows a location icon. Status adds the last successful send time in the expanded Dynamic Island. Blank keeps the Island empty, including reminders. Lock Screen Card defaults off; with it off, Blank starts an app-only activity and uses the original engine with Always access and the background indicator off. Turning the card on uses the widget-backed activity, like Minimal. Minimal and Status always include the rich Lock Screen card, showing tracking, fix and send times, queued records and Send Now. Active trips add distance, duration and End Trip; the trip line is omitted when a separate trip Live Activity is active. Activities expire after up to eight hours and can be dismissed. Open WhereWolf or tap Retry to start another; tracking itself continues independently.", .activityKit),
                 .init("Dynamic Island priority", "WhereWolf uses a relevance score of zero and sends no Live Activity alerts. The score ranks activities from WhereWolf; it cannot give Music or another app priority. iOS chooses which activities appear attached to the Island or in a smaller bubble. WhereWolf cannot force the smaller presentation while keeping its activity active.", .activityKit),
-                .init("Hide While Audio Plays", "Off by default. With Always location access, two audio checks at least 15 seconds apart end tracking and trip Live Activities while another app plays audio. Without Always access they stay visible to protect background tracking. It reacts within about 15 seconds while WhereWolf is running in the background (moving or with Silent Audio on). While iOS has WhereWolf suspended, it reacts at the next location update or when you open the app. When audio stops, the same confirmation allows one attempt to restore them in the background; iOS may require you to open WhereWolf. Ask to Reopen When Audio Stops can remind you to do that. Indicator-off tracking uses the original engine while hidden. WhereWolf's own silent audio does not count and is unaffected.", .activityKit),
+                .init("Hide While Audio Plays", "Off by default. With Always location access, two audio checks at least 15 seconds apart end tracking and trip Live Activities while another app plays audio. Without Always access they stay visible to protect background tracking. It reacts within about 15 seconds while WhereWolf is running in the background, such as while moving. While iOS has WhereWolf suspended, it reacts at the next location update or when you open the app. When audio stops, the same confirmation allows one attempt to restore them in the background; iOS may require you to open WhereWolf. Ask to Reopen When Audio Stops can remind you to do that. Indicator-off tracking uses the original engine while hidden.", .activityKit),
                 .init("Ask to Reopen When Audio Stops", "Off by default and shown while Hide While Audio Plays is on. After audio has stopped for 15 seconds, a refused or deferred background restore schedules one silent notification five minutes later, without sound or vibration: Music stopped — Open WhereWolf to bring back its Live Activity. It can arrive while the app is suspended. Opening WhereWolf, Retry, a restored activity, renewed audio, turning either switch off, losing Always access, stopping tracking, or having no activity left to restore removes the prompt. It needs existing notification permission; only the inline Allow button requests it. Notifications and Problems Only do not control this prompt. The missed-update reminder keeps its own deadline.", .activityKit),
                 .init("Open WhereWolf reminder", "Uses the same deadline as the existing ten-minute location reminder. When it passes, Status and Minimal show the same message in the Dynamic Island asking you to open WhereWolf. Blank stays empty. Tap the activity to open Tracker. The separate notification remains controlled by Notifications, and its existing suppression rules still apply. A missed deadline cannot prove the app was killed or the server is offline. iOS controls when the warning appears, and cannot show it after the activity ends or is dismissed.", .activityKit),
-                .init("Silent Audio", "An optional loop of digital silence using the audio playback background mode. It mixes with other audio, uses no microphone, and stops when tracking stops or location access is lost. While enabled and playing, a health check detects unexpected stops. Recovery tries up to three times with backoff, then waits for Retry Background Helpers. Automatic recovery waits during calls, interruptions and audio-service loss, and resumes only when allowed. This is an experimental keepalive technique, not a guarantee or a battery improvement.", .stikDebug),
-                .init("Distribution and reliability", "Apple documents the audio background mode for audible playback. A silent keepalive may conflict with App Store review requirements. These options do not bypass force-quit, permissions, system termination, or your existing stationary-pause settings. Test background recording on a physical device.", .audio)
-            ]
+            ] + Self.silentAudioEntries
         case .background:
             return [
                 .init("Show Background Indicator", "Controls the location-use indicator during background tracking. Trips have a separate setting. With Always access, turning it off releases the indicator session. The new engine needs an active Status, Minimal, or Blank-with-card Live Activity for background updates; Blank without the card or no activity uses the original engine to honor this setting. When in Use access can require the system indicator. Turning it off does not stop collection.", .coreLocation),

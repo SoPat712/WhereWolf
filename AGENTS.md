@@ -739,8 +739,9 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   prompts on renewed audio, foreground, restore, Retry, either switch off, lost
   Always access, Stop or no remaining activity to restore. Only the inline Allow
   button requests notification permission; never request it in the background.
-  Silent audio checks playback only while opted in. Unexpected stops get three
-  bounded retries; calls and media-service loss block automatic recovery.
+  Silent audio, left out of App Store builds (see Distribution builds), checks playback only while
+  opted in. Unexpected stops get three bounded retries; calls and media-service loss block automatic
+  recovery.
 - Settings sliders use common-value detents with exact numeric entry. Commit
   slider drafts on release, preserving saved defaults and all Usage Presets.
   Requested accuracy controls collection; Max Saved-Point Error filters returned
@@ -801,13 +802,26 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   retry/flush intent, and retain records on failure. GeoJSON and OwnTracks keep
   their existing request shapes. See `docs/tracking-improvements.md` for sources.
 
-## Before App Store release
+## Distribution builds
 
-- [ ] Remove `TestFlightDiagnostics.swift`, `DiagnosticsView.swift`, their Settings
-  and AppDelegate entry points, and `WHEREWOLF_TESTFLIGHT_DIAGNOSTICS` from both
-  Swift and Objective-C Release settings. Verify the collector is absent from
-  the App Store binary. TestFlight reports stay in the app container, excluded
-  from backups, until the user explicitly shares one.
+`WHEREWOLF_APP_STORE` (default `NO`) picks what a build ships. Development, TestFlight and any other
+distribution keep the defaults: Release compiles the TestFlight diagnostics collector
+(`WHEREWOLF_TESTFLIGHT_DIAGNOSTICS`), and every configuration compiles silent audio
+(`WHEREWOLF_SILENT_AUDIO`) with the `audio` background mode. Archive App Store builds with
+`WHEREWOLF_APP_STORE=YES`: it swaps both compilation conditions for `WHEREWOLF_APP_STORE`, and the
+preprocessed `GPSLogger/Info.plist` drops `audio` from `UIBackgroundModes`. Silent audio's settings,
+setup row, Coverage row and help disappear and its saved choice reads as off;
+`WhereWolfBackgroundRuntime.silentAudioAvailable` gates them. The source Info.plist holds `#if` lines,
+so read the built Info.plist rather than the source with plist tools. TestFlight reports stay in the
+app container, excluded from backups, until the user explicitly shares one.
+
+```bash
+nice -n 10 xcodebuild -jobs 2 -workspace WhereWolf.xcworkspace -scheme WhereWolf \
+  -configuration Release -destination 'generic/platform=iOS' WHEREWOLF_APP_STORE=YES archive
+```
+
+- [ ] Before submitting, check the archive's Info.plist has no `audio` background mode and the binary
+  has no `TestFlightDiagnostics` or `SilentAudioSession` settings strings.
 
 ## Code style
 

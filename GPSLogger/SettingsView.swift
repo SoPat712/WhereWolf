@@ -438,11 +438,13 @@ struct BackgroundSettingsView: View {
                     LabeledContent("Live Activity", value: bridge.liveActivityStatus)
                         .font(.footnote).foregroundStyle(.secondary)
                 }
+#if WHEREWOLF_SILENT_AUDIO
                 Toggle("Silent Audio (Experimental)", isOn: $bridge.silentAudioEnabled)
                 if bridge.silentAudioEnabled {
                     LabeledContent("Audio", value: bridge.silentAudioStatus)
                         .font(.footnote).foregroundStyle(.secondary)
                 }
+#endif
                 if #available(iOS 18.0, *) {
                     Toggle("Explicit Service Session", isOn: advancedBoolBinding(bridge, key: "explicit_service_session"))
                 } else {

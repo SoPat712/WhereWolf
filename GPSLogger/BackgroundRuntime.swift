@@ -162,8 +162,17 @@ private enum TrackingActivityHandle {
               lockScreenCard: lockScreenCard)
     }
 
+    // App Store builds leave silent audio out, along with the audio background mode it needs.
+    nonisolated static var silentAudioAvailable: Bool {
+#if WHEREWOLF_SILENT_AUDIO
+        true
+#else
+        false
+#endif
+    }
+
     var silentAudioEnabled: Bool {
-        get { UserDefaults.standard.bool(forKey: Key.silentAudio) }
+        get { Self.silentAudioAvailable && UserDefaults.standard.bool(forKey: Key.silentAudio) }
         set {
             UserDefaults.standard.set(newValue, forKey: Key.silentAudio)
             refresh()

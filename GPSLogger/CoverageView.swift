@@ -106,7 +106,9 @@ struct CoverageView: View {
             NavigationLink { BackgroundSettingsView() } label: { LabeledContent("Background Recovery", value: onOff("background_recovery")) }
             NavigationLink { BackgroundSettingsView() } label: { LabeledContent("Service Session", value: serviceSessionStatus) }
             NavigationLink { LocationHealthView() } label: { LabeledContent("Retry", value: onOff("automatic_location_retry")) }
+#if WHEREWOLF_SILENT_AUDIO
             NavigationLink { BackgroundSettingsView() } label: { LabeledContent("Silent Audio", value: bridge.silentAudioEnabled ? bridge.silentAudioStatus : "Off") }
+#endif
             Link(destination: URL(string: UIApplication.openSettingsURLString)!) {
                 LabeledContent("Always Location", value: bridge.locationPermission == "Always" ? "Allowed" : bridge.locationPermission)
             }
