@@ -244,7 +244,10 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   stop tints and as a foreground trail layer 4 points wide above the blue, below the marker. Opening one
   slides the drawer's controls over to Tracker (the tab highlight slides with them) instead of the usual
   fade, flies the map out and in along `MapFlight` to fit the trip, and only then draws the red from the
-  trip's start to its end over 1.2 seconds. Reduce Motion fades the controls and jumps. A row is
+  trip's start to its end over 1.2 seconds. The flight keeps the trip's fit instead of aiming at the marker,
+  and the marker travels in with it from where it was, covering the same share of the way as the camera's
+  center: from the last trip's marker, or from the live location, growing out of the dot's size over 0.45
+  seconds. The trail still splits at the replay position. Reduce Motion fades the controls and jumps. A row is
   disabled once the trip has left local history.
   `TripTabPolicy` selects Trip when the scene becomes active during a trip it hasn't shown yet,
   once per trip start, never while active or with setup presented.

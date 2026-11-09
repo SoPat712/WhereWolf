@@ -282,6 +282,35 @@ final class MapChromeTests: XCTestCase {
         }
     }
 
+    func testOpenedTripFlightFitsTheTripAndCarriesTheMarker() async throws {
+        try await withMap { surface, coordinator, map in
+            var surface = surface
+            let coordinates = self.overviewTrails[0]
+            surface.replayRoute = ReplayRouteGeometry(points: self.records(coordinates))
+            surface.selected = coordinates[0]
+            coordinator.update(surface, animated: false)
+            let marker = try XCTUnwrap(map.annotations.compactMap { $0 as? MKPointAnnotation }.first)
+            // As in the app, an opened trip still follows the replay while its overview fits only the trip.
+            surface.replayOverview = true
+            surface.replayHighlight = 5...8
+            surface.replayPosition = 5
+            surface.selected = coordinates[5]
+            surface.replayCameraAction += 1
+            coordinator.update(surface, animated: true)
+            XCTAssertEqual(marker.coordinate.longitude, coordinates[0].longitude, accuracy: 1e-9)
+            let start = CACurrentMediaTime()
+            coordinator.advanceCameraTransition(at: start)
+            coordinator.advanceCameraTransition(at: start + 0.3)
+            XCTAssertGreaterThan(marker.coordinate.longitude, coordinates[0].longitude + 1e-6)
+            XCTAssertLessThan(marker.coordinate.longitude, coordinates[5].longitude - 1e-6)
+            coordinator.advanceCameraTransition(at: start + 5)
+            XCTAssertEqual(marker.coordinate.longitude, coordinates[5].longitude, accuracy: 1e-9)
+            let clear = NativeMapSurface.replayClearRect(on: map)
+            self.assertTrail(Array(coordinates[5...8]), inside: clear, on: map)
+            XCTAssertFalse(clear.contains(map.convert(coordinates[0], toPointTo: map)))
+        }
+    }
+
     func testReplayClearRectFollowsChromeSafeAreasCreditAndDrawer() {
         let bounds = CGRect(x: 0, y: 0, width: 1024, height: 768)
         let safe = UIEdgeInsets(top: 24, left: 44, bottom: 34, right: 44)

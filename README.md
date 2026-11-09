@@ -677,8 +677,9 @@ trip. The slider button beside Start Trip
 opens Trip Settings in a sheet over the map, and Edit at the end of the modes opens
 Trip Modes; tap Done to return. Below Start Trip, Recent Trips lists your last three trips,
 including ones started from a Shortcut or CarPlay automation, and See All lists the rest by day;
-tap one while it is still in local history to see it in red on the map, fitted to the whole trip, with
-the ruler at its start and a red band over its span; returning to Live clears it. The
+tap one while it is still in local history to see it in red on the map, fitted to the whole trip as the
+marker travels there from your location or the last trip, with the ruler at its start and a red band over
+its span; returning to Live clears it. The
 same page is Settings → Trips.
 
 ### Settings

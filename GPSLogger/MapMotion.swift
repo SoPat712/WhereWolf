@@ -316,11 +316,22 @@ struct MapCameraTransition {
         return min(1, max(0, (time - start) / duration))
     }
 
+    private static func eased(_ progress: Double) -> Double {
+        progress * progress * progress * (progress * (progress * 6 - 15) + 10)
+    }
+
+    // How far a flight's center has moved toward its destination, 0 to 1, so a marker can travel with the camera.
+    func travel(at time: TimeInterval) -> Double {
+        let amount = Self.eased(progress(at: time))
+        guard let flightWidth else { return amount }
+        return MapFlight(from: from, to: to, width: flightWidth).fraction(at: amount)
+    }
+
     func camera(at time: TimeInterval) -> MapCamera {
         let progress = progress(at: time)
         if progress == 0 { return from }
         if progress == 1 { return to }
-        let amount = progress * progress * progress * (progress * (progress * 6 - 15) + 10)
+        let amount = Self.eased(progress)
         if let flightWidth {
             return MapFlight(from: from, to: to, width: flightWidth).camera(at: amount, from: from, to: to)
         }
@@ -383,19 +394,20 @@ struct MapFlight {
         min(2, max(0.6, 0.55 + 0.15 * length))
     }
 
+    // The share of the way from the start center to the end center at `amount`, the eased progress.
+    func fraction(at amount: Double) -> Double {
+        guard travel >= startWidth * 1e-6 else { return amount }
+        let s = amount * length
+        return min(1, max(0, startWidth / (Self.rho * Self.rho) * (cosh(r0) * tanh(Self.rho * s + r0) - sinh(r0)) / travel))
+    }
+
     // `amount` is the eased progress, 0 to 1.
     func camera(at amount: Double, from: MapCamera, to: MapCamera) -> MapCamera {
         let s = amount * length
-        let fraction: Double
-        let width: Double
-        if travel < startWidth * 1e-6 {
-            fraction = amount
-            width = startWidth * exp((endWidth >= startWidth ? 1 : -1) * Self.rho * s)
-        } else {
-            let rho2 = Self.rho * Self.rho
-            fraction = min(1, max(0, startWidth / rho2 * (cosh(r0) * tanh(Self.rho * s + r0) - sinh(r0)) / travel))
-            width = startWidth * cosh(r0) / cosh(Self.rho * s + r0)
-        }
+        let fraction = fraction(at: amount)
+        let width = travel < startWidth * 1e-6
+            ? startWidth * exp((endWidth >= startWidth ? 1 : -1) * Self.rho * s)
+            : startWidth * cosh(r0) / cosh(Self.rho * s + r0)
         let worldWidth = MKMapRect.world.width
         var x = (start.x + delta.x * fraction).truncatingRemainder(dividingBy: worldWidth)
         if x < 0 { x += worldWidth }

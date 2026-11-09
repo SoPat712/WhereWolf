@@ -527,6 +527,10 @@ struct NativeMapSurface: UIViewRepresentable {
 #endif
         private var selectedPoint: MKPointAnnotation?
         private var selectedIsReplay = false
+        // An opened trip's marker travels in with the flight from where it was: the last trip's marker, or the live
+        // location, where it grows out of the dot.
+        private var markerOrigin: (coordinate: CLLocationCoordinate2D, live: Bool)?
+        private var markerGlide: (from: CLLocationCoordinate2D, live: Bool, growth: Double)?
         private var mapRotated = false
         private var cameraActionAnimating = false
         private var cameraZooming = false
@@ -638,6 +642,12 @@ struct NativeMapSurface: UIViewRepresentable {
                 resetRulerScaleFits()
                 rulerRestoreGeneration &+= 1
             }
+            if parent.replayActive && replayModeChanged {
+                markerOrigin = map?.showsUserLocation == true
+                    ? (displayedLiveCoordinate ?? map?.userLocation.location?.coordinate).map { ($0, true) } : nil
+            } else {
+                markerOrigin = selectedPoint.map { ($0.coordinate, false) }
+            }
             self.parent = parent
             attachRulerScaleChannel(parent.rulerScaleChannel)
             if cameraAction { rulerRestoreGeneration &+= 1 }
@@ -679,6 +689,7 @@ struct NativeMapSurface: UIViewRepresentable {
                     applyPosition(map, animated: scaledRuler == nil && animated && !UIAccessibility.isReduceMotionEnabled)
                 }
             }
+            markerOrigin = nil
             updateHeadingMode(on: map)
             if visible && !wasVisible { viewportChanged(on: map) }
             alignMarkers(on: map)
@@ -765,7 +776,8 @@ struct NativeMapSurface: UIViewRepresentable {
                 return
             }
             if let selectedPoint {
-                if selectedPoint.coordinate.latitude != coordinate.latitude
+                // A gliding marker lands on the selection with the flight.
+                if markerGlide == nil, selectedPoint.coordinate.latitude != coordinate.latitude
                     || selectedPoint.coordinate.longitude != coordinate.longitude {
                     UIView.performWithoutAnimation { selectedPoint.coordinate = coordinate }
                 }
@@ -798,16 +810,26 @@ struct NativeMapSurface: UIViewRepresentable {
             }
             if parent.replayRoute != nil, let selectedPoint, let view = map.view(for: selectedPoint) {
                 liveHeading.hide()
+                // The trail splits at the replay position even while the marker glides toward it.
+                let pose = parent.selected ?? selectedPoint.coordinate
                 align(view, to: selectedPoint.coordinate, on: map)
-                replayAccuracyLayer.update(coordinate: selectedPoint.coordinate, accuracy: parent.replayAccuracy, on: map, below: view)
+                let transform = CATransform3DMakeAffineTransform(markerTransform(view))
+                if !CATransform3DEqualToTransform(view.layer.sublayerTransform, transform) {
+                    view.layer.sublayerTransform = transform
+                }
+                if markerGlide == nil {
+                    replayAccuracyLayer.update(coordinate: pose, accuracy: parent.replayAccuracy, on: map, below: view)
+                } else {
+                    replayAccuracyLayer.hide()
+                }
                 if let presentation = replayPresentation, let container = view.superview {
                     let screen = ReplayScreenProjection(map: map, container: container)
                     let now = CACurrentMediaTime()
                     replayTrailLayer.update(route: presentation.fullRoute, position: parent.replayPosition,
-                        coordinate: selectedPoint.coordinate, coverage: presentation.layerCoverage(future: false, now: now),
+                        coordinate: pose, coverage: presentation.layerCoverage(future: false, now: now),
                         projection: screen, on: map, below: view)
                     replayFutureLayer.update(route: presentation.fullRoute, position: parent.replayPosition,
-                        coordinate: selectedPoint.coordinate, coverage: presentation.layerCoverage(future: true, now: now),
+                        coordinate: pose, coverage: presentation.layerCoverage(future: true, now: now),
                         projection: screen, on: map, below: view)
                     if let layers = container.layer.sublayers,
                        let future = layers.firstIndex(of: replayFutureLayer), let trail = layers.firstIndex(of: replayTrailLayer),
@@ -835,7 +857,7 @@ struct NativeMapSurface: UIViewRepresentable {
                             }
                         }
                         replayHighlightLayer.update(route: presentation.fullRoute, position: parent.replayPosition,
-                            coordinate: selectedPoint.coordinate, coverage: [span], projection: screen, on: map, below: view)
+                            coordinate: pose, coverage: [span], projection: screen, on: map, below: view)
                         if let layers = container.layer.sublayers, let highlight = layers.firstIndex(of: replayHighlightLayer),
                            let trail = layers.firstIndex(of: replayTrailLayer), highlight < trail {
                             container.layer.insertSublayer(replayHighlightLayer, above: replayTrailLayer)
@@ -964,6 +986,10 @@ struct NativeMapSurface: UIViewRepresentable {
                     var trip = false
                     if case .overview(_, let highlight) = next { trip = highlight != nil }
                     startCameraTransition(to: destination, on: map, flight: trip, clockOnFirstFrame: trip)
+                    if trip, let origin = markerOrigin, let selectedPoint {
+                        markerGlide = (origin.coordinate, origin.live, origin.live ? 0 : 1)
+                        UIView.performWithoutAnimation { selectedPoint.coordinate = origin.coordinate }
+                    }
                     return
                 }
             }
@@ -1314,6 +1340,29 @@ struct NativeMapSurface: UIViewRepresentable {
             cameraZooming = false
             cameraFlight = false
             zoomKeepsCentering = false
+            endMarkerGlide()
+        }
+
+        private func endMarkerGlide() {
+            guard markerGlide != nil else { return }
+            markerGlide = nil
+            guard let selectedPoint else { return }
+            if let coordinate = parent.selected { UIView.performWithoutAnimation { selectedPoint.coordinate = coordinate } }
+            map?.view(for: selectedPoint)?.layer.sublayerTransform = CATransform3DIdentity
+        }
+
+        // Growing out of the live dot, the marker's balloon starts at the dot's size where the dot was. It scales the
+        // view's sublayers, leaving the annotation view's own transform to MapKit.
+        private func markerTransform(_ view: MKAnnotationView) -> CGAffineTransform {
+            guard let glide = markerGlide, glide.live, glide.growth < 1, view.bounds.width > 0 else { return .identity }
+            let grown = CGFloat(glide.growth * glide.growth * (3 - 2 * glide.growth))
+            let small = min(1, 20 / view.bounds.width)
+            let scale = small + (1 - small) * grown
+            // The balloon's circle fills the top of the view; the coordinate sits at -centerOffset from its center.
+            let balloon = view.bounds.width / 2 - view.bounds.height / 2
+            return CGAffineTransform(translationX: -view.centerOffset.x * (1 - grown),
+                                     y: (-view.centerOffset.y - small * balloon) * (1 - grown))
+                .scaledBy(x: scale, y: scale)
         }
 
         func zoom(inward: Bool, on map: MKMapView) -> MapZoomResult? {
@@ -1413,8 +1462,8 @@ struct NativeMapSurface: UIViewRepresentable {
                 transition.start = time
                 cameraTransition = transition
             }
-            // A flight to the live location keeps aiming at it as it moves.
-            let focusCoordinate = cameraZooming || cameraFlight ? zoomAnchor(on: map) : nil
+            // A flight to the live location keeps aiming at it as it moves; one to an opened trip keeps the trip's fit.
+            let focusCoordinate = cameraZooming || (cameraFlight && !parent.replayOverview) ? zoomAnchor(on: map) : nil
             if let focusCoordinate {
                 destination.centerCoordinate = focusCoordinate
             } else if !cameraZooming, !replayDetached, !parent.replayOverview, let coordinate = parent.selected {
@@ -1434,6 +1483,14 @@ struct NativeMapSurface: UIViewRepresentable {
             }
             revision += 1
             UIView.performWithoutAnimation { map.setCamera(MKMapCamera(camera), animated: false) }
+            if var glide = markerGlide, let selectedPoint, let target = parent.selected {
+                // The marker covers the same share of its way as the camera's center, so it stays in view.
+                let coordinate = ReplayCoordinate(glide.from).interpolated(to: ReplayCoordinate(target),
+                                                                           fraction: transition.travel(at: end)).coordinate
+                UIView.performWithoutAnimation { selectedPoint.coordinate = coordinate }
+                if glide.live { glide.growth = min(1, max(0, (end - transition.start) / 0.45)) }
+                markerGlide = glide
+            }
             alignMarkers(on: map)
             if transition.progress(at: end) == 1 {
                 let overview = parent.replayOverview
@@ -1966,6 +2023,7 @@ struct NativeMapSurface: UIViewRepresentable {
                 view.titleVisibility = .hidden
                 view.subtitleVisibility = .hidden
                 view.animatesWhenAdded = false
+                view.layer.sublayerTransform = CATransform3DMakeAffineTransform(markerTransform(view))
                 view.isAccessibilityElement = true
                 view.accessibilityLabel = parent.selectedTitle
                 view.accessibilityIdentifier = "wherewolf.map.replay-marker"
