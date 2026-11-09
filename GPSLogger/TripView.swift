@@ -11,6 +11,7 @@ struct TripView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: .caption) private var modeWidth: CGFloat = 64
     @State private var sheet: TripSheet?
+    @State private var shownTrip: Date?
     @State private var started = 0
     @State private var ended = 0
     @State private var picked = 0
@@ -53,8 +54,18 @@ struct TripView: View {
             camera = .camera(MapKit.MapCamera(centerCoordinate: coordinate,
                 distance: TripModeStore.closeZoom(mode) ? 1_000 : 10_000))
         }
-        .sheet(item: $sheet) { sheet in
-            TripSettingsSheet(opensModes: sheet == .modes) { self.sheet = nil }
+        // The Tracker opens once the sheet has gone, so the tab switch does not race its dismissal.
+        .sheet(item: $sheet, onDismiss: {
+            if let start = shownTrip { shownTrip = nil; onShowTrip(start) }
+        }) { sheet in
+            if sheet == .trips {
+                AllTripsView(trips: bridge.recentTrips, historyStart: historyStart) { start in
+                    shownTrip = start
+                    self.sheet = nil
+                }
+            } else {
+                TripSettingsSheet(opensModes: sheet == .modes) { self.sheet = nil }
+            }
         }
     }
 
@@ -126,14 +137,7 @@ struct TripView: View {
         .accessibilityLabel("Edit Trip Modes")
     }
 
-    @ViewBuilder
-    private func modeIcon(_ symbol: String) -> some View {
-        if let image = TripModeStore.image(symbol: symbol) {
-            Image(uiImage: image).renderingMode(.template).resizable().scaledToFit()
-        } else {
-            Image(systemName: "location.fill").resizable().scaledToFit()
-        }
-    }
+    private func modeIcon(_ symbol: String) -> some View { tripModeIcon(symbol) }
 
     // MARK: Recording
 
@@ -210,56 +214,30 @@ struct TripView: View {
         let metric = Locale.current.measurementSystem == .metric
         let trips = Array(bridge.recentTrips.prefix(5))
         return VStack(alignment: .leading, spacing: 6) {
-            Text("Recent Trips")
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 20)
-                .accessibilityAddTraits(.isHeader)
+            HStack(alignment: .firstTextBaseline) {
+                Text("Recent Trips")
+                    .foregroundStyle(.secondary)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer(minLength: 8)
+                if bridge.recentTrips.count > trips.count {
+                    Button("See All") { sheet = .trips }
+                        .accessibilityLabel("See All Trips")
+                }
+            }
+            .font(.footnote.weight(.semibold))
+            .padding(.horizontal, 20)
             VStack(spacing: 0) {
                 ForEach(trips) { trip in
                     if trip.id != trips.first?.id { Divider().padding(.leading, 58) }
-                    recentTripRow(trip, metric: metric)
+                    RecentTripButton(trip: trip, metric: metric, historyStart: historyStart, showsDay: true,
+                                     insets: EdgeInsets(top: 9, leading: 14, bottom: 9, trailing: 14)) {
+                        onShowTrip(trip.start)
+                    }
                 }
             }
             .background(Color.drawerCard, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
             .padding(.horizontal, 16)
         }
-    }
-
-    private func recentTripRow(_ trip: TripSummary, metric: Bool) -> some View {
-        // A trip that has left local history has nothing to show on the ruler.
-        let available = historyStart.map { trip.end >= $0 } ?? true
-        return Button { onShowTrip(trip.start) } label: {
-            HStack(spacing: 12) {
-                modeIcon(TripModeStore.symbol(trip.mode))
-                    .frame(width: 17, height: 17)
-                    .foregroundStyle(Color.white)
-                    .frame(width: 32, height: 32)
-                    .background(Circle().fill(.tint))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("\(TripModeStore.name(trip.mode)) · \(TripFormat.distance(trip.distance, metric: metric))")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.primary)
-                    Text("\(TripFormat.day(trip.start)) · \(ReplayActivity.format(trip.end.timeIntervalSince(trip.start)))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
-                Spacer(minLength: 8)
-                if available {
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 9)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(!available)
-        .accessibilityElement(children: .combine)
-        .accessibilityHint(available ? "Shows this trip on the Tracker ruler." : "")
     }
 
     // MARK: Start and end
@@ -297,8 +275,113 @@ struct TripView: View {
 }
 
 private enum TripSheet: Identifiable {
-    case settings, modes
+    case settings, modes, trips
     var id: Self { self }
+}
+
+@ViewBuilder
+private func tripModeIcon(_ symbol: String) -> some View {
+    if let image = TripModeStore.image(symbol: symbol) {
+        Image(uiImage: image).renderingMode(.template).resizable().scaledToFit()
+    } else {
+        Image(systemName: "location.fill").resizable().scaledToFit()
+    }
+}
+
+private struct RecentTripButton: View {
+    let trip: TripSummary
+    let metric: Bool
+    let historyStart: Date?
+    let showsDay: Bool
+    var insets = EdgeInsets()
+    let action: () -> Void
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    // A trip that has left local history has nothing to show on the ruler.
+    private var available: Bool { historyStart.map { trip.end >= $0 } ?? true }
+
+    var body: some View {
+        let when = showsDay ? TripFormat.day(trip.start) : trip.start.formatted(date: .omitted, time: .shortened)
+        Button(action: action) {
+            HStack(spacing: 12) {
+                tripModeIcon(TripModeStore.symbol(trip.mode))
+                    .frame(width: 17, height: 17)
+                    .foregroundStyle(Color.white)
+                    .frame(width: 32, height: 32)
+                    .background(Circle().fill(.tint))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(TripModeStore.name(trip.mode)) · \(TripFormat.distance(trip.distance, metric: metric))")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.primary)
+                    Text("\(when) · \(ReplayActivity.format(trip.end.timeIntervalSince(trip.start)))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                Spacer(minLength: 8)
+                if available {
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .padding(insets)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!available)
+        .accessibilityElement(children: .combine)
+        .accessibilityHint(available ? "Shows this trip on the Tracker ruler." : "")
+    }
+}
+
+// Every trip the Trip tab knows, newest first by day, styled like Go To.
+private struct AllTripsView: View {
+    let trips: [TripSummary]
+    let historyStart: Date?
+    let onShow: (Date) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var detent: PresentationDetent = .large
+
+    private var days: [(day: Date, trips: [TripSummary])] {
+        let calendar = Calendar.current
+        let grouped = Dictionary(grouping: trips) { calendar.startOfDay(for: $0.start) }
+        return grouped.keys.sorted(by: >).map { ($0, grouped[$0, default: []].sorted { $0.start > $1.start }) }
+    }
+
+    private func title(_ day: Date) -> String {
+        let calendar = Calendar.current
+        if calendar.isDateInToday(day) { return "Today" }
+        if calendar.isDateInYesterday(day) { return "Yesterday" }
+        return day.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
+    }
+
+    var body: some View {
+        let metric = Locale.current.measurementSystem == .metric
+        NavigationStack {
+            Form {
+                ForEach(days, id: \.day) { day in
+                    Section(title(day.day)) {
+                        ForEach(day.trips) { trip in
+                            RecentTripButton(trip: trip, metric: metric, historyStart: historyStart, showsDay: false) {
+                                onShow(trip.start)
+                            }
+                        }
+                    }
+                    .settingsRowBackground()
+                }
+            }
+            .settingsFormStyle()
+            .navigationTitle("Trips")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+            }
+        }
+        .environment(\.glassSettingsSheet, true)
+        .presentationDetents([.medium, .large], selection: $detent)
+        .presentationBackground { ExpandingSheetBackground(detent: detent) }
+    }
 }
 
 // Breathes while a trip records; still with Reduce Motion.

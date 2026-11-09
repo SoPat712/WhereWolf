@@ -237,8 +237,9 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   and duration, without coordinates, on this device only and outside Backup & Sync. GLManager records each
   after its summary commits. Retained history tags every fix with its trip, so trips whose summaries never
   saved are rebuilt from those fixes on a utility read when Trip appears or a trip ends; a saved summary
-  starting within a second wins, and the trip in progress is left out. A row opens its start on the Tracker
-  ruler, after history loads if needed, and is disabled once the trip has left local history.
+  starting within a second wins, and the trip in progress is left out. See All, shown when more trips exist,
+  opens a sheet of every trip grouped by day in Go To's style. A row opens its start on the Tracker ruler,
+  after history loads if needed, and is disabled once the trip has left local history.
   `TripTabPolicy` selects Trip when the scene becomes active during a trip it hasn't shown yet,
   once per trip start, never while active or with setup presented.
   Tracker starts with a glass history ruler and one compact control row. Live
