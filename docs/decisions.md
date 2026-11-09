@@ -285,11 +285,11 @@ This log lists the decisions agents made on their own while working on WhereWolf
 - **Decided:** a confirmed Settings row under Usage Preset applies the new-install recording setup in place (Everyday Detailed with 50 m, plus the reliability, cleanup and delivery options), sharing one option list with first launch. History, Wi-Fi Places, the server, retention, trips, Live Activities and audio keep their settings. The row reads Using Recommended Settings when they already match and is disabled during a trip.
 - **Undo:** `git revert 6686e72`.
 
-## 2026-11-09: flights pass Reject Jumps; trips and history get better defaults (HASH)
+## 2026-11-09: flights pass Reject Jumps; trips and history get better defaults (3b74cee)
 
 - **Asked for:** "i think we should not default implausbile jumps, right? people do fly?" then "Please think through genuinely setting good defaults!"
 - **Decided:** Reject Jumps stays on with its 100 m/s limit, but a fix whose own GPS speed (speed accuracy within 10 m/s) covers the move raises the limit to twice that speed. In the owner's week the only two pairs over 100 m/s implied about 172 m/s while their GPS read 1 and 14 m/s, and driving glitches reached about twice the GPS speed, so a flat 350 m/s limit would have let both jumps through while an airliner reads about 250 m/s. New installs and Restore Recommended Settings now record trips at Best accuracy instead of 100 m and discard trip points without GPS, as everyday tracking does. New installs keep 7 days of history instead of 24 hours, so Recent Trips, Go To and Coverage reach past one day; installs that never chose keep 24 hours. Reviewed and kept: Everyday Detailed's 10 m / 5 s / 50 m, the trip indicator on, 1-second trip points, 5-minute sending with 200-point batches, visits, adaptive tracking, motion assist and the new location engine off, notifications and Live Activities opt-in.
-- **Undo:** `git revert HASH`.
+- **Undo:** `git revert 3b74cee`.
 
 ## Deferred for the owner
 
