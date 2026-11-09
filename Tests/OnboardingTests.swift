@@ -217,7 +217,7 @@ final class OnboardingTests: XCTestCase {
         let h = Harness(); defer { h.clean() }
         let model = h.model(); await model.refresh()
         XCTAssertEqual(model.selectedPreset, 6)
-        XCTAssertEqual(UsagePreset.values, [6, 1, 3, 2, 4, 5])
+        XCTAssertEqual(UsagePreset.values, [5, 1, 4, 6, 3, 2])
         await model.choosePreset(4)
         XCTAssertEqual(h.events, ["preset:4"])
         XCTAssertEqual(model.selectedPreset, 4)

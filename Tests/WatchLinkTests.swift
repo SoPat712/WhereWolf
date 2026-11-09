@@ -217,9 +217,9 @@ final class WatchLinkTests: XCTestCase {
     }
 
     func testPresetTagsMatchSettings() {
-        XCTAssertEqual(WatchStatus.presets.map(\.id), [6, 1, 2, 3, 4, 5])
+        XCTAssertEqual(WatchStatus.presets.map(\.id), [5, 1, 4, 6, 3, 2])
         XCTAssertEqual(WatchStatus.presets.map(\.name),
-                       ["Everyday Detailed", "High Resolution", "Low Power", "Balanced", "Walking / Running", "Driving"])
+                       ["Driving", "High Resolution", "Walking / Running", "Everyday Detailed", "Balanced", "Low Power"])
     }
 
     func testRetryAppearsOnlyWhenTrackingHasGoneQuiet() {

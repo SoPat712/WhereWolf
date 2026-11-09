@@ -397,6 +397,13 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   to Destination. Section ⓘ topics live in `SettingsHelpView`; footers stay about one line and
   longer explanations belong in the topic. Keep the `wherewolf.settings.setup`, `.backup` and
   `.coverage` rows on the root for the UI audits.
+  Option lists follow an axis, never tag order. Presets (`UsagePreset.values`, mirrored by
+  `WatchStatus.presets`) run Driving, High Resolution, Walking / Running, Everyday Detailed,
+  Balanced, Low Power, most accurate and power-hungry first, after Custom in Settings. Accuracy
+  reads Navigation, Best, Custom; Update Mode Standard, Both, Significant, Off; Activity Type Other,
+  then Fitness, Automotive, Navigation, Boat, Airborne; Logging Mode All Data, OwnTracks, Only
+  Latest; Island appearance Status, Minimal, Blank (then Off in onboarding); Wi-Fi Place colors
+  follow the spectrum, gray last. Durations, counts and rates ascend.
 - **`GLManagerBridge`** (`@Observable`) is the only bridge: views read live
   status from it and write settings through it so GLManager side effects run.
 - **Settings portability**: Backup & Sync uses native Forms. `SettingsSchema` is the

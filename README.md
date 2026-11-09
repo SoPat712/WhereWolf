@@ -46,7 +46,8 @@ Paste a `wherewolf://setup` or `overland://setup` link from your server, enter a
 HTTP(S) endpoint and token with GeoJSON or OwnTracks format, choose iCloud Drive,
 or keep records on the device. Keeping records on the device clears the server
 endpoint and disables iCloud export; queued records remain available to send later.
-Tracking lists six presets with descriptions and a checkmark. Everyday Detailed
+Tracking lists six presets with descriptions and a checkmark, from the most accurate
+and power-hungry (Driving) to the coarsest (Low Power). Everyday Detailed
 is preselected on new installs; existing settings stay saved. Fine-Tune adjusts
 requested accuracy, minimum distance and time between points, automatic pausing
 and visit tracking. Edits take effect immediately through the main app's settings
@@ -705,14 +706,15 @@ info buttons explain the controls and link to their sources.
 
 These controls, in Tracking & Accuracy, configure [Core Location](https://developer.apple.com/reference/corelocation):
 
-* `Update Mode` selects Standard, Significant, Both, or Off. Standard requests
-  regular updates for detailed routes. Significant uses
+* `Update Mode` lists Standard, Both, Significant and Off, from most to least
+  continuous. Standard requests regular updates for detailed routes. Both adds
+  significant changes, which can restart a stationary pause. Significant uses only
   [significant-change monitoring](https://developer.apple.com/reference/corelocation/cllocationmanager/1423531-startmonitoringsignificantlocati)
-  for coarse movement history. Both enables both sources. Off disables those
-  sources; visit tracking is separate. iOS controls when updates arrive.
+  for coarse movement history. Off disables those sources; visit tracking is
+  separate. iOS controls when updates arrive.
 * `Visit Tracking` records iOS-detected arrivals and departures. Events can arrive
   after the visit occurred.
-* `Requested Accuracy` selects Custom, Best, or Navigation. Custom exposes
+* `Requested Accuracy` lists Navigation, Best and Custom, most precise first. Custom exposes
   `Target Accuracy` in meters. A smaller value requests more precision and can
   require more time and power; it does not guarantee the accuracy of a fix.
   See Apple's [desiredAccuracy](https://developer.apple.com/reference/corelocation/cllocationmanager/1423836-desiredaccuracy) reference.
@@ -723,7 +725,9 @@ These controls, in Tracking & Accuracy, configure [Core Location](https://develo
 * `Active Engine`, in Tracking & Accuracy → Advanced, shows the backend actually selected,
   including the reason for a Blank Island fallback.
 * `Activity Type` describes the expected movement to iOS and helps it decide when
-  to pause. It does not label the trip or classify recorded motion.
+  to pause. It lists Other first, then Fitness, Automotive, Navigation, Boat (iOS 27)
+  and Airborne, from on foot to in the air. It does not label the trip or classify
+  recorded motion.
   See [activityType](https://developer.apple.com/reference/corelocation/cllocationmanager/1620567-activitytype).
 * `Location Indicator`, in Background Reliability, requests the system's visible location indicator.
   It does not grant permission or keep the app running unconditionally. The
@@ -738,9 +742,10 @@ These controls, in Tracking & Accuracy, configure [Core Location](https://develo
 
 **Recording and sending**
 
-* `Logging Mode` controls storage and payload format. All Data queues GeoJSON
-  records. Only Latest replaces queued location data with the latest fix.
-  OwnTracks retains unsent fixes and sends one OwnTracks record per request.
+* `Logging Mode` controls storage and payload format, listed from the most of
+  your track to the least. All Data queues GeoJSON records. OwnTracks retains
+  unsent fixes and sends one OwnTracks record per request. Only Latest replaces
+  queued location data with the latest fix.
 * `Locations per Batch` limits records in each GeoJSON request. Smaller batches
   produce smaller requests; larger batches clear a backlog with fewer requests.
   It does not change the send interval.
@@ -874,16 +879,17 @@ nor a battery-saving percentage has been established for WhereWolf.
 
 ## Configuration guide
 
-The presets in Settings apply these values:
+The presets in Settings apply these values, listed in the app's order from most
+accurate to most frugal:
 
 | Preset | Mode | Accuracy | Activity | Pausing / resume | Stationary stop |
 | --- | --- | --- | --- | --- | --- |
-| Everyday Detailed (new-install default) | Standard | Best | Other | Off / Off | Off |
-| High Resolution | Standard | Best | Other | Off / Off | Off |
-| Low Power | Significant | 100 m stored; ignored by significant-change service | Other | On / 500 m | Off |
-| Balanced | Both | 100 m | Other | Off / Off | 50 m for 180 s |
-| Walking / Running | Standard | Best | Fitness | Off / Off | Off |
 | Driving | Standard | Navigation | Automotive | Off / Off | Off |
+| High Resolution | Standard | Best | Other | Off / Off | Off |
+| Walking / Running | Standard | Best | Fitness | Off / Off | Off |
+| Everyday Detailed (new-install default) | Standard | Best | Other | Off / Off | Off |
+| Balanced | Both | 100 m | Other | Off / Off | 50 m for 180 s |
+| Low Power | Significant | 100 m stored; ignored by significant-change service | Other | On / 500 m | Off |
 
 Everyday Detailed keeps points at least 10 m and 5 s apart and turns the background
 indicator off. It is the default only for new installs; existing settings and the

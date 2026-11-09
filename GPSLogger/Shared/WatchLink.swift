@@ -63,11 +63,11 @@ struct WatchTripMode: Equatable, Identifiable, Sendable {
 }
 
 struct WatchStatus: Equatable, Sendable {
-    // Tags match the Usage Preset picker in Settings. Custom is a result of other settings, not a choice.
+    // Tags and order match the Usage Preset picker in Settings. Custom is a result of other settings, not a choice.
     static let customPreset = 0
     static let presets: [(id: Int, name: String)] = [
-        (6, "Everyday Detailed"),
-        (1, "High Resolution"), (2, "Low Power"), (3, "Balanced"), (4, "Walking / Running"), (5, "Driving")
+        (5, "Driving"), (1, "High Resolution"), (4, "Walking / Running"),
+        (6, "Everyday Detailed"), (3, "Balanced"), (2, "Low Power")
     ]
     // Matches the delay before the phone's missed-update reminder.
     static let staleAfter: TimeInterval = 600

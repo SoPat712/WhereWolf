@@ -66,17 +66,18 @@ struct SetTripModeIntent: AppIntent {
 // The activity types in Trip Settings, which tell iOS how to track the trip
 @available(iOS 17.0, *)
 enum TripActivityTypeAppEnum: String, AppEnum {
-    case other, car, fitness, navigation, airplane, boat
+    // Trip Settings' order: no hint, then from on foot to in the air.
+    case other, fitness, car, navigation, boat, airplane
 
     static var typeDisplayRepresentation: TypeDisplayRepresentation = "Activity Type"
 
     static var caseDisplayRepresentations: [TripActivityTypeAppEnum: DisplayRepresentation] = [
         .other: "Other",
-        .car: "Car",
         .fitness: "Fitness",
+        .car: "Car",
         .navigation: "Other Navigation",
-        .airplane: "Airplane",
         .boat: "Boat",
+        .airplane: "Airplane",
     ]
 
     var activityType: CLActivityType? {

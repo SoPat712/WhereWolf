@@ -50,20 +50,21 @@ struct TripSettingsView: View {
 
             Section {
                 Picker("Requested Accuracy", selection: $bridge.tripAccuracyPreset) {
-                    Text("Custom").tag(0)
-                    Text("Best").tag(1)
                     Text("Navigation").tag(2)
+                    Text("Best").tag(1)
+                    Text("Custom").tag(0)
                 }
                 if bridge.tripAccuracyPreset == 0 {
                     SliderRow(title: "Target Accuracy", value: $bridge.tripAccuracyMeters, range: 5...3000, unit: "meters", format: SettingFormat.meters)
                 }
+                // No hint first, then from on foot to in the air.
                 Picker("Activity Type", selection: $bridge.tripActivityIndex) {
                     Text("Other").tag(0)
-                    Text("Automotive").tag(1)
                     Text("Fitness").tag(2)
+                    Text("Automotive").tag(1)
                     Text("Navigation").tag(3)
-                    Text("Airborne").tag(4)
                     if #available(iOS 27.0, *) { Text("Boat").tag(5) }
+                    Text("Airborne").tag(4)
                 }
             } header: {
                 SettingsSectionHeader(title: "Location Request", topic: .locationRequest)
@@ -73,10 +74,11 @@ struct TripSettingsView: View {
             .settingsRowBackground()
 
             Section {
+                // Most of the track reaching the server first.
                 Picker("Logging Mode", selection: $bridge.tripLoggingModeIndex) {
                     Text("All Data").tag(0)
-                    Text("Only Latest").tag(1)
                     Text("OwnTracks").tag(2)
+                    Text("Only Latest").tag(1)
                 }
                 SliderRow(title: "Locations per Batch", value: $bridge.tripBatchValue, range: 1...1000, format: SettingFormat.count)
             } header: {

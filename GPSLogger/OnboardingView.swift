@@ -360,9 +360,9 @@ struct OnboardingView: View {
                         Text("Requested Accuracy")
                         Spacer(minLength: 0)
                         Picker("Requested Accuracy", selection: trackingBindings.accuracy) {
-                            Text("Custom · \(SettingFormat.meters(bridge.accuracyMeters))").tag(0)
-                            Text("Best").tag(1)
                             Text("Navigation").tag(2)
+                            Text("Best").tag(1)
+                            Text("Custom · \(SettingFormat.meters(bridge.accuracyMeters))").tag(0)
                         }
                         .labelsHidden().pickerStyle(.menu)
                         .accessibilityIdentifier("wherewolf.setup.accuracy")
@@ -422,7 +422,7 @@ struct OnboardingView: View {
         VStack(spacing: 14) {
             segmented("LOGGING MODE") {
                 Picker("Logging Mode", selection: $bridge.loggingModeIndex) {
-                    Text("All Data").tag(0); Text("Only Latest").tag(1); Text("OwnTracks").tag(2)
+                    Text("All Data").tag(0); Text("OwnTracks").tag(2); Text("Only Latest").tag(1)
                 }
             }
             segmented("SEND INTERVAL") {
@@ -458,7 +458,7 @@ struct OnboardingView: View {
             VStack(alignment: .leading, spacing: 6) {
                 sectionLabel("DYNAMIC ISLAND")
                 HStack(spacing: 6) {
-                    ForEach(["blank", "minimal", "status", "off"], id: \.self) { value in
+                    ForEach(["status", "minimal", "blank", "off"], id: \.self) { value in
                         Button { chooseAppearance(value) } label: {
                             VStack(spacing: 7) {
                                 islandPreview(value).frame(height: 18).accessibilityHidden(true)
@@ -474,7 +474,7 @@ struct OnboardingView: View {
                         .accessibilityAddTraits(appearance == value ? .isSelected : [])
                     }
                 }
-                Text("Blank keeps the island empty. Minimal shows an arrow and warns when updates stop; Status adds when it last sent.")
+                Text("Status: arrow and last send. Minimal: arrow. Both warn when updates stop; Blank keeps the island empty.")
                     .font(.system(size: captionSize)).foregroundStyle(.secondary).padding(.horizontal, 6)
             }
             if bridge.liveActivityPresentation.cardVisible {
@@ -586,7 +586,7 @@ struct OnboardingView: View {
                 case .accuracy:
                     Form {
                         Picker("Requested Accuracy", selection: $bridge.accuracyPreset) {
-                            Text("Custom").tag(0); Text("Best").tag(1); Text("Navigation").tag(2)
+                            Text("Navigation").tag(2); Text("Best").tag(1); Text("Custom").tag(0)
                         }
                         if bridge.accuracyPreset == 0 {
                             SliderRow(title: "Target Accuracy", value: $bridge.accuracyMeters, range: 5...3000, unit: "meters", format: SettingFormat.meters)

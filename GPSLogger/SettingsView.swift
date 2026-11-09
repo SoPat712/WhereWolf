@@ -187,11 +187,12 @@ struct TrackingSettingsView: View {
     var body: some View {
         Form {
             Section {
+                // Most continuous first.
                 Picker("Update Mode", selection: $bridge.trackingModeIndex) {
-                    Text("Off").tag(0)
                     Text("Standard").tag(1)
-                    Text("Significant").tag(2)
                     Text("Both").tag(3)
+                    Text("Significant").tag(2)
+                    Text("Off").tag(0)
                 }
                 Toggle("Visit Tracking", isOn: $bridge.visitTracking)
             } header: {
@@ -202,20 +203,21 @@ struct TrackingSettingsView: View {
 
             Section {
                 Picker("Requested Accuracy", selection: $bridge.accuracyPreset) {
-                    Text("Custom").tag(0)
-                    Text("Best").tag(1)
                     Text("Navigation").tag(2)
+                    Text("Best").tag(1)
+                    Text("Custom").tag(0)
                 }
                 if bridge.accuracyPreset == 0 {
                     SliderRow(title: "Target Accuracy", value: $bridge.accuracyMeters, range: 5...3000, unit: "meters", format: SettingFormat.meters)
                 }
+                // No hint first, then from on foot to in the air.
                 Picker("Activity Type", selection: $bridge.activityIndex) {
                     Text("Other").tag(0)
-                    Text("Automotive").tag(1)
                     Text("Fitness").tag(2)
+                    Text("Automotive").tag(1)
                     Text("Navigation").tag(3)
-                    Text("Airborne").tag(4)
                     if #available(iOS 27.0, *) { Text("Boat").tag(5) }
+                    Text("Airborne").tag(4)
                 }
             } header: {
                 SettingsSectionHeader(title: "Location Request", topic: .locationRequest)
@@ -354,10 +356,11 @@ struct SendingSettingsView: View {
     var body: some View {
         Form {
             Section {
+                // Most of the track reaching the server first.
                 Picker("Logging Mode", selection: $bridge.loggingModeIndex) {
                     Text("All Data").tag(0)
-                    Text("Only Latest").tag(1)
                     Text("OwnTracks").tag(2)
+                    Text("Only Latest").tag(1)
                 }
                 Toggle("Include Tracking Stats", isOn: $bridge.includeTrackingStats)
             } header: {

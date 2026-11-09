@@ -291,37 +291,38 @@ final class OnboardingModel {
 }
 
 enum UsagePreset {
-    static let values = [6, 1, 3, 2, 4, 5]
+    // Most accurate and most battery first, coarsest and most frugal last.
+    static let values = [5, 1, 4, 6, 3, 2]
     static func name(_ value: Int) -> String {
         switch value {
-        case 6: return "Everyday Detailed"
-        case 1: return "High Resolution"
-        case 2: return "Low Power"
-        case 3: return "Balanced"
-        case 4: return "Walking / Running"
         case 5: return "Driving"
+        case 1: return "High Resolution"
+        case 4: return "Walking / Running"
+        case 6: return "Everyday Detailed"
+        case 3: return "Balanced"
+        case 2: return "Low Power"
         default: return "Custom"
         }
     }
     static func description(_ value: Int) -> String {
         switch value {
-        case 6: return "Detailed tracks without the location arrow. Ignores points within 10 m or 5 s of the last, so standing still stays quiet. Visits off."
-        case 1: return "Detailed routes: Standard, Best accuracy, no automatic pausing."
-        case 2: return "Coarse history: significant changes controlled by iOS."
-        case 3: return "Everyday history: Both, 100 m accuracy, stop within 50 m after 3 minutes."
-        case 4: return "Walking or running: Standard, Best accuracy, Fitness activity."
-        case 5: return "Detailed driving: Standard, Navigation accuracy, Automotive activity."
+        case 5: return "Navigation accuracy and Automotive activity, no automatic pausing. Most detail; can use the most power."
+        case 1: return "Best accuracy, every fix, no automatic pausing. Detailed routes at high battery use."
+        case 4: return "High Resolution with the Fitness activity hint, for outdoor exercise."
+        case 6: return "Best accuracy without the location arrow. Skips points within 10 m or 5 s of the last."
+        case 3: return "100 m accuracy. Stops standard updates after 3 minutes within 50 m."
+        case 2: return "Significant changes only, after moves of about 500 m. Coarse history, least power."
         default: return "Custom · Your current combination of settings."
         }
     }
     static func setupDescription(_ value: Int) -> String {
         switch value {
-        case 6: return "Detailed tracks, quiet when still"
+        case 5: return "Navigation accuracy for driving"
         case 1: return "Every GPS point, no automatic pausing"
+        case 4: return "Detailed routes for outdoor exercise"
+        case 6: return "Detailed tracks, quiet when still"
         case 3: return "Everyday history, stops when still"
         case 2: return "Coarse history, lower battery use"
-        case 4: return "Detailed routes for outdoor exercise"
-        case 5: return "Navigation accuracy for driving"
         default: return "Your current settings"
         }
     }

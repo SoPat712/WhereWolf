@@ -38,7 +38,8 @@ struct WifiPlace: Identifiable, Equatable {
         .init(id: "mappin", label: "Pin"),
         .init(id: "wifi", label: "Wi-Fi")
     ]
-    static let colors = ["blue", "green", "orange", "red", "purple", "pink", "teal", "gray"]
+    // Spectrum order, gray last.
+    static let colors = ["red", "orange", "green", "teal", "blue", "purple", "pink", "gray"]
 
     var id: String
     var name: String
