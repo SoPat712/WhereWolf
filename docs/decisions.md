@@ -213,6 +213,24 @@ This log lists the decisions agents made on their own while working on WhereWolf
 - **Decided:** a stop's tint widens with its length, from its own width at 5 minutes to 22 points from an hour, but only halfway toward a neighboring stop, and a stop squeezed under a point by its neighbors is not drawn. A fixed 22-point minimum turned the whole-history view into a green stripe of short stops. Scrolling and snapping use the stop's real position.
 - **Undo:** `git revert 3b13ead`.
 
+## 2026-11-08: ruler glass no longer reacts to touches (5fa7c8e)
+
+- **Asked for:** menu items that respond ("can't press the buttons").
+- **Decided:** the history ruler's glass panel is plain glass rather than interactive glass. Interactive glass tracks touches across the window and took presses of a third of a second or more from scale menu items drawn over it. The panel no longer flexes under a finger.
+- **Undo:** `git revert 5fa7c8e`.
+
+## 2026-11-08: trips rebuilt from history (463262e)
+
+- **Asked for:** CarPlay trips in Recent Trips.
+- **Decided:** list every retained trip from the trip tags on its history fixes when no summary was saved, with distance across its fixes and top speed and climb from the trip stats accumulator. Saved summaries win. The cause of the missing summaries is still unknown.
+- **Undo:** `git revert 463262e`.
+
+## 2026-11-08: See All trips (4ecb458)
+
+- **Asked for:** a See All that opens a modal.
+- **Decided:** See All appears beside Recent Trips only when more trips exist than the five shown, and opens a sheet grouped by day in Go To's style.
+- **Undo:** `git revert 4ecb458`.
+
 ## Deferred for the owner
 
 - **Watch complication for Today:** it needs a new watch widget extension and bundle identifier, which is an Apple developer account change.
