@@ -963,6 +963,26 @@ static int denyCommit(void *context, int action, const char *first, const char *
         XCTAssertEqual(self.count, before + 1, @"Elsewhere a fix beyond Max Saved-Point Error is still dropped");
     }
 }
+- (void)testDiscardPointsWithoutGPSKeepsWifiPlacePoints {
+    TestLocationHealthManager *manager = [self healthManager];
+    manager.wifiInfo = @{@"SSID": @"Home"};
+    manager.discardPointsWithinDistance = -1; manager.discardPointsWithinSeconds = 0;
+    manager.discardPointsOutsideAccuracy = -1;
+    manager.discardPointsWithoutGPS = YES;
+    [manager startAllUpdates];
+    [manager replaceWifiPlaces:@[[self wifiPlace:@"Home" latitude:45.5]]];
+    NSUInteger before = self.count;
+    // Indoors iOS often locates by Wi-Fi alone: no altitude and no speed.
+    CLLocation *wifiOnly = [[CLLocation alloc] initWithCoordinate:CLLocationCoordinate2DMake(45.5004, -122.67) altitude:0
+        horizontalAccuracy:40 verticalAccuracy:-1 course:-1 speed:-1 timestamp:[NSDate dateWithTimeIntervalSinceNow:-2]];
+    [manager processLocations:@[wifiOnly]];
+    XCTAssertEqual(self.count, before + 1, @"On the place's network its point saves even from a fix without GPS");
+    manager.wifiInfo = @{@"SSID": @"Other"};
+    CLLocation *elsewhere = [[CLLocation alloc] initWithCoordinate:CLLocationCoordinate2DMake(45.55, -122.67) altitude:0
+        horizontalAccuracy:40 verticalAccuracy:-1 course:-1 speed:-1 timestamp:[NSDate dateWithTimeIntervalSinceNow:-1]];
+    [manager processLocations:@[elsewhere]];
+    XCTAssertEqual(self.count, before + 1, @"Elsewhere a fix without GPS is still dropped");
+}
 - (void)testWifiPlaceNothingDropsOnlyInsideFixesWithoutChangingAcceptedState {
     TestLocationHealthManager *manager = [self healthManager];
     manager.wifiInfo = @{@"SSID": @"Home"};

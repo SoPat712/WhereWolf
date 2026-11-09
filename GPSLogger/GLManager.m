@@ -3780,7 +3780,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
         BOOL stationaryHeartbeat = stationaryFilter && self.inStationaryStop && self.lastStationaryPointDate
             && [rawLocation.timestamp timeIntervalSinceDate:self.lastStationaryPointDate] >= 3600;
         if(stationaryFilter && self.inStationaryStop && !stationaryHeartbeat) { GLCountLocationRejection(rejected, @"stationary"); continue; }
-        if(self.discardPointsWithoutGPSCurrentValue && rawLocation.verticalAccuracy < 0 && rawLocation.speed < 0) { GLCountLocationRejection(rejected, @"gps"); continue; }
+        if(!placePoint && self.discardPointsWithoutGPSCurrentValue && rawLocation.verticalAccuracy < 0 && rawLocation.speed < 0) { GLCountLocationRejection(rejected, @"gps"); continue; }
         if(!placePoint && !(stationaryPoint && !self.inStationaryStop) && !stationaryHeartbeat &&
            ![GLPointSelection acceptLocation:loc previous:lastLocationSeen anyLimit:[options[@"any_threshold"] boolValue]
             distance:self.discardPointsWithinDistanceCurrentValue seconds:self.discardPointsWithinSecondsCurrentValue
