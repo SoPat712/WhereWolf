@@ -241,7 +241,10 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   opens a sheet of every trip grouped by day in Go To's style. A row opens the trip on the Tracker, after
   history loads if needed: the ruler starts at the trip, the replay overview fits only the trip's fixes, and
   the model's `highlightedTrip` span draws red until returning to Live, as a faint band on the ruler under
-  stop tints and as a foreground trail layer 4 points wide above the blue, below the marker. A row is
+  stop tints and as a foreground trail layer 4 points wide above the blue, below the marker. Opening one
+  slides the drawer's controls over to Tracker (the tab highlight slides with them) instead of the usual
+  fade, flies the map out and in along `MapFlight` to fit the trip, and only then draws the red from the
+  trip's start to its end over 1.2 seconds. Reduce Motion fades the controls and jumps. A row is
   disabled once the trip has left local history.
   `TripTabPolicy` selects Trip when the scene becomes active during a trip it hasn't shown yet,
   once per trip start, never while active or with setup presented.

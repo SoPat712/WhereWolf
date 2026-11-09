@@ -16,6 +16,8 @@ struct WhereWolfShell: UIViewControllerRepresentable {
     var activation: Int
     var controlsID: Int
     var contentInteracting: Bool
+    // Changes when a trip opens from the Trip tab, so that switch slides instead of fading.
+    var slideActivation = 0
     let map: AnyView
     let controls: AnyView
     let onSelect: (Int) -> Void
@@ -43,7 +45,8 @@ struct WhereWolfShell: UIViewControllerRepresentable {
         controller.onSelect = onSelect
         controller.update(map: map, controls: controls, settings: settings,
                           selection: selection, activation: activation,
-                          controlsID: controlsID, contentInteracting: contentInteracting)
+                          controlsID: controlsID, contentInteracting: contentInteracting,
+                          slideActivation: slideActivation)
     }
 }
 
@@ -63,6 +66,7 @@ final class WhereWolfShellController: UITabBarController, UITabBarControllerDele
     private var setupPresented = false
     private var currentSelection = -1
     private var renderedSelection: Int
+    private var appliedSlideActivation = 0
     private var currentActivation = 0
     private var pendingNativeSelection: (index: Int, activation: Int)?
     private var selectingNative = false
@@ -188,7 +192,8 @@ final class WhereWolfShellController: UITabBarController, UITabBarControllerDele
     }
 
     func update(map: AnyView, controls: AnyView, settings: AnyView,
-                selection: Int, activation: Int, controlsID: Int, contentInteracting: Bool) {
+                selection: Int, activation: Int, controlsID: Int, contentInteracting: Bool,
+                slideActivation: Int = 0) {
         // Native selection moves UIKit before SwiftUI publishes the matching selection.
         guard activation >= currentActivation else { return }
         if selectingNative, selection != currentSelection { return }
@@ -198,16 +203,20 @@ final class WhereWolfShellController: UITabBarController, UITabBarControllerDele
             pendingNativeSelection = nil
         }
         let previousRenderedSelection = renderedSelection
+        let slides = slideActivation != appliedSlideActivation
+        appliedSlideActivation = slideActivation
         mapHost.rootView = map
         if selection != renderedSelection || controlsID != currentControlsID {
             renderedSelection = selection
             currentControlsID = controlsID
             settingsHost.rootView = settings
-            drawerTabs = DrawerTabStrip(selection: selection, onSelect: onSelect)
+            // Settings hands its bar to the drawer with its own fade.
+            let crossfade = selection < 2 && selection != previousRenderedSelection
+                && (0..<2).contains(previousRenderedSelection)
+            let side: CGFloat? = crossfade && slides ? (selection < previousRenderedSelection ? -1 : 1) : nil
+            drawerTabs = DrawerTabStrip(selection: selection, animatesSelection: side != nil, onSelect: onSelect)
             if selection < 2 {
-                // Settings hands its bar to the drawer with its own fade.
-                let crossfade = selection != previousRenderedSelection && (0..<2).contains(previousRenderedSelection)
-                panel.update(controls: controls, tabs: AnyView(drawerTabs.tint(.blue)), crossfade: crossfade)
+                panel.update(controls: controls, tabs: AnyView(drawerTabs.tint(.blue)), crossfade: crossfade, slide: side)
             } else {
                 panel.updateTabs(AnyView(drawerTabs.tint(.blue)))
             }
@@ -498,7 +507,9 @@ struct DrawerTab: Identifiable {
 
 struct DrawerTabStrip: View {
     var selection: Int
+    var animatesSelection = false
     var onSelect: (Int) -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var highlight
     @State private var width: CGFloat = 0
     @GestureState private var pressed: Int?
@@ -555,6 +566,7 @@ struct DrawerTabStrip: View {
         }
         .padding(.vertical, Self.contentInset)
         .padding(.horizontal, Self.sideInset)
+        .animation(animatesSelection && !reduceMotion ? .snappy(duration: 0.38) : nil, value: selection)
         .contentShape(Rectangle())
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         // One gesture handles taps and sideways scrubbing, like the system tab bar: the highlight

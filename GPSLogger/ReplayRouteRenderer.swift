@@ -452,7 +452,7 @@ final class ReplayTrailLayer: CAShapeLayer {
         lineCap = .butt
         lineJoin = .round
         actions = ["path": NSNull(), "position": NSNull(), "bounds": NSNull(),
-                   "strokeColor": NSNull(), "contentsScale": NSNull()]
+                   "strokeColor": NSNull(), "contentsScale": NSNull(), "strokeEnd": NSNull()]
     }
 
     convenience init(future: Bool) {
@@ -480,6 +480,24 @@ final class ReplayTrailLayer: CAShapeLayer {
         coordinate = nil
         path = nil
         removeFromSuperlayer()
+    }
+
+    // An opened trip draws itself from its start to its end once the camera arrives.
+    func conceal() {
+        removeAnimation(forKey: "reveal")
+        strokeEnd = 0
+    }
+
+    func reveal(animated: Bool) {
+        removeAnimation(forKey: "reveal")
+        strokeEnd = 1
+        guard animated else { return }
+        let animation = CABasicAnimation(keyPath: "strokeEnd")
+        animation.fromValue = 0
+        animation.toValue = 1
+        animation.duration = 1.2
+        animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        add(animation, forKey: "reveal")
     }
 
     func update(route: MKPolyline, position: Double, coordinate: CLLocationCoordinate2D,

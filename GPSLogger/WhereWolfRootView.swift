@@ -25,6 +25,7 @@ struct WhereWolfRootView: View {
     @State private var tripRevision: Int?
     @State private var tripTab = TripTabPolicy()
     @State private var pendingTrip: ClosedRange<Date>?
+    @State private var tripSlide = 0
     @State private var history = HistoryPlaybackModel()
     @State private var bridge = GLManagerBridge.shared
     @State private var onboarding = OnboardingModel.live()
@@ -79,6 +80,7 @@ struct WhereWolfRootView: View {
                 activation: tabActivation,
                 controlsID: mapTab,
                 contentInteracting: selection == 0 && history.isRulerInteracting,
+                slideActivation: tripSlide,
                 map: AnyView(mapPage(viewport: geometry.frame(in: .global).inset(by: UIEdgeInsets(
                                         top: -geometry.safeAreaInsets.top, left: 0,
                                         bottom: -geometry.safeAreaInsets.bottom, right: 0)),
@@ -406,6 +408,7 @@ struct WhereWolfRootView: View {
 
     // A recent trip opens on the Tracker ruler, once history has loaded there.
     private func showTrip(_ trip: ClosedRange<Date>) {
+        tripSlide += 1
         selectTab(0)
         if history.landmarks.timestamps.isEmpty { pendingTrip = trip } else { openTrip(trip) }
     }

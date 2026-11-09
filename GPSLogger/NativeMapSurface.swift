@@ -456,7 +456,7 @@ struct NativeMapSurface: UIViewRepresentable {
         private enum Request: Equatable {
             case camera(MapCamera)
             case region(Double, Double, Double, Double)
-            case overview(ObjectIdentifier)
+            case overview(ObjectIdentifier, ClosedRange<Int>?)
             case follow
             case automatic
         }
@@ -482,6 +482,7 @@ struct NativeMapSurface: UIViewRepresentable {
         private let replayFutureLayer = ReplayTrailLayer(future: true)
         private let replayHighlightLayer = ReplayTrailLayer(highlight: true)
         private var highlightBounds: (route: ObjectIdentifier, range: ClosedRange<Int>, bounds: CGRect)?
+        private var revealedHighlight: ClosedRange<Int>?
         private let replayAccuracyLayer = ReplayAccuracyLayer()
         private var replayCoverageExpiry: DispatchWorkItem?
         private var replayCoverageDeadline: TimeInterval?
@@ -811,6 +812,14 @@ struct NativeMapSurface: UIViewRepresentable {
                         container.layer.insertSublayer(replayFutureLayer, below: replayTrailLayer)
                     }
                     if let span = highlightCoverage(presentation.fullRoute) {
+                        // A newly opened trip stays hidden while the camera flies, then draws in.
+                        if revealedHighlight != span.start...span.end {
+                            if cameraActionAnimating { replayHighlightLayer.conceal() }
+                            else {
+                                revealedHighlight = span.start...span.end
+                                replayHighlightLayer.reveal(animated: !UIAccessibility.isReduceMotionEnabled)
+                            }
+                        }
                         replayHighlightLayer.update(route: presentation.fullRoute, position: parent.replayPosition,
                             coordinate: selectedPoint.coordinate, coverage: [span], projection: screen, on: map, below: view)
                         if let layers = container.layer.sublayers, let highlight = layers.firstIndex(of: replayHighlightLayer),
@@ -819,6 +828,7 @@ struct NativeMapSurface: UIViewRepresentable {
                         }
                     } else {
                         replayHighlightLayer.hide()
+                        revealedHighlight = nil
                     }
                     scheduleReplayCoverageExpiry()
                 } else {
@@ -906,7 +916,7 @@ struct NativeMapSurface: UIViewRepresentable {
         private func applyPosition(_ map: MKMapView, animated: Bool, force: Bool = false) {
             let next: Request
             if parent.replayOverview, let route = parent.replayRoute {
-                next = .overview(ObjectIdentifier(route))
+                next = .overview(ObjectIdentifier(route), parent.replayHighlight)
             } else if parent.replayFollowing, parent.replayRoute != nil, let coordinate = parent.selected {
                 next = .camera(MapCamera(centerCoordinate: coordinate,
                     distance: rulerDistance ?? parent.replayFollowDistance ?? parent.position.camera?.distance ?? 2_000,
@@ -935,7 +945,10 @@ struct NativeMapSurface: UIViewRepresentable {
                 default: destination = nil
                 }
                 if let destination {
-                    startCameraTransition(to: destination, on: map)
+                    // An opened trip can be far away, so the map flies out and back in to show it.
+                    var trip = false
+                    if case .overview(_, let highlight) = next { trip = highlight != nil }
+                    startCameraTransition(to: destination, on: map, flight: trip)
                     return
                 }
             }
@@ -1410,6 +1423,7 @@ struct NativeMapSurface: UIViewRepresentable {
                 } else if !overview && !replayDetached {
                     anchorCoordinate = destination.centerCoordinate
                 }
+                if revealedHighlight != parent.replayHighlight { alignMarkers(on: map) }
             }
         }
 

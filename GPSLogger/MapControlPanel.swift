@@ -217,9 +217,10 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
         scheduleMeasurement()
     }
 
-    func update(controls: AnyView, tabs: AnyView, crossfade: Bool = false) {
+    // `slide` moves the new controls in from the left (-1) or right (1) instead of fading them.
+    func update(controls: AnyView, tabs: AnyView, crossfade: Bool = false, slide: CGFloat? = nil) {
         loadViewIfNeeded()
-        let outgoing = controlsSnapshot(crossfade: crossfade)
+        let outgoing = controlsSnapshot(crossfade: crossfade || slide != nil)
         if barGeometry == nil { _ = freezePresentationGeometry() }
         isDragging = false
         contentInteracting = false
@@ -229,7 +230,10 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
         controlsHost.view.setNeedsLayout()
         scheduleMeasurement()
         controlsHost.view.layoutIfNeeded()
-        if let outgoing { crossfadeControls(from: outgoing) }
+        if let outgoing {
+            if let slide, !UIAccessibility.isReduceMotionEnabled { slideControls(from: outgoing, side: slide) }
+            else { crossfadeControls(from: outgoing) }
+        }
     }
 
     func updateTabs(_ tabs: AnyView) { tabsHost.rootView = tabs }
@@ -324,10 +328,31 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
         }
     }
 
+    // Opening a trip slides the Trip controls away and the Tracker's in, like turning to the next tab.
+    // Only the incoming layer's presentation moves, so the drawer's layout of the controls is untouched.
+    private func slideControls(from outgoing: UIView, side: CGFloat) {
+        scrollView.addSubview(outgoing)
+        outgoingControls = outgoing
+        let width = scrollView.bounds.width
+        let incoming = CABasicAnimation(keyPath: "transform.translation.x")
+        incoming.fromValue = side * width
+        incoming.toValue = 0
+        incoming.duration = 0.38
+        incoming.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.25, 1)
+        controlsHost.view.layer.add(incoming, forKey: "slide")
+        UIView.animate(withDuration: 0.38, delay: 0, options: [.curveEaseInOut]) {
+            outgoing.transform = CGAffineTransform(translationX: -side * width, y: 0)
+        } completion: { [weak self, weak outgoing] _ in
+            outgoing?.removeFromSuperview()
+            if let self, outgoingControls === outgoing { outgoingControls = nil }
+        }
+    }
+
     private func endControlsCrossfade() {
         outgoingControls?.removeFromSuperview()
         outgoingControls = nil
         controlsHost.view.layer.removeAnimation(forKey: "opacity")
+        controlsHost.view.layer.removeAnimation(forKey: "slide")
         controlsHost.view.alpha = 1
     }
 

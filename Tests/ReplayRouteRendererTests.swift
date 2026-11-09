@@ -260,6 +260,19 @@ final class ReplayRouteRendererTests: XCTestCase {
         XCTAssertEqual(red.lineWidth, ReplayRouteStyle.highlightWidth)
         XCTAssertEqual(red.strokeColor, UIColor.systemRed.resolvedColor(with: map.traitCollection).cgColor)
         XCTAssertNil(red.lineDashPattern)
+
+        // The trip stays hidden while the camera flies there, then draws from its start to its end.
+        red.conceal()
+        XCTAssertEqual(red.strokeEnd, 0)
+        XCTAssertNil(red.animation(forKey: "reveal"))
+        red.reveal(animated: true)
+        XCTAssertEqual(red.strokeEnd, 1)
+        let reveal = try XCTUnwrap(red.animation(forKey: "reveal") as? CABasicAnimation)
+        XCTAssertEqual(reveal.keyPath, "strokeEnd")
+        XCTAssertEqual(reveal.fromValue as? Double, 0)
+        red.reveal(animated: false)
+        XCTAssertNil(red.animation(forKey: "reveal"))
+        XCTAssertEqual(red.strokeEnd, 1)
     }
 
     func testProjectionMatchesMapKitWithinHalfAPointAcrossZoomHeadingPitchAndDateline() {
