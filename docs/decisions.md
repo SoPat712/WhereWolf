@@ -255,6 +255,12 @@ This log lists the decisions agents made on their own while working on WhereWolf
 - **Decided:** the drawer's controls and tab highlight slide over to Tracker (0.38 s), the map flies along `MapFlight` to fit the trip, and the red draws from the trip's start to its end over 1.2 s after the camera arrives. Reduce Motion fades and jumps.
 - **Undo:** `git revert 767a8cd`.
 
+## 2026-11-09: Settings reorganization (ae182f1)
+
+- **Asked for:** the owner approved the proposed Settings tree.
+- **Decided:** the root reads Setup Guide; Tracking; Destination and Permissions; Recording (Tracking & Accuracy, Trips, Wi-Fi Places); Sending; Background (Live Activities, Background Reliability); Your Data (History & Replay, Apple Health, Backup & Sync); Notifications; Troubleshooting (Coverage, Location Log, Diagnostics); Support. Destination is the server screen plus Save Locations To and File Organization, and its row shows Server, iCloud Drive or Not Set. Permissions gathers the location, Precise Location, Motion & Fitness, notification and Health request rows that were on the root, in Motion & Adaptive and in Coverage. Tracking & Accuracy merges Tracking & Precision, Stationary Pause and Point Selection & Quality, with an Advanced page for the engine, motion assist and adaptive tracking; Background's duplicate Active Engine is gone. Trips shows Max Saved-Point Error and Resume After Moving read-only (Tracking & Accuracy now shows Resume After Moving while either pauses automatically, so it stays editable) and links to Live Activities for its activity switch. Retry Background Helpers restarts more than activities, so it stays in Background Reliability as Restart Background Features. Integrations & Exports and Coverage's keep-alive section are gone; Location Updates & Recovery became Location Log, its log rows renamed to match. Rows, onboarding and help now share the approved names, plus Island Appearance and Save When Any Limit Is Met. Onboarding's server sheet keeps its GeoJSON/OwnTracks Format picker, a server format choice rather than Logging Mode. Long footers moved into regrouped help topics, including new Destination, Saved Points, Live Activities, History & Replay and Apple Health topics. No defaults key, binding or side effect changed.
+- **Undo:** `git revert ae182f1` and the docs commit after it.
+
 ## Deferred for the owner
 
 - **Watch complication for Today:** it needs a new watch widget extension and bundle identifier, which is an Apple developer account change.

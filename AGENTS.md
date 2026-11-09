@@ -363,12 +363,13 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   freed replay camera; with every point it keeps the replay zoom. Re-entering history uses
   replay's own D0. Zoom buttons keep following until the next refit takes back the zoom.
   The Trip map ignores the ruler. Respect Reduce Motion.
-  Trip Settings uses `ExpandingSheetBackgroundView`: glass beneath a grouped
+  The Trip tab's Trip Settings sheet uses `ExpandingSheetBackgroundView`: glass beneath a grouped
   Settings background that eases with the sheet's visible height. Row cards use
   `settingsRowBackground()`: in the glass sheet they ease from a translucent fill to the
   secondary grouped color on the background's own UIKit frames, without SwiftUI updates. `SettingsFormStyle` clears Form and navigation
   backgrounds only inside the glass sheet; regular Settings navigation retains
-  its native grouped Form. Stop frame updates when settled, detached or
+  its native grouped Form. Screens the sheet pushes (Trip Modes, Live Activities) use both
+  modifiers. Stop frame updates when settled, detached or
   backgrounded. Respect Reduce Transparency and dark appearance.
   The speed readout slides directly between readings, including during replay.
   Higher speeds enter from above; lower speeds enter from below. Finish each
@@ -381,6 +382,21 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   storefronts show his credit and GitHub link. `TipDonation` validates amounts
   and builds the three payment URLs. The app has no main storyboard; the launch
   storyboard remains.
+- **Settings** is a native Form root: Setup Guide; Tracking (on/off, Usage Preset); Destination
+  (`EndpointView`: Save Locations To, iCloud file organization, server fields and Test Connection,
+  with a root value of Server, iCloud Drive or Not Set) and Permissions (location, Precise Location,
+  Motion & Fitness, notification and Health request status, Open iOS Settings); Recording (Tracking
+  & Accuracy, whose Advanced page holds the engine, motion assist and adaptive tracking; Trips, the
+  Trip tab sheet's `TripSettingsView`; Wi-Fi Places); Sending (What to Send, When to Send, Queue);
+  Background (Live Activities; Background Reliability); Your Data (History & Replay, Apple Health
+  while HealthKit is available or export is on, Backup & Sync); Notifications; Troubleshooting
+  (Coverage, Location Log, Diagnostics) and Support. Each setting has one editable row: Trips shows
+  the shared Max Saved-Point Error and Resume After Moving read-only, and Tracking & Accuracy shows
+  Resume After Moving while normal or trip pausing is on; Trips links to Live Activities for its
+  activity switch. `SettingsDestination` routes `.stationary` to Tracking & Accuracy and `.server`
+  to Destination. Section ⓘ topics live in `SettingsHelpView`; footers stay about one line and
+  longer explanations belong in the topic. Keep the `wherewolf.settings.setup`, `.backup` and
+  `.coverage` rows on the root for the UI audits.
 - **`GLManagerBridge`** (`@Observable`) is the only bridge: views read live
   status from it and write settings through it so GLManager side effects run.
 - **Settings portability**: Backup & Sync uses native Forms. `SettingsSchema` is the
@@ -394,8 +410,8 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   token and headers never enter ubiquitous key-value storage; sync them through a
   synchronizable Keychain item. URL/token stay in a local Keychain item when sync is
   off; migrate old defaults only after a successful save. Device ID is backup-only.
-- **Connection test**: Server and the guide's glass Destination sheet share one native
-  section. Save edits through the bridge, then use a valid fix at most 30 seconds old
+- **Connection test**: Settings → Destination and the guide's glass server sheet share one
+  native section. Save edits through the bridge, then use a valid fix at most 30 seconds old
   or a separate one-shot location manager with a 15-second deadline. GLManager reuses
   the upload payload builders, URL templates, headers and authentication; GeoJSON
   marks `test: true`, OwnTracks stays plain. Send directly with a 15-second timeout,
@@ -412,6 +428,8 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   preserve one state at the cutoff. Keep all location acquisition and storage active
   without a scene. Status reads use an already-created location manager and never
   initialize acquisition. Read timestamps without loading route geometry. Nothing uploads.
+  Coverage links to no settings; a gap's detail names Background Reliability, Permissions and
+  the Saved Points filters in plain text.
 - **Route replay**: `RecentLocationHistory` archives each accepted upload record
   in a separate SQLite store, with a validated 24–168 hour retention window that
   defaults to 24 hours. `GLManager` calls it only after a successful queue commit;
@@ -667,14 +685,15 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   relaunch and ignore pre-pause callbacks for resumption.
   Terminal live-stream errors latch after three retries and fall back to
   `CLLocationManager` once; cancellation and replaced tasks must not trigger fallback.
-  Independent `background_recovery` defaults off and retains significant-change
+  Independent `background_recovery` (Relaunch Monitoring) defaults off and retains significant-change
   monitoring alongside Standard tracking and trips with Always access and device
   support. Both already monitors significant changes. Never override Stop,
   radius pause or event-only choices; do not treat coarse events as a fixed wake
-  schedule. Keep the Background screen's system refresh status and info current.
+  schedule. Keep Background Reliability's system refresh status and info current.
 - **Location update health**: `GLLocationHealthPolicy` separates callback silence,
   outdated readings and saved-point rejection using monotonic elapsed time.
-  `automatic_location_retry` and `location_health_log` default off independently;
+  `automatic_location_retry` (Retry Stalled Updates, in Background Reliability) and
+  `location_health_log` (Location Log) default off independently;
   `location_retry_after` is validated to 60–1,800 seconds, default 120. Allow at most
   three restarts per app session without a fresh raw reading, with increasing
   delays. Keep the terminal live-stream failure latch; do not restart on filter
@@ -699,7 +718,7 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   blocked. It keeps the flush intent and resumes on the first Wi-Fi path. An unknown path
   waits. Send Now, intents, widgets, controls, the Live Activity and the watch always send,
   and a user's drain continues through every batch. Its monitor runs only while it is on.
-  Optional iOS 18 `CLServiceSession` retains already-Always authorization intent;
+  Optional iOS 18 `CLServiceSession` (Keep Always Access Active) retains already-Always authorization intent;
   invalidate it on Stop, option-off or lost authorization.
 - **Background helpers**: `WhereWolfBackgroundRuntime` controls the ActivityKit
   extension and opt-in `SilentAudioSession`. Live Activity staleness mirrors the
@@ -709,7 +728,7 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   the default appearance for new installs; saved choices remain. `LiveActivityLockScreenCard` defaults off. Blank with the card off uses
   `IslandOnlyTrackingAttributes` in the app target only; never register that type
   in the extension. Blank with the card on uses the widget-backed activity with
-  empty Island views. Minimal and Status always include the card; Settings shows
+  empty Island views. Minimal and Status always include the card; Live Activities shows
   its toggle on and disabled, and hides it when tracking activities are off.
   The shared `TrackingLockScreenCard` shows status, last fix/send, queue count and
   Send Now. A trip adds mode, distance, live duration and End Trip; omit the trip
@@ -733,7 +752,7 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   background restore attempt per activity family, then waits for
   foreground or explicit Retry after a refusal. Hiding is not a failure. Preserve
   Stop, pauses, trip state and the reminder deadline.
-  Settings and the guide show Hide While Audio Plays only while the tracking or trip Live
+  Live Activities and the guide show Hide While Audio Plays only while the tracking or trip Live
   Activity is enabled. Ask to Reopen When Audio Stops defaults off and appears under
   Hide While Audio Plays. After confirmed audio ending, a refused or deferred
   restore schedules one authorized passive (silent) local prompt five minutes later,
@@ -812,8 +831,8 @@ distribution keep the defaults: Release compiles the TestFlight diagnostics coll
 (`WHEREWOLF_TESTFLIGHT_DIAGNOSTICS`), and every configuration compiles silent audio
 (`WHEREWOLF_SILENT_AUDIO`) with the `audio` background mode. Archive App Store builds with
 `WHEREWOLF_APP_STORE=YES`: it swaps both compilation conditions for `WHEREWOLF_APP_STORE`, and the
-preprocessed `GPSLogger/Info.plist` drops `audio` from `UIBackgroundModes`. Silent audio's settings,
-setup row, Coverage row and help disappear and its saved choice reads as off;
+preprocessed `GPSLogger/Info.plist` drops `audio` from `UIBackgroundModes`. Silent audio's Background
+Reliability section, setup row and help disappear and its saved choice reads as off;
 `WhereWolfBackgroundRuntime.silentAudioAvailable` gates them. The source Info.plist holds `#if` lines,
 so read the built Info.plist rather than the source with plist tools. TestFlight reports stay in the
 app container, excluded from backups, until the user explicitly shares one.

@@ -78,7 +78,7 @@ syncing on this iPhone; already synchronized values remain in iCloud. The instal
 build needs the iCloud key-value entitlement. Credential delivery depends on iCloud
 Keychain and is checked when the app becomes active.
 
-**Test Connection**, in Settings → Server and the setup guide's server sheet, saves
+**Test Connection**, in Settings → Destination and the setup guide's server sheet, saves
 your edits and immediately sends one current location as a real point. It uses a
 fix from the last 30 seconds or requests one with a 15-second timeout. GeoJSON adds
 `test: true`; OwnTracks uses its usual plain location object. The test uses your
@@ -86,14 +86,15 @@ headers and token, works on cellular even with Send Only on Wi-Fi enabled, and
 leaves the queue, history, trips and send statistics unchanged. Its inline result
 shows the HTTP status and acknowledgement or a specific fix hint.
 
-Settings → **Coverage**, beside Local History & Replay, shows the last 24 hours or
+Settings → Troubleshooting → **Coverage** shows the last 24 hours or
 7 days, bounded by history retention. Recorded, paused and gap spans distinguish
 intentional pauses from more than 10 minutes without an accepted fix while tracking
 was expected. Tap a gap for its times and duration. Reception and filters can also
 cause gaps; a gap alone does not prove iOS terminated the app. The screen includes
-hourly point counts, send totals and the last error, queued points, and
-links to keep-alive settings. Earlier sessions retain error categories. Its protected local state log starts with this version;
-earlier periods are unknown. It keeps at most 2,000 transitions and 20,000 send
+hourly point counts, send totals and the last error, and queued points; a gap's
+details suggest checking Background Reliability, Permissions and the Saved Points
+filters. Earlier sessions retain error categories. Time before its protected local
+state log began is unknown. It keeps at most 2,000 transitions and 20,000 send
 attempts within the history window, contains no coordinates and never uploads.
 
 ## Screenshots
@@ -244,7 +245,7 @@ are limited to one per five minutes. Failed queue commits do not advance the
 accepted-fix baseline, and failed trip-summary commits leave the trip available
 to retry. Trip distance updates incrementally from committed trip points.
 
-Settings → Tracking & Precision includes **Use new location engine**, off by
+Settings → Tracking & Accuracy → Advanced includes **Use new location engine**, off by
 default. It selects `CLLocationUpdate.liveUpdates` for continuous acquisition,
 using the selected activity type. iOS may pause GPS when stationary and resume
 it automatically; the stream cannot enforce numeric desired accuracy or a
@@ -254,7 +255,7 @@ updates are unavailable and is never selected by a preset. Turning it off
 preserves the existing engine selection, including Custom Best with automatic
 pause. Tracker shows engine health and location authorization. A failed live
 stream gets at most three retries per activation, then switches to
-`CLLocationManager`. The failure stays latched until an explicit start, Retry,
+`CLLocationManager`. The failure stays latched until an explicit start, Restart Background Features,
 engine change, refresh, or restored location authorization. Returning to the
 foreground does not start an endless retry cycle.
 
@@ -277,19 +278,19 @@ These controls are independent of Usage Presets. They default off and retain
 their values when a preset changes. Each section has an info button explaining
 its behavior and limits.
 
-- **Motion & Adaptive Tracking** provides an explicit Motion & Fitness
-  permission button, motion-assisted recovery, a separate choice to resume a
-  radius pause on movement, and configurable confidence. Motion describes
+- **Tracking & Accuracy → Advanced → Motion Assist** provides motion-assisted
+  recovery, a separate choice to resume a radius pause on movement, and
+  configurable confidence. Allow Motion & Fitness in Settings → Permissions. Motion describes
   activity; it does not improve GPS accuracy or wake a suspended app by itself.
   Recorded GeoJSON motion labels use the activity at the fix's timestamp.
-- **Adaptive Tracking** can lower requested accuracy after a confirmed stop.
+- **Advanced → Adaptive Tracking** can lower requested accuracy after a confirmed stop.
   Dwell, cluster radius, confirmation accuracy, idle accuracy and exit radius
   are configurable. Motion confirmation is required by default; without it,
   tracking stays detailed. You can choose GPS-only confirmation instead. Coarse
   updates continue and an exit region with Always access helps restore detailed
   tracking, but departure detection can be delayed. Trips require a separate
   opt-in. While moving, the saved accuracy and engine settings apply.
-- **Point Selection & Quality → Any threshold** changes saved-point selection
+- **Tracking & Accuracy → Save When Any Limit Is Met** changes saved-point selection
   from distance AND time to distance OR time OR a configurable turn. Only
   enabled thresholds participate. A turn requires a usable course while moving.
   These are recording rules, not guaranteed GPS delivery intervals.
@@ -298,7 +299,7 @@ its behavior and limits.
   nearby fix at least one second later can confirm a relocation. It preserves
   original coordinates and timestamps; flight users can raise the limit or
   leave it off.
-- **Trip Settings → Ask to End Trip When Stopped** sends one notification per
+- **Trips → Ask to End Trip When Stopped** sends one notification per
   stop during a trip: 75 m for 5 minutes, or 10 minutes without Motion & Fitness
   access. Its End Trip action ends the trip, and its Health workout, at the time
   you stopped. Turning it on asks for notification permission; it does not need
@@ -310,27 +311,28 @@ its behavior and limits.
   watch always send. Tracker shows "Waiting for Wi-Fi to send" while points wait.
 - **Sending → Background Uploads** asks iOS for network-connected processing
   time when an eligible queue remains. iOS decides when it runs. **Retry
-  Connectivity Failures** separately retries a network failure when an observed
+  When Back Online** separately retries a network failure when an observed
   connection returns. Both reuse the existing uploader, acknowledgment rules
   and queue. Server Retry-After and authentication blocks remain in force.
-- **Background → Explicit Service Session** retains an iOS 18+ authorization
+- **Background Reliability → Keep Always Access Active** retains an iOS 18+ authorization
   session while continuous tracking is enabled and Always access is already
   granted. It does not request a permission upgrade or guarantee execution.
-- **Background → Background Recovery Monitoring** adds significant-change
+- **Background Reliability → Relaunch Monitoring** adds significant-change
   monitoring alongside Standard tracking and trips. It defaults off and requires
   Always access and device support. This gives iOS another opportunity to relaunch
   WhereWolf after system termination; it cannot promise a wake interval or bypass
   force-quit. The page also shows the system Background App Refresh status.
-- **Background → Location Updates & Recovery** contains two independent,
-  default-off options. **Automatically Retry Location Updates** checks for missing
-  updates or old readings while continuous tracking is expected. The default wait
+- **Background Reliability → Retry Stalled Updates** defaults off and checks for
+  missing updates or old readings while continuous tracking is expected. The default wait
   is two minutes, adjustable from one to thirty minutes. It makes at most three
   attempts per app session without a fresh fix, waiting longer between attempts.
   Fresh locations reset the limit even when point filters reject them. Stop,
   automatic pauses, stationary radius pauses, adaptive power saving and lost
   permission prevent retries. The check cannot wake a suspended app or recover
   points that were never received.
-- **Save Location Health Log**, on that same page, keeps up to 200 events for seven
+- **Troubleshooting → Location Log** shows the current update status, retry count
+  and Retry Location Updates Now. Its **Save Location Log** switch defaults off,
+  independently of retries, and keeps up to 200 events for seven
   days in a protected, backup-excluded local file. Entries describe observed gaps,
   retries and reasons points were skipped. They contain no coordinates, server
   addresses or credentials. Share and clear actions are explicit; turning the log
@@ -349,13 +351,13 @@ The compact drawer stays unchanged. Core Location, storage and uploads continue
 independently of scene visibility.
 
 For a dense mixed-movement history, you can retain your 10 m / 5 s limits and
-choose Any threshold if you want either limit to save a returned fix. Adaptive
+turn on Save When Any Limit Is Met if you want either limit to save a returned fix. Adaptive
 tracking is a separate battery/coverage tradeoff. Measure it on the routes you
 care about before relying on it for prompt departure capture. See
 [policy details and remote keys](docs/tracking-improvements.md#optional-tracking-policies).
 
 Release builds temporarily define `WHEREWOLF_TESTFLIGHT_DIAGNOSTICS`. This
-compiles a local MetricKit collector and Settings → Diagnostics. It retains the
+compiles a local MetricKit collector and Settings → Troubleshooting → Diagnostics. It retains the
 latest 100 JSON reports in Application Support/Diagnostics, excluded from
 backups. Nothing is uploaded automatically; Share exports only the report you
 choose. iOS 17–26 use `MXMetricManager`; iOS 27 uses one retained `MetricManager`.
@@ -372,7 +374,8 @@ OwnTracks HTTP contract and validation results.
 
 ## Background runtime options
 
-Settings → Background adds helpers that follow Start/Stop Tracking:
+Settings → Live Activities and Settings → Background Reliability hold helpers that follow
+Start/Stop Tracking:
 
 - **Tracking Live Activity** defaults to Blank for new installs; saved choices
   remain. Minimal shows a location icon in the Dynamic Island. Status adds the
@@ -388,6 +391,8 @@ Settings → Background adds helpers that follow Start/Stop Tracking:
   update about once a minute; sends, queue drains and trip/status changes update
   promptly. The existing reminder deadline can show **Open WhereWolf** in orange;
   no additional alerts are scheduled. iOS controls Live Activity presentation.
+- **Trip Live Activity**, on the same page and linked from Trips, shows a separate
+  trip card with elapsed time, distance, speed, **Send Now** and **End Trip**.
 - **Hide While Audio Plays** defaults off and needs Always location access.
   It ends tracking and trip Live Activities when two audio checks at least
   15 seconds apart find another app playing audio, freeing the Island for iOS
@@ -407,18 +412,18 @@ Settings → Background adds helpers that follow Start/Stop Tracking:
   five minutes later, without sound or vibration: “Music stopped — Open WhereWolf to bring back its Live Activity.”
   iOS can deliver it while WhereWolf is suspended; tapping it opens the app and
   lets the activity return. The prompt is removed when audio resumes, you open
-  WhereWolf or tap Retry, an activity returns, either switch turns off, Always
+  WhereWolf or tap Restart Background Features, an activity returns, either switch turns off, Always
   access is lost, tracking stops, or no activity remains to restore. It is
   included in optional settings sync and needs existing notification permission. Use its inline Allow
   button to request permission; it never asks from the background. It works
   independently of Notifications and Problems Only and leaves the missed-update
   reminder's deadline unchanged.
-- **Silent Audio (Experimental)** defaults off. It loops digital silence through
+- **Silent Audio**, in Background Reliability, is experimental and defaults off. It loops digital silence through
   the audio playback session and mixes with other audio. Calls can interrupt it.
   While playing, a 30-second health check detects unexpected stops. Recovery is
   limited to three attempts with 2, 4 and 8 second delays; a minute of stable
   playback resets that budget. Calls and audio-service loss suspend recovery.
-  If playback remains paused afterward, use Retry Background Helpers. It uses
+  If playback remains paused afterward, use Restart Background Features. It uses
   no microphone and may increase battery use.
 
 The Live Activity uses the deadline of WhereWolf's existing ten-minute location
@@ -436,7 +441,7 @@ restarts location updates and needs no watch app. It respects Stop and pauses.
 iOS generally does not relaunch an app that was force-quit.
 
 Activities can be dismissed or disabled, and expire after at most eight active
-hours. Open WhereWolf or use Retry Background Helpers to request another. The
+hours. Open WhereWolf or use Restart Background Features to request another. The
 app cannot update an ended activity after it has been killed; iOS controls when
 it renders the warning from the previously supplied deadline.
 
@@ -613,7 +618,7 @@ ruler dragging and coasting, then settles to the final content size. Opening an
 upload record pauses playback; its JSON is formatted only when inspected.
 
 Replay keeps a separate local copy of accepted location records, including points
-removed from the send queue after upload. Settings → Local History & Replay lets
+removed from the send queue after upload. Settings → History & Replay lets
 you choose 24 hours to 7 days, with common-value slider detents and exact hourly
 entry. The default remains 24 hours. The page shows the saved-point count and
 storage used by the archive. Increasing the window keeps future points longer;
@@ -670,27 +675,35 @@ opens Trip Settings in a sheet over the map, and Edit at the end of the modes op
 Trip Modes; tap Done to return. Below Start Trip, Recent Trips lists your last three trips,
 including ones started from a Shortcut or CarPlay automation, and See All lists the rest by day;
 tap one while it is still in local history to see it in red on the map, fitted to the whole trip, with
-the ruler at its start and a red band over its span; returning to Live clears it. Trip
-Settings is also listed in Settings.
+the ruler at its start and a red band over its span; returning to Live clears it. The
+same page is Settings → Trips.
 
 ### Settings
 
-Open Settings from the drawer tabs. The first page shows connection status,
-the tracking switch, and the Usage Preset selector, then links to Tracking &
-Precision, Stationary Pause, Sending, Trip Settings, Background, and Wi-Fi Places.
-The Usage Preset selector applies a set of tracking preferences. Section info
-buttons explain the controls and link to their sources.
+Open Settings from the drawer tabs. The first page starts with the Setup Guide,
+the tracking switch and the Usage Preset selector, then Destination and
+Permissions; Recording (Tracking & Accuracy, Trips, Wi-Fi Places); Sending;
+Background (Live Activities, Background Reliability); Your Data (History & Replay,
+Apple Health, Backup & Sync); Notifications; Troubleshooting (Coverage, Location
+Log, and Diagnostics in TestFlight builds); and Support. Each setting is edited in
+one place. The Usage Preset selector applies a set of tracking preferences. Section
+info buttons explain the controls and link to their sources.
 
-* `Server` sets the endpoint, access token, device ID, custom headers, and
-  acknowledgment policy.
+* `Destination` chooses the server or iCloud Drive (one file per day or per trip)
+  and sets the endpoint, access token, device ID, custom headers, and
+  acknowledgment policy. Its row shows Server, iCloud Drive or Not Set.
 * `Tracking Enabled` starts or stops location collection. Stopping preserves
   queued records.
-* `Location Access` shows iOS permission status. Use the access buttons when
-  available, or open iOS Settings to change permission and Precise Location.
+* `Permissions` shows location access and Precise Location, Motion & Fitness with
+  the current activity, and notification and Apple Health request status. Use the
+  access buttons when available, or open iOS Settings to change permission and
+  Precise Location.
+* `Apple Health` saves trips as workouts for the modes you choose and imports
+  workout routes from other apps. It is hidden when HealthKit is unavailable.
 
 **Location updates**
 
-These controls configure [Core Location](https://developer.apple.com/reference/corelocation):
+These controls, in Tracking & Accuracy, configure [Core Location](https://developer.apple.com/reference/corelocation):
 
 * `Update Mode` selects Standard, Significant, Both, or Off. Standard requests
   regular updates for detailed routes. Significant uses
@@ -707,12 +720,12 @@ These controls configure [Core Location](https://developer.apple.com/reference/c
   fixes in normal tracking and trips. A 10 m request can produce a valid 20 m fix;
   automatically applying a 10 m filter would discard it. The main Usage Presets
   set both settings and leave the saved-point accuracy filter Off.
-* `Active Engine` in Tracking and Background shows the backend actually selected,
+* `Active Engine`, in Tracking & Accuracy → Advanced, shows the backend actually selected,
   including the reason for a Blank Island fallback.
 * `Activity Type` describes the expected movement to iOS and helps it decide when
   to pause. It does not label the trip or classify recorded motion.
   See [activityType](https://developer.apple.com/reference/corelocation/cllocationmanager/1620567-activitytype).
-* `Show Background Indicator` requests the system's visible location indicator.
+* `Location Indicator`, in Background Reliability, requests the system's visible location indicator.
   It does not grant permission or keep the app running unconditionally. The
   linked [Apple forum guidance](https://developer.apple.com/forums/thread/726945)
   discusses its effect in a particular background-tracking configuration.
@@ -720,7 +733,8 @@ These controls configure [Core Location](https://developer.apple.com/reference/c
   depends on iOS and the enabled services; it is not immediate or guaranteed.
 * `Resume After Moving` creates an exit region around the last fix after an
   automatic pause. Leaving that region can resume an enabled tracker.
-  The distance is shared with trip settings.
+  The distance is shared with Trips, which shows it read-only, so this row also
+  appears while only trips pause automatically.
 
 **Recording and sending**
 
@@ -736,7 +750,8 @@ These controls configure [Core Location](https://developer.apple.com/reference/c
   accepted point.
 * `Max Saved-Point Error` rejects fixes whose horizontal uncertainty exceeds
   the threshold. A 10 m limit accepts reported uncertainty of 10 m or less.
-  Lower values can leave gaps when reception is poor.
+  Lower values can leave gaps when reception is poor. Trips share it and show it
+  read-only.
 * `Stop Within Radius` and `Stop After` pause standard updates when accepted
   fixes remain within the radius for the configured time. They apply to normal
   Both mode, not an active trip. Significant-change monitoring continues and can
@@ -765,9 +780,12 @@ They do not set the GPS sampling rate. Set a filter to Off to disable it.
 
 #### Trip settings
 
-Trip settings override the normal accuracy, activity, logging, batch, filter,
+Settings → Trips is the same page as the Trip tab's Trip Settings sheet. Its
+settings override the normal accuracy, activity, logging, batch, filter,
 indicator, and pausing settings while a trip runs. Ending the trip restores
-the earlier tracking state. The resume distance is shared with normal tracking.
+the earlier tracking state. Max Saved-Point Error and the resume distance are
+shared with normal tracking; Trips shows them read-only. Its Live Activity row
+opens Live Activities.
 
 Automatic pausing can end a trip. Leave it off if you want to end trips manually.
 Prevent Screen Lock keeps the display awake during a trip and increases display
@@ -781,10 +799,10 @@ and Background App Refresh.
 * `Sending → Include Tracking Stats` adds tracking configuration to GeoJSON points
   and queues diagnostic events such as pause and resume. OwnTracks
   omits these stats. This applies to new records.
-* `Server → Accept Any Successful HTTP Response` accepts any successful 2xx response
+* `Destination → Accept Any Successful HTTP Response` accepts any successful 2xx response
   as an upload acknowledgment, including an empty body. Otherwise the server must
   return `{"result":"ok"}`. An acknowledgment removes the sent records.
-* `Server → Include unique_id` includes the device's vendor identifier. Device ID
+* `Destination → Include unique_id` includes the device's vendor identifier. Device ID
   is a separate, user-defined field.
 * `Sending → Delete Pending Uploads` confirms before deleting all queued records,
   including pending trip summaries and imported workout points. Local history,
@@ -1001,7 +1019,7 @@ Your server must reply with a JSON response containing:
 This indicates to the app that the batch was received, and it will delete those points from the local cache. If the app receives any other response, it will keep the data locally and try to send it again at the next interval.
 
 If your server cannot return this JSON, enable **Accept Any Successful HTTP Response**
-under **Settings → Server** in WhereWolf. Any successful HTTP 2xx response then
+under **Settings → Destination** in WhereWolf. Any successful HTTP 2xx response then
 acknowledges the batch.
 
 

@@ -40,7 +40,7 @@ valid delayed fixes can still be archived and queued.
 
 ### Selection and quality
 
-The default distance AND time rule remains intact. Optional Any threshold uses
+The default distance AND time rule remains intact. Optional Save When Any Limit Is Met uses
 enabled distance OR time OR turn thresholds. Disabled thresholds cannot qualify
 every point, and all-disabled saves every otherwise valid fix. Turns require
 moving fixes with usable course accuracy and compare the shortest angle.
@@ -62,10 +62,12 @@ also covers trips and Standard mode without changing preset recognition. Stop,
 radius pause and event-only modes keep their existing decisions. This is an
 additional relaunch opportunity after system termination, with coarse movement
 and no fixed delivery interval. Background App Refresh restrictions can limit
-relaunch. The Background screen shows the system's current refresh status.
+relaunch. Background Reliability shows it as Relaunch Monitoring, with the system's
+current refresh status.
 
-`automatic_location_retry` and `location_health_log` are independent, default-off
-choices under Background → Location Updates & Recovery. `GLLocationHealthPolicy`
+`automatic_location_retry` (Background Reliability → Retry Stalled Updates) and
+`location_health_log` (Troubleshooting → Location Log) are independent, default-off
+choices. `GLLocationHealthPolicy`
 uses monotonic elapsed time to distinguish absent callbacks, old or unusable
 readings, and fresh readings skipped by saved-point filters. The retry threshold
 defaults to 120 seconds, bounded to 60–1,800 seconds. It requests at most three

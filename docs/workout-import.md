@@ -3,7 +3,7 @@
 Workout route import is a fork feature. Upstream Overland 1.4 exports its trips
 to Health; it does not import routes recorded by other workout apps.
 
-Open Settings → Integrations & Exports → Import Workout Routes. Connect Apple
+Open Settings → Apple Health → Import Workout Routes. Connect Apple
 Health to request read access to workouts and workout routes. This does not
 request write access, start a workout, or enable WhereWolf's Health export option.
 Health does not reveal whether read access was denied. An empty list can mean
