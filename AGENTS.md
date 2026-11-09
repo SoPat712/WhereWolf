@@ -646,8 +646,10 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   Commands use live `sendMessage` only and are never queued,
   because a Stop or End Trip delivered later would do the wrong thing. Status reaches the
   watch through `updateApplicationContext`, at most once a minute for location updates
-  and only with the watch app installed. Tracking must never depend on the link. Keep the
-  watch version and build number equal to `GPSLogger/Info.plist`.
+  and only with the watch app installed. While the watch app is active and cannot reach the iPhone, it asks
+  for status again after 2, 4 and 8 seconds and then every 15, and at once when WatchConnectivity reports the
+  iPhone reachable, without the progress indicator; Try Again asks at once. Tracking must never depend on the
+  link. Keep the watch version and build number equal to `GPSLogger/Info.plist`.
   A signing profile without the watch bundle identifier can build the phone app alone with
   `WHEREWOLF_WATCH_SIGNING=NO EXCLUDED_SOURCE_FILE_NAMES=WhereWolfWatch.app`.
 - **Reminder action**: the missed-update reminder offers a background Resume Tracking

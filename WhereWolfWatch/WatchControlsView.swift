@@ -38,7 +38,7 @@ struct WatchControlsView: View {
             .watchCommandProgress(model.busy)
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { model.send(.refresh) }
+            model.setActive(phase == .active)
         }
         .confirmationDialog("Stop Tracking?", isPresented: $confirmingStop) {
             Button("Stop Tracking", role: .destructive) { model.send(.setTracking(false)) }
