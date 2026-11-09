@@ -827,7 +827,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
         GLStopsAutomaticallyAfterDefaultsName: @180,
         GLDiscardPointsWithinDistanceDefaultsName: @(everyday ? 10 : -1),
         GLDiscardPointsWithinSecondsDefaultsName: @(everyday ? 5 : 0),
-        GLDiscardPointsOutsideAccuracyDefaultsName: @-1,
+        GLDiscardPointsOutsideAccuracyDefaultsName: @(everyday ? 50 : -1),
         GLBackgroundIndicatorDefaultsName: @(!lowPower && !everyday),
         GLVisitTrackingEnabledDefaultsName: @NO
     };

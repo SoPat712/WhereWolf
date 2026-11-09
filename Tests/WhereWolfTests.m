@@ -1292,8 +1292,11 @@ static int denyCommit(void *context, int action, const char *first, const char *
     XCTAssertFalse(self.manager.visitTrackingEnabled);
     XCTAssertEqual(self.manager.discardPointsWithinDistance, 10);
     XCTAssertEqual(self.manager.discardPointsWithinSeconds, 5);
-    XCTAssertEqual(self.manager.discardPointsOutsideAccuracy, -1);
+    XCTAssertEqual(self.manager.discardPointsOutsideAccuracy, 50);
     XCTAssertFalse(self.manager.trackingEnabled);
+    self.manager.discardPointsOutsideAccuracy = -1;
+    XCTAssertEqual(self.manager.usageProfile, 0, @"Turning the error limit off is a custom setting");
+    [self.manager applyUsageProfile:6];
     self.manager.discardPointsWithinSeconds = 1;
     XCTAssertEqual(self.manager.usageProfile, 0);
     [self.manager applyUsageProfile:6];
@@ -1307,6 +1310,7 @@ static int denyCommit(void *context, int action, const char *first, const char *
     XCTAssertEqual(self.manager.usageProfile, 6);
     XCTAssertEqual(self.manager.discardPointsWithinDistance, 10);
     XCTAssertEqual(self.manager.discardPointsWithinSeconds, 5);
+    XCTAssertEqual(self.manager.discardPointsOutsideAccuracy, 50);
     XCTAssertFalse(self.manager.trackingEnabled);
     XCTAssertNil([NSUserDefaults.standardUserDefaults objectForKey:GLTrackingStateDefaultsName]);
     self.manager.discardPointsWithinSeconds = 17;

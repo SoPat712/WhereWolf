@@ -892,7 +892,8 @@ accurate to most frugal:
 | Balanced | Both | 100 m | Other | Off / Off | 50 m for 180 s |
 | Low Power | Significant | 100 m stored; ignored by significant-change service | Other | On / 500 m | Off |
 
-Everyday Detailed keeps points at least 10 m and 5 s apart and turns the background
+Everyday Detailed keeps points at least 10 m and 5 s apart, drops fixes worse than
+±50 m (Max Saved-Point Error; Wi-Fi Place points always stay) and turns the background
 indicator off. It is the default only for new installs; existing settings and the
 five original presets remain unchanged. The other presets disable saved-point
 filters. All six disable visits, which can introduce jumps in detailed routes.

@@ -828,8 +828,8 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
 - Preserve the five original preset dictionaries and saved settings. Everyday
   Detailed (ID 6) defaults only an empty new-install preference domain: Standard,
   Best, Other, pausing/resume/stationary stopping/visits off, indicator off,
-  minimum distance 10 m and time 5 s. The engine toggle is independent of all six
-  presets. Automatic pauses end trips.
+  minimum distance 10 m and time 5 s, Max Saved-Point Error 50 m. The engine toggle is
+  independent of all six presets. Automatic pauses end trips.
 - LOLDatabase returns transaction success; accepted-fix and trip-finalization
   state may advance only after the queue commit. Replay is not an acknowledgment.
 - Uploads keep one request in flight, yield after 20 drain requests, persist

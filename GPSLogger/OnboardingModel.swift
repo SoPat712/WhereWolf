@@ -309,7 +309,7 @@ enum UsagePreset {
         case 5: return "Navigation accuracy and Automotive activity, no automatic pausing. Most detail; can use the most power."
         case 1: return "Best accuracy, every fix, no automatic pausing. Detailed routes at high battery use."
         case 4: return "High Resolution with the Fitness activity hint, for outdoor exercise."
-        case 6: return "Best accuracy without the location arrow. Skips points within 10 m or 5 s of the last."
+        case 6: return "Best accuracy without the location arrow. Skips points within 10 m or 5 s of the last, or worse than ±50 m."
         case 3: return "100 m accuracy. Stops standard updates after 3 minutes within 50 m."
         case 2: return "Significant changes only, after moves of about 500 m. Coarse history, least power."
         default: return "Custom · Your current combination of settings."
