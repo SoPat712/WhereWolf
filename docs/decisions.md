@@ -273,11 +273,11 @@ This log lists the decisions agents made on their own while working on WhereWolf
 - **Decided:** the Everyday Detailed preset, the new-install default, sets Max Saved-Point Error to 50 m; in the owner's last week that drops 1.3% of points (all of the ±200 m to ±5 km strays) and keeps every Wi-Fi Place point (777ba65). The five original presets keep the filter off. A phone on Everyday Detailed with the filter off shows Custom until it is set to 50 m or the preset is chosen again.
 - **Undo:** `git revert fe35b83`.
 
-## 2026-11-09: new installs start with reliability, cleanup and delivery on (pending)
+## 2026-11-09: new installs start with reliability, cleanup and delivery on (0690394)
 
 - **Asked for:** tuned defaults for better points and logging; the owner picked the reliability, point-cleanup and delivery groups.
 - **Decided:** a new install's first launch turns on Retry Stalled Updates, Relaunch Monitoring, Keep Always Access Active, Reject Jumps, Discard Points Without GPS, Background Uploads and Retry When Back Online, matching the owner's own setup, whose week had no gaps while moving and 3 stray spikes. The option defaults stay off, so existing installs keep their settings. Raising the minimum distance to 20 m was offered and not chosen.
-- **Undo:** `git revert` this commit.
+- **Undo:** `git revert 0690394`.
 
 ## Deferred for the owner
 
