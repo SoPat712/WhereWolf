@@ -414,12 +414,16 @@ struct WhereWolfRootView: View {
     }
 
     // The ruler starts at the trip and the map fits all of it; the location button then follows the marker.
+    // Opening the trip builds the replay route on the main thread, so it waits for the tab to slide over.
     private func openTrip(_ trip: ClosedRange<Date>) {
-        history.showTrip(trip)
-        withAnimation(.easeInOut(duration: 0.45)) {
-            replayCameraFree = false
-            replayOverview = true
-            replayCameraAction &+= 1
+        let delay = UIAccessibility.isReduceMotionEnabled ? 0 : 0.4
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            history.showTrip(trip)
+            withAnimation(.easeInOut(duration: 0.45)) {
+                replayCameraFree = false
+                replayOverview = true
+                replayCameraAction &+= 1
+            }
         }
     }
 

@@ -483,6 +483,7 @@ struct NativeMapSurface: UIViewRepresentable {
         private let replayHighlightLayer = ReplayTrailLayer(highlight: true)
         private var highlightBounds: (route: ObjectIdentifier, range: ClosedRange<Int>, bounds: CGRect)?
         private var revealedHighlight: ClosedRange<Int>?
+        private var pendingReveal: (range: ClosedRange<Int>, since: TimeInterval)?
         private let replayAccuracyLayer = ReplayAccuracyLayer()
         private var replayCoverageExpiry: DispatchWorkItem?
         private var replayCoverageDeadline: TimeInterval?
@@ -531,6 +532,8 @@ struct NativeMapSurface: UIViewRepresentable {
         private var cameraZooming = false
         private var zoomKeepsCentering = false
         private var cameraTransition: MapCameraTransition?
+        // A trip's flight starts its clock on its first frame, after the replay route has been built.
+        private var cameraClockPending = false
         private var cameraDestination: MapCamera?
         private var cameraDisplayLink: CADisplayLink?
         private var scaledRuler: ReplayRulerHold?
@@ -812,11 +815,22 @@ struct NativeMapSurface: UIViewRepresentable {
                         container.layer.insertSublayer(replayFutureLayer, below: replayTrailLayer)
                     }
                     if let span = highlightCoverage(presentation.fullRoute) {
-                        // A newly opened trip stays hidden while the camera flies, then draws in.
-                        if revealedHighlight != span.start...span.end {
-                            if cameraActionAnimating { replayHighlightLayer.conceal() }
-                            else {
-                                revealedHighlight = span.start...span.end
+                        // A newly opened trip stays hidden while the camera flies, then draws in. The flight
+                        // starts in the same update as the highlight, so it gets a moment to begin first.
+                        let range = span.start...span.end
+                        if revealedHighlight != range {
+                            let now = CACurrentMediaTime()
+                            if pendingReveal?.range != range {
+                                pendingReveal = (range, now)
+                                replayHighlightLayer.conceal()
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                                    guard let self, let map = self.map else { return }
+                                    self.alignMarkers(on: map)
+                                }
+                            }
+                            if !cameraActionAnimating, let pending = pendingReveal, now - pending.since >= 0.15 {
+                                revealedHighlight = range
+                                pendingReveal = nil
                                 replayHighlightLayer.reveal(animated: !UIAccessibility.isReduceMotionEnabled)
                             }
                         }
@@ -829,6 +843,7 @@ struct NativeMapSurface: UIViewRepresentable {
                     } else {
                         replayHighlightLayer.hide()
                         revealedHighlight = nil
+                        pendingReveal = nil
                     }
                     scheduleReplayCoverageExpiry()
                 } else {
@@ -948,7 +963,7 @@ struct NativeMapSurface: UIViewRepresentable {
                     // An opened trip can be far away, so the map flies out and back in to show it.
                     var trip = false
                     if case .overview(_, let highlight) = next { trip = highlight != nil }
-                    startCameraTransition(to: destination, on: map, flight: trip)
+                    startCameraTransition(to: destination, on: map, flight: trip, clockOnFirstFrame: trip)
                     return
                 }
             }
@@ -1292,6 +1307,7 @@ struct NativeMapSurface: UIViewRepresentable {
             cameraDisplayLink?.invalidate()
             cameraDisplayLink = nil
             cameraTransition = nil
+            cameraClockPending = false
             cameraContactTime = nil
             cameraDestination = nil
             cameraActionAnimating = false
@@ -1349,8 +1365,10 @@ struct NativeMapSurface: UIViewRepresentable {
         }
 
         private func startCameraTransition(to destination: MapCamera, on map: MKMapView,
-                                           zoom: Bool = false, keepsCentering: Bool = false, flight: Bool = false) {
+                                           zoom: Bool = false, keepsCentering: Bool = false, flight: Bool = false,
+                                           clockOnFirstFrame: Bool = false) {
             stopCameraTransition()
+            cameraClockPending = clockOnFirstFrame
             anchorCoordinate = nil
             correctionsRemaining = 0
             hasInitialCamera = true
@@ -1390,6 +1408,11 @@ struct NativeMapSurface: UIViewRepresentable {
                 return
             }
             guard !hasMapContact || UIAccessibility.isReduceMotionEnabled else { return }
+            if cameraClockPending, !UIAccessibility.isReduceMotionEnabled {
+                cameraClockPending = false
+                transition.start = time
+                cameraTransition = transition
+            }
             // A flight to the live location keeps aiming at it as it moves.
             let focusCoordinate = cameraZooming || cameraFlight ? zoomAnchor(on: map) : nil
             if let focusCoordinate {

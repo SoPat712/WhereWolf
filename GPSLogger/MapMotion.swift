@@ -299,7 +299,7 @@ enum ReplayHoldZoom {
 struct MapCameraTransition {
     let from: MapCamera
     var to: MapCamera
-    let start: TimeInterval
+    var start: TimeInterval
     var length: TimeInterval = Self.duration
     // The starting view's width in map points. A transition with one follows `MapFlight`.
     var flightWidth: Double?
