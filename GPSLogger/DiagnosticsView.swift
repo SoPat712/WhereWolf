@@ -1,8 +1,8 @@
-// TESTFLIGHT ONLY — REMOVE BEFORE APP STORE RELEASE
+// TestFlight diagnostics: left out of App Store builds (WHEREWOLF_APP_STORE=YES).
 #if WHEREWOLF_TESTFLIGHT_DIAGNOSTICS
 import SwiftUI
 
-// TESTFLIGHT ONLY — REMOVE BEFORE APP STORE RELEASE
+// TestFlight diagnostics: left out of App Store builds (WHEREWOLF_APP_STORE=YES).
 struct DiagnosticsView: View {
     @State private var files: [URL] = []
 
@@ -34,7 +34,7 @@ struct DiagnosticsView: View {
     }
 }
 
-// TESTFLIGHT ONLY — REMOVE BEFORE APP STORE RELEASE
+// TestFlight diagnostics: left out of App Store builds (WHEREWOLF_APP_STORE=YES).
 private struct DiagnosticReportView: View {
     let file: URL
     @State private var text = "Loading report…"

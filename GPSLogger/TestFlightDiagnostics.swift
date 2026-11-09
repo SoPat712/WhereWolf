@@ -1,9 +1,9 @@
-// TESTFLIGHT ONLY — REMOVE BEFORE APP STORE RELEASE
+// TestFlight diagnostics: left out of App Store builds (WHEREWOLF_APP_STORE=YES).
 #if WHEREWOLF_TESTFLIGHT_DIAGNOSTICS
 import Foundation
 import MetricKit
 
-// TESTFLIGHT ONLY — REMOVE BEFORE APP STORE RELEASE
+// TestFlight diagnostics: left out of App Store builds (WHEREWOLF_APP_STORE=YES).
 @objc final class TestFlightDiagnostics: NSObject, MXMetricManagerSubscriber {
     static let shared = TestFlightDiagnostics()
     static let reportsChanged = Notification.Name("WhereWolfDiagnosticReportsChanged")
@@ -11,7 +11,7 @@ import MetricKit
     private var modern: AnyObject?
     private var started = false
 
-    // TESTFLIGHT ONLY — REMOVE BEFORE APP STORE RELEASE
+    // TestFlight diagnostics: left out of App Store builds (WHEREWOLF_APP_STORE=YES).
     @objc static func start() {
         guard !shared.started else { return }
         shared.started = true
@@ -24,17 +24,17 @@ import MetricKit
         }
     }
 
-    // TESTFLIGHT ONLY — REMOVE BEFORE APP STORE RELEASE
+    // TestFlight diagnostics: left out of App Store builds (WHEREWOLF_APP_STORE=YES).
     func didReceive(_ payloads: [MXMetricPayload]) {
         for payload in payloads { save(payload.jsonRepresentation(), kind: "metric") }
     }
 
-    // TESTFLIGHT ONLY — REMOVE BEFORE APP STORE RELEASE
+    // TestFlight diagnostics: left out of App Store builds (WHEREWOLF_APP_STORE=YES).
     func didReceive(_ payloads: [MXDiagnosticPayload]) {
         for payload in payloads { save(payload.jsonRepresentation(), kind: "diagnostic") }
     }
 
-    // TESTFLIGHT ONLY — REMOVE BEFORE APP STORE RELEASE
+    // TestFlight diagnostics: left out of App Store builds (WHEREWOLF_APP_STORE=YES).
     func save(_ data: Data, kind: String) {
         queue.async {
             do {
@@ -53,7 +53,7 @@ import MetricKit
         }
     }
 
-    // TESTFLIGHT ONLY — REMOVE BEFORE APP STORE RELEASE
+    // TestFlight diagnostics: left out of App Store builds (WHEREWOLF_APP_STORE=YES).
     func loadReports(completion: @escaping ([URL]) -> Void) {
         queue.async {
             let files = (try? self.files(in: self.directory())) ?? []
@@ -61,7 +61,7 @@ import MetricKit
         }
     }
 
-    // TESTFLIGHT ONLY — REMOVE BEFORE APP STORE RELEASE
+    // TestFlight diagnostics: left out of App Store builds (WHEREWOLF_APP_STORE=YES).
     func readReport(_ file: URL, completion: @escaping (String) -> Void) {
         queue.async {
             let text: String
@@ -94,14 +94,14 @@ import MetricKit
     }
 }
 
-// TESTFLIGHT ONLY — REMOVE BEFORE APP STORE RELEASE
+// TestFlight diagnostics: left out of App Store builds (WHEREWOLF_APP_STORE=YES).
 @available(iOS 27.0, *)
 private final class ModernMetricCollector {
     private let manager = MetricManager()
     private var metrics: Task<Void, Never>?
     private var diagnostics: Task<Void, Never>?
 
-    // TESTFLIGHT ONLY — REMOVE BEFORE APP STORE RELEASE
+    // TestFlight diagnostics: left out of App Store builds (WHEREWOLF_APP_STORE=YES).
     func start() {
         let manager = manager
         metrics = Task {

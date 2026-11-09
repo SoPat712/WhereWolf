@@ -136,7 +136,7 @@ struct SettingsView: View {
                     SettingsRowLabel(title: "Location Log", symbol: "location.magnifyingglass", color: .blue)
                 }
 #if WHEREWOLF_TESTFLIGHT_DIAGNOSTICS
-                // TESTFLIGHT ONLY — REMOVE BEFORE APP STORE RELEASE
+                // TestFlight diagnostics: left out of App Store builds (WHEREWOLF_APP_STORE=YES).
                 NavigationLink(destination: DiagnosticsView()) {
                     SettingsRowLabel(title: "Diagnostics", symbol: "waveform.path.ecg", color: .gray)
                 }

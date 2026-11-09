@@ -54,7 +54,7 @@
     [AppShortcutParameters update];
     [GLTripActions startUpdatingQuickActions];
 #if WHEREWOLF_TESTFLIGHT_DIAGNOSTICS
-    // TESTFLIGHT ONLY — REMOVE BEFORE APP STORE RELEASE
+    // TestFlight diagnostics: left out of App Store builds (WHEREWOLF_APP_STORE=YES).
     [TestFlightDiagnostics start];
 #endif
     
