@@ -231,6 +231,12 @@ This log lists the decisions agents made on their own while working on WhereWolf
 - **Decided:** See All appears beside Recent Trips only when more trips exist than the five shown, and opens a sheet grouped by day in Go To's style.
 - **Undo:** `git revert 4ecb458`.
 
+## 2026-11-08: scale button during ruler motion (867e40c)
+
+- **Asked for:** the Every point button responding ("only opens when the ruler isn't being scrolled").
+- **Decided:** the scale capsule stays enabled while the ruler moves. A menu choice during a drag or coast stops the ruler where it is, then eases the scale with the needle anchored.
+- **Undo:** `git revert 867e40c`.
+
 ## Deferred for the owner
 
 - **Watch complication for Today:** it needs a new watch widget extension and bundle identifier, which is an Apple developer account change.
