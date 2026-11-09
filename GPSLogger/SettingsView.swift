@@ -43,12 +43,11 @@ struct SettingsView: View {
                 .foregroundStyle(.primary)
                 .disabled(bridge.tripInProgress || bridge.usesRecommendedSettings)
                 .accessibilityIdentifier("wherewolf.settings.recommended")
-                .confirmationDialog("Restore Recommended Settings?", isPresented: $confirmingRecommended,
-                                    titleVisibility: .visible) {
+                .alert("Restore recommended settings?", isPresented: $confirmingRecommended) {
+                    Button("Cancel", role: .cancel) {}
                     Button("Restore") { bridge.applyRecommendedSettings() }
-                    Button("Cancel", role: .cancel) { }
                 } message: {
-                    Text("Everyday Detailed with a 50 m error limit, plus Reject Jumps, Discard Points Without GPS, Retry Stalled Updates, Relaunch Monitoring, Keep Always Access Active, Background Uploads and Retry When Back Online. History, Wi-Fi Places, your server, trips, Live Activities and audio stay as they are.")
+                    Text("Switches to Everyday Detailed with a 50 m error limit and turns on Reject Jumps, Discard Points Without GPS, Retry Stalled Updates, Relaunch Monitoring, Keep Always Access Active, Background Uploads and Retry When Back Online. History, Wi-Fi Places, your server, trips, Live Activities and audio stay as they are.")
                 }
             } header: {
                 SettingsSectionHeader(title: "Tracking", topic: .presets)
