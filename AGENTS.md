@@ -323,7 +323,8 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   styled like the Go To time, and Live; the capsule opens a native Menu headed One bar covers: Every point,
   1 minute, 5 minutes, 15 minutes, 1 hour, 6 hours and Whole history. Map durations
   to the nearest step in log space using the bubble's estimate, drop later duplicate
-  steps and check the current entry. Menu changes anchor the needle. VoiceOver's
+  steps and check the current entry. Menu changes anchor the needle; the capsule stays usable while the
+  ruler moves, and a choice made during a drag or coast stops the ruler where it is first. VoiceOver's
   value names a containing stop and its arrival; keep its
   one-point increment/decrement, add Finer Scale and Coarser Scale actions, and
   announce scale changes. Hold and pinch use cached payloads; release loads the

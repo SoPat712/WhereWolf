@@ -1049,7 +1049,6 @@ struct HistoryRuler: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(history.rulerScaleLabel.buttonAccessibility)
-        .disabled(history.isRulerInteracting)
     }
 
     var body: some View {
@@ -1922,8 +1921,10 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
         let completingStep = pendingScaleCommit.map { coarseDetents.steps[$0] }
             ?? (pinching ? coarseDetents.nearestStep(to: ticks.scale.pointsPerTick) : nil)
         let externalStep = self.configuration.map { $0.step != configuration.step } ?? false
-        // Only a pinch or its settle depends on the previous ladder; scrolling and momentum continue.
-        if interrupted || (scaleChanged && (pinching || pendingScaleCommit != nil)) { cancelMotion() }
+        // Only a pinch or its settle depends on the previous ladder; scrolling and momentum continue. A menu
+        // choice made while the ruler coasts stops it where it is, so the scale eases around a still needle.
+        if interrupted || (scaleChanged && (pinching || pendingScaleCommit != nil))
+            || (externalStep && (dragging || decelerating || coarseDragging)) { cancelMotion() }
         // Live flies the ruler back at the scale it shows, then eases to the new one.
         let shownIndex = Double(ticks.tickCount) - position
         let returnsToLive = configuration.position == 0 && (self.configuration?.position ?? 0) > 0 && !moving

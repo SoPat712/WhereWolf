@@ -2175,6 +2175,34 @@ final class HistoryRulerContinuousScaleTests: XCTestCase {
         XCTAssertEqual(harness.ruler.displayedPointsPerBar, 100)
     }
 
+    @MainActor func testMenuChoiceWhileTheRulerCoastsStopsItWhereItIs() throws {
+        let harness = RulerScaleHarness()
+        defer { harness.ruler.cancelMotion() }
+        var cancels = 0
+        harness.configuration.onCancel = { cancels += 1 }
+        harness.ruler.configure(harness.configuration)
+        let scrollView = try XCTUnwrap(harness.ruler.subviews.compactMap { $0 as? UIScrollView }.first)
+        harness.ruler.scrollViewWillBeginDragging(scrollView)
+        scrollView.contentOffset.x -= 200
+        var target = CGPoint(x: scrollView.contentOffset.x - 600, y: 0)
+        harness.ruler.scrollViewWillEndDragging(scrollView, withVelocity: CGPoint(x: -2, y: 0), targetContentOffset: &target)
+        harness.ruler.scrollViewDidEndDragging(scrollView, willDecelerate: true)
+        scrollView.contentOffset.x -= 50
+        let coasting = harness.ruler.anchoredPosition
+        XCTAssertGreaterThan(coasting, 5_123.5)
+
+        // The model follows the coast, then the menu commits a new scale.
+        harness.configuration.position = coasting
+        harness.configuration.step = 100
+        harness.ruler.configure(harness.configuration)
+        XCTAssertEqual(cancels, 1)
+        XCTAssertEqual(harness.ruler.anchoredPosition, coasting, accuracy: 1e-6)
+        let ease = try XCTUnwrap(harness.ruler.scaleEase)
+        harness.ruler.advanceScale(at: ease.start + 1)
+        XCTAssertEqual(harness.ruler.displayedPointsPerBar, 100)
+        XCTAssertEqual(harness.ruler.anchoredPosition, coasting, accuracy: 1e-6)
+    }
+
     @MainActor func testReduceMotionJumpsAndCommitsAtRelease() {
         let harness = RulerScaleHarness(reduceMotion: true)
         defer { harness.ruler.cancelMotion() }
