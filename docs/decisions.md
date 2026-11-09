@@ -237,6 +237,12 @@ This log lists the decisions agents made on their own while working on WhereWolf
 - **Decided:** the scale capsule stays enabled while the ruler moves. A menu choice during a drag or coast stops the ruler where it is, then eases the scale with the needle anchored.
 - **Undo:** `git revert 867e40c`.
 
+## 2026-11-08: opened trips in red (ca9b14f)
+
+- **Asked for:** clicking a trip to replace its track with red; the owner chose red until returning to Live, fitting the whole trip, and a red band on the ruler.
+- **Decided:** a 4-point red foreground layer above the blue, the replay overview fitted to the trip's fixes, and a 30% red band on the ruler beneath stop tints.
+- **Undo:** `git revert ca9b14f`.
+
 ## Deferred for the owner
 
 - **Watch complication for Today:** it needs a new watch widget extension and bundle identifier, which is an Apple developer account change.
