@@ -267,11 +267,11 @@ This log lists the decisions agents made on their own while working on WhereWolf
 - **Decided:** option lists follow an axis instead of tag order. Presets run Driving, High Resolution, Walking / Running, Everyday Detailed, Balanced, Low Power in Settings (after Custom), onboarding and the watch; Requested Accuracy Navigation, Best, Custom; Update Mode Standard, Both, Significant, Off; Activity Type Other, then Fitness, Automotive, Navigation, Boat, Airborne, also in Shortcuts; Logging Mode All Data, OwnTracks, Only Latest; onboarding's Island choices match Settings' Status, Minimal, Blank, then Off; Wi-Fi Place colors follow the spectrum. Lists that already ascend (durations, counts, replay rates, ruler scale) or have no axis (map styles, destinations, user-ordered trip modes, workouts grouped by activity, place icons) stay. Each help entry is now a one-line summary with green advantages, orange drawbacks and gray notes, one entry per option in picker order, about a third shorter, with caveats compressed rather than dropped. Long footers on workout import, backup, connection test and trip modes are shorter too. Tags, stored values and defaults are unchanged.
 - **Undo:** `git revert 5ed3b97 8b412be` and the docs commit after them.
 
-## 2026-11-09: Everyday Detailed drops fixes worse than ±50 m (df7edb3)
+## 2026-11-09: Everyday Detailed drops fixes worse than ±50 m (fe35b83)
 
 - **Asked for:** "should we defaults set a max saved-point error?" after a ±200 m point appeared among ±5 m ones.
 - **Decided:** the Everyday Detailed preset, the new-install default, sets Max Saved-Point Error to 50 m; in the owner's last week that drops 1.3% of points (all of the ±200 m to ±5 km strays) and keeps every Wi-Fi Place point (777ba65). The five original presets keep the filter off. A phone on Everyday Detailed with the filter off shows Custom until it is set to 50 m or the preset is chosen again.
-- **Undo:** `git revert df7edb3`.
+- **Undo:** `git revert fe35b83`.
 
 ## Deferred for the owner
 
