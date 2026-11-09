@@ -212,7 +212,7 @@ struct TripView: View {
 
     private var recentTrips: some View {
         let metric = Locale.current.measurementSystem == .metric
-        let trips = Array(bridge.recentTrips.prefix(5))
+        let trips = Array(bridge.recentTrips.prefix(3))
         return VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
                 Text("Recent Trips")

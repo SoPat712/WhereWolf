@@ -233,7 +233,7 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   The trip database stores each fix's speed and altitude with their accuracies; `TripStatsAccumulator`
   keeps the top speed with speed accuracy within 5 m/s and counts climbs of at least 5 m with vertical
   accuracy within 10 m, replaying the stored fixes after a restore or a late batch.
-  While idle, Trip lists the five newest of up to 20 finished trips from `TripLog`: mode, distance, start
+  While idle, Trip lists the three newest of up to 20 finished trips from `TripLog`: mode, distance, start
   and duration, without coordinates, on this device only and outside Backup & Sync. GLManager records each
   after its summary commits. Retained history tags every fix with its trip, so trips whose summaries never
   saved are rebuilt from those fixes on a utility read when Trip appears or a trip ends; a saved summary
