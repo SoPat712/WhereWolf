@@ -945,6 +945,24 @@ static int denyCommit(void *context, int action, const char *first, const char *
     XCTAssertEqualObjects(([self.manager locationsByApplyingWifiPlace:@[old] networkInfo:@{@"SSID": @"Home"}]), (@[old]));
     XCTAssertEqualObjects(([self.manager locationsByApplyingWifiPlace:@[current] networkInfo:@{}]), (@[current]));
 }
+- (void)testMaxSavedPointErrorKeepsWifiPlacePoints {
+    for(NSNumber *rejectJumps in @[@NO, @YES]) {
+        TestLocationHealthManager *manager = [self healthManager];
+        manager.wifiInfo = @{@"SSID": @"Home"};
+        manager.discardPointsWithinDistance = -1; manager.discardPointsWithinSeconds = 0;
+        manager.discardPointsOutsideAccuracy = 50;
+        [manager setAdvancedTrackingOption:rejectJumps forKey:@"reject_jumps"];
+        [manager startAllUpdates];
+        [manager replaceWifiPlaces:@[[self wifiPlace:@"Home" latitude:45.5]]];
+        NSUInteger before = self.count;
+        [manager processLocations:@[[self wifiFixAtDistance:80 accuracy:150 date:[NSDate dateWithTimeIntervalSinceNow:-2]]]];
+        XCTAssertEqual(self.count, before + 1, @"On the place's network its point saves however coarse the fix");
+        XCTAssertEqual(manager.lastLocation.coordinate.latitude, 45.5);
+        manager.wifiInfo = @{@"SSID": @"Other"};
+        [manager processLocations:@[[self wifiFixAtDistance:5000 accuracy:150 date:[NSDate dateWithTimeIntervalSinceNow:-1]]]];
+        XCTAssertEqual(self.count, before + 1, @"Elsewhere a fix beyond Max Saved-Point Error is still dropped");
+    }
+}
 - (void)testWifiPlaceNothingDropsOnlyInsideFixesWithoutChangingAcceptedState {
     TestLocationHealthManager *manager = [self healthManager];
     manager.wifiInfo = @{@"SSID": @"Home"};

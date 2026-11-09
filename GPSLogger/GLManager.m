@@ -3683,8 +3683,10 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
             GLCountLocationRejection(rejected, @"wifi_place");
             continue;
         }
+        // Being on the place's network places it better than the fix's accuracy does, so its point is never dropped for error.
+        BOOL becomesPlacePoint = place && location == current && [place[@"record"] isEqual:@"point"];
         if([options[@"reject_jumps"] boolValue]) {
-            if(self.discardPointsOutsideAccuracy > 0 && location.horizontalAccuracy > self.discardPointsOutsideAccuracy) { GLCountLocationRejection(rejected, @"accuracy"); continue; }
+            if(!becomesPlacePoint && self.discardPointsOutsideAccuracy > 0 && location.horizontalAccuracy > self.discardPointsOutsideAccuracy) { GLCountLocationRejection(rejected, @"accuracy"); continue; }
             if(self.qualityObservation && [location.timestamp compare:self.qualityObservation.timestamp] != NSOrderedDescending) { GLCountLocationRejection(rejected, @"order"); continue; }
             if(![self.qualityPolicy acceptLocation:location relativeTo:self.qualityObservation maximumSpeed:[options[@"maximum_speed"] doubleValue]]) {
                 self.rejectedJumpCount++;
@@ -3784,7 +3786,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
             distance:self.discardPointsWithinDistanceCurrentValue seconds:self.discardPointsWithinSecondsCurrentValue
             turn:[options[@"turn_degrees"] doubleValue]]) { GLCountLocationRejection(rejected, @"threshold"); continue; }
 
-        if(self.discardPointsOutsideAccuracy > 0) {
+        if(!placePoint && self.discardPointsOutsideAccuracy > 0) {
             if(loc.horizontalAccuracy > self.discardPointsOutsideAccuracy) {
                 GLCountLocationRejection(rejected, @"accuracy");
                 continue;
@@ -4256,7 +4258,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     NSDictionary *place = [self currentWifiPlaceForLocations:locations networkInfo:info];
     if(!place || ![place[@"record"] isEqual:@"point"]) return locations;
     CLLocation *current = locations.lastObject;
-    // Never less accurate than the fix it replaces, so Max Saved-Point Error keeps every point it would have kept.
+    // Never less accurate than the fix it replaces. Max Saved-Point Error skips place points, so this only describes it.
     CLLocationAccuracy accuracy = MIN(GLWifiPlaceMatchDistance, current.horizontalAccuracy);
     CLLocation *replacement = [[CLLocation alloc] initWithCoordinate:CLLocationCoordinate2DMake([place[@"latitude"] doubleValue], [place[@"longitude"] doubleValue])
         altitude:0 horizontalAccuracy:accuracy verticalAccuracy:-1 course:-1 speed:0 timestamp:current.timestamp];

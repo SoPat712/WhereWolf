@@ -799,9 +799,9 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   network’s name, dropping BSSIDs and removing old keys only after a successful save.
   Match SSID plus raw-fix distance within `GLWifiPlaceMatchDistance` (300 m) +
   min(accuracy, 200); invalid accuracy never matches and the nearest point wins.
-  Point replaces only a <=20-second current fix, reporting min(300, fix accuracy)
-  so Max Saved-Point Error never drops a point it would have kept, and drops the batch's
-  other fixes inside the place. The point saves on arrival whatever the point filters allow,
+  Point replaces only a <=20-second current fix, reporting min(300, fix accuracy), and drops the
+  batch's other fixes inside the place. Max Saved-Point Error never drops a place's point, including
+  Reject Jumps' accuracy check, since being on its network places it better than the fix's accuracy does. The point saves on arrival whatever the point filters allow,
   then at most once per `GLWifiPlaceHeartbeatInterval` (5 minutes) while matched, so stays and
   Coverage still see the visit. Nothing rejects matching fixes through `wifi_place` before
   accepted-fix, trip, Health or replay updates; keep acquisition and uploads active.
