@@ -679,8 +679,10 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   workout and route end then too. The visit prompt is skipped while this is on.
 - **Optional tracking policies** live in `GLTrackingPolicy` and are configured
   through the validated `GLAdvancedTrackingOptions` dictionary in `GLManager`.
-  They default off and are independent of all six Usage Presets. Keep acquisition,
-  point selection and upload scheduling separate. Adaptive tracking confirms a
+  They default off and are independent of all six Usage Presets; a new install's first launch writes
+  Retry Stalled Updates, Relaunch Monitoring, Keep Always Access Active, Reject Jumps, Background Uploads
+  and Retry When Back Online on, with Discard Points Without GPS, so existing installs keep theirs.
+  Keep acquisition, point selection and upload scheduling separate. Adaptive tracking confirms a
   stop from fresh raw fixes before WiFi replacement, then requests coarse accuracy
   through the original engine; movement restores saved engine settings. Retain
   coarse updates and an Always-authorized exit region. Motion confirmation defaults
@@ -697,7 +699,7 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   relaunch and ignore pre-pause callbacks for resumption.
   Terminal live-stream errors latch after three retries and fall back to
   `CLLocationManager` once; cancellation and replaced tasks must not trigger fallback.
-  Independent `background_recovery` (Relaunch Monitoring) defaults off and retains significant-change
+  Independent `background_recovery` (Relaunch Monitoring; on for new installs) retains significant-change
   monitoring alongside Standard tracking and trips with Always access and device
   support. Both already monitors significant changes. Never override Stop,
   radius pause or event-only choices; do not treat coarse events as a fixed wake
@@ -705,7 +707,7 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
 - **Location update health**: `GLLocationHealthPolicy` separates callback silence,
   outdated readings and saved-point rejection using monotonic elapsed time.
   `automatic_location_retry` (Retry Stalled Updates, in Background Reliability) and
-  `location_health_log` (Location Log) default off independently;
+  `location_health_log` (Location Log) are independent, off by default and the retry on for new installs;
   `location_retry_after` is validated to 60–1,800 seconds, default 120. Allow at most
   three restarts per app session without a fresh raw reading, with increasing
   delays. Keep the terminal live-stream failure latch; do not restart on filter
@@ -718,8 +720,8 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   and a strict metadata allowlist; retain at most 200 events for seven days.
   Never store coordinates, endpoints or credentials, or upload logs automatically.
 - **`WhereWolfUploadScheduler`** registers one network-required `BGProcessingTask`
-  at launch. Background scheduling and connection-return retries are independent,
-  default-off choices. Both call the existing uploader; retain its one-request
+  at launch. Background scheduling and connection-return retries are independent choices, off by
+  default and on for new installs. Both call the existing uploader; retain its one-request
   limit, 20-request yield, backoff, Retry-After and authentication block. Coalesce
   equivalent schedules, complete expired tasks once, and preserve pending intent.
   `NWPathMonitor` runs only when enabled, and only a false-to-true transition can

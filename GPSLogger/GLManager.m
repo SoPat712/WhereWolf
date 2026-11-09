@@ -836,7 +836,15 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
 + (void)initializeUsageProfileDefaults:(NSUserDefaults *)defaults domainName:(NSString *)domainName {
     // Sparse saved preferences still belong to an existing installation; preserve its getter fallbacks.
     if(domainName.length == 0 || [defaults persistentDomainForName:domainName].count != 0) return;
-    [defaults setPersistentDomain:GLUsageProfileSettings(6) forName:domainName];
+    NSMutableDictionary *domain = [GLUsageProfileSettings(6) mutableCopy];
+    // New installs start with the reliability, point-cleanup and delivery options on. The option defaults stay
+    // off, so an existing installation keeps what it has.
+    NSMutableDictionary *options = [[self normalizedTrackingOptions:nil] mutableCopy];
+    for(NSString *key in @[@"automatic_location_retry", @"background_recovery", @"explicit_service_session",
+                           @"reject_jumps", @"background_uploads", @"connectivity_retry"]) options[key] = @YES;
+    domain[GLAdvancedTrackingDefaultsName] = options;
+    domain[GLDiscardPointsWithoutGPSDefaultsName] = @YES;
+    [defaults setPersistentDomain:domain forName:domainName];
 }
 
 - (NSInteger)usageProfile {

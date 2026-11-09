@@ -1331,6 +1331,15 @@ static int denyCommit(void *context, int action, const char *first, const char *
     XCTAssertEqual(self.manager.discardPointsWithinDistance, 10);
     XCTAssertEqual(self.manager.discardPointsWithinSeconds, 5);
     XCTAssertEqual(self.manager.discardPointsOutsideAccuracy, 50);
+    XCTAssertTrue(self.manager.discardPointsWithoutGPS);
+    NSDictionary *options = self.manager.advancedTrackingOptions;
+    for(NSString *key in @[@"automatic_location_retry", @"background_recovery", @"explicit_service_session",
+                           @"reject_jumps", @"background_uploads", @"connectivity_retry"]) {
+        XCTAssertTrue([options[key] boolValue], @"%@ starts on for new installs", key);
+    }
+    XCTAssertFalse([options[@"adaptive"] boolValue]);
+    XCTAssertFalse([options[@"location_health_log"] boolValue]);
+    XCTAssertFalse([[GLManager normalizedTrackingOptions:nil][@"reject_jumps"] boolValue], @"Existing installs keep the off defaults");
     XCTAssertFalse(self.manager.trackingEnabled);
     XCTAssertNil([NSUserDefaults.standardUserDefaults objectForKey:GLTrackingStateDefaultsName]);
     self.manager.discardPointsWithinSeconds = 17;
