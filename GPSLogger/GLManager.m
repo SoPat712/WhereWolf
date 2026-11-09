@@ -837,12 +837,15 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     // Sparse saved preferences still belong to an existing installation; preserve its getter fallbacks.
     if(domainName.length == 0 || [defaults persistentDomainForName:domainName].count != 0) return;
     NSMutableDictionary *domain = [GLUsageProfileSettings(6) mutableCopy];
-    // New installs start with the reliability, point-cleanup and delivery options on. The option defaults stay
-    // off, so an existing installation keeps what it has.
+    // New installs start with the reliability, point-cleanup and delivery options on, trips at full accuracy and a
+    // week of history. The getter defaults stay as they were, so an existing installation keeps what it has.
     NSMutableDictionary *options = [[self normalizedTrackingOptions:nil] mutableCopy];
     for(NSString *key in self.recommendedTrackingOptions) options[key] = @YES;
     domain[GLAdvancedTrackingDefaultsName] = options;
     domain[GLDiscardPointsWithoutGPSDefaultsName] = @YES;
+    domain[GLTripDesiredAccuracyDefaultsName] = @(kCLLocationAccuracyBest);
+    domain[GLTripDiscardPointsWithoutGPSDefaultsName] = @YES;
+    domain[@"HistoryRetentionHours"] = @168;
     [defaults setPersistentDomain:domain forName:domainName];
 }
 
@@ -851,12 +854,14 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
              @"reject_jumps", @"background_uploads", @"connectivity_retry"];
 }
 
-// Gives an existing install the recording setup a new install starts with. Data, places, the server,
-// history retention, trips, Live Activities and audio keep their settings.
+// Gives an existing install the recording setup a new install starts with, for everyday tracking and trips. Data,
+// places, the server, history retention, trip modes, Live Activities and audio keep their settings.
 - (void)applyRecommendedSettings {
     if(self.tripInProgress) return;
     [self applyUsageProfile:6];
     self.discardPointsWithoutGPS = YES;
+    self.desiredAccuracyDuringTrip = kCLLocationAccuracyBest;
+    self.discardPointsWithoutGPSDuringTrip = YES;
     NSMutableDictionary *options = [self.advancedTrackingOptions mutableCopy];
     for(NSString *key in GLManager.recommendedTrackingOptions) options[key] = @YES;
     self.advancedTrackingOptions = options;

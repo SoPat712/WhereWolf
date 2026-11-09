@@ -79,6 +79,11 @@
     if(elapsed <= 0 || !isfinite(elapsed)) return NO;
     CLLocationDistance excess = MAX(0, [location distanceFromLocation:previous]
         - MAX(0, previous.horizontalAccuracy) - MAX(0, location.horizontalAccuracy));
+    // GPS measures speed from the Doppler shift, independently of position, so a fix whose own speed covers the
+    // move is real travel, such as a flight, not a jump. Fixes a second apart can imply twice the true speed.
+    if(location.speed >= 0 && location.speedAccuracy >= 0 && location.speedAccuracy <= 10) {
+        speed = MAX(speed, 2 * (location.speed + location.speedAccuracy));
+    }
     return excess <= speed * elapsed;
 }
 

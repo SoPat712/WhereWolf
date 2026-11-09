@@ -442,7 +442,7 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   the Saved Points filters in plain text.
 - **Route replay**: `RecentLocationHistory` archives each accepted upload record
   in a separate SQLite store, with a validated 24–168 hour retention window that
-  defaults to 24 hours. `GLManager` calls it only after a successful queue commit;
+  defaults to 24 hours; a new install's first launch writes 168. `GLManager` calls it only after a successful queue commit;
   the archive never participates in queue deletion or HTTP. `HistoryPlaybackModel`
   owns only presentation state and stops its display link off the Tracker tab.
   Pacing, stays, status values and route directions live in `ReplayTimeline.swift`;
@@ -681,10 +681,11 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   through the validated `GLAdvancedTrackingOptions` dictionary in `GLManager`.
   They default off and are independent of all six Usage Presets; a new install's first launch writes
   Retry Stalled Updates, Relaunch Monitoring, Keep Always Access Active, Reject Jumps, Background Uploads
-  and Retry When Back Online on, with Discard Points Without GPS, so existing installs keep theirs.
-  Restore Recommended Settings (`applyRecommendedSettings`, confirmed, not during a trip) gives an existing
-  install that recording setup with Everyday Detailed, leaving data, places, server, retention, trips, Live
-  Activities and audio alone; the row reads Using Recommended Settings once they match.
+  and Retry When Back Online on, with Discard Points Without GPS and trips at Best accuracy without
+  non-GPS points, so existing installs keep theirs. Restore Recommended Settings (`applyRecommendedSettings`,
+  confirmed in an alert, not during a trip) gives an existing install that recording setup with Everyday
+  Detailed, leaving data, places, server, retention, trip modes, Live Activities and audio alone; the row
+  reads Using Recommended Settings once they match.
   Keep acquisition, point selection and upload scheduling separate. Adaptive tracking confirms a
   stop from fresh raw fixes before WiFi replacement, then requests coarse accuracy
   through the original engine; movement restores saved engine settings. Retain
@@ -696,7 +697,8 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   Guard asynchronous results by generation and respect Stop and radius pause.
   Optional OR selection includes enabled distance/time/turn triggers; default AND
   remains unchanged. Jump filtering accounts for reported uncertainty and permits
-  corroborated relocation. Raw quality state is separate from the committed-fix
+  corroborated relocation; a fix's own GPS speed (with speed accuracy within 10 m/s) raises the
+  limit to twice that speed, so flights pass at the 100 m/s default. Raw quality state is separate from the committed-fix
   baseline. Identical acquisition configurations must not restart hardware;
   reconcile remote settings in one batch. Preserve persisted radius pause on
   relaunch and ignore pre-pause callbacks for resumption.

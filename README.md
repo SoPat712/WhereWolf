@@ -296,10 +296,12 @@ its behavior and limits.
   enabled thresholds participate. A turn requires a usable course while moving.
   These are recording rules, not guaranteed GPS delivery intervals.
 - **Reject Implausible Jumps** compares displacement, elapsed time and both
-  fixes' reported uncertainty against a configurable speed limit. A second
-  nearby fix at least one second later can confirm a relocation. It preserves
-  original coordinates and timestamps; flight users can raise the limit or
-  leave it off.
+  fixes' reported uncertainty against a configurable speed limit (100 m/s by
+  default). A fix whose own GPS speed, measured from the Doppler shift rather than
+  its position, covers the move raises the limit to twice that speed, so flights
+  pass while jumps, whose GPS speed stays low, do not. A second nearby fix at least
+  one second later can confirm a relocation. It preserves original coordinates and
+  timestamps.
 - **Trips → Ask to End Trip When Stopped** sends one notification per
   stop during a trip: 75 m for 5 minutes, or 10 minutes without Motion & Fitness
   access. Its End Trip action ends the trip, and its Health workout, at the time
@@ -621,8 +623,8 @@ upload record pauses playback; its JSON is formatted only when inspected.
 Replay keeps a separate local copy of accepted location records, including points
 removed from the send queue after upload. Settings → History & Replay lets
 you choose 24 hours to 7 days, with common-value slider detents and exact hourly
-entry. The default remains 24 hours. The page shows the saved-point count and
-storage used by the archive. Increasing the window keeps future points longer;
+entry. New installs keep 7 days; an install that never chose keeps 24 hours.
+The page shows the saved-point count and storage used by the archive. Increasing the window keeps future points longer;
 it cannot recover expired points or download earlier server history. Shortening
 the window removes older local records. Tracking settings, upload timing and
 server requests stay as configured. Existing replay stores migrate in place;
@@ -688,10 +690,11 @@ Background (Live Activities, Background Reliability); Your Data (History & Repla
 Apple Health, Backup & Sync); Notifications; Troubleshooting (Coverage, Location
 Log, and Diagnostics in TestFlight builds); and Support. Each setting is edited in
 one place. The Usage Preset selector applies a set of tracking preferences, and
-Restore Recommended Settings applies the setup a new install starts with: Everyday
-Detailed with a 50 m error limit, Reject Jumps, Discard Points Without GPS, Retry
-Stalled Updates, Relaunch Monitoring, Keep Always Access Active, Background Uploads
-and Retry When Back Online, keeping your history, places, server and other choices. Section
+Restore Recommended Settings applies the recording setup a new install starts with:
+Everyday Detailed with a 50 m error limit, trips at Best accuracy, Discard Points
+Without GPS for everyday tracking and trips, Reject Jumps, Retry Stalled Updates,
+Relaunch Monitoring, Keep Always Access Active, Background Uploads and Retry When
+Back Online, keeping your history, places, server and other choices. Section
 info buttons give each control, and each option of a list, a one-line summary with
 short advantages, drawbacks and notes, in the list's order, and link to their sources.
 

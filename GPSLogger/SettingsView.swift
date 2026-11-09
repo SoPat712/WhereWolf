@@ -47,7 +47,7 @@ struct SettingsView: View {
                     Button("Cancel", role: .cancel) {}
                     Button("Restore") { bridge.applyRecommendedSettings() }
                 } message: {
-                    Text("Switches to Everyday Detailed with a 50 m error limit and turns on Reject Jumps, Discard Points Without GPS, Retry Stalled Updates, Relaunch Monitoring, Keep Always Access Active, Background Uploads and Retry When Back Online. History, Wi-Fi Places, your server, trips, Live Activities and audio stay as they are.")
+                    Text("Switches to Everyday Detailed with a 50 m error limit, records trips at Best accuracy, discards points without GPS, and turns on Reject Jumps, Retry Stalled Updates, Relaunch Monitoring, Keep Always Access Active, Background Uploads and Retry When Back Online. History, Wi-Fi Places, your server, trip modes, Live Activities and audio stay as they are.")
                 }
             } header: {
                 SettingsSectionHeader(title: "Tracking", topic: .presets)

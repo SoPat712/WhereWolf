@@ -1327,6 +1327,8 @@ static int denyCommit(void *context, int action, const char *first, const char *
 - (void)testRecommendedSettingsMatchANewInstallAndKeepEverythingElse {
     [self.manager applyUsageProfile:1];
     self.manager.discardPointsWithoutGPS = NO;
+    self.manager.desiredAccuracyDuringTrip = kCLLocationAccuracyHundredMeters;
+    self.manager.discardPointsWithoutGPSDuringTrip = NO;
     for(NSString *key in GLManager.recommendedTrackingOptions) [self.manager setAdvancedTrackingOption:@NO forKey:key];
     [self.manager setAdvancedTrackingOption:@YES forKey:@"adaptive"];
     [self.manager replaceWifiPlaces:@[[self wifiPlace:@"Home" latitude:45.5]]];
@@ -1334,6 +1336,8 @@ static int denyCommit(void *context, int action, const char *first, const char *
     XCTAssertEqual(self.manager.usageProfile, 6);
     XCTAssertEqual(self.manager.discardPointsOutsideAccuracy, 50);
     XCTAssertTrue(self.manager.discardPointsWithoutGPS);
+    XCTAssertEqual(self.manager.desiredAccuracyDuringTrip, kCLLocationAccuracyBest);
+    XCTAssertTrue(self.manager.discardPointsWithoutGPSDuringTrip);
     for(NSString *key in GLManager.recommendedTrackingOptions) {
         XCTAssertTrue([self.manager.advancedTrackingOptions[key] boolValue], @"%@", key);
     }
@@ -1363,6 +1367,9 @@ static int denyCommit(void *context, int action, const char *first, const char *
     XCTAssertFalse([options[@"adaptive"] boolValue]);
     XCTAssertFalse([options[@"location_health_log"] boolValue]);
     XCTAssertFalse([[GLManager normalizedTrackingOptions:nil][@"reject_jumps"] boolValue], @"Existing installs keep the off defaults");
+    XCTAssertEqual(self.manager.desiredAccuracyDuringTrip, kCLLocationAccuracyBest);
+    XCTAssertTrue(self.manager.discardPointsWithoutGPSDuringTrip);
+    XCTAssertEqual([NSUserDefaults.standardUserDefaults integerForKey:@"HistoryRetentionHours"], 168);
     XCTAssertFalse(self.manager.trackingEnabled);
     XCTAssertNil([NSUserDefaults.standardUserDefaults objectForKey:GLTrackingStateDefaultsName]);
     self.manager.discardPointsWithinSeconds = 17;

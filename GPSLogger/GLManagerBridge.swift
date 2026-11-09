@@ -433,6 +433,7 @@ final class GLManagerBridge {
         guard let gl = GLManager.shared() else { return false }
         let options = gl.advancedTrackingOptions ?? [:]
         return gl.usageProfile() == 6 && gl.discardPointsWithoutGPS
+            && gl.desiredAccuracyDuringTrip == kCLLocationAccuracyBest && gl.discardPointsWithoutGPSDuringTrip
             && GLManager.recommendedTrackingOptions().allSatisfy { options[$0]?.boolValue == true }
     }
 

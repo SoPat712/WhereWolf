@@ -144,6 +144,23 @@
     XCTAssertTrue([policy acceptLocation:[self point:300 time:1 error:5 speed:300 course:0] relativeTo:start maximumSpeed:400]);
 }
 
+- (void)testJumpFilterKeepsFlightsThatGPSSpeedSupports {
+    GLPointQualityPolicy *policy = [GLPointQualityPolicy new];
+    CLLocation *previous = [self point:0 time:0 error:10 speed:250 course:90];
+    for(int second = 1; second <= 3; second++) {
+        CLLocation *cruise = [self point:250 * second time:second error:10 speed:250 course:90];
+        XCTAssertTrue([policy acceptLocation:cruise relativeTo:previous maximumSpeed:100]);
+        previous = cruise;
+    }
+    CLLocation *start = [self point:0 time:0 error:17 speed:14 course:90];
+    XCTAssertFalse([policy acceptLocation:[self point:225 time:1 error:17 speed:14 course:90] relativeTo:start maximumSpeed:100]);
+    CLLocation *unsure = [[CLLocation alloc] initWithCoordinate:CLLocationCoordinate2DMake(45, -122 + 250 / 78715.0)
+        altitude:0 horizontalAccuracy:10 verticalAccuracy:10 course:90 courseAccuracy:5
+        speed:250 speedAccuracy:50 timestamp:[NSDate dateWithTimeIntervalSince1970:10001]];
+    [policy reset];
+    XCTAssertFalse([policy acceptLocation:unsure relativeTo:[self point:0 time:0 error:10 speed:0 course:90] maximumSpeed:100]);
+}
+
 - (void)testResetDiscardsPendingRelocationEvidence {
     GLPointQualityPolicy *policy = [GLPointQualityPolicy new];
     CLLocation *start = [self point:0 time:0 error:5 speed:0 course:0];
