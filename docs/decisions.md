@@ -243,6 +243,18 @@ This log lists the decisions agents made on their own while working on WhereWolf
 - **Decided:** a 4-point red foreground layer above the blue, the replay overview fitted to the trip's fixes, and a 30% red band on the ruler beneath stop tints.
 - **Undo:** `git revert ca9b14f`.
 
+## 2026-11-09: App Store switch (3a54737, 790629a)
+
+- **Asked for:** drop silent audio from App Store builds; the app will also ship through any other channel that helps it.
+- **Decided:** `WHEREWOLF_APP_STORE=YES` (default NO) compiles out the TestFlight diagnostics collector and silent audio and drops the audio background mode through the preprocessed Info.plist; every other build keeps them. The unused fetch background mode is gone from all builds.
+- **Undo:** `git revert 3a54737 790629a`.
+
+## 2026-11-09: animated trip opening (767a8cd)
+
+- **Asked for:** pressing a trip should slide the tab over, zoom the map out and in, then slowly highlight the trip in red.
+- **Decided:** the drawer's controls and tab highlight slide over to Tracker (0.38 s), the map flies along `MapFlight` to fit the trip, and the red draws from the trip's start to its end over 1.2 s after the camera arrives. Reduce Motion fades and jumps.
+- **Undo:** `git revert 767a8cd`.
+
 ## Deferred for the owner
 
 - **Watch complication for Today:** it needs a new watch widget extension and bundle identifier, which is an Apple developer account change.
