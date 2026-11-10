@@ -237,7 +237,11 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   and duration, without coordinates, on this device only and outside Backup & Sync. GLManager records each
   after its summary commits. Retained history tags every fix with its trip, so trips whose summaries never
   saved are rebuilt from those fixes on a utility read when Trip appears or a trip ends; a saved summary
-  starting within a second wins, and the trip in progress is left out. See All, shown when more trips exist,
+  starting within a second wins, and the trip in progress is left out. Rebuilt trips whose first retained fix
+  is within two minutes of their start are saved to `TripLog`, so they outlive history expiry. Ending a trip
+  holds a background task until the summary is written, since automations end trips in the background and a
+  suspended app can lose queued preference writes; trip start and end call `synchronize`. Steps are asked of
+  the pedometer only with Motion & Fitness access, for at most five seconds. See All, shown when more trips exist,
   opens a sheet of every trip grouped by day in Go To's style. A row opens the trip on the Tracker, after
   history loads if needed: the ruler starts at the trip, the replay overview fits only the trip's fixes, and
   the model's `highlightedTrip` span draws red until returning to Live, as a faint band on the ruler under

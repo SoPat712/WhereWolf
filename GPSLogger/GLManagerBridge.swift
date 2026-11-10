@@ -193,8 +193,8 @@ final class GLManagerBridge {
         }
     }
 
-    // Trips rebuilt from retained history list the ones whose summaries were never saved. Reading every
-    // trip fix waits for the Trip tab rather than running on each refresh.
+    // Trips rebuilt from retained history list the ones whose summaries were never saved, and complete ones are
+    // saved. Reading every trip fix waits for the Trip tab rather than running on each refresh.
     func loadRecordedTrips() {
         guard !loadingRecordedTrips else { return }
         loadingRecordedTrips = true
@@ -202,7 +202,9 @@ final class GLManagerBridge {
             guard let self else { return }
             self.loadingRecordedTrips = false
             let current = GLManager.shared().flatMap { $0.tripInProgress() ? $0.currentTripStart() : nil }
-            self.recordedTrips = TripLog.recordedTrips(fixes, excluding: current)
+            let rebuilt = TripLog.rebuiltTrips(fixes, excluding: current)
+            self.recordedTrips = rebuilt.map(\.trip)
+            TripLog.save(rebuilt.filter(\.complete).map(\.trip))
             self.refresh()
         }
     }

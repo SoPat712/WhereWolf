@@ -53,7 +53,14 @@ struct RecordedTripFix {
     // History tags every fix with its trip, so a trip whose summary was never saved, or that ended before
     // this log existed, is rebuilt from its fixes while they are retained. Fixes arrive in time order.
     static func recordedTrips(_ fixes: [RecordedTripFix], excluding current: Date? = nil) -> [TripSummary] {
-        var trips: [TripSummary] = []
+        rebuiltTrips(fixes, excluding: current).map(\.trip)
+    }
+
+    // A trip is complete when its first retained fix is within two minutes of its start. Expiry trims history
+    // from the oldest end, so the oldest trip may have lost the start of its route and its distance.
+    static func rebuiltTrips(_ fixes: [RecordedTripFix], excluding current: Date? = nil)
+        -> [(trip: TripSummary, complete: Bool)] {
+        var trips: [(trip: TripSummary, complete: Bool)] = []
         var index = fixes.startIndex
         while index < fixes.endIndex {
             let tag = fixes[index].trip
@@ -75,11 +82,23 @@ struct RecordedTripFix {
                 stats.add(speed: fix.speed, speedAccuracy: fix.speedAccuracy, altitude: fix.altitude,
                           verticalAccuracy: fix.verticalAccuracy)
             }
-            trips.append(TripSummary(mode: TripModeStore.modeID(serverValue: first.mode) ?? first.mode, start: start,
-                                     end: last.timestamp, distance: distance,
-                                     topSpeed: stats.topSpeed >= 0 ? stats.topSpeed : nil, climb: stats.climb))
+            trips.append((TripSummary(mode: TripModeStore.modeID(serverValue: first.mode) ?? first.mode, start: start,
+                                      end: last.timestamp, distance: distance,
+                                      topSpeed: stats.topSpeed >= 0 ? stats.topSpeed : nil, climb: stats.climb),
+                          first.timestamp.timeIntervalSince(start) <= 120))
         }
         return trips
+    }
+
+    // Rebuilt trips missing from the log are saved, so they outlive the history they came from.
+    static func save(_ recorded: [TripSummary]) {
+        let saved = trips
+        let missing = recorded.filter { trip in !saved.contains { abs($0.start.timeIntervalSince(trip.start)) < 1 } }
+        guard !missing.isEmpty else { return }
+        let updated = Array((saved + missing).sorted { $0.start > $1.start }.prefix(limit))
+        guard updated != saved, let data = try? JSONEncoder().encode(updated) else { return }
+        defaults.set(data, forKey: key)
+        NotificationCenter.default.post(name: changed, object: nil)
     }
 
     // Saved summaries win; their starts keep the fractions of a second that a trip's tag drops.

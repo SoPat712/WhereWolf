@@ -2734,6 +2734,8 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     NSLog(@"Started a trip at %@", startDate);
     
     [self incrementTripMode:self.currentTripMode];
+    // Automations start trips in the background too; see writeTripToDB.
+    [[NSUserDefaults standardUserDefaults] synchronize];
     [self syncTripLiveActivity];
 }
 
@@ -2753,14 +2755,28 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     if(!self.tripInProgress || self.endingTrip) return;
     self.endingTrip = YES;
     _storeNextLocationAsTripStart = NO;
-    if([CMPedometer isStepCountingAvailable]) {
+    // Shortcuts and CarPlay automations end trips in the background, where iOS suspends the app as soon as the
+    // intent returns. Stay awake until the summary is written, or its preference writes can be lost.
+    UIApplication *application = UIApplication.sharedApplication;
+    __block UIBackgroundTaskIdentifier task = UIBackgroundTaskInvalid;
+    __block BOOL written = NO;
+    void (^write)(NSInteger) = ^(NSInteger steps) {
+        if(written) return;
+        written = YES;
+        [self writeTripToDB:autopause steps:steps endDate:endDate location:location];
+        if(task != UIBackgroundTaskInvalid) [application endBackgroundTask:task];
+        task = UIBackgroundTaskInvalid;
+    };
+    task = [application beginBackgroundTaskWithName:@"Save trip" expirationHandler:^{ write(0); }];
+    // Asking for steps without Motion & Fitness access prompts, which can't show in the background, and the
+    // answer never comes; a query that doesn't answer within five seconds is skipped too.
+    if([CMPedometer isStepCountingAvailable] && CMPedometer.authorizationStatus == CMAuthorizationStatusAuthorized) {
         [self.pedometer queryPedometerDataFromDate:self.currentTripStart toDate:(endDate ?: NSDate.date) withHandler:^(CMPedometerData *data, NSError *error) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [self writeTripToDB:autopause steps:data.numberOfSteps.integerValue endDate:endDate location:location];
-            });
+            dispatch_async(dispatch_get_main_queue(), ^{ write(data.numberOfSteps.integerValue); });
         }];
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{ write(0); });
     } else {
-        [self writeTripToDB:autopause steps:0 endDate:endDate location:location];
+        write(0);
     }
 }
 
@@ -2894,6 +2910,9 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     [self.tripdb close];
     
     [[NSUserDefaults standardUserDefaults] removeObjectForKey:GLTripStartTimeDefaultsName];
+    // Preference writes reach the preferences daemon asynchronously, and ones still queued when a suspended app is
+    // terminated are lost; the summary must not be.
+    [[NSUserDefaults standardUserDefaults] synchronize];
     self.endingTrip = NO;
     [self syncTripLiveActivity];
     [UIApplication sharedApplication].idleTimerDisabled = NO;

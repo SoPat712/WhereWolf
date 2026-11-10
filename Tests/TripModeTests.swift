@@ -287,6 +287,26 @@ final class TripLogTests: XCTestCase {
                        "The trip in progress has not finished")
     }
 
+    func testCompleteRebuiltTripsAreSavedOnce() {
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        func fix(_ tag: String, _ seconds: Double, north meters: Double) -> RecordedTripFix {
+            RecordedTripFix(trip: tag, mode: "car", timestamp: start.addingTimeInterval(seconds),
+                            latitude: 40 + meters / 111_195, longitude: -74)
+        }
+        // The first trip's opening fixes have expired; the second is whole.
+        let trimmed = "2027-01-15T08:00:00Z", whole = "2027-01-15T09:00:00Z"
+        let rebuilt = TripLog.rebuiltTrips([fix(trimmed, 600, north: 0), fix(trimmed, 660, north: 400),
+                                            fix(whole, 3_630, north: 0), fix(whole, 3_700, north: 300)])
+        XCTAssertEqual(rebuilt.map(\.complete), [false, true])
+        TripLog.record(mode: "walk", start: start.addingTimeInterval(7_200), end: start.addingTimeInterval(7_800),
+                       distance: 900, topSpeed: -1, climb: -1)
+        TripLog.save(rebuilt.filter(\.complete).map(\.trip))
+        TripLog.save(rebuilt.filter(\.complete).map(\.trip))
+        XCTAssertEqual(TripLog.trips.map(\.mode), ["walk", "car"])
+        XCTAssertEqual(TripLog.trips.last?.start, start.addingTimeInterval(3_600))
+        XCTAssertEqual(TripLog.trips.last?.distance ?? 0, 300, accuracy: 5)
+    }
+
     func testSavedSummariesWinOverTripsRebuiltFromHistory() {
         let start = Date(timeIntervalSince1970: 1_800_000_000.4)
         let saved = [TripSummary(mode: "walk", start: start, end: start.addingTimeInterval(600), distance: 900,
