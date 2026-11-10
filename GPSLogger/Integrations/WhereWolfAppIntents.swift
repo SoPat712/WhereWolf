@@ -3,7 +3,9 @@
 //  WhereWolf
 //
 //  The intents only used from Shortcuts and Siri, and the phrases Siri recognizes. The trip
-//  intents that widgets also use are in Shared/TripIntents.swift.
+//  intents that widgets also use are in Shared/TripIntents.swift. Like those, the settings
+//  actions succeed without a dialog, so automations never wait on one; Get Tracking Status
+//  exists to report, so it keeps its own.
 //
 
 import AppIntents
@@ -29,7 +31,7 @@ struct SetTrackingIntent: AppIntent {
     }
 
     @MainActor
-    func perform() async throws -> some IntentResult & ProvidesDialog {
+    func perform() async throws -> some IntentResult {
         let manager: GLManager = GLManager.shared()
         if enabled {
             manager.startAllUpdates()
@@ -37,7 +39,7 @@ struct SetTrackingIntent: AppIntent {
             manager.stopAllUpdates()
         }
         SharedStateObserver.shared.stateChanged()
-        return .result(dialog: enabled ? "WhereWolf is tracking your location." : "WhereWolf stopped tracking your location.")
+        return .result()
     }
 }
 
@@ -54,12 +56,10 @@ struct SetTripModeIntent: AppIntent {
     }
 
     @MainActor
-    func perform() async throws -> some IntentResult & ProvidesDialog {
-        let manager: GLManager = GLManager.shared()
-        manager.currentTripMode = mode.id
+    func perform() async throws -> some IntentResult {
+        GLManager.shared().currentTripMode = mode.id
         SharedStateObserver.shared.stateChanged()
-        let name = TripIntentText.modeName(mode.id)
-        return .result(dialog: manager.tripInProgress() ? "Changed this trip to \(name)." : "The next trip will be \(name).")
+        return .result()
     }
 }
 
@@ -109,12 +109,13 @@ struct SetTripActivityTypeIntent: AppIntent {
     }
 
     @MainActor
-    func perform() async throws -> some IntentResult & ProvidesDialog {
+    func perform() async throws -> some IntentResult {
         guard let type = activityType.activityType else {
-            return .result(dialog: "The Boat activity type needs iOS 27 or later.")
+            throw NSError(domain: "WhereWolf.Trip", code: 3,
+                          userInfo: [NSLocalizedDescriptionKey: "The Boat activity type needs iOS 27 or later."])
         }
         GLManager.shared().activityTypeDuringTrip = type
-        return .result(dialog: "Trips will use the \(String(localized: TripActivityTypeAppEnum.caseDisplayRepresentations[activityType]!.title)) activity type, starting with the next trip.")
+        return .result()
     }
 }
 
@@ -159,11 +160,9 @@ struct SetTripAccuracyIntent: AppIntent {
     }
 
     @MainActor
-    func perform() async throws -> some IntentResult & ProvidesDialog {
-        let manager: GLManager = GLManager.shared()
-        manager.desiredAccuracyDuringTrip = accuracy.accuracy
-        let name = String(localized: TripAccuracyAppEnum.caseDisplayRepresentations[accuracy]!.title)
-        return .result(dialog: manager.tripInProgress() ? "This trip now uses \(name) accuracy." : "Trips will use \(name) accuracy.")
+    func perform() async throws -> some IntentResult {
+        GLManager.shared().desiredAccuracyDuringTrip = accuracy.accuracy
+        return .result()
     }
 }
 

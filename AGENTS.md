@@ -180,6 +180,11 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   `AppShortcutParameters` gives Siri the modes at launch and when they change.
   `IntentDonations` donates trip and tracking changes made with WhereWolf's own controls;
   intents run by the system are not donated again.
+  Shortcuts actions succeed without a dialog: Shortcuts shows a result dialog as a banner and finishes the
+  action only once it's dismissed, so a CarPlay automation on a locked phone timed out after four minutes.
+  Failures throw. Get Tracking Status keeps its dialog. Start Trip, End Trip and Send Now are also
+  LiveActivityIntents for the widgets' buttons, so Shortcuts waits up to three seconds after each for a
+  Live Activity that background trip starts don't request.
   `INAlternativeAppNames` in the phone's Info.plist supplies "Werewolf" and
   "Where Wolf" for the App Shortcuts' application-name token. Keep the display
   name WhereWolf and the token in every phrase.

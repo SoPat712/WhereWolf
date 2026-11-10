@@ -7,6 +7,10 @@
 //  intents. On iOS 17+ they're LiveActivityIntents, which the system always runs in the app's
 //  process, so the code that calls GLManager is only compiled into the app (WHEREWOLF_APP).
 //
+//  Actions succeed without a dialog. Shortcuts shows a result dialog as a banner and finishes the
+//  action only once it's dismissed, so a CarPlay automation on a locked phone timed out after four
+//  minutes. Failures throw, which Shortcuts and Siri show without waiting.
+//
 
 import AppIntents
 import Foundation
@@ -76,22 +80,22 @@ struct StartTripIntent: AppIntent {
     }
 
     @MainActor
-    func perform() async throws -> some IntentResult & ProvidesDialog {
+    func perform() async throws -> some IntentResult {
         #if WHEREWOLF_APP
         let manager: GLManager = GLManager.shared()
-        if manager.tripInProgress() {
-            return .result(dialog: "A \(TripIntentText.modeName(manager.currentTripMode)) trip is already in progress.")
-        }
+        if manager.tripInProgress() { return .result() }
         guard ["Always", "When in Use"].contains(manager.authorizationStatusAsString()) else {
-            return .result(dialog: "Allow location access in WhereWolf before starting a trip.")
+            throw NSError(domain: "WhereWolf.Trip", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: "Allow location access in WhereWolf before starting a trip."])
         }
         GLTripActions.startTrip(withMode: mode?.id)
-        guard manager.tripInProgress() else { return .result(dialog: "The trip could not start. Open WhereWolf to check its status.") }
+        guard manager.tripInProgress() else {
+            throw NSError(domain: "WhereWolf.Trip", code: 2,
+                          userInfo: [NSLocalizedDescriptionKey: "The trip could not start. Open WhereWolf to check its status."])
+        }
         SharedStateObserver.shared.tripChanged(inProgress: true)
-        return .result(dialog: "Started a \(TripIntentText.modeName(manager.currentTripMode)) trip.")
-        #else
-        return .result(dialog: "")
         #endif
+        return .result()
     }
 }
 
@@ -105,19 +109,14 @@ struct EndTripIntent: AppIntent {
     static var description = IntentDescription("Ends the trip in progress in WhereWolf.")
 
     @MainActor
-    func perform() async throws -> some IntentResult & ProvidesDialog {
+    func perform() async throws -> some IntentResult {
         #if WHEREWOLF_APP
-        let manager: GLManager = GLManager.shared()
-        if !manager.tripInProgress() {
-            return .result(dialog: "There's no trip in progress.")
-        }
-        let summary = TripIntentText.tripSummary(manager)
+        // A CarPlay reconnect runs the disconnect automation with no trip in progress.
+        guard GLManager.shared().tripInProgress() else { return .result() }
         GLTripActions.endTripRestoringTracking()
         SharedStateObserver.shared.tripChanged(inProgress: false)
-        return .result(dialog: manager.tripInProgress() ? "Ending the \(summary)." : "Ended the \(summary).")
-        #else
-        return .result(dialog: "")
         #endif
+        return .result()
     }
 }
 
@@ -131,17 +130,16 @@ struct SendNowIntent: AppIntent {
     static var description = IntentDescription("Sends the location data waiting in WhereWolf's queue to your server or iCloud Drive now, instead of waiting for the send interval.")
 
     @MainActor
-    func perform() async throws -> some IntentResult & ProvidesDialog {
+    func perform() async throws -> some IntentResult {
         #if WHEREWOLF_APP
         let manager: GLManager = GLManager.shared()
-        if !manager.hasDestination() {
-            return .result(dialog: "WhereWolf doesn't have anywhere to send data yet. Set a server URL or choose iCloud Drive in WhereWolf's settings.")
+        guard manager.hasDestination() else {
+            throw NSError(domain: "WhereWolf.Send", code: 1, userInfo: [NSLocalizedDescriptionKey:
+                "WhereWolf doesn't have anywhere to send data yet. Set a server URL or choose iCloud Drive in WhereWolf's settings."])
         }
         manager.sendQueueNow()
-        return .result(dialog: "Sending WhereWolf's data now.")
-        #else
-        return .result(dialog: "")
         #endif
+        return .result()
     }
 }
 
