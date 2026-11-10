@@ -310,6 +310,13 @@ This log lists the decisions agents made on their own while working on WhereWolf
 - **Decided:** ending a trip holds a background task until its summary is written and synchronizes preferences after trip start and end; the pedometer is asked only with Motion & Fitness access and for at most five seconds, since asking without it prompts invisibly and never answers. Trips rebuilt from history are saved to the trip log when their fixes reach back to their start, which also restores the two lost drives while their history remains.
 - **Undo:** `git revert 0b207e6`.
 
+## 2026-11-09: opening a trip reuses its fitting map (HASH)
+
+- **Asked for:** "can we fix the short hitch".
+- **Found:** a Release simulator build opening a trip over a seeded week of 47,962 points spent the main thread mostly idle; building the route and its overlays stayed under about 12 ms. The roughly 90 ms pause seen earlier came from the simulator-only UI audit, which projects every route point each render and is compiled out of phone builds. The cost that remains on the phone is the overview fit creating a new map view, about 20 ms, on every fit.
+- **Decided:** the fit reuses one map view, reset to north-up and level before each use, so it starts from the same state a new one would.
+- **Undo:** `git revert HASH`.
+
 ## Deferred for the owner
 
 - **Watch complication for Today:** it needs a new watch widget extension and bundle identifier, which is an Apple developer account change.

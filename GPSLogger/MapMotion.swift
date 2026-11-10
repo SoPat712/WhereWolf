@@ -55,6 +55,7 @@ enum MapViewport {
 enum ReplayOverviewFit {
     // Preserve a useful neighborhood for a single fix or a trail only a few meters long.
     static let minimumSpan: CLLocationDistance = 150
+    @MainActor private static var projectionMap: MKMapView?
 
     @MainActor static func camera(for coordinates: [CLLocationCoordinate2D], on map: MKMapView,
                                   clearRect: CGRect) -> MapCamera? {
@@ -71,10 +72,14 @@ enum ReplayOverviewFit {
                              width: max(span, maxX - minX), height: max(span, maxY - minY))
         // An unattached map supplies MapKit's perspective projection without changing the displayed
         // camera. A north-up rectangle is only the initial scale; the fit uses the actual vertices.
-        let projection = MKMapView(frame: CGRect(origin: .zero, size: map.bounds.size))
+        // Creating a map view takes tens of milliseconds, so one is reused, reset to north-up and level.
+        let projection = projectionMap ?? MKMapView()
+        projectionMap = projection
+        projection.frame = CGRect(origin: .zero, size: map.bounds.size)
         projection.insetsLayoutMarginsFromSafeArea = false
         projection.layoutMargins = .zero
         projection.mapType = map.mapType
+        projection.camera = MKMapCamera(lookingAtCenter: center.coordinate, fromDistance: 1_000, pitch: 0, heading: 0)
         projection.layoutIfNeeded()
         let target = clearRect.offsetBy(dx: -map.bounds.minX, dy: -map.bounds.minY).insetBy(dx: 0.5, dy: 0.5)
         let padding = UIEdgeInsets(top: target.minY, left: target.minX,
