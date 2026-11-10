@@ -303,12 +303,12 @@ This log lists the decisions agents made on their own while working on WhereWolf
 - **Decided:** the Tip Jar offers only the five existing one-time tips; the eight monthly and yearly subscriptions are gone from the app and its StoreKit file, and any renewal still delivered is finished without a thank-you. The app, its widget extension and tests target iPhone only, and the iPad orientation key is gone. The version is 1.0, set once at the project level with the build number, and every Info.plist reads both, so the watch, widget and phone match. The location permission prompts now say what WhereWolf does with your location instead of Overland's "track in the background" wording. FUNDING.yml and the review notes stay as they are.
 - **Undo:** `git revert 7f3e2c1`.
 
-## 2026-11-09: CarPlay trip summaries are kept (HASH)
+## 2026-11-09: CarPlay trip summaries are kept (0b207e6)
 
 - **Asked for:** "can we fix ... the carplay trip summaries?"
 - **Found:** since the trip log arrived on 2026-11-08, only in-app test trips were saved; both CarPlay drives that evening were tagged in history but never reached the saved preferences, and neither did the last-trip end. A Shortcuts or CarPlay automation ends a trip in the background, End Trip returns at once, and the summary is written later in a pedometer callback with nothing keeping the app awake. Preference writes reach the preferences daemon asynchronously, so writes still queued when a suspended app is terminated are lost, while history's own SQLite file is not. The notification's End Trip already stayed awake two seconds for this reason.
 - **Decided:** ending a trip holds a background task until its summary is written and synchronizes preferences after trip start and end; the pedometer is asked only with Motion & Fitness access and for at most five seconds, since asking without it prompts invisibly and never answers. Trips rebuilt from history are saved to the trip log when their fixes reach back to their start, which also restores the two lost drives while their history remains.
-- **Undo:** `git revert HASH`.
+- **Undo:** `git revert 0b207e6`.
 
 ## Deferred for the owner
 
