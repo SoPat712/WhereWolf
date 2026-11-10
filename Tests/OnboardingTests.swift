@@ -58,6 +58,16 @@ final class OnboardingTests: XCTestCase {
         XCTAssertFalse(model.completed)
     }
 
+    func testStepChangesRecordTheirDirectionForThePageSlide() async {
+        let h = Harness(); defer { h.clean() }
+        let model = h.model(); await model.refresh()
+        model.next(); XCTAssertTrue(model.forward); XCTAssertEqual(model.previous, .welcome)
+        model.back(); XCTAssertFalse(model.forward); XCTAssertEqual(model.previous, .permissions)
+        model.go(to: .done); XCTAssertTrue(model.forward)
+        model.go(to: .tracking); XCTAssertFalse(model.forward)
+        model.next(); XCTAssertEqual(model.step, .done); XCTAssertTrue(model.forward)
+    }
+
     func testLocationUsesSeparateExplicitWhileUsingAndAlwaysActions() async {
         let h = Harness(); defer { h.clean() }
         let model = h.model(); await model.refresh()

@@ -123,6 +123,9 @@ final class OnboardingModel {
     private(set) var error: String?
     private(set) var selectedPreset = 6
     private(set) var fixingSummary = false
+    /// The step before the last change and whether that change moved forward; the guide slides its pages by them.
+    @ObservationIgnored private(set) var previous: OnboardingStep?
+    @ObservationIgnored private(set) var forward = true
     private(set) var alwaysRequested = false
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let actions: OnboardingActions
@@ -155,7 +158,7 @@ final class OnboardingModel {
 
     func reopen() {
         guard !busy else { return }
-        step = .welcome
+        show(.welcome)
         fixingSummary = false
         error = nil
         loaded = false
@@ -165,7 +168,7 @@ final class OnboardingModel {
     func go(to target: OnboardingStep) {
         guard !busy, steps.contains(target) else { return }
         fixingSummary = target != .done && (fixingSummary || step == .done)
-        step = target
+        show(target)
         error = nil
     }
 
@@ -173,19 +176,25 @@ final class OnboardingModel {
         guard !busy else { return }
         error = nil
         if fixingSummary {
-            step = .done
+            show(.done)
             fixingSummary = false
             return
         }
         guard let index = steps.firstIndex(of: step), index + 1 < steps.count else { return }
-        step = steps[index + 1]
+        show(steps[index + 1])
     }
 
     func back() {
         guard !busy, let index = steps.firstIndex(of: step), index > 0 else { return }
         fixingSummary = false
         error = nil
-        step = steps[index - 1]
+        show(steps[index - 1])
+    }
+
+    private func show(_ target: OnboardingStep) {
+        forward = (steps.firstIndex(of: target) ?? 0) >= (steps.firstIndex(of: step) ?? 0)
+        previous = step
+        step = target
     }
 
     func opensSettings(for permission: OnboardingPermission) -> Bool {

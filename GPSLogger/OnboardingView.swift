@@ -82,34 +82,74 @@ struct OnboardingView: View {
         }
     }
 
-    @ViewBuilder private var panel: some View {
-        if #available(iOS 26, *) {
-            GlassEffectContainer { panelContent.glassEffect(.regular, in: .rect(cornerRadius: 46)) }
-        } else {
-            panelContent.background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 46))
+    private var panel: some View {
+        Group {
+            if #available(iOS 26, *) {
+                GlassEffectContainer { panelContent.glassEffect(.regular, in: .rect(cornerRadius: 46)) }
+            } else {
+                panelContent.background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 46))
+            }
         }
+        // The buttons sit outside the glass container, which morphs glass that moves within it: as each page
+        // moved the panel's top edge, Continue glided away from its place and back.
+        .overlay(alignment: .bottom) {
+            footer.padding(.horizontal, 18).padding(.bottom, 18).font(.system(size: rowSize))
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("wherewolf.setup.panel")
     }
 
     private var panelContent: some View {
-        VStack(spacing: model.step == .welcome ? 22 : [.tracking, .liveActivity].contains(model.step) ? 10 : 12) {
-            header
-            details
+        VStack(spacing: model.step == .welcome ? 10 : spacing(model.step)) {
+            // Only the pages slide. The step changes without animation, so the panel takes the new page's height
+            // at once and nothing below it moves; the leaving page is an overlay that takes no space.
+            page(model.step)
+                .keyframeAnimator(initialValue: 1.0, trigger: model.step) { content, value in
+                    let progress = reduceMotion ? 1 : value, side: CGFloat = model.forward ? 1 : -1
+                    content
+                        .visualEffect { effect, proxy in effect.offset(x: side * (1 - progress) * (proxy.size.width + 48)) }
+                        .overlay(alignment: .bottom) {
+                            if progress < 1, let previous = model.previous {
+                                page(previous, current: false)
+                                    .visualEffect { effect, proxy in effect.offset(x: -side * progress * (proxy.size.width + 48)) }
+                                    .allowsHitTesting(false).accessibilityHidden(true)
+                            }
+                        }
+                } keyframes: { _ in
+                    MoveKeyframe(0)
+                    SpringKeyframe(1, duration: 0.38, spring: .snappy)
+                }
             if let error = model.error {
                 Label(error, systemImage: "exclamationmark.circle")
                     .font(.footnote).foregroundStyle(.red)
+                    .padding(.horizontal, 18)
                     .accessibilityIdentifier("wherewolf.setup.error")
             }
-            footer
+            footer.padding(.horizontal, 18).hidden().accessibilityHidden(true)
         }
-        .padding(.horizontal, model.step == .welcome ? 24 : model.step == .liveActivity ? 16 : 18)
         .padding(.top, model.step == .welcome ? 30 : model.step == .tracking ? 20 : 22)
-        .padding(.bottom, model.step == .welcome || model.step == .done ? 22 : 18)
+        .padding(.bottom, 18)
         .font(.system(size: rowSize))
-        .id(model.step)
-        .transition(.opacity)
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: model.step)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("wherewolf.setup.panel")
+        .clipShape(.rect(cornerRadius: 46))
+    }
+
+    private func spacing(_ step: OnboardingStep) -> CGFloat {
+        step == .welcome ? 22 : [.tracking, .liveActivity].contains(step) ? 10 : 12
+    }
+
+    private func page(_ step: OnboardingStep, current: Bool = true) -> some View {
+        VStack(spacing: 0) {
+            VStack(spacing: spacing(step)) {
+                header(step, current: current)
+                details(step)
+            }
+            if step == .welcome {
+                (Text("There’s no WhereWolf server. ") + Text("[Privacy Policy](https://sopat712.github.io/WhereWolf/privacy/)"))
+                    .font(.system(size: 12)).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    .padding(.top, spacing(step))
+            }
+        }
+        .padding(.horizontal, step == .welcome ? 24 : step == .liveActivity ? 16 : 18)
     }
 
     private var topBar: some View {
@@ -150,34 +190,34 @@ struct OnboardingView: View {
         .accessibilityIdentifier("wherewolf.setup.navigation")
     }
 
-    private var header: some View {
-        VStack(spacing: model.step == .welcome ? 12 : 8) {
-            if model.step == .welcome {
+    private func header(_ step: OnboardingStep, current: Bool) -> some View {
+        VStack(spacing: step == .welcome ? 12 : 8) {
+            if step == .welcome {
                 Image(systemName: "mappin.and.ellipse")
                     .font(.system(size: 40, weight: .semibold)).foregroundStyle(.white)
                     .frame(width: 76, height: 76)
                     .background(.blue, in: RoundedRectangle(cornerRadius: 18))
-            } else if [.permissions, .destination, .done].contains(model.step) {
-                let color: Color = model.step == .permissions ? .blue : .green
-                Image(systemName: model.step == .permissions ? "checkmark.shield" : model.step == .done ? "checkmark" : "arrow.up.doc")
+            } else if [.permissions, .destination, .done].contains(step) {
+                let color: Color = step == .permissions ? .blue : .green
+                Image(systemName: step == .permissions ? "checkmark.shield" : step == .done ? "checkmark" : "arrow.up.doc")
                     .font(.system(size: 30, weight: .medium)).foregroundStyle(color)
                     .frame(width: 60, height: 60).background(color.opacity(0.2), in: Circle())
             }
-            Text(model.step.title)
-                .font(.system(size: model.step == .welcome ? titleSize + 2 : model.step == .liveActivity ? titleSize - 2 : titleSize, weight: .bold))
+            Text(step.title)
+                .font(.system(size: step == .welcome ? titleSize + 2 : step == .liveActivity ? titleSize - 2 : titleSize, weight: .bold))
                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1).minimumScaleFactor(0.85)
-                .accessibilityAddTraits(.isHeader).accessibilityFocused($titleFocused)
-                .accessibilityIdentifier("wherewolf.setup.title")
-            if let subtitle {
-                Text(subtitle).font(.system(size: model.step == .welcome || model.step == .permissions ? rowSize : bodySize))
+                .accessibilityAddTraits(.isHeader)
+                .modifier(SetupTitle(focus: current ? $titleFocused : nil))
+            if let subtitle = subtitle(step) {
+                Text(subtitle).font(.system(size: step == .welcome || step == .permissions ? rowSize : bodySize))
                     .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
         }
         .multilineTextAlignment(.center).frame(maxWidth: .infinity)
     }
 
-    private var subtitle: String? {
-        switch model.step {
+    private func subtitle(_ step: OnboardingStep) -> String? {
+        switch step {
         case .welcome: return "A quiet location logger that keeps your history and sends it where you choose."
         case .permissions: return "iOS asks only when you tap. Choose Always so WhereWolf keeps recording after you close it."
         case .destination: return "You can change this any time in Settings."
@@ -192,8 +232,8 @@ struct OnboardingView: View {
         }
     }
 
-    @ViewBuilder private var details: some View {
-        switch model.step {
+    @ViewBuilder private func details(_ step: OnboardingStep) -> some View {
+        switch step {
         case .welcome: welcome
         case .permissions: permissions
         case .destination: destinations
@@ -346,6 +386,7 @@ struct OnboardingView: View {
         .contentMargins(.all, 0, for: .scrollContent)
         .scrollContentBackground(.hidden).scrollDisabled(true)
         .frame(height: UsagePreset.values.reduce(CGFloat.zero) { $0 + max(presetRowHeight, presetRowHeights[$1] ?? 0) })
+        .clipShape(.rect(cornerRadius: 22))
         .onPreferenceChange(OnboardingPresetHeights.self) { presetRowHeights.merge($0) { _, new in new } }
         .accessibilityIdentifier("wherewolf.setup.presets")
     }
@@ -549,10 +590,6 @@ struct OnboardingView: View {
 
     private var footer: some View {
         VStack(spacing: 10) {
-            if model.step == .welcome {
-                (Text("There’s no WhereWolf server. ") + Text("[Privacy Policy](https://sopat712.github.io/WhereWolf/privacy/)"))
-                    .font(.system(size: 12)).foregroundStyle(.secondary).multilineTextAlignment(.center)
-            }
             Button { primaryAction() } label: {
                 Text(model.step == .done ? "Start Tracking" : model.fixingSummary ? "Return to Summary" : "Continue")
                     .font(.system(.body, weight: .semibold)).frame(maxWidth: .infinity, minHeight: 28)
@@ -728,6 +765,16 @@ struct OnboardingTrackingBindings {
     var time: Binding<Double> { Binding(get: { bridge.discardSecondsValue }, set: { bridge.discardSecondsValue = $0 }) }
     var pause: Binding<Bool> { Binding(get: { bridge.pausesAutomatically }, set: { bridge.pausesAutomatically = $0 }) }
     var visits: Binding<Bool> { Binding(get: { bridge.visitTracking }, set: { bridge.visitTracking = $0 }) }
+}
+
+// Only the current page's title takes VoiceOver focus and the audits' identifier; the leaving copy has neither.
+private struct SetupTitle: ViewModifier {
+    let focus: AccessibilityFocusState<Bool>.Binding?
+
+    func body(content: Content) -> some View {
+        if let focus { content.accessibilityFocused(focus).accessibilityIdentifier("wherewolf.setup.title") }
+        else { content }
+    }
 }
 
 private struct OnboardingPresetHeights: PreferenceKey {
