@@ -140,8 +140,8 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   scrolls on 390/402-point phones; use `ViewThatFits` for larger text only.
   Continue and Skip slide each page's title and content in from the trailing edge, Back from the leading
   one. The step changes without animation, so the panel takes the new page's height at once and the buttons
-  stay put; the leaving page is a bottom-aligned overlay that takes no space, and only the two pages' offsets
-  animate. Animating the height, or attaching an animation to a page transition, moved the buttons and the
+  stay put; the leaving page is a bottom-aligned overlay that takes no space, one page over and built once,
+  so each frame only offsets the pair. Animating the height, or attaching an animation to a page transition, moved the buttons and the
   incoming page against the panel's fixed bottom. The buttons are an overlay outside the panel's
   `GlassEffectContainer`, over a hidden copy that keeps their space: the container morphs glass that moves
   within it, so Continue glided away and back whenever the panel's top edge moved. Reduce Motion swaps pages

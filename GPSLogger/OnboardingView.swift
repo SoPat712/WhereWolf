@@ -11,6 +11,7 @@ struct OnboardingView: View {
     @State private var ownTracks = false
     @State private var useSetupLink = false
     @State private var presetRowHeights: [Int: CGFloat] = [:]
+    @State private var settledStep: OnboardingStep?
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -102,22 +103,27 @@ struct OnboardingView: View {
     private var panelContent: some View {
         VStack(spacing: model.step == .welcome ? 10 : spacing(model.step)) {
             // Only the pages slide. The step changes without animation, so the panel takes the new page's height
-            // at once and nothing below it moves; the leaving page is an overlay that takes no space.
+            // at once and nothing below it moves. The leaving page is an overlay that takes no space, one page over,
+            // built once; each frame only offsets the pair.
             page(model.step)
+                .overlay(alignment: .bottom) {
+                    if !reduceMotion, settledStep != model.step, let previous = model.previous {
+                        let side: CGFloat = model.forward ? 1 : -1
+                        page(previous, current: false)
+                            .visualEffect { effect, proxy in effect.offset(x: -side * (proxy.size.width + 48)) }
+                            .allowsHitTesting(false).accessibilityHidden(true)
+                    }
+                }
                 .keyframeAnimator(initialValue: 1.0, trigger: model.step) { content, value in
-                    let progress = reduceMotion ? 1 : value, side: CGFloat = model.forward ? 1 : -1
-                    content
-                        .visualEffect { effect, proxy in effect.offset(x: side * (1 - progress) * (proxy.size.width + 48)) }
-                        .overlay(alignment: .bottom) {
-                            if progress < 1, let previous = model.previous {
-                                page(previous, current: false)
-                                    .visualEffect { effect, proxy in effect.offset(x: -side * progress * (proxy.size.width + 48)) }
-                                    .allowsHitTesting(false).accessibilityHidden(true)
-                            }
-                        }
+                    let offset = reduceMotion ? 0 : (model.forward ? 1 : -1) * (1 - value)
+                    content.visualEffect { effect, proxy in effect.offset(x: offset * (proxy.size.width + 48)) }
                 } keyframes: { _ in
                     MoveKeyframe(0)
                     SpringKeyframe(1, duration: 0.38, spring: .snappy)
+                }
+                .task(id: model.step) {
+                    try? await Task.sleep(for: .milliseconds(450))
+                    if !Task.isCancelled { settledStep = model.step }
                 }
             if let error = model.error {
                 Label(error, systemImage: "exclamationmark.circle")
