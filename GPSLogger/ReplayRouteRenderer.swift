@@ -31,15 +31,22 @@ final class ReplayRoutePresentation {
         var removed: [MKOverlay] = []
         var addedDots: [MKOverlay] = []
         var removedDots: [MKOverlay] = []
+        var addedHighlight: [MKOverlay] = []
+        // An opened trip's red, already on the map, that new blue must stay beneath.
+        var ceiling: MKOverlay?
 
-        var isEmpty: Bool { added.isEmpty && removed.isEmpty && addedDots.isEmpty && removedDots.isEmpty }
+        var isEmpty: Bool {
+            added.isEmpty && removed.isEmpty && addedDots.isEmpty && removedDots.isEmpty && addedHighlight.isEmpty
+        }
 
         @MainActor func apply(to map: MKMapView) {
-            // Remove obsolete colors before installing their replacements. Dots stay below blue.
+            // Remove obsolete colors before installing their replacements. Dots stay below blue, blue below red.
             let gone = removed + removedDots
             if !gone.isEmpty { map.removeOverlays(gone) }
             for line in addedDots { map.insertOverlay(line, at: 0, level: .aboveRoads) }
-            if !added.isEmpty { map.addOverlays(added, level: .aboveRoads) }
+            if let ceiling { for line in added { map.insertOverlay(line, below: ceiling) } }
+            else if !added.isEmpty { map.addOverlays(added, level: .aboveRoads) }
+            if !addedHighlight.isEmpty { map.addOverlays(addedHighlight, level: .aboveRoads) }
         }
     }
 
@@ -59,6 +66,9 @@ final class ReplayRoutePresentation {
     private var installed = Set<ObjectIdentifier>()
     private var pending: [ObjectIdentifier: TimeInterval] = [:]
     private var rendering = Set<ObjectIdentifier>()
+    private(set) var highlightOverlays: [MKOverlay] = []
+    private var reds = Set<ObjectIdentifier>()
+    private var highlightKey: (range: ClosedRange<Int>, first: MKMapPoint, last: MKMapPoint)?
 
     var futureSections: [MKPolyline] { sections.map(\.future) }
     var nextCoverageDeadline: TimeInterval? { pending.values.min() }
@@ -204,8 +214,8 @@ final class ReplayRoutePresentation {
             + sections.indices.filter { $0 < activeIndex }.map { sections[$0].polyline as MKOverlay }
         let old = installed
         let next = Set(overlays.map { ObjectIdentifier($0) })
-        installed = next
-        var change = OverlayChange()
+        installed = next.union(reds)
+        var change = OverlayChange(ceiling: highlightOverlays.first)
         for line in previous where !next.contains(ObjectIdentifier(line)) {
             if previousDots.contains(ObjectIdentifier(line)) { change.removedDots.append(line) }
             else { change.removed.append(line) }
@@ -215,10 +225,53 @@ final class ReplayRoutePresentation {
             else { change.added.append(line) }
             pending[ObjectIdentifier(line)] = now + Self.renderTimeout
         }
-        pending = pending.filter { next.contains($0.key) }
-        rendering.formIntersection(next)
+        pending = pending.filter { installed.contains($0.key) }
+        rendering.formIntersection(installed)
         return change
     }
+
+    // An opened trip draws as MapKit overlays, sectioned like the blue, so it moves with the map itself.
+    func highlight(_ range: ClosedRange<Int>?, now: TimeInterval = CACurrentMediaTime()) -> OverlayChange {
+        let points = fullRoute.points()
+        let wanted = range.flatMap { $0.lowerBound >= 0 && $0.upperBound < fullRoute.pointCount ? $0 : nil }
+        if let wanted, let key = highlightKey, key.range == wanted,
+           Self.same(key.first, points[wanted.lowerBound]), Self.same(key.last, points[wanted.upperBound]) {
+            return OverlayChange()
+        }
+        var change = OverlayChange(removed: highlightOverlays)
+        for id in reds { pending.removeValue(forKey: id); rendering.remove(id); installed.remove(id) }
+        highlightOverlays = []
+        reds = []
+        highlightKey = nil
+        guard let wanted else { return change }
+        highlightKey = (wanted, points[wanted.lowerBound], points[wanted.upperBound])
+        var start = wanted.lowerBound
+        while start < wanted.upperBound {
+            var end = start + 1
+            var length = hypot(points[end].x - points[start].x, points[end].y - points[start].y)
+            while end < wanted.upperBound, end - start < Self.maximumSegments {
+                let step = hypot(points[end + 1].x - points[end].x, points[end + 1].y - points[end].y)
+                if length + step > Self.maximumLength { break }
+                length += step
+                end += 1
+            }
+            highlightOverlays.append(MKPolyline(points: points + start, count: end - start + 1))
+            start = end
+        }
+        reds = Set(highlightOverlays.map { ObjectIdentifier($0) })
+        installed.formUnion(reds)
+        for id in reds { pending[id] = now + Self.renderTimeout }
+        change.addedHighlight = highlightOverlays
+        return change
+    }
+
+    // True once MapKit has drawn every red section, so the layer that drew the trip in can go.
+    func highlightRendered(now: TimeInterval = CACurrentMediaTime()) -> Bool {
+        expireCoverage(now: now)
+        return highlightKey != nil && reds.allSatisfy { pending[$0] == nil }
+    }
+
+    private static func same(_ a: MKMapPoint, _ b: MKMapPoint) -> Bool { a.x == b.x && a.y == b.y }
 
     private func sectionIndex(containing fix: Int) -> Int {
         var lower = 0, upper = sections.count
@@ -287,10 +340,14 @@ final class ReplayRoutePresentation {
     // Keep plain MKPolylineRenderer: path renderer subclasses become upscaled bitmap tiles.
     func renderer(for overlay: MKOverlay) -> MKOverlayPathRenderer? {
         let id = ObjectIdentifier(overlay)
-        guard let line = overlay as? MKPolyline, dots.contains(id) || trails.contains(id) else { return nil }
+        guard let line = overlay as? MKPolyline, dots.contains(id) || trails.contains(id) || reds.contains(id) else { return nil }
         let renderer = MKPolylineRenderer(polyline: line)
         renderer.lineJoin = .round
-        if dots.contains(id) {
+        if reds.contains(id) {
+            renderer.lineWidth = ReplayRouteStyle.highlightWidth
+            renderer.strokeColor = .systemRed
+            renderer.lineCap = .round
+        } else if dots.contains(id) {
             renderer.lineWidth = ReplayRouteStyle.futureWidth
             renderer.strokeColor = ReplayRouteStyle.futureColor
             renderer.lineDashPattern = [1, 5]
@@ -436,6 +493,7 @@ final class ReplayTrailLayer: CAShapeLayer {
         let route: ObjectIdentifier
         let position: Double
         let coverage: [ReplayRoutePresentation.Coverage]
+        let hiding: ClosedRange<Int>?
         let coordinate: ReplayCoordinate
         let samples: [CGPoint]
         let center: CGPoint
@@ -482,6 +540,8 @@ final class ReplayTrailLayer: CAShapeLayer {
         removeFromSuperlayer()
     }
 
+    static let revealDuration: TimeInterval = 1.2
+
     // An opened trip draws itself from its start to its end once the camera arrives.
     func conceal() {
         removeAnimation(forKey: "reveal")
@@ -495,19 +555,21 @@ final class ReplayTrailLayer: CAShapeLayer {
         let animation = CABasicAnimation(keyPath: "strokeEnd")
         animation.fromValue = 0
         animation.toValue = 1
-        animation.duration = 1.2
+        animation.duration = Self.revealDuration
         animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
         add(animation, forKey: "reveal")
     }
 
+    // `hiding` leaves out the segments between those fixes, which an opened trip's red overlays draw instead:
+    // every layer sits above every overlay.
     func update(route: MKPolyline, position: Double, coordinate: CLLocationCoordinate2D,
-                coverage: [ReplayRoutePresentation.Coverage], projection screen: ReplayScreenProjection,
-                on map: MKMapView, below marker: MKAnnotationView) {
+                coverage: [ReplayRoutePresentation.Coverage], hiding: ClosedRange<Int>? = nil,
+                projection screen: ReplayScreenProjection, on map: MKMapView, below marker: MKAnnotationView) {
         guard position.isFinite, route.pointCount > 0, CLLocationCoordinate2DIsValid(coordinate),
               let container = marker.superview else { hide(); return }
         let value = min(Double(route.pointCount - 1), max(0, position)), fix = Int(value)
         let endpoint = screen.direct(MKMapPoint(coordinate))
-        let next = Projection(route: ObjectIdentifier(route), position: value, coverage: coverage,
+        let next = Projection(route: ObjectIdentifier(route), position: value, coverage: coverage, hiding: hiding,
             coordinate: ReplayCoordinate(coordinate), samples: screen.samples, center: endpoint,
             bounds: container.bounds, scale: map.traitCollection.displayScale,
             appearance: map.traitCollection.userInterfaceStyle)
@@ -521,27 +583,29 @@ final class ReplayTrailLayer: CAShapeLayer {
             guard end >= start else { continue }
             let fast = screen.canProject(route, start: start, end: end)
             var began = false
-            func add(_ point: CGPoint) -> Bool {
+            // A point joins the path unless the segment leading to it, between fixes `from` and `to`, is hidden.
+            func add(_ point: CGPoint, from: Int, to: Int) -> Bool {
                 guard point.x.isFinite, point.y.isFinite else { return false }
-                if !began { path.move(to: point); began = true }
-                else { path.addLine(to: point) }
+                if !began || hiding.map({ min(from, to) >= $0.lowerBound && max(from, to) <= $0.upperBound }) == true {
+                    path.move(to: point); began = true
+                } else { path.addLine(to: point) }
                 return true
             }
             if !showsFuture, span.prefix, start > 0,
                let tail = ReplayRoutePresentation.sharedTail(previous: route.points()[start - 1], current: route.points()[start]) {
-                guard add(screen.point(tail, fast: fast)) else { hide(); return }
+                guard add(screen.point(tail, fast: fast), from: start - 1, to: start) else { hide(); return }
             }
             if showsFuture {
                 for index in stride(from: end, through: start, by: -1) {
-                    guard add(screen.point(route.points()[index], fast: fast)) else { hide(); return }
+                    guard add(screen.point(route.points()[index], fast: fast), from: index + 1, to: index) else { hide(); return }
                 }
             } else {
                 for index in start...end {
-                    guard add(screen.point(route.points()[index], fast: fast)) else { hide(); return }
+                    guard add(screen.point(route.points()[index], fast: fast), from: index - 1, to: index) else { hide(); return }
                 }
             }
             if span.marker {
-                guard add(endpoint) else { hide(); return }
+                guard add(endpoint, from: fix, to: fix + 1) else { hide(); return }
             }
         }
         CATransaction.begin()

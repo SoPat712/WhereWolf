@@ -484,6 +484,7 @@ struct NativeMapSurface: UIViewRepresentable {
         private var highlightBounds: (route: ObjectIdentifier, range: ClosedRange<Int>, bounds: CGRect)?
         private var revealedHighlight: ClosedRange<Int>?
         private var pendingReveal: (range: ClosedRange<Int>, since: TimeInterval)?
+        private var revealEnd: TimeInterval = 0
         private let replayAccuracyLayer = ReplayAccuracyLayer()
         private var replayCoverageExpiry: DispatchWorkItem?
         private var replayCoverageDeadline: TimeInterval?
@@ -721,7 +722,9 @@ struct NativeMapSurface: UIViewRepresentable {
                         map.addOverlays(presentation.overlays, level: .aboveRoads)
                     }
                 } else {
-                    if let presentation = replayPresentation { map.removeOverlays(presentation.overlays) }
+                    if let presentation = replayPresentation {
+                        map.removeOverlays(presentation.overlays + presentation.highlightOverlays)
+                    }
                     replayPresentation = nil
                     replayRenderCamera = nil
                 }
@@ -825,37 +828,56 @@ struct NativeMapSurface: UIViewRepresentable {
                 if let presentation = replayPresentation, let container = view.superview {
                     let screen = ReplayScreenProjection(map: map, container: container)
                     let now = CACurrentMediaTime()
+                    let span = highlightCoverage(presentation.fullRoute)
+                    let range = span.map { $0.start...$0.end }
+                    if let range, revealedHighlight != range {
+                        // A newly opened trip stays hidden while the camera flies, then draws in. The flight
+                        // starts in the same update as the highlight, so it gets a moment to begin first.
+                        if pendingReveal?.range != range {
+                            pendingReveal = (range, now)
+                            replayHighlightLayer.conceal()
+                            presentation.highlight(nil).apply(to: map)
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                                guard let self, let map = self.map else { return }
+                                self.alignMarkers(on: map)
+                            }
+                        }
+                        if !cameraActionAnimating, let pending = pendingReveal, now - pending.since >= 0.15 {
+                            revealedHighlight = range
+                            pendingReveal = nil
+                            let animated = !UIAccessibility.isReduceMotionEnabled
+                            replayHighlightLayer.reveal(animated: animated)
+                            revealEnd = now + (animated ? ReplayTrailLayer.revealDuration : 0)
+                            if animated {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + ReplayTrailLayer.revealDuration) { [weak self] in
+                                    guard let self, let map = self.map else { return }
+                                    self.alignMarkers(on: map)
+                                }
+                            }
+                        }
+                    } else if range == nil {
+                        revealedHighlight = nil
+                        pendingReveal = nil
+                        presentation.highlight(nil).apply(to: map)
+                    }
+                    // Once drawn in, the trip moves to MapKit overlays, which move with the map itself; the layer
+                    // stays until MapKit has drawn them, and the blue and dots layers then leave the trip to them.
+                    if let range, revealedHighlight == range, now >= revealEnd {
+                        presentation.highlight(range, now: now).apply(to: map)
+                    }
+                    let native = range != nil && revealedHighlight == range && presentation.highlightRendered(now: now)
                     replayTrailLayer.update(route: presentation.fullRoute, position: parent.replayPosition,
                         coordinate: pose, coverage: presentation.layerCoverage(future: false, now: now),
-                        projection: screen, on: map, below: view)
+                        hiding: native ? range : nil, projection: screen, on: map, below: view)
                     replayFutureLayer.update(route: presentation.fullRoute, position: parent.replayPosition,
                         coordinate: pose, coverage: presentation.layerCoverage(future: true, now: now),
-                        projection: screen, on: map, below: view)
+                        hiding: native ? range : nil, projection: screen, on: map, below: view)
                     if let layers = container.layer.sublayers,
                        let future = layers.firstIndex(of: replayFutureLayer), let trail = layers.firstIndex(of: replayTrailLayer),
                        future > trail {
                         container.layer.insertSublayer(replayFutureLayer, below: replayTrailLayer)
                     }
-                    if let span = highlightCoverage(presentation.fullRoute) {
-                        // A newly opened trip stays hidden while the camera flies, then draws in. The flight
-                        // starts in the same update as the highlight, so it gets a moment to begin first.
-                        let range = span.start...span.end
-                        if revealedHighlight != range {
-                            let now = CACurrentMediaTime()
-                            if pendingReveal?.range != range {
-                                pendingReveal = (range, now)
-                                replayHighlightLayer.conceal()
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-                                    guard let self, let map = self.map else { return }
-                                    self.alignMarkers(on: map)
-                                }
-                            }
-                            if !cameraActionAnimating, let pending = pendingReveal, now - pending.since >= 0.15 {
-                                revealedHighlight = range
-                                pendingReveal = nil
-                                replayHighlightLayer.reveal(animated: !UIAccessibility.isReduceMotionEnabled)
-                            }
-                        }
+                    if let span, !native {
                         replayHighlightLayer.update(route: presentation.fullRoute, position: parent.replayPosition,
                             coordinate: pose, coverage: [span], projection: screen, on: map, below: view)
                         if let layers = container.layer.sublayers, let highlight = layers.firstIndex(of: replayHighlightLayer),
@@ -864,8 +886,6 @@ struct NativeMapSurface: UIViewRepresentable {
                         }
                     } else {
                         replayHighlightLayer.hide()
-                        revealedHighlight = nil
-                        pendingReveal = nil
                     }
                     scheduleReplayCoverageExpiry()
                 } else {

@@ -255,10 +255,12 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   opens a sheet of every trip grouped by day in Go To's style. A row opens the trip on the Tracker, after
   history loads if needed: the ruler starts at the trip, the replay overview fits only the trip's fixes, and
   the model's `highlightedTrip` span draws red until returning to Live, as a faint band on the ruler under
-  stop tints and as a foreground trail layer 4 points wide above the blue, below the marker. Opening one
+  stop tints and on the map 4 points wide above the blue, below the marker. Opening one
   slides the drawer's controls over to Tracker (the tab highlight slides with them) instead of the usual
   fade, flies the map out and in along `MapFlight` to fit the trip, and only then draws the red from the
-  trip's start to its end over 1.2 seconds. The flight keeps the trip's fit instead of aiming at the marker,
+  trip's start to its end over 1.2 seconds. A foreground layer draws it in; the red then moves to MapKit
+  overlays, sectioned like the blue, so it moves with the map, and once MapKit has drawn them the layer goes
+  and the blue and dots layers leave the trip's segments to them. The flight keeps the trip's fit instead of aiming at the marker,
   and the marker travels in with it from where it was, covering the same share of the way as the camera's
   center: from the last trip's marker, or from the live location, growing out of the dot's size over 0.45
   seconds. The trail still splits at the replay position. Reduce Motion fades the controls and jumps. A row is

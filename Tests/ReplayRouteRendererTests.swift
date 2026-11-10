@@ -275,6 +275,96 @@ final class ReplayRouteRendererTests: XCTestCase {
         XCTAssertEqual(red.strokeEnd, 1)
     }
 
+    func testAnOpenedTripMovesToRedOverlaysAboveTheBlueOnceRendered() throws {
+        let route = ReplayRoutePresentation(coordinates: coordinates(count: 5_000), now: 10)
+        let map = MKMapView(frame: CGRect(x: 0, y: 0, width: 400, height: 400))
+        map.addOverlays(route.overlays, level: .aboveRoads)
+        XCTAssertFalse(route.highlightRendered(now: 10))
+        let change = route.highlight(1_000...3_500, now: 10)
+        XCTAssertTrue(change.removed.isEmpty)
+        change.apply(to: map)
+        let reds = route.highlightOverlays.compactMap { $0 as? MKPolyline }
+        XCTAssertGreaterThan(reds.count, 1)
+        var next = 1_000
+        for line in reds {
+            XCTAssertLessThanOrEqual(line.pointCount - 1, ReplayRoutePresentation.maximumSegments)
+            let first = line.points()[0], expected = route.fullRoute.points()[next]
+            XCTAssertEqual(first.x, expected.x)
+            XCTAssertEqual(first.y, expected.y)
+            next += line.pointCount - 1
+        }
+        XCTAssertEqual(next, 3_500, "Sections join end to start and stop at the trip's last fix")
+        let renderer = try XCTUnwrap(route.renderer(for: reds[0]) as? MKPolylineRenderer)
+        XCTAssertEqual(renderer.strokeColor, .systemRed)
+        XCTAssertEqual(renderer.lineWidth, ReplayRouteStyle.highlightWidth)
+        XCTAssertEqual(renderer.lineCap, .round)
+        XCTAssertTrue(route.contains(reds[0]))
+        XCTAssertTrue(route.highlight(1_000...3_500, now: 10.1).isEmpty, "The same trip keeps its overlays")
+
+        // The layer keeps drawing the trip until MapKit has drawn the red.
+        XCTAssertFalse(route.highlightRendered(now: 10.2))
+        route.renderingBegan()
+        route.renderingFinished(fullyRendered: true)
+        XCTAssertTrue(route.highlightRendered(now: 10.3))
+
+        // Blue added later goes beneath the red.
+        let ids = Set(reds.map { ObjectIdentifier($0) })
+        let moved = route.updatePosition(4_900, now: 11)
+        XCTAssertFalse(moved.added.isEmpty)
+        moved.apply(to: map)
+        let drawn = map.overlays(in: .aboveRoads)
+        XCTAssertEqual(Set(drawn.suffix(reds.count).map { ObjectIdentifier($0) }), ids)
+
+        // Another trip replaces the red and waits for its own render, or the timeout.
+        route.highlight(200...300, now: 12).apply(to: map)
+        XCTAssertTrue(Set(map.overlays.map { ObjectIdentifier($0) }).isDisjoint(with: ids))
+        XCTAssertFalse(route.highlightRendered(now: 13.9))
+        XCTAssertTrue(route.highlightRendered(now: 14.01))
+        route.highlight(nil).apply(to: map)
+        XCTAssertTrue(route.highlightOverlays.isEmpty)
+        XCTAssertFalse(route.highlightRendered(now: 15))
+        XCTAssertEqual(Set(map.overlays.map { ObjectIdentifier($0) }), Set(route.overlays.map { ObjectIdentifier($0) }))
+    }
+
+    func testLayersLeaveAnOpenedTripsSegmentsToItsOverlays() throws {
+        let values = coordinates(count: 400)
+        let route = ReplayRoutePresentation(coordinates: values, now: 10)
+        let map = MKMapView(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        map.region = MKCoordinateRegion(center: values[200], latitudinalMeters: 1_000, longitudinalMeters: 1_000)
+        map.layoutIfNeeded()
+        let marker = MKAnnotationView()
+        map.addSubview(marker)
+        let screen = ReplayScreenProjection(map: map, container: map)
+        let rect = route.fullRoute.boundingMapRect
+        let all = ReplayRoutePresentation.Coverage(start: 0, end: 399, prefix: false, marker: true,
+            bounds: CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: rect.height))
+        // Back-to-back moves collapse into one, so a hidden trip leaves one gap and none of its segments.
+        func drawn(_ layer: ReplayTrailLayer) throws -> (gaps: Int, segments: Int) {
+            var moves = 0, lines = 0
+            try XCTUnwrap(layer.path).applyWithBlock {
+                if $0.pointee.type == .moveToPoint { moves += 1 } else if $0.pointee.type == .addLineToPoint { lines += 1 }
+            }
+            return (moves - 1, lines)
+        }
+        let blue = ReplayTrailLayer(), dots = ReplayTrailLayer(future: true)
+        blue.update(route: route.fullRoute, position: 300.5, coordinate: values[300], coverage: [all],
+                    hiding: 100...200, projection: screen, on: map, below: marker)
+        XCTAssertEqual(try drawn(blue).gaps, 1)
+        XCTAssertEqual(try drawn(blue).segments, 300 + 1 - 100, "Every segment to the marker except the trip's 100")
+        dots.update(route: route.fullRoute, position: 50.5, coordinate: values[50], coverage: [all],
+                    hiding: 100...200, projection: screen, on: map, below: marker)
+        XCTAssertEqual(try drawn(dots).gaps, 1)
+        XCTAssertEqual(try drawn(dots).segments, 348 + 1 - 100)
+        // With the marker inside the trip, the blue stops at the trip's start and leaves the way to the marker.
+        blue.update(route: route.fullRoute, position: 150.5, coordinate: values[150], coverage: [all],
+                    hiding: 100...200, projection: screen, on: map, below: marker)
+        XCTAssertEqual(try drawn(blue).segments, 100)
+        blue.update(route: route.fullRoute, position: 150.5, coordinate: values[150], coverage: [all],
+                    projection: screen, on: map, below: marker)
+        XCTAssertEqual(try drawn(blue).gaps, 0)
+        XCTAssertEqual(try drawn(blue).segments, 151)
+    }
+
     func testProjectionMatchesMapKitWithinHalfAPointAcrossZoomHeadingPitchAndDateline() {
         let map = MKMapView(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
         for longitude in [-122.0, 179.999] {
