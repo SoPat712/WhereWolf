@@ -29,7 +29,9 @@ nice -n 10 xcodebuild -jobs 1 -workspace WhereWolf.xcworkspace -scheme WhereWolf
   post_install bumps pod deployment targets to 17.0 and retains the conditional
   legacy AFNetworking header patch. Keep both hooks if changing pods.
   post_integrate declares the resource manifest and exact FMDB privacy-bundle
-  outputs, and makes the copier write in place. Keep script sandboxing enabled.
+  outputs, and makes the copier write in place. Archives link the bundle from
+  `UninstalledProducts`, so it also declares that location as an input through
+  `DEPLOYMENT_LOCATION`. Keep script sandboxing enabled.
 - Simulator names: `iPhone 17 Pro` / `iPhone 17 Pro Max` (no plain "iPhone 17").
 - Run only one build at a time, using `nice -n 10` and `-jobs 1` to preserve
   desktop responsiveness. Two jobs is the maximum. These are scheduling controls,

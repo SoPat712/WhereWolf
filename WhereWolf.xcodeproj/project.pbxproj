@@ -7,11 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		C0DA10000000000000000002 /* TodayWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DA10000000000000000001 /* TodayWindow.swift */; };
-		C0DA10000000000000000003 /* TodayWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DA10000000000000000001 /* TodayWindow.swift */; };
-		C0DA10000000000000000012 /* TodayHistorySummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DA10000000000000000011 /* TodayHistorySummary.swift */; };
-		C0DA10000000000000000022 /* TodayWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DA10000000000000000021 /* TodayWidget.swift */; };
-		C0DA10000000000000000032 /* TodayWidgetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DA10000000000000000031 /* TodayWidgetTests.swift */; };
 		00D2E0000000000000000002 /* TripEndPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00D2E0000000000000000001 /* TripEndPrompt.swift */; };
 		00D3E0000000000000000002 /* TripEndPromptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00D3E0000000000000000001 /* TripEndPromptTests.swift */; };
 		04F242940BB39DD7583C928B /* StatusWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 243C8AE0F0527309356468D1 /* StatusWidget.swift */; };
@@ -31,15 +26,13 @@
 		0FCAFE00F00D0000000000F2 /* WhereWolfRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D0000000000E2 /* WhereWolfRootView.swift */; };
 		0FCAFE00F00D0000000000F3 /* TrackerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D0000000000E3 /* TrackerView.swift */; };
 		0FCAFE00F00D0000000000F4 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D0000000000E4 /* SettingsView.swift */; };
-		D0F500000000000000000004 /* LiveActivitySettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0F500000000000000000003 /* LiveActivitySettingsView.swift */; };
-		D0F500000000000000000002 /* PermissionsSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0F500000000000000000001 /* PermissionsSettingsView.swift */; };
 		0FCAFE00F00D0000000000F5 /* EndpointView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D0000000000E5 /* EndpointView.swift */; };
 		0FCAFE00F00D0000000000F6 /* TripView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D0000000000E6 /* TripView.swift */; };
-		0FCAFE00F00D00000000A2F6 /* TripLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D00000000A2E6 /* TripLog.swift */; };
-		0FCAFE00F00D00000000A1F6 /* TripStats.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D00000000A1E6 /* TripStats.swift */; };
 		0FCAFE00F00D0000000000F7 /* TripSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D0000000000E7 /* TripSettingsView.swift */; };
 		0FCAFE00F00D0000000000F8 /* SteppedSlider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D0000000000E8 /* SteppedSlider.swift */; };
 		0FCAFE00F00D0000000000F9 /* GlassStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D0000000000E9 /* GlassStyle.swift */; };
+		0FCAFE00F00D00000000A1F6 /* TripStats.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D00000000A1E6 /* TripStats.swift */; };
+		0FCAFE00F00D00000000A2F6 /* TripLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCAFE00F00D00000000A2E6 /* TripLog.swift */; };
 		0FCF53251F81AB0800577A0F /* UserNotifications.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0FCF53241F81AB0800577A0F /* UserNotifications.framework */; };
 		0FFD31571BAB7A34009B3A03 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 0FFD31561BAB7A34009B3A03 /* main.m */; };
 		0FFD315A1BAB7A34009B3A03 /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 0FFD31591BAB7A34009B3A03 /* AppDelegate.m */; };
@@ -75,18 +68,14 @@
 		A05500000000000000000002 /* WhereWolfShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = A05500000000000000000001 /* WhereWolfShell.swift */; };
 		A06600000000000000000002 /* RecentLocationHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = A06600000000000000000001 /* RecentLocationHistory.swift */; };
 		A07700000000000000000002 /* HistoryPlaybackView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A07700000000000000000001 /* HistoryPlaybackView.swift */; };
-		D1F600000000000000000004 /* HistoryGoToView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F600000000000000000003 /* HistoryGoToView.swift */; };
-		D1F600000000000000000002 /* HistoryLandmarks.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F600000000000000000001 /* HistoryLandmarks.swift */; };
 		A0990000000000000000000B /* TipJarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A09900000000000000000001 /* TipJarView.swift */; };
 		A0990000000000000000000C /* TipStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A09900000000000000000002 /* TipStore.swift */; };
 		A0990000000000000000000D /* TipDonation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A09900000000000000000003 /* TipDonation.swift */; };
 		A09900000000000000000020 /* TipDonationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A09900000000000000000021 /* TipDonationTests.swift */; };
 		A0BB00000000000000000002 /* NativeMapSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0BB00000000000000000001 /* NativeMapSurface.swift */; };
-		D0F300000000000000000002 /* LiveHeadingBeam.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0F300000000000000000001 /* LiveHeadingBeam.swift */; };
 		A0BC00000000000000000002 /* ReplayRouteRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0BC00000000000000000001 /* ReplayRouteRenderer.swift */; };
 		A0BC00000000000000000012 /* ReplayRouteRendererTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0BC00000000000000000011 /* ReplayRouteRendererTests.swift */; };
 		A0CC00000000000000000002 /* HistoryPlaybackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0CC00000000000000000001 /* HistoryPlaybackTests.swift */; };
-		D1F600000000000000000006 /* HistoryLandmarkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F600000000000000000005 /* HistoryLandmarkTests.swift */; };
 		A0DD00000000000000000002 /* SettingsReliabilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0DD00000000000000000001 /* SettingsReliabilityTests.swift */; };
 		A0EE00000000000000000002 /* DrawerLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0EE00000000000000000001 /* DrawerLayoutTests.swift */; };
 		AF7619AB633D818AD53D1C15 /* TripActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8F54F73CE518F85F9D383BF /* TripActivityAttributes.swift */; };
@@ -103,6 +92,10 @@
 		B08800000000000000000055 /* LiveActivityReopenPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = B08800000000000000000054 /* LiveActivityReopenPrompt.swift */; };
 		B08800000000000000000057 /* LiveActivityReopenPromptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B08800000000000000000056 /* LiveActivityReopenPromptTests.swift */; };
 		BAEDDD70BD822527C8684813 /* HealthTripRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 156F17CEE92C6ACFC40D1261 /* HealthTripRecorder.swift */; };
+		BB7151AC0000000000000002 /* WifiPlace.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7151AC0000000000000002 /* WifiPlace.swift */; };
+		BB7151AC0000000000000003 /* WifiPlaceEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7151AC0000000000000003 /* WifiPlaceEditorView.swift */; };
+		BB7151AC0000000000000004 /* WifiPlaceNetworksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7151AC0000000000000004 /* WifiPlaceNetworksView.swift */; };
+		BB7151AC0000000000000005 /* WifiPlaceIconView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7151AC0000000000000005 /* WifiPlaceIconView.swift */; };
 		C02700000000000000000001 /* TestFlightDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = C02700000000000000000002 /* TestFlightDiagnostics.swift */; };
 		C02700000000000000000003 /* DiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C02700000000000000000004 /* DiagnosticsView.swift */; };
 		C0A100000000000000000003 /* GLTrackingPolicy.m in Sources */ = {isa = PBXBuildFile; fileRef = C0A100000000000000000002 /* GLTrackingPolicy.m */; };
@@ -123,31 +116,17 @@
 		C0A7C4000000000000000032 /* WatchTripModesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A7C4000000000000000035 /* WatchTripModesView.swift */; };
 		C0A7C4000000000000000033 /* WatchPresetsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A7C4000000000000000036 /* WatchPresetsView.swift */; };
 		C0A7C4000000000000000037 /* TripModes.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C25B528FB613DCB4FBF7D384 /* TripModes.xcassets */; };
-		C246F22FA7DFF125127B0BE2 /* TripModes.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C25B528FB613DCB4FBF7D384 /* TripModes.xcassets */; };
-		D0F100000000000000000003 /* GLLocationHealth.m in Sources */ = {isa = PBXBuildFile; fileRef = D0F100000000000000000002 /* GLLocationHealth.m */; };
-		D0F100000000000000000005 /* LocationHealthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0F100000000000000000004 /* LocationHealthView.swift */; };
-		D0F100000000000000000007 /* LocationHealthTests.m in Sources */ = {isa = PBXBuildFile; fileRef = D0F100000000000000000006 /* LocationHealthTests.m */; };
-		D0F200000000000000000002 /* MapChromeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0F200000000000000000001 /* MapChromeTests.swift */; };
-		D0F400000000000000000002 /* LiveHeadingBeamTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0F400000000000000000001 /* LiveHeadingBeamTests.swift */; };
-		D1DD2EEF17FE44F979CA2C48 /* TripModesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 007A0E62CFBBFA8FE9DEADC3 /* TripModesView.swift */; };
-		D1F0000000000000000000A2 /* MapMotion.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F0000000000000000000A1 /* MapMotion.swift */; };
-		D1F0000000000000000000B2 /* ReplayTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F0000000000000000000B1 /* ReplayTimeline.swift */; };
-		D1F0000000000000000000C2 /* WifiOnlySending.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F0000000000000000000C1 /* WifiOnlySending.swift */; };
-		D7E7DABBA0D8363EABE4833D /* GLCloudFileWriter.m in Sources */ = {isa = PBXBuildFile; fileRef = 07DEEF5A710246B9B0582158 /* GLCloudFileWriter.m */; };
-		E23F46BF79C789B08211F303 /* SharedTripState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5CC3037773D353A885327FA /* SharedTripState.swift */; };
-		E7C650B0826A973D9430D5CA /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 4B4C34C503F74BA4B4862F77 /* PrivacyInfo.xcprivacy */; };
-		E8AD7EB7542A54DC56C21BA0 /* WorkoutRouteImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C7313CC971BF235A25F4BF0 /* WorkoutRouteImport.swift */; };
-		F87824B3678FD75F13286822 /* libPods-WhereWolf.a in Frameworks */ = {isa = PBXBuildFile; fileRef = E0A408349E469AC6E6DA46BA /* libPods-WhereWolf.a */; };
-		FAC841E01F195F27EE270BD0 /* TripIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 295482F7E6DD4724A74C675E /* TripIntents.swift */; };
-		FD8716D075FB5292BFD3C574 /* HistoryRetentionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BEB326A17A6C66C642C0A6B /* HistoryRetentionTests.swift */; };
-		FE9D896276FE76C0B7D6DDF6 /* GLTripActions.m in Sources */ = {isa = PBXBuildFile; fileRef = 21602F0B954DE517514264C4 /* GLTripActions.m */; };
-		FFFD07EC57EDFD9A3BF5CB30 /* TripControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = C215F1FD102A461140930DC1 /* TripControls.swift */; };
 		C0B0A0000000000000000002 /* OnboardingModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0B0A0000000000000000001 /* OnboardingModel.swift */; };
 		C0B0A0000000000000000004 /* OnboardingServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0B0A0000000000000000003 /* OnboardingServices.swift */; };
 		C0B0A0000000000000000006 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0B0A0000000000000000005 /* OnboardingView.swift */; };
 		C0B0A0000000000000000008 /* OnboardingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0B0A0000000000000000007 /* OnboardingTests.swift */; };
 		C0B0A0000000000000000011 /* TrackingLockScreenCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0B0A0000000000000000010 /* TrackingLockScreenCard.swift */; };
 		C0B0A0000000000000000012 /* TrackingLockScreenCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0B0A0000000000000000010 /* TrackingLockScreenCard.swift */; };
+		C0DA10000000000000000002 /* TodayWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DA10000000000000000001 /* TodayWindow.swift */; };
+		C0DA10000000000000000003 /* TodayWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DA10000000000000000001 /* TodayWindow.swift */; };
+		C0DA10000000000000000012 /* TodayHistorySummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DA10000000000000000011 /* TodayHistorySummary.swift */; };
+		C0DA10000000000000000022 /* TodayWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DA10000000000000000021 /* TodayWidget.swift */; };
+		C0DA10000000000000000032 /* TodayWidgetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DA10000000000000000031 /* TodayWidgetTests.swift */; };
 		C0F000000000000000000101 /* SettingsBackup.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0F000000000000000000100 /* SettingsBackup.swift */; };
 		C0F000000000000000000103 /* SettingsSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0F000000000000000000102 /* SettingsSync.swift */; };
 		C0F000000000000000000105 /* SettingsBackupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0F000000000000000000104 /* SettingsBackupView.swift */; };
@@ -159,10 +138,31 @@
 		C0F000000000000000000111 /* ConnectionTestTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0F000000000000000000110 /* ConnectionTestTests.swift */; };
 		C0F000000000000000000113 /* CoverageReportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0F000000000000000000112 /* CoverageReportTests.swift */; };
 		C0F000000000000000000115 /* SettingsImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0F000000000000000000114 /* SettingsImportView.swift */; };
-		BB7151AC0000000000000002 /* WifiPlace.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7151AC0000000000000002 /* WifiPlace.swift */; };
-		BB7151AC0000000000000003 /* WifiPlaceEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7151AC0000000000000003 /* WifiPlaceEditorView.swift */; };
-		BB7151AC0000000000000004 /* WifiPlaceNetworksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7151AC0000000000000004 /* WifiPlaceNetworksView.swift */; };
-		BB7151AC0000000000000005 /* WifiPlaceIconView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7151AC0000000000000005 /* WifiPlaceIconView.swift */; };
+		C246F22FA7DFF125127B0BE2 /* TripModes.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C25B528FB613DCB4FBF7D384 /* TripModes.xcassets */; };
+		D0F100000000000000000003 /* GLLocationHealth.m in Sources */ = {isa = PBXBuildFile; fileRef = D0F100000000000000000002 /* GLLocationHealth.m */; };
+		D0F100000000000000000005 /* LocationHealthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0F100000000000000000004 /* LocationHealthView.swift */; };
+		D0F100000000000000000007 /* LocationHealthTests.m in Sources */ = {isa = PBXBuildFile; fileRef = D0F100000000000000000006 /* LocationHealthTests.m */; };
+		D0F200000000000000000002 /* MapChromeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0F200000000000000000001 /* MapChromeTests.swift */; };
+		D0F300000000000000000002 /* LiveHeadingBeam.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0F300000000000000000001 /* LiveHeadingBeam.swift */; };
+		D0F400000000000000000002 /* LiveHeadingBeamTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0F400000000000000000001 /* LiveHeadingBeamTests.swift */; };
+		D0F500000000000000000002 /* PermissionsSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0F500000000000000000001 /* PermissionsSettingsView.swift */; };
+		D0F500000000000000000004 /* LiveActivitySettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0F500000000000000000003 /* LiveActivitySettingsView.swift */; };
+		D1DD2EEF17FE44F979CA2C48 /* TripModesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 007A0E62CFBBFA8FE9DEADC3 /* TripModesView.swift */; };
+		D1F0000000000000000000A2 /* MapMotion.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F0000000000000000000A1 /* MapMotion.swift */; };
+		D1F0000000000000000000B2 /* ReplayTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F0000000000000000000B1 /* ReplayTimeline.swift */; };
+		D1F0000000000000000000C2 /* WifiOnlySending.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F0000000000000000000C1 /* WifiOnlySending.swift */; };
+		D1F600000000000000000002 /* HistoryLandmarks.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F600000000000000000001 /* HistoryLandmarks.swift */; };
+		D1F600000000000000000004 /* HistoryGoToView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F600000000000000000003 /* HistoryGoToView.swift */; };
+		D1F600000000000000000006 /* HistoryLandmarkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F600000000000000000005 /* HistoryLandmarkTests.swift */; };
+		D7E7DABBA0D8363EABE4833D /* GLCloudFileWriter.m in Sources */ = {isa = PBXBuildFile; fileRef = 07DEEF5A710246B9B0582158 /* GLCloudFileWriter.m */; };
+		E23F46BF79C789B08211F303 /* SharedTripState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5CC3037773D353A885327FA /* SharedTripState.swift */; };
+		E7C650B0826A973D9430D5CA /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 4B4C34C503F74BA4B4862F77 /* PrivacyInfo.xcprivacy */; };
+		E8AD7EB7542A54DC56C21BA0 /* WorkoutRouteImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C7313CC971BF235A25F4BF0 /* WorkoutRouteImport.swift */; };
+		F87824B3678FD75F13286822 /* libPods-WhereWolf.a in Frameworks */ = {isa = PBXBuildFile; fileRef = E0A408349E469AC6E6DA46BA /* libPods-WhereWolf.a */; };
+		FAC841E01F195F27EE270BD0 /* TripIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 295482F7E6DD4724A74C675E /* TripIntents.swift */; };
+		FD8716D075FB5292BFD3C574 /* HistoryRetentionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BEB326A17A6C66C642C0A6B /* HistoryRetentionTests.swift */; };
+		FE9D896276FE76C0B7D6DDF6 /* GLTripActions.m in Sources */ = {isa = PBXBuildFile; fileRef = 21602F0B954DE517514264C4 /* GLTripActions.m */; };
+		FFFD07EC57EDFD9A3BF5CB30 /* TripControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = C215F1FD102A461140930DC1 /* TripControls.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -215,10 +215,6 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		C0DA10000000000000000001 /* TodayWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TodayWindow.swift; path = GPSLogger/Shared/TodayWindow.swift; sourceTree = "<group>"; };
-		C0DA10000000000000000011 /* TodayHistorySummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TodayHistorySummary.swift; path = GPSLogger/TodayHistorySummary.swift; sourceTree = "<group>"; };
-		C0DA10000000000000000021 /* TodayWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TodayWidget.swift; path = WhereWolfLiveActivity/TodayWidget.swift; sourceTree = "<group>"; };
-		C0DA10000000000000000031 /* TodayWidgetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TodayWidgetTests.swift; path = Tests/TodayWidgetTests.swift; sourceTree = "<group>"; };
 		007A0E62CFBBFA8FE9DEADC3 /* TripModesView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripModesView.swift; path = GPSLogger/TripModesView.swift; sourceTree = "<group>"; };
 		00D2E0000000000000000001 /* TripEndPrompt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripEndPrompt.swift; sourceTree = "<group>"; };
 		00D3E0000000000000000001 /* TripEndPromptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/TripEndPromptTests.swift; sourceTree = SOURCE_ROOT; };
@@ -243,15 +239,13 @@
 		0FCAFE00F00D0000000000E2 /* WhereWolfRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhereWolfRootView.swift; sourceTree = "<group>"; };
 		0FCAFE00F00D0000000000E3 /* TrackerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackerView.swift; sourceTree = "<group>"; };
 		0FCAFE00F00D0000000000E4 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-		D0F500000000000000000003 /* LiveActivitySettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivitySettingsView.swift; sourceTree = "<group>"; };
-		D0F500000000000000000001 /* PermissionsSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionsSettingsView.swift; sourceTree = "<group>"; };
 		0FCAFE00F00D0000000000E5 /* EndpointView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndpointView.swift; sourceTree = "<group>"; };
 		0FCAFE00F00D0000000000E6 /* TripView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripView.swift; sourceTree = "<group>"; };
-		0FCAFE00F00D00000000A2E6 /* TripLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripLog.swift; sourceTree = "<group>"; };
-		0FCAFE00F00D00000000A1E6 /* TripStats.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripStats.swift; sourceTree = "<group>"; };
 		0FCAFE00F00D0000000000E7 /* TripSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripSettingsView.swift; sourceTree = "<group>"; };
 		0FCAFE00F00D0000000000E8 /* SteppedSlider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SteppedSlider.swift; sourceTree = "<group>"; };
 		0FCAFE00F00D0000000000E9 /* GlassStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassStyle.swift; sourceTree = "<group>"; };
+		0FCAFE00F00D00000000A1E6 /* TripStats.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripStats.swift; sourceTree = "<group>"; };
+		0FCAFE00F00D00000000A2E6 /* TripLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripLog.swift; sourceTree = "<group>"; };
 		0FCF53231F81AAAC00577A0F /* GPSLogger.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = GPSLogger.entitlements; sourceTree = "<group>"; };
 		0FCF53241F81AB0800577A0F /* UserNotifications.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UserNotifications.framework; path = System/Library/Frameworks/UserNotifications.framework; sourceTree = SDKROOT; };
 		0FFD31521BAB7A34009B3A03 /* WhereWolf.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WhereWolf.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -297,21 +291,21 @@
 		A05500000000000000000001 /* WhereWolfShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhereWolfShell.swift; sourceTree = "<group>"; };
 		A06600000000000000000001 /* RecentLocationHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentLocationHistory.swift; sourceTree = "<group>"; };
 		A07700000000000000000001 /* HistoryPlaybackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryPlaybackView.swift; sourceTree = "<group>"; };
-		D1F600000000000000000003 /* HistoryGoToView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryGoToView.swift; sourceTree = "<group>"; };
-		D1F600000000000000000001 /* HistoryLandmarks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryLandmarks.swift; sourceTree = "<group>"; };
 		A09900000000000000000001 /* TipJarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TipJarView.swift; sourceTree = "<group>"; };
 		A09900000000000000000002 /* TipStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TipStore.swift; sourceTree = "<group>"; };
 		A09900000000000000000003 /* TipDonation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TipDonation.swift; sourceTree = "<group>"; };
 		A09900000000000000000021 /* TipDonationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/TipDonationTests.swift; sourceTree = SOURCE_ROOT; };
 		A0BB00000000000000000001 /* NativeMapSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMapSurface.swift; sourceTree = "<group>"; };
-		D0F300000000000000000001 /* LiveHeadingBeam.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveHeadingBeam.swift; sourceTree = "<group>"; };
 		A0BC00000000000000000001 /* ReplayRouteRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplayRouteRenderer.swift; sourceTree = "<group>"; };
 		A0BC00000000000000000011 /* ReplayRouteRendererTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/ReplayRouteRendererTests.swift; sourceTree = SOURCE_ROOT; };
 		A0CC00000000000000000001 /* HistoryPlaybackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/HistoryPlaybackTests.swift; sourceTree = SOURCE_ROOT; };
-		D1F600000000000000000005 /* HistoryLandmarkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/HistoryLandmarkTests.swift; sourceTree = SOURCE_ROOT; };
 		A0DD00000000000000000001 /* SettingsReliabilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/SettingsReliabilityTests.swift; sourceTree = SOURCE_ROOT; };
 		A0EE00000000000000000001 /* DrawerLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/DrawerLayoutTests.swift; sourceTree = SOURCE_ROOT; };
 		A535D757A5D6F60B81BFCA5E /* UpstreamIntegrationTests.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = UpstreamIntegrationTests.m; path = Tests/UpstreamIntegrationTests.m; sourceTree = "<group>"; };
+		AA7151AC0000000000000002 /* WifiPlace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WifiPlace.swift; sourceTree = "<group>"; };
+		AA7151AC0000000000000003 /* WifiPlaceEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WifiPlaceEditorView.swift; sourceTree = "<group>"; };
+		AA7151AC0000000000000004 /* WifiPlaceNetworksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WifiPlaceNetworksView.swift; sourceTree = "<group>"; };
+		AA7151AC0000000000000005 /* WifiPlaceIconView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WifiPlaceIconView.swift; sourceTree = "<group>"; };
 		B08800000000000000000001 /* BackgroundRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/BackgroundRuntime.swift; sourceTree = SOURCE_ROOT; };
 		B08800000000000000000002 /* SilentAudioSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/SilentAudioSession.swift; sourceTree = SOURCE_ROOT; };
 		B08800000000000000000003 /* TrackingActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/TrackingActivityAttributes.swift; sourceTree = SOURCE_ROOT; };
@@ -343,28 +337,15 @@
 		C0A7C4000000000000000034 /* WatchStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchStyle.swift; sourceTree = "<group>"; };
 		C0A7C4000000000000000035 /* WatchTripModesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchTripModesView.swift; sourceTree = "<group>"; };
 		C0A7C4000000000000000036 /* WatchPresetsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchPresetsView.swift; sourceTree = "<group>"; };
-		C215F1FD102A461140930DC1 /* TripControls.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripControls.swift; path = WhereWolfLiveActivity/TripControls.swift; sourceTree = "<group>"; };
-		C25B528FB613DCB4FBF7D384 /* TripModes.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; name = TripModes.xcassets; path = GPSLogger/TripModes.xcassets; sourceTree = "<group>"; };
-		CE0D0CC91D28B0CF79E330F3 /* GLCloudFileWriter.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = GLCloudFileWriter.h; path = GPSLogger/GLCloudFileWriter.h; sourceTree = "<group>"; };
-		D0F100000000000000000001 /* GLLocationHealth.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GLLocationHealth.h; sourceTree = "<group>"; };
-		D0F100000000000000000002 /* GLLocationHealth.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = GLLocationHealth.m; sourceTree = "<group>"; };
-		D0F100000000000000000004 /* LocationHealthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationHealthView.swift; sourceTree = "<group>"; };
-		D0F100000000000000000006 /* LocationHealthTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Tests/LocationHealthTests.m; sourceTree = SOURCE_ROOT; };
-		D0F200000000000000000001 /* MapChromeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/MapChromeTests.swift; sourceTree = SOURCE_ROOT; };
-		D0F400000000000000000001 /* LiveHeadingBeamTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/LiveHeadingBeamTests.swift; sourceTree = SOURCE_ROOT; };
-		D1F0000000000000000000A1 /* MapMotion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapMotion.swift; sourceTree = "<group>"; };
-		D1F0000000000000000000B1 /* ReplayTimeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplayTimeline.swift; sourceTree = "<group>"; };
-		D1F0000000000000000000C1 /* WifiOnlySending.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WifiOnlySending.swift; sourceTree = "<group>"; };
-		D57439666CE09C401BE55DDB /* HistorySettingsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = HistorySettingsView.swift; path = GPSLogger/HistorySettingsView.swift; sourceTree = "<group>"; };
-		D5CC3037773D353A885327FA /* SharedTripState.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SharedTripState.swift; path = GPSLogger/Shared/SharedTripState.swift; sourceTree = "<group>"; };
-		D8F54F73CE518F85F9D383BF /* TripActivityAttributes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripActivityAttributes.swift; path = GPSLogger/LiveActivity/TripActivityAttributes.swift; sourceTree = "<group>"; };
-		E0A408349E469AC6E6DA46BA /* libPods-WhereWolf.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-WhereWolf.a"; sourceTree = BUILT_PRODUCTS_DIR; };
-		F4DFFAB32440A8511E1D869A /* Pods-WhereWolf.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-WhereWolf.debug.xcconfig"; path = "Pods/Target Support Files/Pods-WhereWolf/Pods-WhereWolf.debug.xcconfig"; sourceTree = "<group>"; };
 		C0B0A0000000000000000001 /* OnboardingModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/OnboardingModel.swift; sourceTree = SOURCE_ROOT; };
 		C0B0A0000000000000000003 /* OnboardingServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/OnboardingServices.swift; sourceTree = SOURCE_ROOT; };
 		C0B0A0000000000000000005 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/OnboardingView.swift; sourceTree = SOURCE_ROOT; };
 		C0B0A0000000000000000007 /* OnboardingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/OnboardingTests.swift; sourceTree = SOURCE_ROOT; };
 		C0B0A0000000000000000010 /* TrackingLockScreenCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/TrackingLockScreenCard.swift; sourceTree = SOURCE_ROOT; };
+		C0DA10000000000000000001 /* TodayWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TodayWindow.swift; path = GPSLogger/Shared/TodayWindow.swift; sourceTree = "<group>"; };
+		C0DA10000000000000000011 /* TodayHistorySummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TodayHistorySummary.swift; path = GPSLogger/TodayHistorySummary.swift; sourceTree = "<group>"; };
+		C0DA10000000000000000021 /* TodayWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TodayWidget.swift; path = WhereWolfLiveActivity/TodayWidget.swift; sourceTree = "<group>"; };
+		C0DA10000000000000000031 /* TodayWidgetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TodayWidgetTests.swift; path = Tests/TodayWidgetTests.swift; sourceTree = "<group>"; };
 		C0F000000000000000000100 /* SettingsBackup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/SettingsBackup.swift; sourceTree = SOURCE_ROOT; };
 		C0F000000000000000000102 /* SettingsSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/SettingsSync.swift; sourceTree = SOURCE_ROOT; };
 		C0F000000000000000000104 /* SettingsBackupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/SettingsBackupView.swift; sourceTree = SOURCE_ROOT; };
@@ -376,10 +357,29 @@
 		C0F000000000000000000110 /* ConnectionTestTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/ConnectionTestTests.swift; sourceTree = SOURCE_ROOT; };
 		C0F000000000000000000112 /* CoverageReportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/CoverageReportTests.swift; sourceTree = SOURCE_ROOT; };
 		C0F000000000000000000114 /* SettingsImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/SettingsImportView.swift; sourceTree = SOURCE_ROOT; };
-		AA7151AC0000000000000002 /* WifiPlace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WifiPlace.swift; sourceTree = "<group>"; };
-		AA7151AC0000000000000003 /* WifiPlaceEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WifiPlaceEditorView.swift; sourceTree = "<group>"; };
-		AA7151AC0000000000000004 /* WifiPlaceNetworksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WifiPlaceNetworksView.swift; sourceTree = "<group>"; };
-		AA7151AC0000000000000005 /* WifiPlaceIconView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WifiPlaceIconView.swift; sourceTree = "<group>"; };
+		C215F1FD102A461140930DC1 /* TripControls.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripControls.swift; path = WhereWolfLiveActivity/TripControls.swift; sourceTree = "<group>"; };
+		C25B528FB613DCB4FBF7D384 /* TripModes.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; name = TripModes.xcassets; path = GPSLogger/TripModes.xcassets; sourceTree = "<group>"; };
+		CE0D0CC91D28B0CF79E330F3 /* GLCloudFileWriter.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = GLCloudFileWriter.h; path = GPSLogger/GLCloudFileWriter.h; sourceTree = "<group>"; };
+		D0F100000000000000000001 /* GLLocationHealth.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GLLocationHealth.h; sourceTree = "<group>"; };
+		D0F100000000000000000002 /* GLLocationHealth.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = GLLocationHealth.m; sourceTree = "<group>"; };
+		D0F100000000000000000004 /* LocationHealthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationHealthView.swift; sourceTree = "<group>"; };
+		D0F100000000000000000006 /* LocationHealthTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Tests/LocationHealthTests.m; sourceTree = SOURCE_ROOT; };
+		D0F200000000000000000001 /* MapChromeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/MapChromeTests.swift; sourceTree = SOURCE_ROOT; };
+		D0F300000000000000000001 /* LiveHeadingBeam.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveHeadingBeam.swift; sourceTree = "<group>"; };
+		D0F400000000000000000001 /* LiveHeadingBeamTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/LiveHeadingBeamTests.swift; sourceTree = SOURCE_ROOT; };
+		D0F500000000000000000001 /* PermissionsSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionsSettingsView.swift; sourceTree = "<group>"; };
+		D0F500000000000000000003 /* LiveActivitySettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivitySettingsView.swift; sourceTree = "<group>"; };
+		D1F0000000000000000000A1 /* MapMotion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapMotion.swift; sourceTree = "<group>"; };
+		D1F0000000000000000000B1 /* ReplayTimeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplayTimeline.swift; sourceTree = "<group>"; };
+		D1F0000000000000000000C1 /* WifiOnlySending.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WifiOnlySending.swift; sourceTree = "<group>"; };
+		D1F600000000000000000001 /* HistoryLandmarks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryLandmarks.swift; sourceTree = "<group>"; };
+		D1F600000000000000000003 /* HistoryGoToView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryGoToView.swift; sourceTree = "<group>"; };
+		D1F600000000000000000005 /* HistoryLandmarkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/HistoryLandmarkTests.swift; sourceTree = SOURCE_ROOT; };
+		D57439666CE09C401BE55DDB /* HistorySettingsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = HistorySettingsView.swift; path = GPSLogger/HistorySettingsView.swift; sourceTree = "<group>"; };
+		D5CC3037773D353A885327FA /* SharedTripState.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SharedTripState.swift; path = GPSLogger/Shared/SharedTripState.swift; sourceTree = "<group>"; };
+		D8F54F73CE518F85F9D383BF /* TripActivityAttributes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripActivityAttributes.swift; path = GPSLogger/LiveActivity/TripActivityAttributes.swift; sourceTree = "<group>"; };
+		E0A408349E469AC6E6DA46BA /* libPods-WhereWolf.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-WhereWolf.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		F4DFFAB32440A8511E1D869A /* Pods-WhereWolf.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-WhereWolf.debug.xcconfig"; path = "Pods/Target Support Files/Pods-WhereWolf/Pods-WhereWolf.debug.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -857,6 +857,7 @@
 			inputPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-WhereWolf/Pods-WhereWolf-resources.sh",
 				"${PODS_CONFIGURATION_BUILD_DIR}/FMDB/FMDB_Privacy.bundle",
+				"$(WHEREWOLF_FMDB_PRIVACY_BUNDLE_$(DEPLOYMENT_LOCATION))",
 			);
 			name = "[CP] Copy Pods Resources";
 			outputPaths = (
@@ -1185,11 +1186,11 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				DEVELOPMENT_TEAM = 7MC6UZR2UV;
 				INFOPLIST_FILE = GPSLogger/Info.plist;
-				INFOPLIST_PREPROCESS = YES;
-				INFOPLIST_PREPROCESSOR_DEFINITIONS = "WHEREWOLF_APP_STORE_$(WHEREWOLF_APP_STORE)=1";
 				INFOPLIST_KEY_CFBundleDisplayName = WhereWolf;
 				INFOPLIST_KEY_CFBundleName = WhereWolf;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_PREPROCESS = YES;
+				INFOPLIST_PREPROCESSOR_DEFINITIONS = "WHEREWOLF_APP_STORE_$(WHEREWOLF_APP_STORE)=1";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -1208,6 +1209,8 @@
 				WHEREWOLF_BUNDLE_IDENTIFIER = me.joshpatra.WhereWolf;
 				WHEREWOLF_DISTRIBUTION_CONDITIONS_NO = WHEREWOLF_SILENT_AUDIO;
 				WHEREWOLF_DISTRIBUTION_CONDITIONS_YES = WHEREWOLF_APP_STORE;
+				WHEREWOLF_FMDB_PRIVACY_BUNDLE_NO = "$(PODS_CONFIGURATION_BUILD_DIR)/FMDB/FMDB_Privacy.bundle";
+				WHEREWOLF_FMDB_PRIVACY_BUNDLE_YES = "$(UNINSTALLED_PRODUCTS_DIR)/$(PLATFORM_NAME)/FMDB_Privacy.bundle";
 				WHEREWOLF_HEALTHKIT_ENABLED = YES;
 				WHEREWOLF_ICLOUD_ENABLED = YES;
 			};
@@ -1227,11 +1230,11 @@
 					"$(WHEREWOLF_DISTRIBUTION_DEFINITIONS_$(WHEREWOLF_APP_STORE))",
 				);
 				INFOPLIST_FILE = GPSLogger/Info.plist;
-				INFOPLIST_PREPROCESS = YES;
-				INFOPLIST_PREPROCESSOR_DEFINITIONS = "WHEREWOLF_APP_STORE_$(WHEREWOLF_APP_STORE)=1";
 				INFOPLIST_KEY_CFBundleDisplayName = WhereWolf;
 				INFOPLIST_KEY_CFBundleName = WhereWolf;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_PREPROCESS = YES;
+				INFOPLIST_PREPROCESSOR_DEFINITIONS = "WHEREWOLF_APP_STORE_$(WHEREWOLF_APP_STORE)=1";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -1251,6 +1254,8 @@
 				WHEREWOLF_DISTRIBUTION_CONDITIONS_YES = WHEREWOLF_APP_STORE;
 				WHEREWOLF_DISTRIBUTION_DEFINITIONS_NO = "WHEREWOLF_TESTFLIGHT_DIAGNOSTICS=1";
 				WHEREWOLF_DISTRIBUTION_DEFINITIONS_YES = "WHEREWOLF_APP_STORE=1";
+				WHEREWOLF_FMDB_PRIVACY_BUNDLE_NO = "$(PODS_CONFIGURATION_BUILD_DIR)/FMDB/FMDB_Privacy.bundle";
+				WHEREWOLF_FMDB_PRIVACY_BUNDLE_YES = "$(UNINSTALLED_PRODUCTS_DIR)/$(PLATFORM_NAME)/FMDB_Privacy.bundle";
 				WHEREWOLF_HEALTHKIT_ENABLED = YES;
 				WHEREWOLF_ICLOUD_ENABLED = YES;
 			};

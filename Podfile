@@ -42,7 +42,15 @@ post_integrate do |installer|
 	end
 	installer.aggregate_targets.map(&:user_project).uniq.each do |project|
 		project.targets.select { |target| target.name == 'WhereWolf' }.each do |target|
+			# Archives install the bundle under UninstalledProducts and link it from the build products folder;
+			# rsync follows that link, so the sandbox needs the real location as an input too.
+			target.build_configurations.each do |config|
+				config.build_settings['WHEREWOLF_FMDB_PRIVACY_BUNDLE_NO'] = '$(PODS_CONFIGURATION_BUILD_DIR)/FMDB/FMDB_Privacy.bundle'
+				config.build_settings['WHEREWOLF_FMDB_PRIVACY_BUNDLE_YES'] = '$(UNINSTALLED_PRODUCTS_DIR)/$(PLATFORM_NAME)/FMDB_Privacy.bundle'
+			end
 			target.shell_script_build_phases.select { |phase| phase.name == '[CP] Copy Pods Resources' }.each do |phase|
+				input = '$(WHEREWOLF_FMDB_PRIVACY_BUNDLE_$(DEPLOYMENT_LOCATION))'
+				phase.input_paths << input unless phase.input_paths.include?(input)
 				output = '$(DERIVED_FILE_DIR)/Pods-WhereWolf-resources-to-copy.txt'
 				phase.output_paths << output unless phase.output_paths.include?(output)
 				%w[Info.plist PrivacyInfo.xcprivacy].each do |name|
