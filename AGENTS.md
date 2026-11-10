@@ -379,8 +379,9 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   slide and briefly hold the reading, keeping only the latest pending value.
   Respect Reduce Motion and do not interpolate intermediate speed values.
   Shared glass helpers, drawer header/card styles, and
-  settings icons live in `GlassStyle.swift`. `TipJarView` presents SoPat712's existing
-  in-app tips through StoreKit 2, with a bottom recipient selector. Aaronpk's
+  settings icons live in `GlassStyle.swift`. `TipJarView` presents SoPat712's five existing
+  one-time in-app tips through StoreKit 2 (the monthly and yearly ones are retired; their renewals still
+  finish), with a bottom recipient selector. The app is iPhone-only. Aaronpk's
   one-time donation links appear only for the US App Store storefront; other
   storefronts show his credit and GitHub link. `TipDonation` validates amounts
   and builds the three payment URLs. The app has no main storyboard; the launch
@@ -662,7 +663,8 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   and only with the watch app installed. While the watch app is active and cannot reach the iPhone, it asks
   for status again after 2, 4 and 8 seconds and then every 15, and at once when WatchConnectivity reports the
   iPhone reachable, without the progress indicator; Try Again asks at once. Tracking must never depend on the
-  link. Keep the watch version and build number equal to `GPSLogger/Info.plist`.
+  link. `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` live only at the project level; every target and
+  Info.plist reads them, so the watch, widget and phone always match.
   A signing profile without the watch bundle identifier can build the phone app alone with
   `WHEREWOLF_WATCH_SIGNING=NO EXCLUDED_SOURCE_FILE_NAMES=WhereWolfWatch.app`.
 - **Reminder action**: the missed-update reminder offers a background Resume Tracking

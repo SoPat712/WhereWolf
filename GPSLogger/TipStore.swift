@@ -1,31 +1,11 @@
 import StoreKit
 import Observation
 
-enum TipFrequency: String, CaseIterable, Identifiable {
-    case once = "Once"
-    case monthly = "Monthly"
-    case yearly = "Yearly"
+// One-time tips. Their product IDs predate the rename and must not change.
+enum TipProduct {
+    static let names = ["Wanderer", "Trailblazer", "Explorer", "Adventurer", "Cosmonaut"]
 
-    var id: String { rawValue }
-
-    var names: [String] {
-        switch self {
-        case .once: return ["Wanderer", "Trailblazer", "Explorer", "Adventurer", "Cosmonaut"]
-        case .monthly, .yearly: return ["Commuter", "Mariner", "Aviator", "Globetrotter"]
-        }
-    }
-
-    func productID(_ name: String) -> String {
-        "me.joshpatra.WhereWolf.\(self == .once ? "" : rawValue + ".")\(name)"
-    }
-
-    var detail: String {
-        switch self {
-        case .once: return "A one-time thank-you."
-        case .monthly: return "Renews monthly. Cancel anytime in App Store settings."
-        case .yearly: return "Renews yearly. Cancel anytime in App Store settings."
-        }
-    }
+    static func id(_ name: String) -> String { "me.joshpatra.WhereWolf.\(name)" }
 }
 
 @MainActor @Observable
@@ -63,9 +43,7 @@ final class TipStore {
         loadMessage = nil
         defer { loading = false }
         do {
-            let ids = TipFrequency.allCases.flatMap { frequency in
-                frequency.names.map { frequency.productID($0) }
-            }
+            let ids = TipProduct.names.map(TipProduct.id)
             let available = try await Product.products(for: ids)
             products = Dictionary(uniqueKeysWithValues: available.map { ($0.id, $0) })
             if available.count < ids.count {
@@ -113,11 +91,10 @@ final class TipStore {
             notice = Notice(title: "Couldn’t Verify Purchase", message: "Please try restoring your purchases.")
             return
         }
-        guard TipFrequency.allCases.contains(where: { frequency in
-            frequency.names.contains(where: { frequency.productID($0) == transaction.productID })
-        }) else { return }
+        // Every product is a tip; the retired monthly and yearly tips still finish, without a thank-you.
+        guard transaction.productID.hasPrefix("me.joshpatra.WhereWolf.") else { return }
         await transaction.finish()
-        if transaction.revocationDate == nil {
+        if TipProduct.names.map(TipProduct.id).contains(transaction.productID), transaction.revocationDate == nil {
             notice = Notice(title: "Thank You!", message: "Your support helps keep WhereWolf moving.")
         }
     }

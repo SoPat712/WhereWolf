@@ -180,12 +180,12 @@ do not rebuild the SwiftUI root. The tabs stay in place as the drawer resizes.
 
 Settings → Support → Tip Jar opens a SwiftUI screen with a bottom selector for
 SoPat712, who makes WhereWolf, and aaronpk, who created Overland. SoPat712's
-page keeps the existing one-time, monthly, and yearly in-app tip products and
-Restore Purchases, using StoreKit 2. Aaron's page offers one-time $5, $10, $25,
-or custom USD tips through Cash App, PayPal, or Venmo only when StoreKit reports
-the US App Store storefront; otherwise it shows his open-source credit and a
-link to Overland on GitHub. The payment links open in the browser. The legacy
-Tip Jar controller and main storyboard have been removed.
+page offers five one-time in-app tips and Restore Purchases, using StoreKit 2.
+Aaron's page offers one-time $5, $10, $25, or custom USD tips through Cash App,
+PayPal, or Venmo only when StoreKit reports the US App Store storefront;
+otherwise it shows his open-source credit and a link to Overland on GitHub. The
+payment links open in the browser. The legacy Tip Jar controller and main
+storyboard have been removed.
 
 WhereWolf includes PR #180's precision controls, accuracy filter, and stationary
 stopping, plus its later notification, persisted pause-state, and safe-settings
@@ -1242,7 +1242,7 @@ incorporates these pull requests from the Overland repository:
 These are local integrations, not claims that upstream issues or PRs are closed.
 Replay retains the chosen 24-hour to 7-day window; send diagnostics retain only the current session's
 last 50 outcomes. Real-device background delivery, battery use, WiFi identity
-access, purchases, VoiceOver, iPad layout, and older iOS versions need further
+access, purchases, VoiceOver, and older iOS versions need further
 validation.
 
 ## License

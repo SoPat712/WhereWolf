@@ -297,6 +297,12 @@ This log lists the decisions agents made on their own while working on WhereWolf
 - **Decided:** the flight to an opened trip no longer aims at the marker, which had re-centered the trip's fit on its start. The marker now travels with the flight from where it was, covering the same share of the way as the camera's center so it stays in view: from the last trip's marker, or from Live, where it starts at the dot's size on the dot and grows into the pin over 0.45 s with an ease-in-out. The trail and the red still split at the replay position. Returning to Live and Reduce Motion are unchanged.
 - **Undo:** `git revert 500559c`.
 
+## 2026-11-09: App Store preparation: one-time tips, iPhone only, version 1.0, permission text (HASH)
+
+- **Asked for:** "Ok fine we can switch to one time tips!", "iphone only is fine", "this is version 1, no?", "rewrod that text!" and "Fix the other small fixes".
+- **Decided:** the Tip Jar offers only the five existing one-time tips; the eight monthly and yearly subscriptions are gone from the app and its StoreKit file, and any renewal still delivered is finished without a thank-you. The app, its widget extension and tests target iPhone only, and the iPad orientation key is gone. The version is 1.0, set once at the project level with the build number, and every Info.plist reads both, so the watch, widget and phone match. The location permission prompts now say what WhereWolf does with your location instead of Overland's "track in the background" wording. FUNDING.yml and the review notes stay as they are.
+- **Undo:** `git revert HASH`.
+
 ## Deferred for the owner
 
 - **Watch complication for Today:** it needs a new watch widget extension and bundle identifier, which is an Apple developer account change.

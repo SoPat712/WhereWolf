@@ -5,7 +5,6 @@ struct TipJarView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var page = Recipient.sopat712
-    @State private var frequency = TipFrequency.once
     @State private var store = TipStore.shared
     @State private var amount = "5"
     @State private var customAmount = ""
@@ -162,23 +161,11 @@ struct TipJarView: View {
                 Label("Leave a tip", systemImage: "gift")
                     .font(.headline)
                     .accessibilityAddTraits(.isHeader)
-                if dynamicTypeSize.isAccessibilitySize {
-                    Picker("Tip frequency", selection: $frequency) {
-                        ForEach(TipFrequency.allCases) { Text($0.rawValue).tag($0) }
-                    }
-                    .pickerStyle(.menu)
-                    .glassButtonStyle()
-                } else {
-                    Picker("Tip frequency", selection: $frequency) {
-                        ForEach(TipFrequency.allCases) { Text($0.rawValue).tag($0) }
-                    }
-                    .pickerStyle(.segmented)
-                }
-                Text(frequency.detail)
+                Text("A one-time thank-you.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                ForEach(frequency.names, id: \.self) { name in
+                ForEach(TipProduct.names, id: \.self) { name in
                     tipButton(name)
                 }
                 if store.loading {
@@ -216,7 +203,7 @@ struct TipJarView: View {
     }
 
     private func tipButton(_ name: String) -> some View {
-        let product = store.products[frequency.productID(name)]
+        let product = store.products[TipProduct.id(name)]
         return Button {
             guard let product else { return }
             Task { await store.purchase(product) }
@@ -239,7 +226,7 @@ struct TipJarView: View {
         }
         .glassButtonStyle()
         .disabled(product == nil || store.busy)
-        .accessibilityLabel("\(name), \(product?.displayPrice ?? "Unavailable"), \(frequency.rawValue)")
+        .accessibilityLabel("\(name), \(product?.displayPrice ?? "Unavailable"), one-time tip")
     }
 
     private var legalLinks: some View {

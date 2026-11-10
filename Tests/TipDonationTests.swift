@@ -40,15 +40,9 @@ final class TipDonationTests: XCTestCase {
     }
 
     func testLegacyProductIDsArePreserved() {
-        XCTAssertEqual(TipFrequency.once.names.map { TipFrequency.once.productID($0) }, [
+        XCTAssertEqual(TipProduct.names.map(TipProduct.id), [
             "me.joshpatra.WhereWolf.Wanderer", "me.joshpatra.WhereWolf.Trailblazer", "me.joshpatra.WhereWolf.Explorer",
             "me.joshpatra.WhereWolf.Adventurer", "me.joshpatra.WhereWolf.Cosmonaut"
         ])
-        for frequency in [TipFrequency.monthly, .yearly] {
-            XCTAssertEqual(frequency.names.map { frequency.productID($0) }, [
-                "me.joshpatra.WhereWolf.\(frequency.rawValue).Commuter", "me.joshpatra.WhereWolf.\(frequency.rawValue).Mariner",
-                "me.joshpatra.WhereWolf.\(frequency.rawValue).Aviator", "me.joshpatra.WhereWolf.\(frequency.rawValue).Globetrotter"
-            ])
-        }
     }
 }

@@ -160,7 +160,7 @@ described in [Maps & Privacy](https://www.apple.com/legal/privacy/data/en/apple-
 and the [Apple Privacy Policy](https://www.apple.com/legal/privacy/).
 
 Tips to support WhereWolf are processed by Apple through in-app purchases. WhereWolf
-checks products, purchase results, and subscription status using StoreKit;
+checks products and purchase results using StoreKit;
 the developer does not receive your payment card or bank details through the app.
 In the US App Store storefront, the app also offers optional links to tip
 Overland's creator, Aaron Parecki, through Cash App, PayPal, or Venmo. These
