@@ -317,6 +317,13 @@ This log lists the decisions agents made on their own while working on WhereWolf
 - **Decided:** the fit reuses one map view, reset to north-up and level before each use, so it starts from the same state a new one would.
 - **Undo:** `git revert b291e31`.
 
+## 2026-11-11: replay and tab switches leave SwiftUI's per-frame path (476bf59, ee6f2af)
+
+- **Asked for:** "120 fps throughout with no hitching", later refined to: reach 120 fps, cut hitches as far as reasonable, measure the 120 Hz share and fix the big ones.
+- **Found:** the phone was unavailable overnight, so a motion tour (`-WhereWolfMotionTour`, not in App Store builds) measured main-thread busy time per animation on the simulator, with `/usr/bin/sample` stacks. Replay at 5x kept the main thread busy 500 ms/s, 127 stretches over 8.3 ms in 5 seconds: every frame changed observed replay state, so SwiftUI re-rendered the root, the map host and the ruler, about a third of all main-thread time. Every Tracker/Trip switch rebuilt the incoming page, 68 ms for Trip and 33 ms for Tracker. The recording dot's SwiftUI phase animator updated the Trip card on every frame of a trip. Ruler scale changes, the return to Live and flights were dominated by MapKit's own drawing on the main thread.
+- **Decided:** playback frames reach the map and ruler through `ReplayPoseChannel`, and SwiftUI hears of a frame only when its point or the ruler's minute changes, or playback stops (127 to about 20 long stretches, 500 to 345 ms/s). The drawer keeps both pages built, the hidden one invisible and taking no room, and pages refresh when shown (switch stalls 124 to about 55 ms and 71 to about 41 ms). The dot breathes with Core Animation, only while its page shows. Left for later: the Settings switch (about 50 ms, the tab controller re-adding its view and un-hiding the native bar), opening the setup guide and its page slides (SwiftUI building pages), and entering history (marker view creation, overlays). None of this is verified on the phone yet.
+- **Undo:** `git revert ee6f2af 476bf59`.
+
 ## Deferred for the owner
 
 - **Watch complication for Today:** it needs a new watch widget extension and bundle identifier, which is an Apple developer account change.
