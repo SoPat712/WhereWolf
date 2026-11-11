@@ -147,7 +147,7 @@ struct TripView: View {
     private var stats: some View {
         VStack(spacing: 10) {
             HStack(spacing: 6) {
-                RecordingDot()
+                RecordingDot(active: shown)
                 modeIcon(TripModeStore.symbol(bridge.tripMode))
                     .frame(width: 16, height: 16)
                 Text("Recording · \(TripModeStore.name(bridge.tripMode))")
@@ -390,11 +390,13 @@ private struct AllTripsView: View {
 // Breathes while a trip records; still with Reduce Motion. Core Animation breathes it in the render server,
 // where a SwiftUI phase animator updated the card on the main thread every frame of the trip.
 private struct RecordingDot: UIViewRepresentable {
+    // The drawer keeps the Trip page built behind the Tracker, where an animation would keep the display busy.
+    var active = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func makeUIView(context: Context) -> RecordingDotView { RecordingDotView() }
 
-    func updateUIView(_ view: RecordingDotView, context: Context) { view.breathes = !reduceMotion }
+    func updateUIView(_ view: RecordingDotView, context: Context) { view.breathes = active && !reduceMotion }
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: RecordingDotView, context: Context) -> CGSize? {
         CGSize(width: 8, height: 8)
