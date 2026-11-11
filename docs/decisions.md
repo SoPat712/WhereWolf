@@ -324,6 +324,13 @@ This log lists the decisions agents made on their own while working on WhereWolf
 - **Decided:** playback frames reach the map and ruler through `ReplayPoseChannel`, and SwiftUI hears of a frame only when its point or the ruler's minute changes, or playback stops (127 to about 20 long stretches, 500 to 345 ms/s). The drawer keeps both pages built, the hidden one invisible and taking no room, and pages refresh when shown (switch stalls 124 to about 55 ms and 71 to about 41 ms). The dot breathes with Core Animation, only while its page shows. Setup guide pages keep their identity by step, so a slide reuses the leaving page instead of building it twice (Back 54 to about 23 ms; forward steps still build the incoming page, 20–50 ms). An App Store configuration build compiles without the tour. Left for later: the Settings switch (about 50 ms, the tab controller re-adding its view and un-hiding the native bar), opening the setup guide (about 150–200 ms), and entering history (marker view creation, overlays). None of this is verified on the phone yet.
 - **Undo:** `git revert 7872f3d ee6f2af 476bf59`.
 
+## 2026-11-11: a glassier setup guide
+
+- **Asked for:** the setup guide looked like a white background; the owner wanted it properly Liquid Glass, then "between A and B", "a little glass".
+- **Found:** the panel was regular glass, which iOS frosts to near white at this size over a light map. The map behind it was blurred, so nothing showed through, every row group sat on a white card, and the Tracking and Requested Accuracy sheets were plain grouped sheets.
+- **Decided:** from four rendered options (regular glass, clear glass under a 65% or 45% wash, plain clear glass) the owner picked clear glass under a 65% system-background wash, which shows the map faintly while text stays legible. The map is no longer blurred behind the guide, row cards use the tertiary fill, and all three guide sheets are the glass Settings sheets Trip Settings uses, opening at medium height. Tracking & Accuracy and its Advanced page take the sheet's row styling, which is unchanged in Settings.
+- **Undo:** revert this commit.
+
 ## Deferred for the owner
 
 - **Watch complication for Today:** it needs a new watch widget extension and bundle identifier, which is an Apple developer account change.

@@ -62,7 +62,6 @@ struct WhereWolfRootView: View {
     var body: some View {
         ZStack {
             appContent
-                .blur(radius: onboarding.isPresented ? 1.5 : 0)
                 .allowsHitTesting(!onboarding.isPresented)
                 .accessibilityHidden(onboarding.isPresented)
             if onboarding.isPresented {

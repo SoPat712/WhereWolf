@@ -142,7 +142,10 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
 
 - **Onboarding**: nine native glass panels float over the existing, non-interactive
   map: Welcome, Permissions, Destination, Tracking, Fine-Tune, Sending, Live Activity,
-  Staying Active and Done. Tracking is a six-row native inset preset list; Fine-Tune
+  Staying Active and Done. The panel is clear glass under a 65% system-background wash, its row groups
+  tertiary-fill cards, over the unblurred map: regular glass this large frosted to near white. Its Tracking,
+  Requested Accuracy and server sheets are the glass Settings sheets described under Trip Settings.
+  Tracking is a six-row native inset preset list; Fine-Tune
   owns accuracy, distance/time menus and pause/visit toggles. Default text never
   scrolls on 390/402-point phones; use `ViewThatFits` for larger text only.
   Continue and Skip slide each page's title and content in from the trailing edge, Back from the leading
@@ -404,8 +407,8 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   `settingsRowBackground()`: in the glass sheet they ease from a translucent fill to the
   secondary grouped color on the background's own UIKit frames, without SwiftUI updates. `SettingsFormStyle` clears Form and navigation
   backgrounds only inside the glass sheet; regular Settings navigation retains
-  its native grouped Form. Screens the sheet pushes (Trip Modes, Live Activities) use both
-  modifiers. Stop frame updates when settled, detached or
+  its native grouped Form. Screens the sheet pushes (Trip Modes, Live Activities), and Tracking & Accuracy
+  with its Advanced page for the setup guide, use both modifiers. Stop frame updates when settled, detached or
   backgrounded. Respect Reduce Transparency and dark appearance.
   The speed readout slides directly between readings, including during replay.
   Higher speeds enter from above; lower speeds enter from below. Finish each

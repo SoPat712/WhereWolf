@@ -215,6 +215,7 @@ struct TrackingSettingsView: View {
             } footer: {
                 Text("Significant-change mode records larger movements while conserving battery.")
             }
+            .settingsRowBackground()
 
             Section {
                 Picker("Requested Accuracy", selection: $bridge.accuracyPreset) {
@@ -239,6 +240,7 @@ struct TrackingSettingsView: View {
             } footer: {
                 Text("A target for iOS, not a guarantee. It does not change which points are saved.")
             }
+            .settingsRowBackground()
 
             Section {
                 Toggle("Discard Points Without GPS", isOn: $bridge.discardWithoutGPS)
@@ -257,6 +259,7 @@ struct TrackingSettingsView: View {
             } footer: {
                 Text("These filters decide which returned locations are saved. Tap a value to enter it exactly.")
             }
+            .settingsRowBackground()
 
             Section {
                 SliderRow(title: "Stop Within Radius", value: $bridge.stopRadiusMeters, range: 0...1000, offBelow: 1, unit: "meters", format: SettingFormat.meters)
@@ -274,13 +277,16 @@ struct TrackingSettingsView: View {
             } footer: {
                 Text("Stop Within Radius works in Both update mode. Resume After Moving is shared with Trips.")
             }
+            .settingsRowBackground()
 
             Section {
                 NavigationLink("Advanced") { TrackingAdvancedSettingsView() }
             } footer: {
                 Text("Location engine, motion assist and adaptive tracking.")
             }
+            .settingsRowBackground()
         }
+        .settingsFormStyle()
         .navigationTitle("Tracking & Accuracy")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { bridge.refresh() }
@@ -309,6 +315,7 @@ struct TrackingAdvancedSettingsView: View {
             } footer: {
                 Text("Automatic pause and resume, with more detailed diagnostics. iOS controls accuracy and pausing.")
             }
+            .settingsRowBackground()
 
             Section {
                 Toggle("Motion-assisted tracking", isOn: advancedBoolBinding(bridge, key: "motion_assist"))
@@ -326,6 +333,7 @@ struct TrackingAdvancedSettingsView: View {
                      ? "Confidence sets the activity threshold; it does not improve location accuracy."
                      : "Allow Motion & Fitness in Permissions to use motion assist.")
             }
+            .settingsRowBackground()
 
             Section {
                 Toggle("Adaptive Tracking", isOn: advancedBoolBinding(bridge, key: "adaptive"))
@@ -345,6 +353,7 @@ struct TrackingAdvancedSettingsView: View {
             } footer: {
                 Text("Lowers the requested accuracy only after a confirmed stop, so departures can be detected later.")
             }
+            .settingsRowBackground()
 
             Section {
                 SliderRow(title: "Adaptive Max Error", value: advancedValueBinding(bridge, key: "adaptive_max_error"), range: 5...200, unit: "meters", format: SettingFormat.meters)
@@ -356,7 +365,9 @@ struct TrackingAdvancedSettingsView: View {
             } footer: {
                 Text("Both are separate from Max Saved-Point Error, which controls saved points.")
             }
+            .settingsRowBackground()
         }
+        .settingsFormStyle()
         .navigationTitle("Advanced")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { bridge.refresh() }

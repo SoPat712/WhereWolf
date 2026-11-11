@@ -86,7 +86,13 @@ struct OnboardingView: View {
     private var panel: some View {
         Group {
             if #available(iOS 26, *) {
-                GlassEffectContainer { panelContent.glassEffect(.regular, in: .rect(cornerRadius: 46)) }
+                // Regular glass this large frosts to near white over a light map. Clear glass under a 65% wash
+                // shows the map faintly and keeps the text legible.
+                GlassEffectContainer {
+                    panelContent
+                        .background(Color(uiColor: .systemBackground).opacity(0.65), in: .rect(cornerRadius: 46))
+                        .glassEffect(.clear, in: .rect(cornerRadius: 46))
+                }
             } else {
                 panelContent.background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 46))
             }
@@ -639,13 +645,18 @@ struct OnboardingView: View {
                 case .server: serverForm
                 case .accuracy:
                     Form {
-                        Picker("Requested Accuracy", selection: $bridge.accuracyPreset) {
-                            Text("Navigation").tag(2); Text("Best").tag(1); Text("Custom").tag(0)
+                        Section {
+                            Picker("Requested Accuracy", selection: $bridge.accuracyPreset) {
+                                Text("Navigation").tag(2); Text("Best").tag(1); Text("Custom").tag(0)
+                            }
+                            if bridge.accuracyPreset == 0 {
+                                SliderRow(title: "Target Accuracy", value: $bridge.accuracyMeters, range: 5...3000, unit: "meters", format: SettingFormat.meters)
+                            }
                         }
-                        if bridge.accuracyPreset == 0 {
-                            SliderRow(title: "Target Accuracy", value: $bridge.accuracyMeters, range: 5...3000, unit: "meters", format: SettingFormat.meters)
-                        }
-                    }.navigationTitle("Requested Accuracy")
+                        .settingsRowBackground()
+                    }
+                    .settingsFormStyle()
+                    .navigationTitle("Requested Accuracy")
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
@@ -660,8 +671,7 @@ struct OnboardingView: View {
                 }.disabled(model.busy)
             } }
         }
-        .modifier(SetupServerSheetStyle(enabled: editor == .server))
-        .presentationDetents(editor == .tracking ? [.large] : [.medium, .large])
+        .modifier(SetupSheetStyle())
         .onDisappear { Task { await model.refresh() } }
     }
 
@@ -683,10 +693,12 @@ struct OnboardingView: View {
                 Text(useSetupLink ? "Paste a wherewolf:// or overland:// setup link from your server."
                      : "OwnTracks uses a Base64-encoded username:password token. More options are in Settings → Destination.")
             }
+            .settingsRowBackground()
             ConnectionTestSection(enabled: useSetupLink ? !setupLink.isEmpty : GLManager.isValidEndpoint(endpoint)) {
                 bridge.applyOnboardingDestination(useSetupLink ? .setupLink(setupLink) : .server(endpoint: endpoint, token: token, ownTracks: ownTracks))
             }
-            if let error = model.error { Text(error).foregroundStyle(.red) }
+            .settingsRowBackground()
+            if let error = model.error { Text(error).foregroundStyle(.red).settingsRowBackground() }
         }
         .settingsFormStyle()
         .navigationTitle(useSetupLink ? "Paste Setup Link" : "Your Server")
@@ -701,7 +713,7 @@ struct OnboardingView: View {
     }
 
     private var appearance: String { bridge.liveActivityEnabled ? bridge.liveActivityAppearance : "off" }
-    private var sectionColor: Color { Color(uiColor: .secondarySystemGroupedBackground).opacity(0.45) }
+    private var sectionColor: Color { Color(uiColor: .tertiarySystemFill) }
     private var serviceSessionAvailable: Bool { if #available(iOS 18, *) { return true }; return false }
     private func advanced(_ key: String) -> Binding<Bool> {
         Binding(get: { bridge.advancedBool(key) }, set: { bridge.setAdvancedBool($0, forKey: key) })
@@ -820,12 +832,14 @@ private struct OnboardingPresetHeights: PreferenceKey {
     }
 }
 
-private struct SetupServerSheetStyle: ViewModifier {
-    let enabled: Bool
-    @ViewBuilder func body(content: Content) -> some View {
-        if enabled {
-            content.environment(\.glassSettingsSheet, true)
-                .presentationBackground { Color.clear.glassPanel(cornerRadius: 32) }
-        } else { content }
+// The guide's sheets are the app's glass Settings sheets: glass at medium height, easing to the grouped
+// background as they grow.
+private struct SetupSheetStyle: ViewModifier {
+    @State private var detent = PresentationDetent.medium
+
+    func body(content: Content) -> some View {
+        content.environment(\.glassSettingsSheet, true)
+            .presentationDetents([.medium, .large], selection: $detent)
+            .presentationBackground { ExpandingSheetBackground(detent: detent) }
     }
 }
