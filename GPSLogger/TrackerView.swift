@@ -4,6 +4,8 @@ import UIKit
 struct TrackerView: View {
     var history: HistoryPlaybackModel
     var onLive: () -> Void
+    // The drawer keeps this page built behind Trip, so it refreshes when shown rather than on appear.
+    var shown = true
     @State private var confirmingStop = false
     @State private var showingDetails = false
     @State private var bridge = GLManagerBridge.shared
@@ -49,7 +51,8 @@ struct TrackerView: View {
         .fixedSize(horizontal: false, vertical: true)
         .animation(history.isRulerInteracting ? nil : .easeInOut(duration: 0.3), value: history.isBrowsing)
         .confirmStopTracking($confirmingStop) { bridge.trackingOn = false }
-        .onAppear {
+        .onChange(of: shown, initial: true) { _, shown in
+            guard shown else { return }
             bridge.refresh()
             history.reload()
         }

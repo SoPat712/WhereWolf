@@ -7,6 +7,7 @@ final class MapDrawerGeometry {
     var userLocation: CLLocation?
     @ObservationIgnored var read: (() -> (top: CGFloat, collapsedTop: CGFloat)?)?
     @ObservationIgnored var readMap: (() -> MKMapView?)?
+    @ObservationIgnored var settle: ((_ expanded: Bool) -> Void)?
 }
 
 struct WhereWolfShell: UIViewControllerRepresentable {
@@ -34,6 +35,7 @@ struct WhereWolfShell: UIViewControllerRepresentable {
         drawerGeometry.read = { [weak controller] in
             controller?.currentDrawerGeometry()
         }
+        drawerGeometry.settle = { [weak controller] in controller?.settleDrawer(expanded: $0) }
         return controller
     }
 
@@ -42,6 +44,7 @@ struct WhereWolfShell: UIViewControllerRepresentable {
         drawerGeometry.readMap = { [weak controller] in controller?.currentMap() }
         controller.onUserLocation = { [weak geometry = drawerGeometry] in geometry?.userLocation = $0 }
         drawerGeometry.read = { [weak controller] in controller?.currentDrawerGeometry() }
+        drawerGeometry.settle = { [weak controller] in controller?.settleDrawer(expanded: $0) }
         controller.onSelect = onSelect
         controller.update(map: map, controls: controls, settings: settings,
                           selection: selection, activation: activation,
@@ -342,6 +345,11 @@ final class WhereWolfShellController: UITabBarController, UITabBarControllerDele
     func currentDrawerGeometry() -> (top: CGFloat, collapsedTop: CGFloat)? {
         guard currentSelection < 2 else { return nil }
         return panel.currentGeometry()
+    }
+
+    func settleDrawer(expanded: Bool) {
+        guard currentSelection < 2 else { return }
+        if expanded { panel.expand() } else { panel.collapse() }
     }
 
     private func updateMapClosedTop() {

@@ -154,6 +154,27 @@ final class RulerScaleChannel {
     }
 }
 
+// Playback's pose for each frame, for the map and the ruler. SwiftUI hears of a frame only when its point
+// changes, since re-rendering the root on every frame took most of each frame's main-thread time.
+final class ReplayPoseChannel {
+    struct Frame {
+        let pose: ReplayPose
+        let accuracy: CLLocationAccuracy?
+    }
+
+    private var observers: [ObjectIdentifier: (Frame) -> Void] = [:]
+
+    func observe(_ owner: AnyObject, _ handler: @escaping (Frame) -> Void) {
+        observers[ObjectIdentifier(owner)] = handler
+    }
+
+    func stopObserving(_ owner: AnyObject) { observers[ObjectIdentifier(owner)] = nil }
+
+    func send(_ frame: Frame) {
+        for handler in observers.values { handler(frame) }
+    }
+}
+
 // Live fitting needs loaded coordinates without creating or displaying a replay route.
 final class LiveRulerGeometry {
     let coordinates: [CLLocationCoordinate2D]

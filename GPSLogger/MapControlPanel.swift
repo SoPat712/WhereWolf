@@ -244,6 +244,12 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
         settle(to: .expanded)
     }
 
+    func collapse() {
+        loadViewIfNeeded()
+        guard barGeometry == nil, !view.isHidden, position != .collapsed || spring != nil || isDragging else { return }
+        settle(to: .collapsed)
+    }
+
     func setVisible(_ visible: Bool) {
         loadViewIfNeeded()
         guard view.isHidden == visible else { return }

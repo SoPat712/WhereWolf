@@ -7,6 +7,8 @@ struct TripView: View {
     @Binding var trip: TripMapState
     var historyStart: Date?
     var onShowTrip: (ClosedRange<Date>) -> Void = { _ in }
+    // The drawer keeps this page built behind the Tracker, so it refreshes when shown rather than on appear.
+    var shown = true
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: .caption) private var modeWidth: CGFloat = 64
@@ -42,7 +44,8 @@ struct TripView: View {
         .sensoryFeedback(.start, trigger: started)
         .sensoryFeedback(.stop, trigger: ended)
         .sensoryFeedback(.selection, trigger: picked)
-        .onAppear {
+        .onChange(of: shown, initial: true) { _, shown in
+            guard shown else { return }
             bridge.refresh()
             bridge.loadRecordedTrips()
         }
@@ -384,19 +387,53 @@ private struct AllTripsView: View {
     }
 }
 
-// Breathes while a trip records; still with Reduce Motion.
-private struct RecordingDot: View {
+// Breathes while a trip records; still with Reduce Motion. Core Animation breathes it in the render server,
+// where a SwiftUI phase animator updated the card on the main thread every frame of the trip.
+private struct RecordingDot: UIViewRepresentable {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    var body: some View {
-        let dot = Circle().fill(.red).frame(width: 8, height: 8)
-        if reduceMotion {
-            dot
-        } else {
-            dot.phaseAnimator([1, 0.35]) { content, opacity in
-                content.opacity(opacity)
-            } animation: { _ in .easeInOut(duration: 0.8) }
-        }
+    func makeUIView(context: Context) -> RecordingDotView { RecordingDotView() }
+
+    func updateUIView(_ view: RecordingDotView, context: Context) { view.breathes = !reduceMotion }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: RecordingDotView, context: Context) -> CGSize? {
+        CGSize(width: 8, height: 8)
+    }
+}
+
+final class RecordingDotView: UIView {
+    var breathes = true {
+        didSet { if breathes != oldValue { breathe() } }
+    }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .systemRed
+        layer.cornerRadius = 4
+        isUserInteractionEnabled = false
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    // A layer loses its animations when it leaves the window, as the drawer swaps tabs.
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        breathe()
+    }
+
+    private func breathe() {
+        layer.removeAnimation(forKey: "breathe")
+        guard breathes, window != nil else { return }
+        let animation = CABasicAnimation(keyPath: "opacity")
+        animation.fromValue = 1
+        animation.toValue = 0.35
+        animation.duration = 0.8
+        animation.autoreverses = true
+        animation.repeatCount = .infinity
+        animation.isRemovedOnCompletion = false
+        animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        animation.preferredFrameRateRange = CAFrameRateRange(minimum: 80, maximum: 120, preferred: 120)
+        layer.add(animation, forKey: "breathe")
     }
 }
 

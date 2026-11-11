@@ -1,5 +1,6 @@
 import SwiftUI
 import MapKit
+import OSLog
 
 enum SettingsDestination: Hashable {
     case server
@@ -145,6 +146,9 @@ struct WhereWolfRootView: View {
             bridge.setSceneActive(false, id: sceneID)
             history.setConsumerActive(false)
         }
+#if !WHEREWOLF_APP_STORE
+        .task { await runMotionTour() }
+#endif
         .tint(.blue)
     }
 
@@ -180,12 +184,12 @@ struct WhereWolfRootView: View {
             }
     }
 
-    @ViewBuilder
     private var panelContent: some View {
-        if mapTab == 0 {
-            TrackerView(history: history, onLive: returnToLive)
-        } else {
-            TripView(camera: $camera, trip: $trip, historyStart: history.landmarks.timestamps.first, onShowTrip: showTrip)
+        DrawerPages(selection: mapTab) {
+            TrackerView(history: history, onLive: returnToLive, shown: mapTab == 0)
+        } trip: {
+            TripView(camera: $camera, trip: $trip, historyStart: history.landmarks.timestamps.first,
+                     onShowTrip: showTrip, shown: mapTab == 1)
         }
     }
 
@@ -243,6 +247,7 @@ struct WhereWolfRootView: View {
                                 replayHighlight: mapTab == 0 ? history.highlightedRange : nil,
                                 rulerZoom: mapTab == 0 ? history.rulerZoom : nil,
                                 rulerScaleChannel: mapTab == 0 ? history.rulerScaleChannel : nil,
+                                replayPoseChannel: mapTab == 0 ? history.poseChannel : nil,
                                 rulerZoomActive: selection == 0,
                                 liveRulerGeometry: mapTab == 0 ? history.liveRulerGeometry : nil,
                                 replayStatusHeight: mapTab == 0 && history.isBrowsing
@@ -584,6 +589,56 @@ private final class WhereWolfHostingController: UIHostingController<AnyView> {
 
 // MapKit's compass draws the live heading. A tap goes through the same camera transition as the zoom
 // buttons, so following and replay keep their state while the map turns north.
+// Both drawer pages stay built, so switching between Tracker and Trip only changes which one shows: building
+// the other page took 30–70 ms, so every switch began with a stall. The hidden page takes no room, touches or
+// VoiceOver focus. The page not shown at launch is built once launch has settled.
+private struct DrawerPages<Tracker: View, Trip: View>: View {
+    let selection: Int
+    @ViewBuilder let tracker: Tracker
+    @ViewBuilder let trip: Trip
+    @State private var built: Set<Int> = []
+
+    var body: some View {
+        DrawerPagesLayout(selection: selection) {
+            page(0) { tracker }
+            page(1) { trip }
+        }
+        .onChange(of: selection, initial: true) { _, selection in built.insert(selection) }
+        .task {
+            try? await Task.sleep(for: .seconds(1.5))
+            built = [0, 1]
+        }
+    }
+
+    @ViewBuilder
+    private func page<Content: View>(_ index: Int, @ViewBuilder content: () -> Content) -> some View {
+        let shown = index == selection
+        if shown || built.contains(index) {
+            content()
+                .opacity(shown ? 1 : 0)
+                .allowsHitTesting(shown)
+                .accessibilityHidden(!shown)
+        } else {
+            Color.clear.frame(width: 0, height: 0)
+        }
+    }
+}
+
+private struct DrawerPagesLayout: Layout {
+    var selection: Int
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        subviews.indices.contains(selection) ? subviews[selection].sizeThatFits(proposal) : .zero
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        for (index, page) in subviews.enumerated() {
+            page.place(at: bounds.origin, anchor: .topLeading,
+                       proposal: index == selection ? proposal : ProposedViewSize(width: bounds.width, height: nil))
+        }
+    }
+}
+
 struct MapCompassControl: UIViewRepresentable {
     let readMap: (() -> MKMapView?)?
     let action: () -> Void
@@ -689,3 +744,119 @@ struct TripTabPolicy {
         return true
     }
 }
+
+#if !WHEREWOLF_APP_STORE
+// `-WhereWolfMotionTour map|replay|guide|all` plays each animation of that set in turn once after launch, for
+// frame-rate traces on a phone. Each runs inside a Points of Interest interval named after it, so a trace splits
+// by animation, and prints how long the main thread was busy during it. It changes no settings, tracking or
+// trips: the setup guide only pages and closes, and replay returns to Live.
+extension WhereWolfRootView {
+    private static let tourSignposter = OSSignposter(subsystem: "me.joshpatra.WhereWolf", category: .pointsOfInterest)
+    @MainActor private static var tourStarted = false
+
+    @MainActor
+    func runMotionTour() async {
+        guard let tour = UserDefaults.standard.string(forKey: "WhereWolfMotionTour"), !Self.tourStarted else { return }
+        Self.tourStarted = true
+        // Lines also go to tmp/motion-tour.txt in the app's container, since a console can drop them.
+        let log = FileManager.default.temporaryDirectory.appendingPathComponent("motion-tour.txt")
+        try? Data().write(to: log)
+        let file = try? FileHandle(forWritingTo: log)
+        func report(_ line: String) {
+            print("TOUR " + line)
+            fflush(stdout)
+            file?.seekToEndOfFile()
+            file?.write(Data(("TOUR " + line + "\n").utf8))
+        }
+        report("start \(tour)")
+        let meter = MainThreadBusyMeter()
+        func step(_ name: StaticString, _ seconds: Double, _ action: () -> Void) async {
+            let state = Self.tourSignposter.beginInterval(name)
+            meter.start()
+            action()
+            try? await Task.sleep(for: .seconds(seconds))
+            report("\(name): " + meter.stop(over: seconds))
+            Self.tourSignposter.endInterval(name, state)
+            try? await Task.sleep(for: .seconds(0.6))
+        }
+        try? await Task.sleep(for: .seconds(4))
+        if tour == "map" || tour == "all" {
+            await step("drawer open", 1.2) { drawerGeometry.settle?(true) }
+            await step("drawer close", 1.2) { drawerGeometry.settle?(false) }
+            await step("tab trip", 1.4) { selectTab(1) }
+            await step("tab tracker", 1.4) { selectTab(0) }
+            await step("tab settings", 1.4) { selectTab(2) }
+            await step("tab back", 1.4) { selectTab(0) }
+            await step("zoom in", 1.3) { zoomMap(inward: true) }
+            await step("zoom out", 1.3) { zoomMap(inward: false) }
+            if let map = drawerGeometry.readMap?() {
+                var center = map.camera.centerCoordinate
+                center.latitude += 0.06
+                var transaction = Transaction(animation: nil)
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    camera = .camera(MapCamera(centerCoordinate: center, distance: map.camera.centerCoordinateDistance))
+                }
+                try? await Task.sleep(for: .seconds(1.5))
+            }
+            await step("flight to live", 2.4) { returnToLive() }
+        }
+        if tour == "replay" || tour == "all" {
+            for _ in 0..<40 where history.points.isEmpty { try? await Task.sleep(for: .seconds(0.25)) }
+            await step("history open", 1.4) { history.goTo(Date().addingTimeInterval(-3 * 60 * 60)) }
+            history.playbackRate = 5
+            await step("replay", 5) { history.togglePlayback() }
+            history.pause()
+            history.playbackRate = 1
+            await step("scale coarse", 1) { history.setRulerStep(50) }
+            await step("scale fine", 1) { history.setRulerStep(1) }
+            await step("ruler to live", 1.6) { returnToLive() }
+            let oldest = history.points.first?.timestamp ?? .distantFuture
+            if let trip = TripLog.trips.first(where: { $0.start >= oldest && $0.distance > 1_000 }) {
+                await step("open trip", 5) { showTrip(trip.start...trip.end) }
+                await step("trip to live", 2) { returnToLive() }
+            }
+        }
+        if tour == "guide" || tour == "all" {
+            await step("guide open", 1.2) { onboarding.reopen() }
+            await step("guide next 1", 0.9) { onboarding.next() }
+            await step("guide next 2", 0.9) { onboarding.next() }
+            await step("guide next 3", 0.9) { onboarding.next() }
+            await step("guide back", 0.9) { onboarding.back() }
+            await step("guide close", 1) { onboarding.skipAll() }
+        }
+        report("done")
+    }
+}
+
+// Sums the main run loop's working time between waits. A stretch longer than a 120 Hz frame delays the next one.
+private final class MainThreadBusyMeter {
+    private var observer: CFRunLoopObserver?
+    private var woke: CFTimeInterval = 0
+    private var stretches: [CFTimeInterval] = []
+
+    func start() {
+        stretches.removeAll(keepingCapacity: true)
+        woke = CACurrentMediaTime()
+        let activities = CFRunLoopActivity.afterWaiting.rawValue | CFRunLoopActivity.beforeWaiting.rawValue
+        let observer = CFRunLoopObserverCreateWithHandler(nil, activities, true, 0) { [weak self] _, activity in
+            guard let self else { return }
+            let now = CACurrentMediaTime()
+            if activity == .beforeWaiting { stretches.append(now - woke) }
+            woke = now
+        }
+        CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
+        self.observer = observer
+    }
+
+    func stop(over seconds: Double) -> String {
+        if let observer { CFRunLoopRemoveObserver(CFRunLoopGetMain(), observer, .commonModes) }
+        observer = nil
+        let busy = stretches.reduce(0, +)
+        let long = stretches.filter { $0 > 1.0 / 120 }
+        return String(format: "busy %.0f ms/s, longest %.1f ms, %d of %d stretches over 8.3 ms (%.0f ms in them)",
+                      busy * 1000 / seconds, (stretches.max() ?? 0) * 1000, long.count, stretches.count,
+                      long.reduce(0, +) * 1000)
+    }
+}
+#endif

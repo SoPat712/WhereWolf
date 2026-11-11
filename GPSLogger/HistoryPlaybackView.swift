@@ -12,9 +12,27 @@ final class HistoryPlaybackModel {
     private(set) var selectedIndex: Int?
     private(set) var payload: RecordedPayload?
     private(set) var isPlaying = false
-    private(set) var playbackTime: TimeInterval?
-    private(set) var renderPose: ReplayPose?
-    private(set) var rulerTime: Date?
+    // Playback moves these four every frame. Those frames tell SwiftUI only when the point or the ruler's minute
+    // changes, or playback stops; the map and ruler follow every frame through `poseChannel`.
+    private(set) var playbackTime: TimeInterval? {
+        get { access(keyPath: \.playbackTime); return storedPlaybackTime }
+        set { publish(\.playbackTime) { storedPlaybackTime = newValue } }
+    }
+    private(set) var renderPose: ReplayPose? {
+        get { access(keyPath: \.renderPose); return storedRenderPose }
+        set { publish(\.renderPose) { storedRenderPose = newValue } }
+    }
+    private(set) var rulerTime: Date? {
+        get { access(keyPath: \.rulerTime); return storedRulerTime }
+        set {
+            let minute = { (date: Date?) in date.map { Int($0.timeIntervalSince1970 / 60) } }
+            if minute(newValue) == minute(storedRulerTime) {
+                publish(\.rulerTime) { storedRulerTime = newValue }
+            } else {
+                withMutation(keyPath: \.rulerTime) { storedRulerTime = newValue }
+            }
+        }
+    }
     private(set) var rulerPosition: Double?
     private(set) var rulerInteractionRevision = 0
     private(set) var isRulerInteracting = false
@@ -73,7 +91,16 @@ final class HistoryPlaybackModel {
         return value.isFinite ? min(maximum, max(minimum, value)) : HistoryRetention.duration
     }
 
-    private var playbackFraction = 0.0
+    private var playbackFraction: Double {
+        get { access(keyPath: \.playbackFraction); return storedPlaybackFraction }
+        set { publish(\.playbackFraction) { storedPlaybackFraction = newValue } }
+    }
+    @ObservationIgnored let poseChannel = ReplayPoseChannel()
+    @ObservationIgnored private var quietFrames = false
+    @ObservationIgnored private var storedPlaybackTime: TimeInterval?
+    @ObservationIgnored private var storedRenderPose: ReplayPose?
+    @ObservationIgnored private var storedRulerTime: Date?
+    @ObservationIgnored private var storedPlaybackFraction = 0.0
     @ObservationIgnored private var displayLink: CADisplayLink?
     @ObservationIgnored private var lastAdvance = 0.0
     @ObservationIgnored private var lastLoadedID: Int64 = 0
@@ -669,9 +696,19 @@ final class HistoryPlaybackModel {
 
     private func stopPlayback() {
         guard isPlaying || displayLink != nil else { return }
+        quietFrames = false
         displayLink?.invalidate()
         displayLink = nil
         isPlaying = false
+        // SwiftUI may not have seen the last frames.
+        withMutation(keyPath: \.playbackTime) {}
+        withMutation(keyPath: \.renderPose) {}
+        withMutation(keyPath: \.rulerTime) {}
+        withMutation(keyPath: \.playbackFraction) {}
+    }
+
+    private func publish<Value>(_ keyPath: KeyPath<HistoryPlaybackModel, Value>, _ change: () -> Void) {
+        if quietFrames { change() } else { withMutation(keyPath: keyPath, change) }
     }
 
     func pause() {
@@ -694,8 +731,13 @@ final class HistoryPlaybackModel {
         guard isPlaying else { return }
         defer { lastAdvance = timestamp }
         guard lastAdvance > 0 else { return }
+        quietFrames = true
         // Resume from a dropped frame instead of jumping through an unseen portion of the trip.
         advancePlayback(by: min(0.1, max(0, timestamp - lastAdvance)))
+        quietFrames = false
+        if isPlaying, let storedRenderPose {
+            poseChannel.send(ReplayPoseChannel.Frame(pose: storedRenderPose, accuracy: playbackAccuracy))
+        }
     }
 
     func advancePlayback(by elapsed: TimeInterval) {
@@ -1111,7 +1153,7 @@ struct HistoryRuler: View {
                 } else {
                     history.scrub(pointAt: history.points.count - target)
                 }
-            }, highlight: history.highlightedRange)
+            }, highlight: history.highlightedRange, poseChannel: history.poseChannel)
             .frame(height: 56)
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { history.setRulerWidth($0) }
             HStack {
@@ -1481,6 +1523,7 @@ struct HistoryRulerSurface: UIViewRepresentable {
     var onContinuousScale: (RulerScaleChannel.Frame?) -> Void
     var onAdjust: (Int) -> Void
     var highlight: ClosedRange<Int>? = nil
+    var poseChannel: ReplayPoseChannel? = nil
 
     func makeUIView(context: Context) -> HistoryRulerContainer {
         HistoryRulerContainer()
@@ -1492,6 +1535,7 @@ struct HistoryRulerSurface: UIViewRepresentable {
 
     static func dismantleUIView(_ view: HistoryRulerContainer, coordinator: ()) {
         view.cancelMotion()
+        view.attachPoseChannel(nil)
     }
 }
 
@@ -1969,6 +2013,7 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
             configuration.onScale(configuration.step)
         }
         self.configuration = configuration
+        attachPoseChannel(configuration.poseChannel)
         ticks.landmarks = configuration.landmarks
         ticks.highlight = configuration.highlight
         ticks.pointCount = configuration.points.count
@@ -1999,6 +2044,26 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
         if !moving {
             updateGeometry(at: configuration.position)
         }
+        redraw()
+    }
+
+    private weak var poseChannel: ReplayPoseChannel?
+
+    func attachPoseChannel(_ channel: ReplayPoseChannel?) {
+        guard poseChannel !== channel else { return }
+        poseChannel?.stopObserving(self)
+        poseChannel = channel
+        channel?.observe(self) { [weak self] frame in self?.followPlayback(frame) }
+    }
+
+    // Playback frames move the needle's point without a SwiftUI update, as `HistoryRuler.position` would.
+    private func followPlayback(_ frame: ReplayPoseChannel.Frame) {
+        guard var configuration, configuration.active, !moving, !configuration.points.isEmpty else { return }
+        let position = Double(configuration.points.count) - frame.pose.position
+        guard position != configuration.position else { return }
+        configuration.position = position
+        self.configuration = configuration
+        updateGeometry(at: position)
         redraw()
     }
 

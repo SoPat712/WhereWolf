@@ -103,6 +103,13 @@ just those tests once (class setup intact, no screen audits, result in `focused.
 landing, not progress checks. Triage a flaky test by running it alone several times; fix
 the timing assumption rather than raising timeouts. Run one heavy test run at a time.
 
+Motion is measured, not judged by eye. Builds other than App Store ones play a motion tour once after launch
+with `-WhereWolfMotionTour map|replay|guide|all`: each animation runs inside a Points of Interest interval and
+writes its main thread's busy time per second, longest stretch and stretches over 8.3 ms to
+`tmp/motion-tour.txt` in the app container. On the phone, an Animation Hitches trace over the same intervals
+gives the share of 120 Hz frames; Instruments cannot launch Release simulator builds, so simulator profiling
+uses a Debug build compiled with `-O`. The tour changes no settings, tracking or trips.
+
 Tests use an in-memory queue and mocked `wherewolf.test` requests. Objective-C tests
 reach app Swift types through protocols and `NSClassFromString`; never import the
 app's generated Swift header into the test target.
@@ -231,7 +238,10 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   spring requests the screen's maximum refresh rate, with the iPhone
   ProMotion plist opt-in enabled. Freeze drawer sizing while the history ruler
   drags or coasts on the active Tracker tab; update hosted controls only when
-  their tab changes. Switching between Tracker and Trip fades a snapshot of the previous
+  their tab changes. The controls host keeps both Tracker and Trip built (`DrawerPages`), the hidden one
+  invisible, untouchable and taking no room, since building a page took 30–70 ms at the start of every switch;
+  each page refreshes when shown instead of on appear, and the one not shown at launch is built 1.5 seconds
+  later. Switching between Tracker and Trip fades a snapshot of the previous
   controls out over the new ones inside the clipping content view while the drawer resizes; a closed
   drawer and Settings' bar handoff swap without it. Outside a bar tween, tab replacement releases the previous
   interaction and spring. New content measurements retarget an unfinished drawer
@@ -240,7 +250,8 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   scrolling only for content exceeding the screen's available height.
   Trip has no title: while idle a scrolling row of mode buttons, ending in Edit (Trip Modes), sits above a
   green Start Trip button beside the Trip Settings button. Recording replaces the row with a card whose
-  breathing red dot names the mode above elapsed time, redrawn on each whole second since the start,
+  breathing red dot (a Core Animation opacity animation, which costs the app nothing per frame) names the
+  mode above elapsed time, redrawn on each whole second since the start,
   and a grid of distance, average speed (pace on foot),
   top speed and climb, and the button turns
   into a red End Trip with a symbol replace and start/stop haptics; Reduce Motion crossfades and keeps
@@ -508,6 +519,9 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   On release, load around the final selection once. Normal drags and playback keep
   prefetching. Format JSON only for inspection. Cache the complete route through
   every stored point, without sampling. Publish replay position and coordinate together in one `ReplayPose`.
+  Playback frames reach the map and the ruler through `ReplayPoseChannel`, each taking its usual update path
+  with the new pose; SwiftUI hears of a frame only when its point or the ruler's minute changes, or playback
+  stops. Re-rendering the root on every frame took most of each frame's main-thread time.
   `ReplayRoutePresentation` retains every vertex and draws every route line with a
   plain `MKPolylineRenderer`, the only renderer MapKit draws as vector geometry at
   a constant screen width. Path renderer subclasses become bitmap tiles that stretch

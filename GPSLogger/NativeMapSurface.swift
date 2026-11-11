@@ -318,6 +318,7 @@ struct NativeMapSurface: UIViewRepresentable {
     var replayHighlight: ClosedRange<Int>? = nil
     var rulerZoom: ReplayRulerHold? = nil
     var rulerScaleChannel: RulerScaleChannel? = nil
+    var replayPoseChannel: ReplayPoseChannel? = nil
     var rulerZoomActive = true
     var liveRulerGeometry: LiveRulerGeometry? = nil
     var replayStatusHeight: CGFloat = 0
@@ -442,6 +443,7 @@ struct NativeMapSurface: UIViewRepresentable {
         coordinator.stopCameraTransition()
         coordinator.stopRulerZoom()
         coordinator.detachRulerScaleChannel()
+        coordinator.attachReplayPoseChannel(nil)
         coordinator.stopLiveMotion()
         coordinator.stopReplayHeading()
         coordinator.stopReplayCoverageExpiry()
@@ -543,6 +545,7 @@ struct NativeMapSurface: UIViewRepresentable {
         private var cameraDisplayLink: CADisplayLink?
         private var scaledRuler: ReplayRulerHold?
         private weak var rulerScaleChannel: RulerScaleChannel?
+        private weak var replayPoseChannel: ReplayPoseChannel?
         private var rulerScaleFrame: RulerScaleChannel.Frame?
         private var rulerScalePendingCommit: RulerScaleChannel.Frame?
         private struct RulerScaleFitContext: Equatable {
@@ -651,6 +654,7 @@ struct NativeMapSurface: UIViewRepresentable {
             }
             self.parent = parent
             attachRulerScaleChannel(parent.rulerScaleChannel)
+            attachReplayPoseChannel(parent.replayPoseChannel)
             if cameraAction { rulerRestoreGeneration &+= 1 }
             guard let map else { return }
             CATransaction.begin()
@@ -1050,6 +1054,23 @@ struct NativeMapSurface: UIViewRepresentable {
             rulerScaleChannel = channel
             rulerScaleFrame = channel?.frame
             channel?.onChange = { [weak self] frame in self?.receiveRulerScale(frame) }
+        }
+
+        func attachReplayPoseChannel(_ channel: ReplayPoseChannel?) {
+            guard replayPoseChannel !== channel else { return }
+            replayPoseChannel?.stopObserving(self)
+            replayPoseChannel = channel
+            channel?.observe(self) { [weak self] frame in self?.receiveReplayFrame(frame) }
+        }
+
+        // A playback frame changes only the pose, so it takes the same path as SwiftUI's update with it.
+        private func receiveReplayFrame(_ frame: ReplayPoseChannel.Frame) {
+            guard parent.replayActive, parent.replayRoute != nil, parent.selected != nil else { return }
+            var next = parent
+            next.replayPosition = frame.pose.position
+            next.selected = frame.pose.coordinate.coordinate
+            next.replayAccuracy = frame.accuracy
+            update(next, animated: false)
         }
 
         func detachRulerScaleChannel() {
