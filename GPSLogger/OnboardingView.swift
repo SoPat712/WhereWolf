@@ -103,17 +103,20 @@ struct OnboardingView: View {
     private var panelContent: some View {
         VStack(spacing: model.step == .welcome ? 10 : spacing(model.step)) {
             // Only the pages slide. The step changes without animation, so the panel takes the new page's height
-            // at once and nothing below it moves. The leaving page is an overlay that takes no space, one page over,
-            // built once; each frame only offsets the pair.
-            page(model.step)
-                .overlay(alignment: .bottom) {
-                    if !reduceMotion, settledStep != model.step, let previous = model.previous {
-                        let side: CGFloat = model.forward ? 1 : -1
-                        page(previous, current: false)
-                            .visualEffect { effect, proxy in effect.offset(x: -side * (proxy.size.width + 48)) }
-                            .allowsHitTesting(false).accessibilityHidden(true)
-                    }
+            // at once and nothing below it moves. The leaving page sits one page over, bottom-aligned and taking no
+            // space; each frame only offsets the pair. Pages keep their identity by step, so the leaving page is the
+            // one already shown rather than a second build of it.
+            PageStrip {
+                ForEach(stripSteps, id: \.self) { step in
+                    let current = step == model.step
+                    let side: CGFloat = model.forward ? 1 : -1
+                    page(step, current: current)
+                        .visualEffect { effect, proxy in
+                            effect.offset(x: current ? 0 : -side * (proxy.size.width + 48))
+                        }
+                        .allowsHitTesting(current).accessibilityHidden(!current)
                 }
+            }
                 .keyframeAnimator(initialValue: 1.0, trigger: model.step) { content, value in
                     let offset = reduceMotion ? 0 : (model.forward ? 1 : -1) * (1 - value)
                     content.visualEffect { effect, proxy in effect.offset(x: offset * (proxy.size.width + 48)) }
@@ -137,6 +140,14 @@ struct OnboardingView: View {
         .padding(.bottom, 18)
         .font(.system(size: rowSize))
         .clipShape(.rect(cornerRadius: 46))
+    }
+
+    // The current page, then the leaving one until the slide settles.
+    private var stripSteps: [OnboardingStep] {
+        guard !reduceMotion, settledStep != model.step, let previous = model.previous, previous != model.step else {
+            return [model.step]
+        }
+        return [model.step, previous]
     }
 
     private func spacing(_ step: OnboardingStep) -> CGFloat {
@@ -774,6 +785,25 @@ struct OnboardingTrackingBindings {
 }
 
 // Only the current page's title takes VoiceOver focus and the audits' identifier; the leaving copy has neither.
+// Sized by its first page; later pages sit beside it at the bottom, taking no space.
+private struct PageStrip: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        subviews.first?.sizeThatFits(proposal) ?? .zero
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        for (index, page) in subviews.enumerated() {
+            if index == 0 {
+                page.place(at: bounds.origin, anchor: .topLeading, proposal: proposal)
+            } else {
+                let size = page.sizeThatFits(ProposedViewSize(width: bounds.width, height: nil))
+                page.place(at: CGPoint(x: bounds.minX, y: bounds.maxY), anchor: .bottomLeading,
+                           proposal: ProposedViewSize(width: bounds.width, height: size.height))
+            }
+        }
+    }
+}
+
 private struct SetupTitle: ViewModifier {
     let focus: AccessibilityFocusState<Bool>.Binding?
 
