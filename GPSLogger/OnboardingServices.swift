@@ -21,6 +21,29 @@ extension OnboardingPermissionStatus {
     }
 }
 
+struct ServerSetup {
+    let endpoint: String
+    let token: String
+    let deviceId: String
+    let uniqueId: Bool
+    let headers: [String: String]
+
+    static func parse(_ url: URL) -> ServerSetup? {
+        guard ["wherewolf", "overland"].contains(url.scheme?.lowercased() ?? ""),
+              url.host?.lowercased() == "setup",
+              let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems else { return nil }
+        func value(_ key: String) -> String? { items.first { $0.name == key }?.value }
+        guard let endpoint = value("url"), GLManager.isValidEndpoint(endpoint) else { return nil }
+        var headers: [String: String] = [:]
+        for item in items where item.name.hasPrefix("header_") && item.name.count > 7 {
+            if let value = item.value { headers[String(item.name.dropFirst(7))] = value }
+        }
+        guard SettingsSchema.validHeaders(headers) != nil else { return nil }
+        return ServerSetup(endpoint: endpoint, token: value("token") ?? "", deviceId: value("device_id") ?? "",
+                           uniqueId: value("unique_id") == "yes", headers: headers)
+    }
+}
+
 extension GLManagerBridge {
     func requestWhenInUsePermission() {
         let gl = GLManager.shared()!
@@ -50,20 +73,12 @@ extension GLManagerBridge {
     }
 
     func applySetupURL(_ url: URL) -> Bool {
-        guard ["wherewolf", "overland"].contains(url.scheme?.lowercased() ?? ""),
-              url.host?.lowercased() == "setup",
-              let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems else { return false }
-        func value(_ key: String) -> String? { items.first { $0.name == key }?.value }
-        guard let endpoint = value("url"), GLManager.isValidEndpoint(endpoint) else { return false }
+        guard let setup = ServerSetup.parse(url) else { return false }
         let gl = GLManager.shared()!
-        var headers: [String: String] = [:]
-        for item in items where item.name.hasPrefix("header_") && item.name.count > 7 {
-            if let value = item.value { headers[String(item.name.dropFirst(7))] = value }
-        }
-        return saveServer(url: endpoint, token: value("token") ?? "", deviceId: value("device_id") ?? "",
-                   uniqueId: value("unique_id") == "yes",
+        return saveServer(url: setup.endpoint, token: setup.token, deviceId: setup.deviceId,
+                   uniqueId: setup.uniqueId,
                    acceptHTTP: UserDefaults.standard.bool(forKey: GLConsiderHTTP200SuccessDefaultsName),
-                   headers: headers.isEmpty ? gl.customHTTPHeaders : headers)
+                   headers: setup.headers.isEmpty ? gl.customHTTPHeaders : setup.headers)
     }
 
     func applyOnboardingDestination(_ destination: OnboardingDestination) -> Bool {
@@ -140,6 +155,9 @@ extension GLManagerBridge {
         result.serverConfigured = endpointSet
         result.destination = savesToICloudDrive ? (cloudAvailable ? "iCloud Drive" : "iCloud Drive · Unavailable")
             : endpointSet ? (URL(string: gl.apiEndpointURL() ?? "")?.host ?? "Your server") : "This iPhone"
+        if !savesToICloudDrive, endpointSet, case .dawarich = dawarich {
+            result.destination = "Dawarich · " + result.destination
+        }
         result.usagePreset = usageProfile
         result.requestedAccuracy = accuracyPreset == 1 ? "Best" : accuracyPreset == 2 ? "Navigation" : SettingFormat.meters(accuracyMeters)
         result.minimumDistance = discardDistanceMeters < 1 ? "Off" : SettingFormat.meters(discardDistanceMeters)

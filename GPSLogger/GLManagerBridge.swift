@@ -142,6 +142,7 @@ final class GLManagerBridge {
     private(set) var sending = false
     private(set) var endpointSet = false
     private(set) var destinationSet = false
+    private(set) var dawarich: DawarichStatus = .unknown
     private(set) var speedUnit = "MPH"
     private(set) var lastSentText = "–"
     private(set) var sendHistory: [SendStatusEntry] = []
@@ -163,6 +164,8 @@ final class GLManagerBridge {
     @ObservationIgnored private var activeScenes: Set<UUID> = []
     @ObservationIgnored private var recordedTrips: [TripSummary] = []
     @ObservationIgnored private var loadingRecordedTrips = false
+    @ObservationIgnored private var dawarichProbe: URLSessionDataTask?
+    @ObservationIgnored private var dawarichProbeID = UUID()
 
     private init() {
         let nc = NotificationCenter.default
@@ -287,13 +290,35 @@ final class GLManagerBridge {
             UserDefaults.standard.set(acceptHTTP, forKey: GLConsiderHTTP200SuccessDefaultsName)
         }
         refresh()
+        if saved { refreshDawarich() }
         return saved
     }
 
     @discardableResult func clearServer() -> Bool {
         let saved = GLManager.shared().saveNewAPIEndpoint(nil, andAccessToken: nil)
         refresh()
+        if saved { refreshDawarich() }
         return saved
+    }
+
+    func refreshDawarich() {
+        dawarichProbeID = UUID()
+        let probeID = dawarichProbeID
+        dawarichProbe?.cancel()
+        dawarichProbe = nil
+        guard let gl = GLManager.shared(),
+              let server = DawarichServer(endpoint: gl.apiEndpointURL() ?? "", token: gl.apiAccessToken() ?? "") else {
+            dawarich = .unknown
+            return
+        }
+        dawarich = .checking
+        dawarichProbe = server.probe(headers: gl.customHTTPHeaders) { [weak self] status in
+            DispatchQueue.main.async {
+                guard let self, self.dawarichProbeID == probeID else { return }
+                self.dawarich = status
+                self.dawarichProbe = nil
+            }
+        }
     }
 
     var wifiPlaces: [WifiPlace] {

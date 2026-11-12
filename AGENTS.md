@@ -423,7 +423,8 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   and builds the three payment URLs. The app has no main storyboard; the launch
   storyboard remains.
 - **Settings** is a native Form root: Setup Guide; Tracking (on/off, Usage Preset, Restore Recommended
-  Settings); Destination (`EndpointView`: Save Locations To, iCloud file organization, server fields and Test Connection,
+  Settings); Destination (`EndpointView`: Save Locations To, iCloud file organization, server fields, Dawarich recognition,
+  Scan QR Code and Test Connection,
   with a root value of Server, iCloud Drive or Not Set) and Permissions (location, Precise Location,
   Motion & Fitness, notification and Health request status, Open iOS Settings); Recording (Tracking
   & Accuracy, whose Advanced page holds the engine, motion assist and adaptive tracking; Trips, the
@@ -460,6 +461,14 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   token and headers never enter ubiquitous key-value storage; sync them through a
   synchronizable Keychain item. URL/token stay in a local Keychain item when sync is
   off; migrate old defaults only after a successful save. Device ID is backup-only.
+- **Dawarich and QR setup**: a saved upload URL ending in `/api/v1/overland/batches` or `/api/v1/owntracks/points`
+  (any path prefix; key from `api_key`, else the access token) gets one replaceable 15-second
+  `GET /api/v1/health` with `Authorization: Bearer` and the custom headers, after saves and when Destination or the
+  guide's server sheet appears. Dawarich answers with `X-Dawarich-Response` ("authenticated" for a valid key) and
+  `X-Dawarich-Version`; `DawarichStatusRow` shows it, and other servers get no row. The probe sends no location and
+  touches no queue, history or send statistics. Scan QR Code (VisionKit, shown only where supported) reads Dawarich's
+  account JSON `{"server_url", "api_key"}`, setup links through `ServerSetup.parse` and plain endpoints, and fills
+  the form for an explicit Save. Camera access is asked only on tap; frames are never stored.
 - **Connection test**: Settings → Destination and the guide's glass server sheet share one
   native section. Save edits through the bridge, then use a valid fix at most 30 seconds old
   or a separate one-shot location manager with a 15-second deadline. GLManager reuses

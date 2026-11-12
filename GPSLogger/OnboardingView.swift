@@ -10,6 +10,7 @@ struct OnboardingView: View {
     @State private var token = ""
     @State private var ownTracks = false
     @State private var useSetupLink = false
+    @State private var scanned = false
     @State private var presetRowHeights: [Int: CGFloat] = [:]
     @State private var settledStep: OnboardingStep?
     @Environment(\.scenePhase) private var scenePhase
@@ -58,6 +59,7 @@ struct OnboardingView: View {
         .onChange(of: bridge.usageProfile) { _, _ in
             Task { await model.refresh() }
         }
+        .onChange(of: bridge.dawarich) { _, _ in Task { await model.refresh() } }
         .onChange(of: dynamicTypeSize) { _, _ in presetRowHeights = [:] }
         .onChange(of: model.step) { _, _ in
             titleFocused = true
@@ -689,6 +691,12 @@ struct OnboardingView: View {
                     Picker("Format", selection: $ownTracks) { Text("GeoJSON").tag(false); Text("OwnTracks").tag(true) }
                     SecureField("Access Token", text: $token)
                 }
+                ServerQRCodeButton(onScan: scan)
+                if scanned {
+                    Text("Scanned. Review the server, then tap Save.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+                DawarichStatusRow(status: bridge.dawarich)
             } footer: {
                 Text(useSetupLink ? "Paste a wherewolf:// or overland:// setup link from your server."
                      : "OwnTracks uses a Base64-encoded username:password token. More options are in Settings → Destination.")
@@ -702,9 +710,31 @@ struct OnboardingView: View {
         }
         .settingsFormStyle()
         .navigationTitle(useSetupLink ? "Paste Setup Link" : "Your Server")
+        .onAppear { bridge.refreshDawarich() }
+    }
+
+    private func scan(_ text: String) -> Bool {
+        guard let code = DawarichServer.parseQRCode(text, ownTracks: ownTracks) else { return false }
+        switch code {
+        case .dawarich(let url):
+            endpoint = url.absoluteString
+            token = ""
+            useSetupLink = false
+        case .setupLink(let url, let setup):
+            setupLink = url.absoluteString
+            endpoint = setup.endpoint
+            token = setup.token
+            useSetupLink = true
+        case .endpoint(let url):
+            endpoint = url.absoluteString
+            useSetupLink = false
+        }
+        scanned = true
+        return true
     }
 
     private func loadDestination() {
+        scanned = false
         destination = model.status.cloudSelected ? .cloud : model.status.serverConfigured ? .server : .device
         let gl = GLManager.shared()!
         endpoint = gl.apiEndpointURL() ?? ""

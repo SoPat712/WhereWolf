@@ -163,6 +163,10 @@
 		FD8716D075FB5292BFD3C574 /* HistoryRetentionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BEB326A17A6C66C642C0A6B /* HistoryRetentionTests.swift */; };
 		FE9D896276FE76C0B7D6DDF6 /* GLTripActions.m in Sources */ = {isa = PBXBuildFile; fileRef = 21602F0B954DE517514264C4 /* GLTripActions.m */; };
 		FFFD07EC57EDFD9A3BF5CB30 /* TripControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = C215F1FD102A461140930DC1 /* TripControls.swift */; };
+		D0DA00000000000000000002 /* DawarichServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0DA00000000000000000001 /* DawarichServer.swift */; };
+		D0DA00000000000000000004 /* DawarichStatusRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0DA00000000000000000003 /* DawarichStatusRow.swift */; };
+		D0DA00000000000000000006 /* ServerQRCodeScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0DA00000000000000000005 /* ServerQRCodeScanner.swift */; };
+		D0DA00000000000000000008 /* DawarichServerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0DA00000000000000000007 /* DawarichServerTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -380,6 +384,10 @@
 		D8F54F73CE518F85F9D383BF /* TripActivityAttributes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripActivityAttributes.swift; path = GPSLogger/LiveActivity/TripActivityAttributes.swift; sourceTree = "<group>"; };
 		E0A408349E469AC6E6DA46BA /* libPods-WhereWolf.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-WhereWolf.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		F4DFFAB32440A8511E1D869A /* Pods-WhereWolf.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-WhereWolf.debug.xcconfig"; path = "Pods/Target Support Files/Pods-WhereWolf/Pods-WhereWolf.debug.xcconfig"; sourceTree = "<group>"; };
+		D0DA00000000000000000001 /* DawarichServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/DawarichServer.swift; sourceTree = SOURCE_ROOT; };
+		D0DA00000000000000000003 /* DawarichStatusRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/DawarichStatusRow.swift; sourceTree = SOURCE_ROOT; };
+		D0DA00000000000000000005 /* ServerQRCodeScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/ServerQRCodeScanner.swift; sourceTree = SOURCE_ROOT; };
+		D0DA00000000000000000007 /* DawarichServerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/DawarichServerTests.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -457,6 +465,7 @@
 				C0A7C4000000000000000022 /* WhereWolfWatch */,
 				A01100000000000000000001 /* WhereWolfTests.m */,
 				C0B0A0000000000000000007 /* OnboardingTests.swift */,
+				D0DA00000000000000000007 /* DawarichServerTests.swift */,
 				C0F000000000000000000112 /* CoverageReportTests.swift */,
 				C0F000000000000000000110 /* ConnectionTestTests.swift */,
 				C0F00000000000000000010E /* SettingsBackupTests.swift */,
@@ -557,6 +566,9 @@
 				0FCAFE00F00D0000000000E1 /* GLManagerBridge.swift */,
 				C0B0A0000000000000000005 /* OnboardingView.swift */,
 				C0B0A0000000000000000003 /* OnboardingServices.swift */,
+				D0DA00000000000000000005 /* ServerQRCodeScanner.swift */,
+				D0DA00000000000000000003 /* DawarichStatusRow.swift */,
+				D0DA00000000000000000001 /* DawarichServer.swift */,
 				C0B0A0000000000000000001 /* OnboardingModel.swift */,
 				C0F000000000000000000114 /* SettingsImportView.swift */,
 				C0F00000000000000000010C /* CoverageView.swift */,
@@ -898,6 +910,9 @@
 				0FCAFE00F00D0000000000F1 /* GLManagerBridge.swift in Sources */,
 				C0B0A0000000000000000006 /* OnboardingView.swift in Sources */,
 				C0B0A0000000000000000004 /* OnboardingServices.swift in Sources */,
+				D0DA00000000000000000006 /* ServerQRCodeScanner.swift in Sources */,
+				D0DA00000000000000000004 /* DawarichStatusRow.swift in Sources */,
+				D0DA00000000000000000002 /* DawarichServer.swift in Sources */,
 				C0B0A0000000000000000002 /* OnboardingModel.swift in Sources */,
 				C0F000000000000000000115 /* SettingsImportView.swift in Sources */,
 				C0F00000000000000000010D /* CoverageView.swift in Sources */,
@@ -972,6 +987,7 @@
 			files = (
 				A01100000000000000000002 /* WhereWolfTests.m in Sources */,
 				C0B0A0000000000000000008 /* OnboardingTests.swift in Sources */,
+				D0DA00000000000000000008 /* DawarichServerTests.swift in Sources */,
 				C0F000000000000000000113 /* CoverageReportTests.swift in Sources */,
 				C0F000000000000000000111 /* ConnectionTestTests.swift in Sources */,
 				C0F00000000000000000010F /* SettingsBackupTests.swift in Sources */,

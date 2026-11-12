@@ -6,7 +6,7 @@ permalink: /privacy/
 
 # WhereWolf Privacy Policy
 
-Effective November 3, 2026
+Effective November 11, 2026
 
 WhereWolf is developed by [SoPat712](https://github.com/SoPat712) (“the developer”).
 This policy describes the WhereWolf iOS app and its companion watch app.
@@ -56,6 +56,10 @@ app's vendor. Optional tracking statistics describe acquisition settings and
 can include tracking actions, their timestamps, and the latest coordinate. The
 OwnTracks format sends a smaller set of location and device information.
 Authentication and custom headers you configure accompany server requests.
+
+For recognized Dawarich upload URLs, WhereWolf checks the server's health endpoint
+with your API key and custom headers to identify its version and authentication
+status. This request sends no location and does not read server history.
 
 WhereWolf also requests account information from the configured server. The
 server operator receives these requests and handles the data under its own
@@ -140,6 +144,13 @@ connection-return retries.
 WhereWolf's tracking, upload, reminder, and trip alerts are local notifications. It
 does not use a developer-operated push notification service.
 
+## Camera
+
+Scan QR Code asks for camera access only when you tap it. The camera runs only
+while scanning a server setup code; WhereWolf does not store camera images or
+video. Recognized server settings fill the form for review before you save them.
+You can change camera access in iOS Settings.
+
 ## Watch, Siri, Shortcuts, and widgets
 
 The watch companion exchanges commands and tracking status with the paired
@@ -197,7 +208,7 @@ the selected data.
 ## Your choices
 
 You can stop tracking, change the destination, disable optional features, and
-change location, Motion & Fitness, Health, and notification access in iOS
+change location, camera, Motion & Fitness, Health, and notification access in iOS
 Settings. WhereWolf has controls to delete pending uploads and remove local workout
 imports. Deleting the upload queue does not erase recent history, trips, or
 Health records. Recent history expires according to its retention setting.

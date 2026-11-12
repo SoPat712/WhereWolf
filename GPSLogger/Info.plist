@@ -68,6 +68,8 @@
 	<string>WhereWolf records your location to keep a history of your routes on this iPhone and send it to the server or iCloud Drive folder you choose. With Always, it keeps recording when the app isn’t open.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>WhereWolf records your location to keep a history of your routes on this iPhone and send it to the server or iCloud Drive folder you choose.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>WhereWolf uses the camera only to scan a server setup QR code.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>WhereWolf uses motion activity to identify walking, cycling, driving and stops, support optional adaptive tracking, and count trip steps.</string>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>

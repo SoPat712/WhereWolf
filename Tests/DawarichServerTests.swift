@@ -1,0 +1,307 @@
+import XCTest
+import ObjectiveC
+import Observation
+@testable import WhereWolf
+
+final class DawarichServerTests: XCTestCase {
+    override class func setUp() {
+        super.setUp()
+        exchangeConfiguration()
+    }
+
+    override class func tearDown() {
+        exchangeConfiguration()
+        super.tearDown()
+    }
+
+    private class func exchangeConfiguration() {
+        method_exchangeImplementations(
+            class_getClassMethod(URLSessionConfiguration.self, #selector(getter: URLSessionConfiguration.default))!,
+            class_getClassMethod(URLSessionConfiguration.self, #selector(URLSessionConfiguration.dawarich_testConfiguration))!)
+    }
+
+    override func tearDown() {
+        DawarichTestProtocol.handler = nil
+        super.tearDown()
+    }
+
+    // Synthetic credentials stay inside boolean assertions so failures cannot print them.
+    private var key: String { "fixture+&=?/ value" }
+    private func endpoint(_ path: String = "/api/v1/overland/batches", queryKey: Bool = true) -> String {
+        var parts = URLComponents()
+        parts.scheme = "https"
+        parts.host = "wherewolf.test"
+        parts.path = path
+        if queryKey { parts.queryItems = [URLQueryItem(name: "api_key", value: key)] }
+        return parts.url!.absoluteString
+    }
+
+    private func account(_ root: String, key: String? = nil) throws -> String {
+        let data = try JSONSerialization.data(withJSONObject: ["server_url": root, "api_key": key ?? self.key])
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    func testOverlandAndOwnTracksCandidates() throws {
+        for path in ["/api/v1/overland/batches", "/api/v1/owntracks/points"] {
+            let server = try XCTUnwrap(DawarichServer(endpoint: endpoint(path), token: ""))
+            XCTAssertEqual(server.root.host, "wherewolf.test")
+            XCTAssertEqual(server.root.path, "")
+            XCTAssertTrue(server.healthRequest(headers: [:]).value(forHTTPHeaderField: "Authorization") == "Bearer " + key)
+        }
+    }
+
+    func testPathPrefixPortAndTrailingSlash() throws {
+        for path in ["/dawarich/api/v1/overland/batches/", "/dawarich/api/v1/owntracks/points/"] {
+            var parts = URLComponents(string: endpoint(path))!
+            parts.port = 8443
+            let server = try XCTUnwrap(DawarichServer(endpoint: parts.url!.absoluteString, token: ""))
+            XCTAssertEqual(server.root.path, "/dawarich")
+            XCTAssertEqual(server.root.port, 8443)
+            let request = server.healthRequest(headers: [:])
+            XCTAssertEqual(request.url?.path, "/dawarich/api/v1/health")
+            XCTAssertNil(request.url?.query)
+        }
+    }
+
+    func testEncodedPrefixSurvivesHealthAndAccountParsing() throws {
+        var parts = URLComponents(string: endpoint())!
+        parts.percentEncodedPath = "/my%20server/api/v1/overland/batches"
+        let server = try XCTUnwrap(DawarichServer(endpoint: parts.url!.absoluteString, token: ""))
+        let requestParts = URLComponents(url: server.healthRequest(headers: [:]).url!, resolvingAgainstBaseURL: false)
+        XCTAssertEqual(requestParts?.percentEncodedPath, "/my%20server/api/v1/health")
+        guard case .dawarich(let url) = DawarichServer.parseQRCode(try account("https://wherewolf.test/my%20server/"), ownTracks: false) else {
+            return XCTFail("Expected account setup")
+        }
+        XCTAssertEqual(URLComponents(url: url, resolvingAgainstBaseURL: false)?.percentEncodedPath,
+                       "/my%20server/api/v1/overland/batches")
+    }
+
+    func testTokenFallbackAndQueryPrecedence() throws {
+        let fallback = try XCTUnwrap(DawarichServer(endpoint: endpoint(queryKey: false), token: key))
+        XCTAssertTrue(fallback.healthRequest(headers: [:]).value(forHTTPHeaderField: "Authorization") == "Bearer " + key)
+        let query = try XCTUnwrap(DawarichServer(endpoint: endpoint(), token: "unused-fixture"))
+        XCTAssertTrue(query.healthRequest(headers: [:]).value(forHTTPHeaderField: "Authorization") == "Bearer " + key)
+    }
+
+    func testNonCandidatesAndMissingKeys() {
+        for path in ["/upload", "/api/v1/health", "/api/v1/overland/batches/extra", "/api/v1/owntracks", "/other/api/v2/overland/batches"] {
+            XCTAssertTrue(DawarichServer(endpoint: endpoint(path), token: key) == nil)
+        }
+        XCTAssertTrue(DawarichServer(endpoint: endpoint(queryKey: false), token: "") == nil)
+        XCTAssertTrue(DawarichServer(endpoint: "file:///api/v1/overland/batches", token: key) == nil)
+        XCTAssertTrue(DawarichServer(endpoint: "https:///api/v1/overland/batches", token: key) == nil)
+    }
+
+    func testHealthRequestHeadersAndTimeout() throws {
+        let server = try XCTUnwrap(DawarichServer(endpoint: endpoint(), token: ""))
+        let request = server.healthRequest(headers: ["CF-Access-Client-Id": "fixture-proxy", "aUtHoRiZaTiOn": "ignored",
+            "Host": "ignored", "Content-Length": "99", "Connection": "close", "Transfer-Encoding": "chunked",
+            "X-Bad": "line\nbreak", "Bad Name": "ignored", "Accept": "text/plain"])
+        XCTAssertEqual(request.httpMethod, "GET")
+        XCTAssertEqual(request.timeoutInterval, 15)
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "application/json")
+        XCTAssertTrue(request.value(forHTTPHeaderField: "Authorization") == "Bearer " + key)
+        XCTAssertTrue(request.value(forHTTPHeaderField: "CF-Access-Client-Id") == "fixture-proxy")
+        for name in ["Host", "Content-Length", "Connection", "Transfer-Encoding", "X-Bad", "Bad Name"] {
+            XCTAssertNil(request.value(forHTTPHeaderField: name))
+        }
+    }
+
+    func testAccountJSONWithAndWithoutTrailingSlash() throws {
+        for root in ["https://wherewolf.test/dawarich", "https://wherewolf.test/dawarich/"] {
+            guard case .dawarich(let url) = DawarichServer.parseQRCode(try account(root), ownTracks: false) else {
+                return XCTFail("Expected account setup")
+            }
+            XCTAssertEqual(url.path, "/dawarich/api/v1/overland/batches")
+            XCTAssertTrue(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first?.value == key)
+        }
+    }
+
+    func testAccountJSONOwnTracksAndHTTP() throws {
+        guard case .dawarich(let url) = DawarichServer.parseQRCode(try account("http://wherewolf.test:8080/"), ownTracks: true) else {
+            return XCTFail("Expected account setup")
+        }
+        XCTAssertEqual(url.path, "/api/v1/owntracks/points")
+        XCTAssertEqual(url.port, 8080)
+        XCTAssertEqual(url.scheme, "http")
+    }
+
+    func testBadAccountJSONAndJunk() throws {
+        for root in ["file:///tmp", "ftp://wherewolf.test", "https:///", "wherewolf.test"] {
+            XCTAssertTrue(DawarichServer.parseQRCode(try account(root), ownTracks: false) == nil)
+        }
+        for text in ["{}", "{\"server_url\":\"https://wherewolf.test\"}", "{\"api_key\":\"fixture\"}",
+                     "{\"server_url\":17,\"api_key\":true}", "junk", "", "[]"] {
+            XCTAssertTrue(DawarichServer.parseQRCode(text, ownTracks: false) == nil)
+        }
+        XCTAssertTrue(DawarichServer.parseQRCode(try account("https://wherewolf.test", key: ""), ownTracks: false) == nil)
+    }
+
+    private func setupURL(scheme: String = "wherewolf", headers: [URLQueryItem] = [], path: String = "/api/v1/overland/batches") -> URL {
+        var parts = URLComponents()
+        parts.scheme = scheme
+        parts.host = "setup"
+        parts.queryItems = [URLQueryItem(name: "url", value: endpoint(path)), URLQueryItem(name: "token", value: key),
+                            URLQueryItem(name: "device_id", value: "fixture-phone"), URLQueryItem(name: "unique_id", value: "yes")] + headers
+        return parts.url!
+    }
+
+    func testSetupQRUsesSharedParserAndPreservesFields() throws {
+        for scheme in ["wherewolf", "overland"] {
+            let url = setupURL(scheme: scheme, headers: [URLQueryItem(name: "header_X-Proxy", value: "fixture-proxy")])
+            guard case .setupLink(_, let scanned) = DawarichServer.parseQRCode(url.absoluteString, ownTracks: false) else {
+                return XCTFail("Expected setup link")
+            }
+            let parsed = try XCTUnwrap(ServerSetup.parse(url))
+            XCTAssertTrue(scanned.endpoint == endpoint() && parsed.endpoint == endpoint())
+            XCTAssertTrue(scanned.token == key && parsed.token == key)
+            XCTAssertTrue(scanned.deviceId == "fixture-phone")
+            XCTAssertTrue(scanned.uniqueId)
+            XCTAssertTrue(scanned.headers["X-Proxy"] == "fixture-proxy")
+        }
+    }
+
+    func testSetupDefaultsAndValidation() throws {
+        var parts = URLComponents(url: setupURL(), resolvingAgainstBaseURL: false)!
+        parts.queryItems = [URLQueryItem(name: "url", value: endpoint(queryKey: false))]
+        let parsed = try XCTUnwrap(ServerSetup.parse(parts.url!))
+        XCTAssertTrue(parsed.token.isEmpty && parsed.deviceId.isEmpty && parsed.headers.isEmpty)
+        XCTAssertFalse(parsed.uniqueId)
+        let invalidHeader = setupURL(headers: [URLQueryItem(name: "header_Authorization", value: "fixture")])
+        XCTAssertTrue(ServerSetup.parse(invalidHeader) == nil)
+        XCTAssertTrue(DawarichServer.parseQRCode(invalidHeader.absoluteString, ownTracks: false) == nil)
+        parts.queryItems = [URLQueryItem(name: "url", value: "file:///tmp")]
+        XCTAssertTrue(ServerSetup.parse(parts.url!) == nil)
+        XCTAssertTrue(ServerSetup.parse(setupURL(scheme: "https")) == nil)
+    }
+
+    func testPlainEndpointQR() {
+        for scheme in ["http", "https"] {
+            let text = scheme + "://wherewolf.test/upload"
+            guard case .endpoint(let url) = DawarichServer.parseQRCode(text, ownTracks: false) else {
+                return XCTFail("Expected plain endpoint")
+            }
+            XCTAssertEqual(url.path, "/upload")
+        }
+    }
+
+    private func probe(status: Int = 200, headers: [String: String] = [:], error: URLError? = nil) async throws -> DawarichStatus {
+        DawarichTestProtocol.handler = { mock in
+            XCTAssertEqual(mock.request.httpMethod, "GET")
+            XCTAssertEqual(mock.request.url?.path, "/api/v1/health")
+            XCTAssertNil(mock.request.httpBody)
+            if let error { mock.client?.urlProtocol(mock, didFailWithError: error) }
+            else { mock.respond(status: status, headers: headers) }
+        }
+        let server = try XCTUnwrap(DawarichServer(endpoint: endpoint(), token: ""))
+        return await withCheckedContinuation { continuation in
+            server.probe(headers: [:]) { continuation.resume(returning: $0) }
+        }
+    }
+
+    func testAuthenticatedHealthWithVersionAndCaseInsensitiveHeaders() async throws {
+        let result = try await probe(headers: ["x-dawarich-response": "Hey, I'm alive and authenticated!", "x-dawarich-version": "1.2.3"])
+        XCTAssertEqual(result, .dawarich(version: "1.2.3", authenticated: true))
+    }
+
+    func testUnauthenticatedHealthWithoutVersion() async throws {
+        let result = try await probe(headers: ["X-Dawarich-Response": "Hey, I'm alive!"])
+        XCTAssertEqual(result, .dawarich(version: nil, authenticated: false))
+    }
+
+    func testHealthWithoutSignature() async throws {
+        let result = try await probe(headers: ["X-Dawarich-Version": "1.2.3"])
+        XCTAssertEqual(result, .notDawarich)
+    }
+
+    func testHealthHTTPFailures() async throws {
+        for status in [401, 500] {
+            let result = try await probe(status: status, headers: ["X-Dawarich-Response": "Hey, I'm alive!"])
+            XCTAssertEqual(result, .notDawarich)
+        }
+    }
+
+    func testHealthTimeout() async throws {
+        let result = try await probe(error: URLError(.timedOut))
+        XCTAssertEqual(result, .notDawarich)
+    }
+
+    @MainActor func testBridgeReplacesProbeAndClearResetsStatusWithoutSendStatistics() async {
+        let defaults = UserDefaults.standard
+        let domain = Bundle.main.bundleIdentifier!
+        let saved = defaults.persistentDomain(forName: domain) ?? [:]
+        let store = GLServerCredentials.store
+        GLServerCredentials.store = MemorySettingsCredentialStore()
+        let bridge = GLManagerBridge.shared
+        defer {
+            _ = bridge.clearServer()
+            GLServerCredentials.store = store
+            defaults.setPersistentDomain(saved, forName: domain)
+            bridge.refresh()
+        }
+        let started = expectation(description: "First health probe started")
+        let replaced = expectation(description: "Replacement health probe finished")
+        let cancelled = expectation(description: "Replaced health probe cancelled")
+        DawarichTestProtocol.handler = { mock in
+            if mock.request.url?.path == "/first/api/v1/health" {
+                mock.onStop = { cancelled.fulfill() }
+                started.fulfill()
+            } else {
+                mock.respond(status: 200, headers: ["X-Dawarich-Response": "Hey, I'm alive and authenticated!"])
+                replaced.fulfill()
+            }
+        }
+        let history = bridge.sendHistory
+        func save(_ path: String) -> Bool {
+            bridge.saveServer(url: endpoint(path), token: "", deviceId: "", uniqueId: false, acceptHTTP: false, headers: [:])
+        }
+        XCTAssertTrue(save("/first/api/v1/overland/batches"))
+        XCTAssertEqual(bridge.dawarich, .checking)
+        await fulfillment(of: [started], timeout: 2)
+        XCTAssertTrue(WhereWolfSetupURLHandler.apply(setupURL(
+            headers: [URLQueryItem(name: "header_X-Proxy", value: "fixture-proxy")], path: "/second/api/v1/overland/batches")))
+        let manager = GLManager.shared()!
+        XCTAssertTrue(manager.apiAccessToken() == key)
+        XCTAssertTrue(manager.deviceId() == "fixture-phone")
+        XCTAssertTrue(defaults.bool(forKey: GLIncludeUniqueIdDefaultsName))
+        XCTAssertTrue(manager.customHTTPHeaders["X-Proxy"] == "fixture-proxy")
+        await fulfillment(of: [cancelled, replaced], timeout: 2)
+        // The URLSession callback publishes to the main queue after the response finishes.
+        let published = expectation(description: "Recognition published")
+        func observe() {
+            if bridge.dawarich == .checking {
+                withObservationTracking { _ = bridge.dawarich } onChange: {
+                    DispatchQueue.main.async { observe() }
+                }
+            } else { published.fulfill() }
+        }
+        observe()
+        await fulfillment(of: [published], timeout: 2)
+        XCTAssertEqual(bridge.dawarich, .dawarich(version: nil, authenticated: true))
+        XCTAssertEqual(bridge.sendHistory, history)
+        XCTAssertTrue(bridge.clearServer())
+        XCTAssertEqual(bridge.dawarich, .unknown)
+    }
+}
+
+private extension URLSessionConfiguration {
+    @objc class func dawarich_testConfiguration() -> URLSessionConfiguration {
+        let configuration = dawarich_testConfiguration()
+        configuration.protocolClasses = [DawarichTestProtocol.self]
+        return configuration
+    }
+}
+
+private final class DawarichTestProtocol: URLProtocol {
+    static var handler: ((DawarichTestProtocol) -> Void)?
+    var onStop: (() -> Void)?
+    override class func canInit(with request: URLRequest) -> Bool { request.url?.host == "wherewolf.test" }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() { Self.handler?(self) }
+    override func stopLoading() { onStop?() }
+    func respond(status: Int, headers: [String: String]) {
+        let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: "HTTP/1.1", headerFields: headers)!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+}
