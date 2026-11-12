@@ -34,6 +34,9 @@ struct TripLiveActivityWidget: Widget {
                         }
                         TripActionButtons()
                     }
+                    // The expanded Island's bottom corners curve in further than the buttons' own corners.
+                    .padding(.horizontal, 4)
+                    .padding(.bottom, 4)
                 }
             } compactLeading: {
                 TripModeIcon(mode: context.state.mode)
@@ -88,6 +91,7 @@ struct TripActionButtons: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
+                .buttonBorderShape(.capsule)
                 .tint(.green)
 
                 Button(intent: EndTripIntent()) {
@@ -96,6 +100,7 @@ struct TripActionButtons: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
+                .buttonBorderShape(.capsule)
                 .tint(.red)
             }
         }
