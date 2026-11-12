@@ -9,6 +9,23 @@ private final class TestSettingsCloud: SettingsCloudStore {
 }
 
 final class SettingsBackupTests: XCTestCase {
+    func testTripLockScreenMapDefaultsOnAndBackupRoundTripsBothChoices() throws {
+        let suite = "WhereWolf.TripMap.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        XCTAssertTrue(TripActivityMapSettings.showsOnLockScreen(defaults: defaults))
+        XCTAssertEqual(SettingsSchema.preferences["tripMapOnLockScreen"], TripActivityMapSettings.lockScreenKey)
+        XCTAssertTrue(SettingsSchema.syncKeys.contains("tripMapOnLockScreen"))
+        for enabled in [false, true] {
+            defaults.set(enabled, forKey: TripActivityMapSettings.lockScreenKey)
+            XCTAssertEqual(TripActivityMapSettings.showsOnLockScreen(defaults: defaults), enabled)
+            let data = try SettingsBackup.encode(["tripMapOnLockScreen": enabled], credentials: false, appVersion: "1")
+            let preview = try SettingsBackup.preview(data, current: [:])
+            XCTAssertEqual(preview.values["tripMapOnLockScreen"] as? Bool, enabled)
+            XCTAssertEqual(preview.changes.first?.title, "Map on Lock Screen")
+        }
+    }
+
     private func fixture() throws -> [String: Any] {
         ["desiredAccuracy": -1, "sendingInterval": 60, "pointsPerBatch": 200, "notificationsEnabled": true,
          "historyRetentionHours": 168, "serverURL": "https://wherewolf.test/api", "serverToken": "secret",

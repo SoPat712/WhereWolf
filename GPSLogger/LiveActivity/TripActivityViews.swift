@@ -7,6 +7,7 @@
 
 import AppIntents
 import SwiftUI
+import UIKit
 
 extension Image {
     // A trip mode's icon, which may be one of the custom symbols in TripModes.xcassets
@@ -76,8 +77,8 @@ private struct TripModeHeading: View {
     var body: some View {
         HStack(spacing: 8) {
             TripModeIcon(mode: mode)
-                .frame(width: 19, height: 19)
-                .frame(width: 30, height: 30)
+                .frame(width: lockScreen ? 19 : 16, height: lockScreen ? 19 : 16)
+                .frame(width: lockScreen ? 30 : 26, height: lockScreen ? 30 : 26)
                 .background(.green.opacity(0.14), in: Circle())
             Text(TripActivityFormat.modeName(mode) + (lockScreen ? " trip" : ""))
                 .font(.headline)
@@ -108,7 +109,7 @@ struct TripExpandedTrailing: View {
         ElapsedTime(start: start)
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(.secondary)
-            .frame(width: 76, height: 30, alignment: .trailing)
+            .frame(width: 76, height: 26, alignment: .trailing)
             .padding(.trailing, 8)
             .padding(.top, 6)
             .dynamicTypeSize(...DynamicTypeSize.large)
@@ -117,13 +118,12 @@ struct TripExpandedTrailing: View {
 
 struct TripExpandedBottom: View {
     let state: TripActivityState
+    var mapFiles = TripActivityMapFiles()
 
     var body: some View {
-        VStack(spacing: 8) {
-            TripTrailRow(state: state)
-                .frame(height: 52)
-            TripActionButtons()
-        }
+        // The phone cuts the expanded Island's content off about 13 points above its bottom edge, which leaves
+        // this region about 82 points under the 26-point heading row.
+        TripTrailRow(state: state, mapFiles: mapFiles)
         .padding(.horizontal, 4)
         .padding(.bottom, 4)
         .dynamicTypeSize(...DynamicTypeSize.large)
@@ -156,47 +156,65 @@ struct TripMinimalView: View {
 private struct TripTrailRow: View {
     let state: TripActivityState
     var lockScreen = false
+    var mapFiles = TripActivityMapFiles()
 
     var body: some View {
-        HStack(spacing: 14) {
-            VStack(alignment: .leading, spacing: 4) {
+        let presentation: TripActivityMap.Presentation = lockScreen ? .lockScreen : .island
+        let size = presentation.size
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline, spacing: 3) {
                     Text(TripActivityFormat.distance(state.distance))
-                        .font(.system(size: 26, weight: .bold, design: .rounded))
+                        .font(.system(size: lockScreen ? 26 : 22, weight: .bold, design: .rounded))
                         .contentTransition(.numericText())
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
                     Text(TripActivityFormat.distanceUnit)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                Text(TripActivityFormat.summary(state))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                if lockScreen, let climb = state.climb, climb >= 0, climb.isFinite {
-                    Text("climb \(TripFormat.climb(climb, metric: TripActivityFormat.usesMetricSystem))")
+                ForEach(TripActivityFormat.details(state), id: \.self) { line in
+                    Text(line)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                 }
             }
             .monospacedDigit()
-            .fixedSize(horizontal: true, vertical: false)
-            TripRouteSketchView(sketch: state.route ?? TripRouteSketch(points: []))
-                .frame(maxWidth: .infinity)
-                .frame(height: lockScreen ? 68 : 52)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            TripRouteSketchView(sketch: state.route ?? TripRouteSketch(points: []),
+                                map: state.map, presentation: presentation, mapFiles: mapFiles)
+                .overlay(alignment: .topLeading) { TripSpeedBadge(speed: state.speed).padding(6) }
+                .frame(width: size.width, height: size.height)
+            TripActionButtons(diameter: lockScreen ? 40 : 36)
         }
+        .frame(height: size.height)
     }
 }
 
 struct TripRouteSketchView: View {
     let sketch: TripRouteSketch
+    var map: TripActivityMap? = nil
+    var presentation: TripActivityMap.Presentation = .island
+    var mapFiles = TripActivityMapFiles()
     private let blue = Color(uiColor: .systemBlue)
 
     var body: some View {
         GeometryReader { geometry in
+            let route = map?.route(for: presentation)
+            let image = route.flatMap { _ in
+                map.flatMap { value in
+                    mapFiles.url(for: value.token, presentation: presentation).flatMap { UIImage(contentsOfFile: $0.path) }
+                }
+            }
             // The ringed end marker reaches 6.5 points from the route's end.
-            let points = sketch.fittedPoints(width: geometry.size.width, height: geometry.size.height, inset: 12)
+            let points = sketch.displayPoints(size: geometry.size, imageRoute: route, hasImage: image != nil)
             ZStack {
+                if let image {
+                    Image(uiImage: image).resizable()
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                }
                 if points.count >= 2, let start = points.first {
                     Path { path in
                         path.move(to: start)
@@ -216,6 +234,7 @@ struct TripRouteSketchView: View {
             }
         }
         .background(blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Trip route sketch, north up")
     }
@@ -224,6 +243,7 @@ struct TripRouteSketchView: View {
 struct TripLockScreenView: View {
     let attributes: TripActivityAttributes
     let state: TripActivityState
+    var mapFiles = TripActivityMapFiles()
 
     var body: some View {
         VStack(spacing: 12) {
@@ -234,35 +254,63 @@ struct TripLockScreenView: View {
                     .font(.system(size: 24, weight: .bold, design: .rounded))
                     .frame(width: 96)
             }
-            TripTrailRow(state: state, lockScreen: true)
-            TripActionButtons()
+            TripTrailRow(state: state, lockScreen: true, mapFiles: mapFiles)
         }
-        .padding(16)
+        // The Lock Screen truncates a Live Activity taller than 160 points.
+        .padding(14)
     }
 }
 
+// Round buttons stacked beside the map, as in the system's timer activity.
 struct TripActionButtons: View {
+    var diameter: CGFloat = 36
+
     var body: some View {
-        HStack(spacing: 10) {
+        VStack(spacing: 6) {
             Button(intent: SendNowIntent()) {
-                Label("Send Now", systemImage: "arrow.up")
-                    .font(.subheadline.bold())
-                    .frame(maxWidth: .infinity)
+                Image(systemName: "arrow.up")
+                    .font(.system(size: diameter * 0.42, weight: .bold))
+                    .frame(width: diameter, height: diameter)
+                    .background(.green.opacity(0.22), in: Circle())
+                    .foregroundStyle(.green)
             }
-            .buttonStyle(.bordered)
-            .buttonBorderShape(.capsule)
-            .tint(.green)
+            .buttonStyle(.plain)
+            .accessibilityLabel("Send Now")
 
             Button(intent: EndTripIntent()) {
-                Label("End Trip", systemImage: "stop.fill")
-                    .font(.subheadline.bold())
-                    .frame(maxWidth: .infinity)
+                Image(systemName: "stop.fill")
+                    .font(.system(size: diameter * 0.38, weight: .bold))
+                    .frame(width: diameter, height: diameter)
+                    .background(.red, in: Circle())
+                    .foregroundStyle(.white)
             }
-            .buttonStyle(.borderedProminent)
-            .buttonBorderShape(.capsule)
-            .tint(.red)
+            .buttonStyle(.plain)
+            .accessibilityLabel("End Trip")
         }
-        .controlSize(.small)
-        .frame(height: 32)
+    }
+}
+
+// The speed from the latest update, in the map's corner like the app's speedometer.
+struct TripSpeedBadge: View {
+    let speed: Double
+
+    var body: some View {
+        if speed.isFinite, speed >= 0 {
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(TripActivityFormat.speed(speed))
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+                Text(TripActivityFormat.speedUnit)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.7))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(.black.opacity(0.6), in: Capsule())
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Speed")
+        }
     }
 }

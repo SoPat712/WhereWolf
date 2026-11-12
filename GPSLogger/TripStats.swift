@@ -1,4 +1,5 @@
 import Foundation
+import MapKit
 
 // Top speed and climb for the trip in progress, fed each stored trip fix in time order.
 @objc(GLTripStatsAccumulator) final class TripStatsAccumulator: NSObject {
@@ -13,6 +14,23 @@ import Foundation
     private var anchor: Double?
     private var route = TripRouteSketchBuilder()
     private var cachedRoute: TripRouteSketch?
+
+    var routeMapPoints: [MKMapPoint] {
+        var points: [MKMapPoint] = []
+        // Bounds retain every fix's extent even after the bounded shape buffer thins it.
+        if let bounds = route.bounds {
+            points.append(TripActivityMapFrame.point(latitude: bounds.north, longitude: bounds.west))
+            points.append(TripActivityMapFrame.point(latitude: bounds.south, longitude: bounds.east))
+        }
+        points += route.coordinates.map { TripActivityMapFrame.point(latitude: $0.latitude, longitude: $0.longitude) }
+        return points
+    }
+
+    func routeSketch(in frame: TripActivityMapFrame) -> TripRouteSketch {
+        route.sketch { latitude, longitude in
+            frame.quantizationPosition(TripActivityMapFrame.point(latitude: latitude, longitude: longitude))
+        }
+    }
 
     func routeSketch() -> TripRouteSketch {
         if let cachedRoute { return cachedRoute }

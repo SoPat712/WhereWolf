@@ -6,7 +6,7 @@ permalink: /privacy/
 
 # WhereWolf Privacy Policy
 
-Effective November 11, 2026
+Effective November 12, 2026
 
 WhereWolf is developed by [SoPat712](https://github.com/SoPat712) (“the developer”).
 This policy describes the WhereWolf iOS app and its companion watch app.
@@ -166,6 +166,17 @@ tracking or trips and request a send to your configured destination. The app
 shares the state needed for widgets through an on-device App Group and donates
 trip and tracking actions to Apple's system to support suggestions. Apple's
 handling of Siri requests is governed by Apple's settings and privacy practices.
+
+The trip Live Activity shows small Apple Maps snapshots behind its route sketch
+in the expanded Dynamic Island and, by default, on the Lock Screen. Turn off
+**Map on Lock Screen** in Settings → Live Activities to keep a plain Lock Screen
+route panel. Anyone who sees your Lock Screen map can see where the trip started.
+To draw them, WhereWolf asks Apple Maps for map data around the trip, including
+while the app is in the background, as the app's own map does when it's open.
+The images stay on your device in the App Group, are excluded from backups,
+and are never uploaded or exported. WhereWolf keeps only the current and
+previous pair of images and deletes them when the trip or its Live Activity
+ends. Turning off the Lock Screen map deletes its images.
 
 ## Maps, tips, and external links
 

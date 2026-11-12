@@ -7,6 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A13D00000000000000000002 /* TripActivityMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13D00000000000000000001 /* TripActivityMap.swift */; };
+		A13D00000000000000000003 /* TripActivityMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13D00000000000000000001 /* TripActivityMap.swift */; };
+		A13D00000000000000000005 /* TripActivityMapGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13D00000000000000000004 /* TripActivityMapGeometry.swift */; };
+		A13D00000000000000000007 /* TripActivityMapSnapshotter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13D00000000000000000006 /* TripActivityMapSnapshotter.swift */; };
+		A13D00000000000000000009 /* TripActivityMapTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13D00000000000000000008 /* TripActivityMapTests.swift */; };
 		A13C00000000000000000002 /* TripRouteSketch.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13C00000000000000000001 /* TripRouteSketch.swift */; };
 		A13C00000000000000000003 /* TripRouteSketch.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13C00000000000000000001 /* TripRouteSketch.swift */; };
 		A13C00000000000000000005 /* TripActivityState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13C00000000000000000004 /* TripActivityState.swift */; };
@@ -237,6 +242,10 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		A13D00000000000000000001 /* TripActivityMap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/LiveActivity/TripActivityMap.swift; sourceTree = SOURCE_ROOT; };
+		A13D00000000000000000004 /* TripActivityMapGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/LiveActivity/TripActivityMapGeometry.swift; sourceTree = SOURCE_ROOT; };
+		A13D00000000000000000006 /* TripActivityMapSnapshotter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/LiveActivity/TripActivityMapSnapshotter.swift; sourceTree = SOURCE_ROOT; };
+		A13D00000000000000000008 /* TripActivityMapTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/TripActivityMapTests.swift; sourceTree = SOURCE_ROOT; };
 		A13C00000000000000000001 /* TripRouteSketch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/LiveActivity/TripRouteSketch.swift; sourceTree = SOURCE_ROOT; };
 		A13C00000000000000000004 /* TripActivityState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/LiveActivity/TripActivityState.swift; sourceTree = SOURCE_ROOT; };
 		A13C00000000000000000007 /* TripFormat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/Shared/TripFormat.swift; sourceTree = SOURCE_ROOT; };
@@ -551,6 +560,10 @@
 				D8F54F73CE518F85F9D383BF /* TripActivityAttributes.swift */,
 				A13C00000000000000000001 /* TripRouteSketch.swift */,
 				A13C00000000000000000004 /* TripActivityState.swift */,
+				A13D00000000000000000001 /* TripActivityMap.swift */,
+				A13D00000000000000000004 /* TripActivityMapGeometry.swift */,
+				A13D00000000000000000006 /* TripActivityMapSnapshotter.swift */,
+				A13D00000000000000000008 /* TripActivityMapTests.swift */,
 				A13C00000000000000000007 /* TripFormat.swift */,
 				A13C0000000000000000000A /* TripActivityPreview.swift */,
 				A13C0000000000000000000C /* TripRouteSketchTests.swift */,
@@ -1028,6 +1041,9 @@
 				6274D5A2AACD43BBB319630D /* TripActivityAttributes.swift in Sources */,
 				A13C00000000000000000002 /* TripRouteSketch.swift in Sources */,
 				A13C00000000000000000005 /* TripActivityState.swift in Sources */,
+				A13D00000000000000000002 /* TripActivityMap.swift in Sources */,
+				A13D00000000000000000005 /* TripActivityMapGeometry.swift in Sources */,
+				A13D00000000000000000007 /* TripActivityMapSnapshotter.swift in Sources */,
 				A13C00000000000000000008 /* TripFormat.swift in Sources */,
 				A13C0000000000000000000B /* TripActivityPreview.swift in Sources */,
 				A13C00000000000000000010 /* TripActivityViews.swift in Sources */,
@@ -1070,6 +1086,7 @@
 				956A11CCD2A4977C19C16C7E /* TripModeTests.swift in Sources */,
 				A13C0000000000000000000D /* TripRouteSketchTests.swift in Sources */,
 				A13C0000000000000000000F /* TripActivityStateTests.swift in Sources */,
+				A13D00000000000000000009 /* TripActivityMapTests.swift in Sources */,
 				06E1F7368FAE37CA1EFFE6A5 /* HealthTripRecorderTests.swift in Sources */,
 				8906128EBAE97CD9E2B23394 /* UpstreamIntegrationTests.m in Sources */,
 				FD8716D075FB5292BFD3C574 /* HistoryRetentionTests.swift in Sources */,
@@ -1094,6 +1111,7 @@
 				AF7619AB633D818AD53D1C15 /* TripActivityAttributes.swift in Sources */,
 				A13C00000000000000000003 /* TripRouteSketch.swift in Sources */,
 				A13C00000000000000000006 /* TripActivityState.swift in Sources */,
+				A13D00000000000000000003 /* TripActivityMap.swift in Sources */,
 				A13C00000000000000000009 /* TripFormat.swift in Sources */,
 				04F242940BB39DD7583C928B /* StatusWidget.swift in Sources */,
 				FFFD07EC57EDFD9A3BF5CB30 /* TripControls.swift in Sources */,

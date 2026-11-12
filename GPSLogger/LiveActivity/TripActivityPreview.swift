@@ -5,11 +5,16 @@ import SwiftUI
 struct TripActivityPreview: View {
     let kind: String
     private let start = Date().addingTimeInterval(-764)
+    @State private var mapState: TripActivityMap?
+    @State private var mapController: TripActivityMapController?
+    // Fixture files never prune or replace a real trip's snapshots.
+    private let mapFiles = TripActivityMapFiles(directory: TripActivityMapFiles.sharedDirectory?
+        .deletingLastPathComponent().appendingPathComponent("TripActivityMapPreview", isDirectory: true))
 
     static func fixture(arguments: [String] = ProcessInfo.processInfo.arguments) -> TripActivityPreview? {
         guard let index = arguments.firstIndex(of: "-WhereWolfTripActivityPreview"),
               arguments.indices.contains(index + 1),
-              ["car", "walk", "short"].contains(arguments[index + 1]) else { return nil }
+              ["car", "walk", "short", "map"].contains(arguments[index + 1]) else { return nil }
         return TripActivityPreview(kind: arguments[index + 1])
     }
 
@@ -26,7 +31,22 @@ struct TripActivityPreview: View {
         return TripActivityState(mode: walk ? "walk" : "car", distance: short ? 0 : (walk ? 1_018 : 13_550),
             speed: walk ? 1.3 : 15.2, topSpeed: short ? -1 : (walk ? 1.9 : 25.9),
             climb: short ? 0 : (walk ? 24 : 36.6), averageSpeed: short ? nil : (walk ? 1.33 : 13.86),
-            route: TripRouteSketch(points: route))
+            route: kind == "map" ? Self.portlandRoute().routeSketch() : TripRouteSketch(points: route), map: mapState)
+    }
+
+    private static func portlandRoute() -> TripStatsAccumulator {
+        let stats = TripStatsAccumulator()
+        // An invented drive from downtown over the Hawthorne Bridge and east, about 4 km.
+        for (latitude, longitude) in [
+            (45.5152, -122.6784), (45.5140, -122.6770), (45.5128, -122.6752), (45.5133, -122.6725),
+            (45.5133, -122.6690), (45.5122, -122.6650), (45.5122, -122.6600), (45.5121, -122.6540),
+            (45.5121, -122.6470), (45.5121, -122.6400), (45.5090, -122.6370), (45.5050, -122.6365),
+            (45.5040, -122.6300)
+        ] {
+            stats.add(speed: 2, speedAccuracy: 1, altitude: 10, verticalAccuracy: 1,
+                      latitude: latitude, longitude: longitude)
+        }
+        return stats
     }
 
     var body: some View {
@@ -34,20 +54,21 @@ struct TripActivityPreview: View {
             VStack(alignment: .leading, spacing: 20) {
                 Text("Trail · \(kind)").font(.headline).foregroundStyle(.white)
                 VStack(alignment: .leading, spacing: 8) {
-                    caption("Expanded Island · 371 × 158 pt")
-                    VStack(spacing: 8) {
+                    caption("Expanded Island · 380 × 158 pt, clipped like the phone")
+                    // Measured from an iPhone 17 Pro screenshot: content starts 17 points down, 19 in from the
+                    // sides, the regions sit 11 apart, and anything lower than 146 points is cut off.
+                    VStack(spacing: 11) {
                         HStack(alignment: .top, spacing: 0) {
                             TripExpandedLeading(mode: state.mode)
                             Spacer(minLength: 0)
                             TripExpandedTrailing(start: start)
                         }
-                        TripExpandedBottom(state: state)
+                        TripExpandedBottom(state: state, mapFiles: mapFiles)
                     }
-                    // The system supplies space outside the content regions, including the top corners.
-                    .padding(.horizontal, 16)
-                    .padding(.top, 10)
-                    .padding(.bottom, 8)
-                    .frame(width: 371, height: 158)
+                    .frame(width: 342, height: 129, alignment: .top)
+                    .clipped()
+                    .padding(.top, 17)
+                    .frame(width: 380, height: 158, alignment: .top)
                     .background(.black, in: RoundedRectangle(cornerRadius: 46))
                     .environment(\.colorScheme, .dark)
                     .foregroundStyle(.white)
@@ -71,9 +92,11 @@ struct TripActivityPreview: View {
                     .foregroundStyle(.white)
                 }
                 VStack(alignment: .leading, spacing: 8) {
-                    caption("Lock Screen")
-                    TripLockScreenView(attributes: .init(tripStart: start), state: state)
+                    caption("Lock Screen · 371 pt wide, clipped at 160 pt like the phone")
+                    TripLockScreenView(attributes: .init(tripStart: start), state: state, mapFiles: mapFiles)
                         .frame(width: 371)
+                        .frame(maxHeight: 160, alignment: .top)
+                        .clipped()
                         .background(Color(uiColor: .secondarySystemBackground),
                                     in: RoundedRectangle(cornerRadius: 26))
                 }
@@ -83,6 +106,22 @@ struct TripActivityPreview: View {
             .allowsHitTesting(false)
         }
         .background(Color(red: 0.07, green: 0.08, blue: 0.10).ignoresSafeArea())
+        .task {
+            guard kind == "map", mapController == nil else { return }
+            let stats = Self.portlandRoute()
+            let controller = TripActivityMapController(files: mapFiles)
+            mapController = controller
+            controller.reset()
+            controller.onChange = { [weak controller] in
+                mapState = controller?.map(for: stats.routeMapPoints) { stats.routeSketch(in: $0) }
+            }
+            controller.update(points: stats.routeMapPoints, enabled: true, showsOnLockScreen: true)
+        }
+        .onDisappear {
+            mapController?.reset()
+            mapController = nil
+            mapState = nil
+        }
     }
 
     private func caption(_ text: String) -> some View {

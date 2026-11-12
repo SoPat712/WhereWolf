@@ -75,6 +75,14 @@ final class GLManagerBridge {
         get { _ = tick; return GLManager.shared().tripLiveActivityEnabled }
         set { GLManager.shared().tripLiveActivityEnabled = newValue; refresh() }
     }
+    var tripMapOnLockScreen: Bool {
+        get { _ = tick; return TripActivityMapSettings.showsOnLockScreen() }
+        set {
+            UserDefaults.standard.set(newValue, forKey: TripActivityMapSettings.lockScreenKey)
+            GLManager.shared().syncTripLiveActivity()
+            refresh()
+        }
+    }
     var tripAskToEndWhenStopped: Bool {
         get { _ = tick; return TripEndPrompt.shared.enabled }
         set { TripEndPrompt.shared.enabled = newValue; refresh() }

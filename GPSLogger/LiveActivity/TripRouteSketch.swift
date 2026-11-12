@@ -29,6 +29,15 @@ struct TripRouteSketch: Codable, Hashable {
 
     var points: [Point]
 
+    func imagePoints(width: Double, height: Double) -> [CGPoint] {
+        points.map { CGPoint(x: Double($0.x) / 255 * width, y: Double($0.y) / 255 * height) }
+    }
+
+    func displayPoints(size: CGSize, imageRoute: TripRouteSketch?, hasImage: Bool) -> [CGPoint] {
+        if hasImage, let imageRoute { return imageRoute.imagePoints(width: size.width, height: size.height) }
+        return fittedPoints(width: size.width, height: size.height, inset: 12)
+    }
+
     /// Fit the stored shape's actual bounds, including any rounding from quantization.
     func fittedPoints(width: Double, height: Double, inset: Double = 8) -> [CGPoint] {
         let width = width.isFinite ? max(0, width) : 0
@@ -85,6 +94,11 @@ struct TripRouteSketchBuilder {
     private var bufferedPoints: [Coordinate] = []
     private var previousLongitude: Double?
     private var unwrappedLongitude: Double = 0
+    private(set) var bounds: (south: Double, north: Double, west: Double, east: Double)?
+
+    var coordinates: [(latitude: Double, longitude: Double)] {
+        bufferedPoints.map { ($0.latitude, $0.longitude) }
+    }
 
     mutating func add(latitude: Double, longitude: Double) {
         guard latitude.isFinite, longitude.isFinite,
@@ -95,8 +109,16 @@ struct TripRouteSketchBuilder {
             if delta > 180 { delta -= 360 }
             if delta < -180 { delta += 360 }
             unwrappedLongitude += delta
+        } else {
+            unwrappedLongitude = longitude
         }
         previousLongitude = longitude
+        if let bounds {
+            self.bounds = (min(bounds.south, latitude), max(bounds.north, latitude),
+                           min(bounds.west, unwrappedLongitude), max(bounds.east, unwrappedLongitude))
+        } else {
+            bounds = (latitude, latitude, unwrappedLongitude, unwrappedLongitude)
+        }
 
         if bufferedPoints.count == Self.maximumBufferedPoints {
             // Thin in place, keeping the trip's first fix and the most recent buffered fix.
@@ -116,6 +138,7 @@ struct TripRouteSketchBuilder {
         bufferedPoints.removeAll(keepingCapacity: true)
         previousLongitude = nil
         unwrappedLongitude = 0
+        bounds = nil
     }
 
     func sketch() -> TripRouteSketch {
@@ -139,7 +162,18 @@ struct TripRouteSketchBuilder {
             ProjectedPoint(x: ($0.x - minX) / span * 255 + offsetX,
                            y: ($0.y - minY) / span * 255 + offsetY)
         }
-        let indices = Self.simplifiedIndices(normalized)
+        return Self.quantized(normalized)
+    }
+
+    func sketch(project: (Double, Double) -> CGPoint) -> TripRouteSketch {
+        Self.quantized(bufferedPoints.map {
+            let point = project($0.latitude, $0.longitude)
+            return ProjectedPoint(x: point.x, y: point.y)
+        })
+    }
+
+    private static func quantized(_ normalized: [ProjectedPoint]) -> TripRouteSketch {
+        let indices = simplifiedIndices(normalized)
         return TripRouteSketch(points: indices.map {
             let point = normalized[$0]
             return .init(x: UInt8(clamping: Int(point.x.rounded())),

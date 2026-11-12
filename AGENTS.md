@@ -827,8 +827,13 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   bundled silent alert sound; later updates never alert. Relevance ranks WhereWolf's own activities, not other apps;
   iOS controls which activity occupies the main Island or a detached bubble.
   The trip activity's Trail look pairs distance, average/pace and top speed with a north-up blue route sketch.
-  Its 15-second updates carry at most 48 quantized shape points, without coordinates, from the ordered trip-stats stream;
-  non-App Store `-WhereWolfTripActivityPreview car|walk|short` renders the shared views with invented data.
+  Its 15-second updates carry at most 48 quantized points per shape, without coordinates, from the ordered trip-stats stream.
+  Dark MapKit snapshots on the expanded Island and, by default, Lock Screen align each sketch in its actual Mercator
+  image frame; refresh together on leaving the inner margin at most every two minutes, keeping current/previous
+  backup-excluded App Group image pairs until trip/activity end. Turning off Map on Lock Screen deletes its images.
+  Non-App Store `-WhereWolfTripActivityPreview car|walk|short|map` renders the shared views with invented data.
+  The phone's expanded Island (380 x 158 pt on a 402-pt phone) cuts content off about 13 points above its bottom edge;
+  content starts 17 points down and the regions sit 11 apart. The preview mock clips the same way, so keep it in step.
   Hide While Audio Plays defaults off. Two other-audio readings
   at least 15 seconds apart hide Status, Minimal, Blank and separate trip activities,
   only with Always location access. Sample on existing lifecycle/activity/audio

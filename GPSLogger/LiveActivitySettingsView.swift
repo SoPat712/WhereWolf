@@ -36,10 +36,16 @@ struct LiveActivitySettingsView: View {
 
             Section {
                 Toggle("Trip Live Activity", isOn: $bridge.tripLiveActivityEnabled)
+                if bridge.tripLiveActivityEnabled {
+                    Toggle("Map on Lock Screen", isOn: $bridge.tripMapOnLockScreen)
+                }
             } header: {
                 SettingsSectionHeader(title: "Trips", topic: .liveActivities)
             } footer: {
-                Text("A separate trip card with elapsed time, distance, Send Now and End Trip.")
+                Text("A separate trip card with elapsed time, distance, a route map, Send Now and End Trip.")
+                if bridge.tripLiveActivityEnabled {
+                    Text("Anyone who sees your Lock Screen can see the map, including where the trip started.")
+                }
             }
             .settingsRowBackground()
 

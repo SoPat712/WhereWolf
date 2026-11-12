@@ -1,6 +1,6 @@
 import Foundation
 
-// Shape only: no timestamps or coordinates leave the app in the route payload.
+// No geographic frame or coordinates enter ContentState; map points are in image space.
 struct TripActivityState: Codable, Hashable {
     var mode: String
     var distance: Double // meters
@@ -9,6 +9,7 @@ struct TripActivityState: Codable, Hashable {
     var climb: Double? = nil // meters
     var averageSpeed: Double? = nil // m/s, sampled at the activity update
     var route: TripRouteSketch? = nil
+    var map: TripActivityMap? = nil
 }
 
 enum TripActivityFormat {
@@ -46,21 +47,24 @@ enum TripActivityFormat {
         return String(max(speed, 0))
     }
 
-    static func summary(_ state: TripActivityState, metric: Bool = usesMetricSystem) -> String {
-        let pace = TripFormat.usesPace(state.mode)
+    // Average (pace on foot), then top speed and climb when known, one short line each.
+    static func details(_ state: TripActivityState, metric: Bool = usesMetricSystem) -> [String] {
         let unit = metric ? "km/h" : "mph"
         let average = state.averageSpeed ?? -1
         let value: String
-        if pace {
+        if TripFormat.usesPace(state.mode) {
             let duration = average > 0 ? state.distance / average : 0
             value = TripFormat.pace(distance: state.distance, duration: duration, metric: metric)
         } else {
             value = "\(speed(average, metric: metric)) \(unit)"
         }
-        var text = "avg \(value)"
+        var lines = ["avg \(value)"]
         if let top = state.topSpeed, top >= 0, top.isFinite {
-            text += " · top \(speed(top, metric: metric))\(pace ? " \(unit)" : "")"
+            lines.append("top \(speed(top, metric: metric)) \(unit)")
         }
-        return text
+        if let climb = state.climb, climb >= 0, climb.isFinite {
+            lines.append("climb \(TripFormat.climb(climb, metric: metric))")
+        }
+        return lines
     }
 }

@@ -50,6 +50,7 @@ enum SettingsSchema {
     static let preferences: [String: String] = [
         "liveActivity": "WhereWolfLiveActivityEnabled", "liveActivityAppearance": "WhereWolfLiveActivityAppearance",
         "lockScreenCard": "LiveActivityLockScreenCard", "hideWhileAudioPlays": "WhereWolfLiveActivityHideWhileAudioPlays",
+        "tripMapOnLockScreen": TripActivityMapSettings.lockScreenKey,
         "askToReopenAfterAudio": "WhereWolfLiveActivityAskToReopenAfterAudio", "silentAudio": "WhereWolfSilentAudioEnabled",
         "tripAskToEndWhenStopped": GLTripAskToEndWhenStoppedDefaultsName, "screenLock": GLScreenLockEnabledDefaultsName,
         "uniqueId": GLIncludeUniqueIdDefaultsName, "acceptHTTP": GLConsiderHTTP200SuccessDefaultsName,
@@ -63,7 +64,7 @@ enum SettingsSchema {
     static let labels = ["serverURL": "Server URL", "serverToken": "Server Token", "customHTTPHeaders": "Custom HTTP Headers",
         "wifiPlaces": "Wi-Fi Places", "tripModes": "Trip Modes", "historyRetentionHours": "History Retention",
         "advancedTracking": "Advanced Tracking", "acceptHTTP": "Accept Any Successful HTTP Response",
-        "deviceId": "Device ID", "sendOnlyOnWifi": "Send Only on Wi-Fi"]
+        "deviceId": "Device ID", "sendOnlyOnWifi": "Send Only on Wi-Fi", "tripMapOnLockScreen": "Map on Lock Screen"]
     static func title(_ key: String) -> String {
         if let label = labels[key] { return label }
         let spaced = key.replacingOccurrences(of: "_", with: " ").replacingOccurrences(of: "([a-z])([A-Z])", with: "$1 $2", options: .regularExpression)
@@ -210,6 +211,7 @@ extension GLManagerBridge {
         for (key, preference) in SettingsSchema.preferences {
             result[key] = key == "liveActivityAppearance" ? (defaults.string(forKey: preference) ?? "blank") : defaults.bool(forKey: preference) as Any
         }
+        result["tripMapOnLockScreen"] = TripActivityMapSettings.showsOnLockScreen(defaults: defaults)
         result["serverURL"] = gl.apiEndpointURL() ?? ""
         result["serverToken"] = gl.apiAccessToken() ?? ""
         result["deviceId"] = gl.deviceId() ?? ""

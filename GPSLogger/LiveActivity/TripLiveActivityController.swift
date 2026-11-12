@@ -24,6 +24,11 @@ import UIKit
     private var requestPending = false
     private var revision = 0
     private var updateTask: Task<Void, Never>?
+    private lazy var mapController: TripActivityMapController = {
+        let controller = TripActivityMapController()
+        controller.onChange = { [weak self] in self?.refresh(force: true) }
+        return controller
+    }()
     private enum IntentOperation { case start, end }
     private struct IntentRequest {
         let id: UUID
@@ -91,6 +96,8 @@ import UIKit
         trip?.mode = mode
         trip?.distance = distance
         trip?.speed = speed
+        if let currentActivity, currentActivity.activityState == .active || currentActivity.activityState == .stale,
+           mapController.needsInitialSnapshot { updateMap() }
         guard force || (currentActivity != nil && Date().timeIntervalSince(lastUpdate) >= 15) else { return }
         refresh(force: force)
     }
@@ -99,6 +106,7 @@ import UIKit
     func endTrip(mode: String, distance: Double, speed: Double) {
         endingTripStart = trip?.start
         finalContent = content(mode: mode, distance: distance, speed: speed)
+        mapController.reset()
         trip = nil
         tripStats = nil
         refresh(force: true)
@@ -106,7 +114,10 @@ import UIKit
 
     @objc(syncWithTripStart:mode:distance:speed:)
     func sync(tripStart: Date?, mode: String, distance: Double, speed: Double) {
-        if trip?.start != tripStart { WhereWolfBackgroundRuntime.shared.restoredAfterAudio(.trip) }
+        if trip?.start != tripStart {
+            mapController.reset()
+            WhereWolfBackgroundRuntime.shared.restoredAfterAudio(.trip)
+        }
         if let previous = trip?.start, tripStart == nil { endingTripStart = previous }
         if tripStart != nil { endingTripStart = nil }
         trip = tripStart.map { Trip(start: $0, mode: mode, distance: distance, speed: speed) }
@@ -142,6 +153,7 @@ import UIKit
         let activities = Activity<TripActivityAttributes>.activities.filter { $0.activityState == .active || $0.activityState == .stale }
         let action = runtime.audioAction(for: .trip, eligible: trip != nil, hasActivity: !activities.isEmpty)
         guard let trip else {
+            mapController.reset()
             let current = revision
             await runtime.prepareForTripActivityEnd(tripStart: endingTripStart)
             defer { runtime.finishTripActivityEnd() }
@@ -149,12 +161,20 @@ import UIKit
             await endActivities(content: finalContent)
             return
         }
+        let manager = GLManager.shared()!
+        guard manager.tripLiveActivityEnabled && manager.trackingEnabled else {
+            mapController.reset()
+            await endActivities(content: nil)
+            return
+        }
         if action == .hide {
+            mapController.reset()
             if !activities.isEmpty || currentActivity != nil { await endActivities(content: nil) }
             return
         }
-        if action == .waitForForeground { return }
+        if action == .waitForForeground { mapController.reset(); return }
         guard ActivityAuthorizationInfo().areActivitiesEnabled else {
+            mapController.reset()
             await endActivities(content: nil)
             return
         }
@@ -165,10 +185,12 @@ import UIKit
         guard revision == current else { return }
         if let existing {
             observe(existing)
+            updateMap()
         } else {
             activityObserver?.cancel()
             activityObserver = nil
             currentActivity = nil
+            mapController.reset()
         }
         if let existing {
             // Location callbacks can arrive every second; the elapsed-time display ticks on its own.
@@ -179,7 +201,6 @@ import UIKit
             await existing.update(nextContent)
             return
         }
-        let manager = GLManager.shared()!
         let decision = TripLiveActivityRequestPolicy.decision(tripStart: trip.start,
             enabled: manager.tripLiveActivityEnabled && manager.trackingEnabled,
             authorized: ActivityAuthorizationInfo().areActivitiesEnabled, requestPending: requestPending,
@@ -196,6 +217,7 @@ import UIKit
             let activity = try Activity.request(attributes: TripActivityAttributes(tripStart: trip.start),
                                                 content: nextContent, pushType: nil)
             observe(activity)
+            updateMap()
             lastUpdate = Date()
             runtime.restoredAfterAudio(.trip)
             // A missing custom sound can fall back to the system sound. Omit the alert in that case.
@@ -211,6 +233,13 @@ import UIKit
         }
     }
 
+    private func updateMap() {
+        let manager = GLManager.shared()!
+        mapController.update(points: tripStats?.routeMapPoints ?? [],
+                             enabled: manager.tripLiveActivityEnabled && manager.trackingEnabled,
+                             showsOnLockScreen: TripActivityMapSettings.showsOnLockScreen())
+    }
+
     private func content(mode: String, distance: Double, speed: Double) -> ActivityContent<TripActivityAttributes.ContentState> {
         let distance = distance.isFinite ? max(distance, 0) : 0
         let duration = trip.map { Date().timeIntervalSince($0.start) } ?? 0
@@ -220,7 +249,10 @@ import UIKit
             speed: speed.isFinite ? max(speed, 0) : 0,
             topSpeed: topSpeed?.isFinite == true ? topSpeed : nil,
             climb: climb?.isFinite == true ? climb : nil,
-            averageSpeed: duration >= 1 ? distance / duration : nil, route: tripStats?.routeSketch())
+            averageSpeed: duration >= 1 ? distance / duration : nil, route: tripStats?.routeSketch(),
+            map: tripStats.flatMap { stats in
+                mapController.map(for: stats.routeMapPoints) { stats.routeSketch(in: $0) }
+            })
         return ActivityContent(state: state, staleDate: nil, relevanceScore: TripLiveActivityRequestPolicy.relevanceScore)
     }
 
@@ -254,6 +286,7 @@ import UIKit
                 GLManager.shared().updateLocationEngine()
                 WhereWolfBackgroundRuntime.shared.tripActivityChanged()
                 if state == .ended || state == .dismissed {
+                    self.mapController.reset()
                     self.currentActivity = nil
                     return
                 }
