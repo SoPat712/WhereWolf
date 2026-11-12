@@ -465,7 +465,8 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   (any path prefix; key from `api_key`, else the access token) gets one replaceable 15-second
   `GET /api/v1/health` with `Authorization: Bearer` and the custom headers, after saves and when Destination or the
   guide's server sheet appears. Dawarich answers with `X-Dawarich-Response` ("authenticated" for a valid key) and
-  `X-Dawarich-Version`; `DawarichStatusRow` shows it, and other servers get no row. The probe sends no location and
+  `X-Dawarich-Version`; after authenticated health, `/api/v1/users/me` supplies the account email in memory only.
+  `DawarichStatusRow` shows the server and known account, and other servers get no row. The probe sends no location and
   touches no queue, history or send statistics. Scan QR Code (VisionKit, shown only where supported) reads Dawarich's
   account JSON `{"server_url", "api_key"}`, setup links through `ServerSetup.parse` and plain endpoints, and fills
   the form for an explicit Save. Camera access is asked only on tap; frames are never stored.

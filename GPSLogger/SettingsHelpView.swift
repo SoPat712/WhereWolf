@@ -360,6 +360,7 @@ enum SettingsHelpTopic: String {
                       source: .implementation),
                 .init("Dawarich", "Recognizes Dawarich from your saved upload URL.",
                       notes: ["Health probe checks the API key and version",
+                              "Shows the account the key belongs to",
                               "No location sent by recognition"],
                       source: .implementation),
                 .init("Scan QR Code", "Fills server settings for review before Save.",

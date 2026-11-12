@@ -25,8 +25,9 @@ final class DawarichServerTests: XCTestCase {
         super.tearDown()
     }
 
-    // Synthetic credentials stay inside boolean assertions so failures cannot print them.
+    // Synthetic credentials and account identities stay inside boolean assertions so failures cannot print them.
     private var key: String { "fixture+&=?/ value" }
+    private var email: String { "fixture" + "@" + "wherewolf.test" }
     private func endpoint(_ path: String = "/api/v1/overland/batches", queryKey: Bool = true) -> String {
         var parts = URLComponents()
         parts.scheme = "https"
@@ -185,48 +186,191 @@ final class DawarichServerTests: XCTestCase {
         }
     }
 
-    private func probe(status: Int = 200, headers: [String: String] = [:], error: URLError? = nil) async throws -> DawarichStatus {
+    private func userData(email: Any?) throws -> Data {
+        var user: [String: Any] = ["id": 17, "theme": "fixture", "settings": ["email": self.email]]
+        if let email { user["email"] = email }
+        return try JSONSerialization.data(withJSONObject: ["user": user, "features": ["email": self.email]])
+    }
+
+    private func probe(status: Int = 200, headers: [String: String] = [:], error: URLError? = nil,
+                       accountStatus: Int = 200, accountData: Data = Data(), accountError: URLError? = nil,
+                       requestHeaders: [String: String] = [:], expectedAccountRequests: Int = 0,
+                       inspectAccountRequest: ((URLRequest) -> Void)? = nil) async throws -> DawarichStatus {
+        var accountRequests = 0
         DawarichTestProtocol.handler = { mock in
             XCTAssertEqual(mock.request.httpMethod, "GET")
-            XCTAssertEqual(mock.request.url?.path, "/api/v1/health")
             XCTAssertNil(mock.request.httpBody)
-            if let error { mock.client?.urlProtocol(mock, didFailWithError: error) }
-            else { mock.respond(status: status, headers: headers) }
+            switch mock.request.url?.path {
+            case "/api/v1/health":
+                if let error { mock.client?.urlProtocol(mock, didFailWithError: error) }
+                else { mock.respond(status: status, headers: headers) }
+            case "/api/v1/users/me":
+                accountRequests += 1
+                inspectAccountRequest?(mock.request)
+                if let accountError { mock.client?.urlProtocol(mock, didFailWithError: accountError) }
+                else { mock.respond(status: accountStatus, headers: [:], data: accountData) }
+            default:
+                XCTFail("Unexpected recognition request")
+                mock.respond(status: 404, headers: [:])
+            }
         }
         let server = try XCTUnwrap(DawarichServer(endpoint: endpoint(), token: ""))
-        return await withCheckedContinuation { continuation in
-            server.probe(headers: [:]) { continuation.resume(returning: $0) }
+        let result = await withCheckedContinuation { continuation in
+            server.probe(headers: requestHeaders) { continuation.resume(returning: $0) }
         }
+        XCTAssertEqual(accountRequests, expectedAccountRequests)
+        return result
+    }
+
+    private var authenticatedHealth: [String: String] {
+        ["X-Dawarich-Response": "Hey, I'm alive and authenticated!", "X-Dawarich-Version": "1.2.3"]
     }
 
     func testAuthenticatedHealthWithVersionAndCaseInsensitiveHeaders() async throws {
-        let result = try await probe(headers: ["x-dawarich-response": "Hey, I'm alive and authenticated!", "x-dawarich-version": "1.2.3"])
-        XCTAssertEqual(result, .dawarich(version: "1.2.3", authenticated: true))
+        let result = try await probe(headers: ["x-dawarich-response": "Hey, I'm alive and authenticated!", "x-dawarich-version": "1.2.3"],
+                                     expectedAccountRequests: 1)
+        XCTAssertTrue(result == .dawarich(version: "1.2.3", authenticated: true, account: nil))
     }
 
     func testUnauthenticatedHealthWithoutVersion() async throws {
         let result = try await probe(headers: ["X-Dawarich-Response": "Hey, I'm alive!"])
-        XCTAssertEqual(result, .dawarich(version: nil, authenticated: false))
+        XCTAssertTrue(result == .dawarich(version: nil, authenticated: false, account: nil))
+    }
+
+    func testAuthenticatedHealthLoadsTrimmedAccountEmail() async throws {
+        let result = try await probe(headers: authenticatedHealth, accountData: userData(email: "  " + email + "  "),
+                                     expectedAccountRequests: 1)
+        XCTAssertTrue(result == .dawarich(version: "1.2.3", authenticated: true, account: email))
+    }
+
+    func testAccountRequestHeadersAndTimeout() async throws {
+        let result = try await probe(headers: authenticatedHealth, accountData: userData(email: email),
+                                     requestHeaders: ["CF-Access-Client-Id": "fixture-proxy", "aUtHoRiZaTiOn": "ignored",
+                                         "Host": "ignored", "Content-Length": "99", "Connection": "close", "Transfer-Encoding": "chunked",
+                                         "X-Bad": "line\nbreak", "Bad Name": "ignored", "Accept": "text/plain"],
+                                     expectedAccountRequests: 1) { request in
+            XCTAssertTrue(request.value(forHTTPHeaderField: "Authorization") == "Bearer " + self.key)
+            XCTAssertTrue(request.value(forHTTPHeaderField: "CF-Access-Client-Id") == "fixture-proxy")
+            XCTAssertTrue(request.value(forHTTPHeaderField: "Accept") == "application/json")
+            XCTAssertTrue(request.url?.query == nil)
+            XCTAssertEqual(request.timeoutInterval, 15)
+            XCTAssertEqual(request.cachePolicy, .reloadIgnoringLocalCacheData)
+            XCTAssertFalse(request.httpShouldHandleCookies)
+            for name in ["Host", "Content-Length", "Connection", "Transfer-Encoding", "X-Bad", "Bad Name"] {
+                XCTAssertTrue(request.value(forHTTPHeaderField: name) == nil)
+            }
+        }
+        XCTAssertTrue(result == .dawarich(version: "1.2.3", authenticated: true, account: email))
+    }
+
+    func testAccountRequestPreservesEncodedPrefixAndTokenFallback() async throws {
+        var parts = URLComponents(string: endpoint(queryKey: false))!
+        parts.percentEncodedPath = "/my%20server/api/v1/owntracks/points/"
+        parts.port = 8443
+        let server = try XCTUnwrap(DawarichServer(endpoint: parts.url!.absoluteString, token: key))
+        let data = try userData(email: email)
+        var requestedPaths: [String] = []
+        DawarichTestProtocol.handler = { mock in
+            let path = URLComponents(url: mock.request.url!, resolvingAgainstBaseURL: false)!.percentEncodedPath
+            requestedPaths.append(path)
+            XCTAssertTrue(mock.request.value(forHTTPHeaderField: "Authorization") == "Bearer " + self.key)
+            XCTAssertTrue(mock.request.url?.query == nil)
+            XCTAssertEqual(mock.request.url?.port, 8443)
+            switch path {
+            case "/my%20server/api/v1/health":
+                mock.respond(status: 200, headers: self.authenticatedHealth)
+            case "/my%20server/api/v1/users/me":
+                mock.respond(status: 200, headers: [:], data: data)
+            default:
+                XCTFail("Unexpected recognition request")
+                mock.respond(status: 404, headers: [:])
+            }
+        }
+        let result = await withCheckedContinuation { continuation in
+            server.probe(headers: [:]) { continuation.resume(returning: $0) }
+        }
+        XCTAssertEqual(requestedPaths, ["/my%20server/api/v1/health", "/my%20server/api/v1/users/me"])
+        XCTAssertTrue(result == .dawarich(version: "1.2.3", authenticated: true, account: email))
+    }
+
+    func testAccountHTTPFailuresKeepDawarichStatus() async throws {
+        for status in [401, 500] {
+            let result = try await probe(headers: authenticatedHealth, accountStatus: status, accountData: userData(email: email),
+                                         expectedAccountRequests: 1)
+            XCTAssertTrue(result == .dawarich(version: "1.2.3", authenticated: true, account: nil))
+        }
+    }
+
+    func testAccountTimeoutKeepsDawarichStatus() async throws {
+        let result = try await probe(headers: authenticatedHealth, accountError: URLError(.timedOut), expectedAccountRequests: 1)
+        XCTAssertTrue(result == .dawarich(version: "1.2.3", authenticated: true, account: nil))
+    }
+
+    func testMalformedAccountJSONKeepsDawarichStatus() async throws {
+        let result = try await probe(headers: authenticatedHealth, accountData: Data("{".utf8), expectedAccountRequests: 1)
+        XCTAssertTrue(result == .dawarich(version: "1.2.3", authenticated: true, account: nil))
+    }
+
+    func testMissingOrNonStringAccountEmailKeepsDawarichStatus() async throws {
+        for data in [Data("{}".utf8), try userData(email: nil), try userData(email: true)] {
+            let result = try await probe(headers: authenticatedHealth, accountData: data, expectedAccountRequests: 1)
+            XCTAssertTrue(result == .dawarich(version: "1.2.3", authenticated: true, account: nil))
+        }
+    }
+
+    func testEmptyAccountEmailKeepsDawarichStatus() async throws {
+        for value in ["", "   "] {
+            let result = try await probe(headers: authenticatedHealth, accountData: userData(email: value), expectedAccountRequests: 1)
+            XCTAssertTrue(result == .dawarich(version: "1.2.3", authenticated: true, account: nil))
+        }
+    }
+
+    func testOversizedAccountEmailKeepsDawarichStatus() async throws {
+        let result = try await probe(headers: authenticatedHealth, accountData: userData(email: String(repeating: "a", count: 321)),
+                                     expectedAccountRequests: 1)
+        XCTAssertTrue(result == .dawarich(version: "1.2.3", authenticated: true, account: nil))
+    }
+
+    func testAccountEmailAtLengthLimit() async throws {
+        let value = String(repeating: "a", count: 320 - email.count) + email
+        let result = try await probe(headers: authenticatedHealth, accountData: userData(email: " " + value + " "),
+                                     expectedAccountRequests: 1)
+        XCTAssertTrue(result == .dawarich(version: "1.2.3", authenticated: true, account: value))
+    }
+
+    func testControlCharactersInAccountEmailKeepDawarichStatus() async throws {
+        for value in ["\n" + email, email + "\r", email + "\t", email + "\u{0000}", email + "\u{007F}"] {
+            let result = try await probe(headers: authenticatedHealth, accountData: userData(email: value), expectedAccountRequests: 1)
+            XCTAssertTrue(result == .dawarich(version: "1.2.3", authenticated: true, account: nil))
+        }
     }
 
     func testHealthWithoutSignature() async throws {
         let result = try await probe(headers: ["X-Dawarich-Version": "1.2.3"])
-        XCTAssertEqual(result, .notDawarich)
+        XCTAssertTrue(result == .notDawarich)
     }
 
     func testHealthHTTPFailures() async throws {
         for status in [401, 500] {
             let result = try await probe(status: status, headers: ["X-Dawarich-Response": "Hey, I'm alive!"])
-            XCTAssertEqual(result, .notDawarich)
+            XCTAssertTrue(result == .notDawarich)
         }
     }
 
     func testHealthTimeout() async throws {
         let result = try await probe(error: URLError(.timedOut))
-        XCTAssertEqual(result, .notDawarich)
+        XCTAssertTrue(result == .notDawarich)
     }
 
-    @MainActor func testBridgeReplacesProbeAndClearResetsStatusWithoutSendStatistics() async {
+    @MainActor func testBridgeReplacesProbeAndClearResetsStatusWithoutSendStatistics() async throws {
+        try await checkBridgeReplacesProbe(waitForAccount: false)
+    }
+
+    @MainActor func testBridgeReplacesAccountProbeAndClearResetsStatusWithoutSendStatistics() async throws {
+        try await checkBridgeReplacesProbe(waitForAccount: true)
+    }
+
+    @MainActor private func checkBridgeReplacesProbe(waitForAccount: Bool) async throws {
         let defaults = UserDefaults.standard
         let domain = Bundle.main.bundleIdentifier!
         let saved = defaults.persistentDomain(forName: domain) ?? [:]
@@ -239,16 +383,24 @@ final class DawarichServerTests: XCTestCase {
             defaults.setPersistentDomain(saved, forName: domain)
             bridge.refresh()
         }
-        let started = expectation(description: "First health probe started")
-        let replaced = expectation(description: "Replacement health probe finished")
-        let cancelled = expectation(description: "Replaced health probe cancelled")
+        let started = expectation(description: "First probe started")
+        let replaced = expectation(description: "Replacement account probe finished")
+        let cancelled = expectation(description: "Replaced probe cancelled")
+        let data = try userData(email: email)
+        let pausedPath = waitForAccount ? "/first/api/v1/users/me" : "/first/api/v1/health"
         DawarichTestProtocol.handler = { mock in
-            if mock.request.url?.path == "/first/api/v1/health" {
+            switch mock.request.url?.path {
+            case pausedPath:
                 mock.onStop = { cancelled.fulfill() }
                 started.fulfill()
-            } else {
-                mock.respond(status: 200, headers: ["X-Dawarich-Response": "Hey, I'm alive and authenticated!"])
+            case "/first/api/v1/health", "/second/api/v1/health":
+                mock.respond(status: 200, headers: self.authenticatedHealth)
+            case "/second/api/v1/users/me":
+                mock.respond(status: 200, headers: [:], data: data)
                 replaced.fulfill()
+            default:
+                XCTFail("Unexpected recognition request")
+                mock.respond(status: 404, headers: [:])
             }
         }
         let history = bridge.sendHistory
@@ -256,7 +408,7 @@ final class DawarichServerTests: XCTestCase {
             bridge.saveServer(url: endpoint(path), token: "", deviceId: "", uniqueId: false, acceptHTTP: false, headers: [:])
         }
         XCTAssertTrue(save("/first/api/v1/overland/batches"))
-        XCTAssertEqual(bridge.dawarich, .checking)
+        XCTAssertTrue(bridge.dawarich == .checking)
         await fulfillment(of: [started], timeout: 2)
         XCTAssertTrue(WhereWolfSetupURLHandler.apply(setupURL(
             headers: [URLQueryItem(name: "header_X-Proxy", value: "fixture-proxy")], path: "/second/api/v1/overland/batches")))
@@ -277,10 +429,10 @@ final class DawarichServerTests: XCTestCase {
         }
         observe()
         await fulfillment(of: [published], timeout: 2)
-        XCTAssertEqual(bridge.dawarich, .dawarich(version: nil, authenticated: true))
+        XCTAssertTrue(bridge.dawarich == .dawarich(version: "1.2.3", authenticated: true, account: email))
         XCTAssertEqual(bridge.sendHistory, history)
         XCTAssertTrue(bridge.clearServer())
-        XCTAssertEqual(bridge.dawarich, .unknown)
+        XCTAssertTrue(bridge.dawarich == .unknown)
     }
 }
 
@@ -299,9 +451,10 @@ private final class DawarichTestProtocol: URLProtocol {
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() { Self.handler?(self) }
     override func stopLoading() { onStop?() }
-    func respond(status: Int, headers: [String: String]) {
+    func respond(status: Int, headers: [String: String], data: Data = Data()) {
         let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: "HTTP/1.1", headerFields: headers)!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        if !data.isEmpty { client?.urlProtocol(self, didLoad: data) }
         client?.urlProtocolDidFinishLoading(self)
     }
 }

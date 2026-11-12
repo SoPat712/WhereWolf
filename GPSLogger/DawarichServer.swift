@@ -3,7 +3,8 @@ import Foundation
 enum DawarichStatus: Equatable {
     case unknown
     case checking
-    case dawarich(version: String?, authenticated: Bool)
+    // Account identity is presentation state only; never persist or log it.
+    case dawarich(version: String?, authenticated: Bool, account: String?)
     case notDawarich
 }
 
@@ -11,6 +12,27 @@ enum ServerSetupCode {
     case dawarich(URL)
     case setupLink(URL, ServerSetup)
     case endpoint(URL)
+}
+
+final class DawarichProbe {
+    private let lock = NSLock()
+    private var task: URLSessionDataTask?
+    private var cancelled = false
+
+    fileprivate func replace(with task: URLSessionDataTask) {
+        lock.lock()
+        defer { lock.unlock() }
+        self.task = task
+        if cancelled { task.cancel() }
+        task.resume()
+    }
+
+    func cancel() {
+        lock.lock()
+        defer { lock.unlock() }
+        cancelled = true
+        task?.cancel()
+    }
 }
 
 struct DawarichServer {
@@ -38,10 +60,15 @@ struct DawarichServer {
     }
 
     func healthRequest(headers: [String: String]) -> URLRequest {
+        request(path: "/api/v1/health", headers: headers)
+    }
+
+    private func request(path: String, headers: [String: String]) -> URLRequest {
         var parts = URLComponents(url: root, resolvingAgainstBaseURL: false)!
-        parts.percentEncodedPath += "/api/v1/health"
+        parts.percentEncodedPath += path
         var request = URLRequest(url: parts.url!, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)
         request.httpMethod = "GET"
+        request.httpShouldHandleCookies = false
         for (name, value) in headers where SettingsSchema.validHeaders([name: value]) != nil {
             request.setValue(value, forHTTPHeaderField: name)
         }
@@ -55,25 +82,50 @@ struct DawarichServer {
               (200..<300).contains(http.statusCode),
               let signature = http.value(forHTTPHeaderField: "X-Dawarich-Response") else { return .notDawarich }
         return .dawarich(version: http.value(forHTTPHeaderField: "X-Dawarich-Version"),
-                         authenticated: signature.localizedCaseInsensitiveContains("authenticated"))
+                         authenticated: signature.localizedCaseInsensitiveContains("authenticated"), account: nil)
+    }
+
+    private static func accountEmail(_ data: Data?, response: URLResponse?, error: Error?) -> String? {
+        guard error == nil, let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode), let data,
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let user = object["user"] as? [String: Any],
+              let email = user["email"] as? String,
+              !email.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) else { return nil }
+        let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.count <= 320 else { return nil }
+        return trimmed
     }
 
     @discardableResult
-    func probe(headers: [String: String], completion: @escaping (DawarichStatus) -> Void) -> URLSessionDataTask {
+    func probe(headers: [String: String], completion: @escaping (DawarichStatus) -> Void) -> DawarichProbe {
         // Use default so the regression suite's configuration swizzle reaches this session.
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = 15
         configuration.timeoutIntervalForResource = 15
         configuration.urlCache = nil
         configuration.httpCookieStorage = nil
+        configuration.httpShouldSetCookies = false
         configuration.urlCredentialStorage = nil
         let session = URLSession(configuration: configuration)
-        let task = session.dataTask(with: healthRequest(headers: headers)) { _, response, error in
-            completion(Self.classify(response, error: error))
-            session.finishTasksAndInvalidate()
+        let probe = DawarichProbe()
+        let healthTask = session.dataTask(with: healthRequest(headers: headers)) { _, response, error in
+            let status = Self.classify(response, error: error)
+            guard case .dawarich(let version, true, _) = status else {
+                completion(status)
+                session.finishTasksAndInvalidate()
+                return
+            }
+            let accountTask = session.dataTask(with: self.request(path: "/api/v1/users/me", headers: headers)) { data, response, error in
+                let account = Self.accountEmail(data, response: response, error: error)
+                completion(.dawarich(version: version, authenticated: true, account: account))
+                session.finishTasksAndInvalidate()
+            }
+            probe.replace(with: accountTask)
         }
-        task.resume()
-        return task
+        // Serialize cancellation with the handoff so neither request can escape it.
+        probe.replace(with: healthTask)
+        return probe
     }
 
     static func parseQRCode(_ text: String, ownTracks: Bool) -> ServerSetupCode? {

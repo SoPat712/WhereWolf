@@ -164,7 +164,7 @@ final class GLManagerBridge {
     @ObservationIgnored private var activeScenes: Set<UUID> = []
     @ObservationIgnored private var recordedTrips: [TripSummary] = []
     @ObservationIgnored private var loadingRecordedTrips = false
-    @ObservationIgnored private var dawarichProbe: URLSessionDataTask?
+    @ObservationIgnored private var dawarichProbe: DawarichProbe?
     @ObservationIgnored private var dawarichProbeID = UUID()
 
     private init() {

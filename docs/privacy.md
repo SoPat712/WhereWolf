@@ -59,7 +59,10 @@ Authentication and custom headers you configure accompany server requests.
 
 For recognized Dawarich upload URLs, WhereWolf checks the server's health endpoint
 with your API key and custom headers to identify its version and authentication
-status. This request sends no location and does not read server history.
+status. With a valid key, WhereWolf also reads the account's email address to show
+which account the key belongs to and keeps it only on the iPhone while the app
+runs. These checks send nothing else, including location, and do not read server
+history.
 
 WhereWolf also requests account information from the configured server. The
 server operator receives these requests and handles the data under its own
