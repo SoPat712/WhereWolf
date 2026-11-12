@@ -331,6 +331,13 @@ This log lists the decisions agents made on their own while working on WhereWolf
 - **Decided:** from four rendered options (regular glass, clear glass under a 65% or 45% wash, plain clear glass) the owner picked clear glass under a 65% system-background wash, which shows the map faintly while text stays legible. The map is no longer blurred behind the guide, row cards use the tertiary fill, and all three guide sheets are the glass Settings sheets Trip Settings uses, opening at medium height. Tracking & Accuracy and its Advanced page take the sheet's row styling, which is unchanged in Settings.
 - **Undo:** `git revert 7d8ed72`.
 
+## 2026-11-11: Dawarich recognition and Scan QR Code (1d0fe6f)
+
+- **Asked for:** make WhereWolf a strong Dawarich client. The owner asked for no sign-in page ("let's just recognize it when it's the server url"), plus a QR code button for Dawarich's QR login.
+- **Found:** Dawarich's Overland and OwnTracks upload URLs carry the API key as `api_key`. Its `GET /api/v1/health` answers with `X-Dawarich-Response` and `X-Dawarich-Version`, and says "authenticated" for a valid Bearer key. Its account QR code (Account → API access) is JSON with `server_url` and `api_key`.
+- **Decided:** recognition is automatic, with no switch in the setup guide. A saved Dawarich upload URL gets one replaceable health probe after saves and when Destination or the guide's server sheet appears. It sends no location and touches no queue or history. Destination and the guide's sheet show "Dawarich <version>", or an orange warning when the key isn't accepted. Scan QR Code reads the account QR code, setup links and plain endpoints and fills the form for an explicit Save. Camera access is asked only on tap. The privacy policy gained a Camera section. For the years-back ruler that comes next, the owner picked Blend spacing from the playable sketch.
+- **Undo:** `git revert 1d0fe6f`.
+
 ## Deferred for the owner
 
 - **Watch complication for Today:** it needs a new watch widget extension and bundle identifier, which is an Apple developer account change.
