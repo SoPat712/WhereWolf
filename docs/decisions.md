@@ -346,6 +346,13 @@ This log lists the decisions agents made on their own while working on WhereWolf
 - **Decided:** Start Trip and the Control Center toggle request the trip activity inside `perform()`, waiting at most two seconds. Hide While Audio Plays still wins. Other background paths keep the old rule. The trip's relevance is 100 against the tracking activity's 0, so it takes the main Island. A background intent start expands it once, with a bundled silent sound, and later updates never alert. It still needs the trip Live Activity setting on. Not yet tried from the car.
 - **Undo:** `git revert fb10584`.
 
+## 2026-11-12: a glass confirmation after scanning a server QR code (d0c20ff)
+
+- **Asked for:** ask Birdie how its QR code confirmation screen was made, "and retheme it liquid glassy to fit our theme".
+- **Found:** Birdie frames its camera with a dimmed rounded cutout and corner brackets, plays a found moment (brackets tighten, a checkmark draws itself, the camera turns off), then shows a summary card with Rescan. WhereWolf's scan had closed the camera and filled the form with no confirmation.
+- **Decided:** the same framing and found moment, then a review sheet at 70% height. iOS draws it as glass over the app, like the setup guide; a regular glass card on an opaque sheet frosted to white in the first render. The card names the kind of code, the server and format, and says "API key included" without showing the key. For a Dawarich code it checks the scanned key live and shows the version and account. Use This Server saves through the same path as Save, and Scan Again remounts the camera. A launch argument opens the review on the simulator for renders, compiled out of App Store builds. The camera steps are not yet tried on the phone.
+- **Undo:** `git revert d0c20ff`.
+
 ## Deferred for the owner
 
 - **Watch complication for Today:** it needs a new watch widget extension and bundle identifier, which is an Apple developer account change.
