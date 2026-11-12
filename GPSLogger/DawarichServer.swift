@@ -14,6 +14,13 @@ enum ServerSetupCode {
     case endpoint(URL)
 }
 
+enum DawarichReviewStatus: Equatable {
+    case checking
+    case dawarich(version: String?, account: String?)
+    case keyRejected
+    case unreachable
+}
+
 final class DawarichProbe {
     private let lock = NSLock()
     private var task: URLSessionDataTask?
@@ -99,6 +106,22 @@ struct DawarichServer {
 
     @discardableResult
     func probe(headers: [String: String], completion: @escaping (DawarichStatus) -> Void) -> DawarichProbe {
+        performProbe(headers: headers) { status, _ in completion(status) }
+    }
+
+    @discardableResult
+    func probeForReview(headers: [String: String], completion: @escaping (DawarichReviewStatus) -> Void) -> DawarichProbe {
+        performProbe(headers: headers) { status, rejected in
+            switch status {
+            case .dawarich(let version, true, let account):
+                completion(.dawarich(version: version, account: account))
+            case .dawarich(_, false, _): completion(.keyRejected)
+            default: completion(rejected ? .keyRejected : .unreachable)
+            }
+        }
+    }
+
+    private func performProbe(headers: [String: String], completion: @escaping (DawarichStatus, Bool) -> Void) -> DawarichProbe {
         // Use default so the regression suite's configuration swizzle reaches this session.
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = 15
@@ -112,13 +135,14 @@ struct DawarichServer {
         let healthTask = session.dataTask(with: healthRequest(headers: headers)) { _, response, error in
             let status = Self.classify(response, error: error)
             guard case .dawarich(let version, true, _) = status else {
-                completion(status)
+                let rejected = error == nil && [401, 403].contains((response as? HTTPURLResponse)?.statusCode ?? 0)
+                completion(status, rejected)
                 session.finishTasksAndInvalidate()
                 return
             }
             let accountTask = session.dataTask(with: self.request(path: "/api/v1/users/me", headers: headers)) { data, response, error in
                 let account = Self.accountEmail(data, response: response, error: error)
-                completion(.dawarich(version: version, authenticated: true, account: account))
+                completion(.dawarich(version: version, authenticated: true, account: account), false)
                 session.finishTasksAndInvalidate()
             }
             probe.replace(with: accountTask)

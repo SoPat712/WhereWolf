@@ -10,7 +10,6 @@ struct OnboardingView: View {
     @State private var token = ""
     @State private var ownTracks = false
     @State private var useSetupLink = false
-    @State private var scanned = false
     @State private var presetRowHeights: [Int: CGFloat] = [:]
     @State private var settledStep: OnboardingStep?
     @Environment(\.scenePhase) private var scenePhase
@@ -691,11 +690,8 @@ struct OnboardingView: View {
                     Picker("Format", selection: $ownTracks) { Text("GeoJSON").tag(false); Text("OwnTracks").tag(true) }
                     SecureField("Access Token", text: $token)
                 }
-                ServerQRCodeButton(onScan: scan)
-                if scanned {
-                    Text("Scanned. Review the server, then tap Save.")
-                        .font(.footnote).foregroundStyle(.secondary)
-                }
+                ServerQRCodeButton(current: qrValues, ownTracks: ownTracks,
+                                   setupUsesOwnTracks: GLManager.shared().loggingModeCurrentValue.rawValue == 2, onUse: scan)
                 DawarichStatusRow(status: bridge.dawarich)
             } footer: {
                 Text(useSetupLink ? "Paste a wherewolf:// or overland:// setup link from your server."
@@ -713,28 +709,24 @@ struct OnboardingView: View {
         .onAppear { bridge.refreshDawarich() }
     }
 
-    private func scan(_ text: String) -> Bool {
-        guard let code = DawarichServer.parseQRCode(text, ownTracks: ownTracks) else { return false }
-        switch code {
-        case .dawarich(let url):
-            endpoint = url.absoluteString
-            token = ""
-            useSetupLink = false
-        case .setupLink(let url, let setup):
-            setupLink = url.absoluteString
-            endpoint = setup.endpoint
-            token = setup.token
-            useSetupLink = true
-        case .endpoint(let url):
-            endpoint = url.absoluteString
-            useSetupLink = false
-        }
-        scanned = true
+    private var qrValues: ServerQRValues {
+        let gl = GLManager.shared()!
+        return ServerQRValues(endpoint: endpoint, token: token, deviceId: gl.deviceId() ?? "",
+                              uniqueId: UserDefaults.standard.bool(forKey: GLIncludeUniqueIdDefaultsName),
+                              acceptHTTP: UserDefaults.standard.bool(forKey: GLConsiderHTTP200SuccessDefaultsName),
+                              headers: gl.customHTTPHeaders)
+    }
+
+    private func scan(_ review: ServerQRReview) async -> Bool {
+        guard model.loaded, model.isPresented, !model.busy else { return false }
+        await model.chooseDestination(review.destination)
+        guard model.error == nil else { return false }
+        loadDestination()
+        sheet = nil
         return true
     }
 
     private func loadDestination() {
-        scanned = false
         destination = model.status.cloudSelected ? .cloud : model.status.serverConfigured ? .server : .device
         let gl = GLManager.shared()!
         endpoint = gl.apiEndpointURL() ?? ""

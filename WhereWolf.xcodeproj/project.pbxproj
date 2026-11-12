@@ -170,6 +170,9 @@
 		D0DA00000000000000000004 /* DawarichStatusRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0DA00000000000000000003 /* DawarichStatusRow.swift */; };
 		D0DA00000000000000000006 /* ServerQRCodeScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0DA00000000000000000005 /* ServerQRCodeScanner.swift */; };
 		D0DA00000000000000000008 /* DawarichServerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0DA00000000000000000007 /* DawarichServerTests.swift */; };
+		D0DA0000000000000000000A /* ServerQRReview.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0DA00000000000000000009 /* ServerQRReview.swift */; };
+		D0DA0000000000000000000C /* ServerQRReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0DA0000000000000000000B /* ServerQRReviewView.swift */; };
+		D0DA0000000000000000000E /* ServerQRReviewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0DA0000000000000000000D /* ServerQRReviewTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -394,6 +397,9 @@
 		D0DA00000000000000000003 /* DawarichStatusRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/DawarichStatusRow.swift; sourceTree = SOURCE_ROOT; };
 		D0DA00000000000000000005 /* ServerQRCodeScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/ServerQRCodeScanner.swift; sourceTree = SOURCE_ROOT; };
 		D0DA00000000000000000007 /* DawarichServerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/DawarichServerTests.swift; sourceTree = SOURCE_ROOT; };
+		D0DA00000000000000000009 /* ServerQRReview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/ServerQRReview.swift; sourceTree = SOURCE_ROOT; };
+		D0DA0000000000000000000B /* ServerQRReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/ServerQRReviewView.swift; sourceTree = SOURCE_ROOT; };
+		D0DA0000000000000000000D /* ServerQRReviewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/ServerQRReviewTests.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -472,6 +478,7 @@
 				A01100000000000000000001 /* WhereWolfTests.m */,
 				C0B0A0000000000000000007 /* OnboardingTests.swift */,
 				D0DA00000000000000000007 /* DawarichServerTests.swift */,
+				D0DA0000000000000000000D /* ServerQRReviewTests.swift */,
 				C0F000000000000000000112 /* CoverageReportTests.swift */,
 				C0F000000000000000000110 /* ConnectionTestTests.swift */,
 				C0F00000000000000000010E /* SettingsBackupTests.swift */,
@@ -576,6 +583,8 @@
 				C0B0A0000000000000000005 /* OnboardingView.swift */,
 				C0B0A0000000000000000003 /* OnboardingServices.swift */,
 				D0DA00000000000000000005 /* ServerQRCodeScanner.swift */,
+				D0DA0000000000000000000B /* ServerQRReviewView.swift */,
+				D0DA00000000000000000009 /* ServerQRReview.swift */,
 				D0DA00000000000000000003 /* DawarichStatusRow.swift */,
 				D0DA00000000000000000001 /* DawarichServer.swift */,
 				C0B0A0000000000000000001 /* OnboardingModel.swift */,
@@ -921,6 +930,8 @@
 				C0B0A0000000000000000006 /* OnboardingView.swift in Sources */,
 				C0B0A0000000000000000004 /* OnboardingServices.swift in Sources */,
 				D0DA00000000000000000006 /* ServerQRCodeScanner.swift in Sources */,
+				D0DA0000000000000000000C /* ServerQRReviewView.swift in Sources */,
+				D0DA0000000000000000000A /* ServerQRReview.swift in Sources */,
 				D0DA00000000000000000004 /* DawarichStatusRow.swift in Sources */,
 				D0DA00000000000000000002 /* DawarichServer.swift in Sources */,
 				C0B0A0000000000000000002 /* OnboardingModel.swift in Sources */,
@@ -999,6 +1010,7 @@
 				A01100000000000000000002 /* WhereWolfTests.m in Sources */,
 				C0B0A0000000000000000008 /* OnboardingTests.swift in Sources */,
 				D0DA00000000000000000008 /* DawarichServerTests.swift in Sources */,
+				D0DA0000000000000000000E /* ServerQRReviewTests.swift in Sources */,
 				C0F000000000000000000113 /* CoverageReportTests.swift in Sources */,
 				C0F000000000000000000111 /* ConnectionTestTests.swift in Sources */,
 				C0F00000000000000000010F /* SettingsBackupTests.swift in Sources */,

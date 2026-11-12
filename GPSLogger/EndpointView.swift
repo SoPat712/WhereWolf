@@ -7,7 +7,6 @@ struct EndpointView: View {
     @State private var uniqueId = false
     @State private var saved = false
     @State private var saveFailed = false
-    @State private var scanned = false
     @State private var acceptHTTP = false
     @State private var headers: [HeaderField] = []
     @State private var bridge = GLManagerBridge.shared
@@ -80,11 +79,8 @@ struct EndpointView: View {
                     .keyboardType(.URL)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
-                ServerQRCodeButton(onScan: scan)
-                if scanned {
-                    Text("Scanned. Review the server, then tap Save.")
-                        .font(.footnote).foregroundStyle(.secondary)
-                }
+                ServerQRCodeButton(current: serverValues, ownTracks: GLManager.shared().loggingModeCurrentValue.rawValue == 2, onUse: scan)
+                    .disabled(!headersValid)
             } header: {
                 SettingsSectionHeader(title: "Server Endpoint", topic: .destination)
             } footer: {
@@ -133,16 +129,14 @@ struct EndpointView: View {
             }
 
             ConnectionTestSection(enabled: validURL && headersValid) {
-                saved = bridge.saveServer(url: url, token: token, deviceId: deviceId, uniqueId: uniqueId,
-                                          acceptHTTP: acceptHTTP, headers: Dictionary(uniqueKeysWithValues: headers.map { ($0.name, $0.value) }))
+                saved = serverValues.save(using: bridge)
                 saveFailed = !saved
                 return saved
             }
 
             Section {
                 Button("Save") {
-                    saved = bridge.saveServer(url: url, token: token, deviceId: deviceId, uniqueId: uniqueId,
-                                              acceptHTTP: acceptHTTP, headers: Dictionary(uniqueKeysWithValues: headers.map { ($0.name, $0.value) }))
+                    saved = serverValues.save(using: bridge)
                     saveFailed = !saved
                 }
                 .disabled(!validURL || !headersValid)
@@ -168,7 +162,6 @@ struct EndpointView: View {
         .onChange(of: uniqueId) { _, _ in saved = false }
         .onChange(of: acceptHTTP) { _, _ in saved = false }
         .onChange(of: headers) { _, _ in saved = false }
-        .onChange(of: saved) { _, value in if value { scanned = false } }
         .onAppear {
             load()
             bridge.refresh()
@@ -176,27 +169,17 @@ struct EndpointView: View {
         }
     }
 
-    private func scan(_ text: String) -> Bool {
-        guard let code = DawarichServer.parseQRCode(text, ownTracks: GLManager.shared().loggingModeCurrentValue.rawValue == 2) else { return false }
-        switch code {
-        case .dawarich(let endpoint):
-            url = endpoint.absoluteString
-            token = ""
-        case .setupLink(_, let setup):
-            url = setup.endpoint
-            token = setup.token
-            deviceId = setup.deviceId
-            uniqueId = setup.uniqueId
-            if !setup.headers.isEmpty {
-                headers = setup.headers.sorted { $0.key < $1.key }.map { HeaderField(name: $0.key, value: $0.value) }
-            }
-        case .endpoint(let endpoint):
-            url = endpoint.absoluteString
-        }
-        saved = false
-        saveFailed = false
-        scanned = true
-        return true
+    private var serverValues: ServerQRValues {
+        ServerQRValues(endpoint: url, token: token, deviceId: deviceId, uniqueId: uniqueId,
+                       acceptHTTP: acceptHTTP,
+                       headers: Dictionary(headers.map { ($0.name, $0.value) }, uniquingKeysWith: { _, last in last }))
+    }
+
+    private func scan(_ review: ServerQRReview) async -> Bool {
+        saved = review.values.save(using: bridge)
+        saveFailed = !saved
+        if saved { load() }
+        return !saveFailed
     }
 
     private var connectionStatus: some View {
@@ -266,7 +249,6 @@ struct EndpointView: View {
         acceptHTTP = UserDefaults.standard.bool(forKey: GLConsiderHTTP200SuccessDefaultsName)
         headers = (gl.customHTTPHeaders ?? [:]).sorted { $0.key < $1.key }.map { HeaderField(name: $0.key, value: $0.value) }
         saved = false
-        scanned = false
     }
 
     private var headersValid: Bool {

@@ -110,6 +110,10 @@ writes its main thread's busy time per second, longest stretch and stretches ove
 gives the share of 120 Hz frames; Instruments cannot launch Release simulator builds, so simulator profiling
 uses a Debug build compiled with `-O`. The tour changes no settings, tracking or trips.
 
+Non-App Store builds open the QR review sheet with `-WhereWolfQRReviewPreview dawarich`,
+`-WhereWolfQRReviewPreview setup` or `-WhereWolfQRReviewPreview url`.
+These render fixtures use a sample host/account and fake key, with no camera, network probe or settings writes.
+
 Tests use an in-memory queue and mocked `wherewolf.test` requests. Objective-C tests
 reach app Swift types through protocols and `NSClassFromString`; never import the
 app's generated Swift header into the test target.
@@ -469,8 +473,11 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   `X-Dawarich-Version`; after authenticated health, `/api/v1/users/me` supplies the account email in memory only.
   `DawarichStatusRow` shows the server and known account, and other servers get no row. The probe sends no location and
   touches no queue, history or send statistics. Scan QR Code (VisionKit, shown only where supported) reads Dawarich's
-  account JSON `{"server_url", "api_key"}`, setup links through `ServerSetup.parse` and plain endpoints, and fills
-  the form for an explicit Save. Camera access is asked only on tap; frames are never stored.
+  account JSON `{"server_url", "api_key"}`, setup links through `ServerSetup.parse` and plain endpoints. A framed camera
+  tightens, pulses and draws a check on recognition, then turns off before a glass review card shows the host/prefix,
+  format and key presence. Dawarich checks use the scanned values; Use This Server saves through the form's existing
+  path, while Scan Again remounts the camera. Reduce Motion uses a quick fade. Camera access is asked only on tap;
+  frames are never stored.
 - **Connection test**: Settings → Destination and the guide's glass server sheet share one
   native section. Save edits through the bridge, then use a valid fix at most 30 seconds old
   or a separate one-shot location manager with a 15-second deadline. GLManager reuses

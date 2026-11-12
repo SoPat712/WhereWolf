@@ -362,6 +362,126 @@ final class DawarichServerTests: XCTestCase {
         XCTAssertTrue(result == .notDawarich)
     }
 
+    private func reviewProbe(status: Int = 200, headers: [String: String] = [:], error: URLError? = nil,
+                             accountStatus: Int = 200, accountData: Data = Data(), accountError: URLError? = nil,
+                             expectedAccountRequests: Int = 0) async throws -> DawarichReviewStatus {
+        var accountRequests = 0
+        DawarichTestProtocol.handler = { mock in
+            XCTAssertEqual(mock.request.httpMethod, "GET")
+            XCTAssertNil(mock.request.httpBody)
+            XCTAssertTrue(mock.request.value(forHTTPHeaderField: "Authorization") == "Bearer " + self.key)
+            XCTAssertTrue(mock.request.url?.query == nil)
+            switch mock.request.url?.path {
+            case "/api/v1/health":
+                if let error { mock.client?.urlProtocol(mock, didFailWithError: error) }
+                else { mock.respond(status: status, headers: headers) }
+            case "/api/v1/users/me":
+                accountRequests += 1
+                if let accountError { mock.client?.urlProtocol(mock, didFailWithError: accountError) }
+                else { mock.respond(status: accountStatus, headers: [:], data: accountData) }
+            default:
+                XCTFail("Unexpected review request")
+                mock.respond(status: 404, headers: [:])
+            }
+        }
+        let server = try XCTUnwrap(DawarichServer(endpoint: endpoint(), token: ""))
+        let result = await withCheckedContinuation { continuation in
+            server.probeForReview(headers: [:]) { continuation.resume(returning: $0) }
+        }
+        XCTAssertEqual(accountRequests, expectedAccountRequests)
+        return result
+    }
+
+    func testReviewProbeAuthenticatedHealthLoadsAccount() async throws {
+        let result = try await reviewProbe(headers: authenticatedHealth, accountData: userData(email: email),
+                                           expectedAccountRequests: 1)
+        XCTAssertTrue(result == .dawarich(version: "1.2.3", account: email))
+    }
+
+    func testReviewProbeRejectsUnauthenticatedHealthAndAuthorizationErrors() async throws {
+        let unsigned = try await reviewProbe(headers: ["X-Dawarich-Response": "Hey, I'm alive!"])
+        XCTAssertTrue(unsigned == .keyRejected)
+        for status in [401, 403] {
+            let result = try await reviewProbe(status: status, headers: authenticatedHealth)
+            XCTAssertTrue(result == .keyRejected)
+        }
+    }
+
+    func testReviewProbeTreatsMissingSignatureTransportAndOtherHTTPFailuresAsUnreachable() async throws {
+        let missingSignature = try await reviewProbe(headers: ["X-Dawarich-Version": "1.2.3"])
+        XCTAssertTrue(missingSignature == .unreachable)
+        let failure = try await reviewProbe(status: 500, headers: authenticatedHealth)
+        XCTAssertTrue(failure == .unreachable)
+        let timeout = try await reviewProbe(error: URLError(.timedOut))
+        XCTAssertTrue(timeout == .unreachable)
+    }
+
+    func testReviewProbeKeepsAuthenticatedServerWhenAccountCannotLoad() async throws {
+        for status in [401, 500] {
+            let result = try await reviewProbe(headers: authenticatedHealth, accountStatus: status,
+                                               accountData: userData(email: email), expectedAccountRequests: 1)
+            XCTAssertTrue(result == .dawarich(version: "1.2.3", account: nil))
+        }
+        let timeout = try await reviewProbe(headers: authenticatedHealth, accountError: URLError(.timedOut), expectedAccountRequests: 1)
+        XCTAssertTrue(timeout == .dawarich(version: "1.2.3", account: nil))
+        let malformed = try await reviewProbe(headers: authenticatedHealth, accountData: Data("{".utf8), expectedAccountRequests: 1)
+        XCTAssertTrue(malformed == .dawarich(version: "1.2.3", account: nil))
+    }
+
+    @MainActor func testReviewCheckTreatsUnrecognizedEndpointAsUnreachableWithoutRequest() {
+        DawarichTestProtocol.handler = { _ in XCTFail("Unexpected review request") }
+        let values = ServerQRValues(endpoint: "", token: "", deviceId: "", uniqueId: false, acceptHTTP: false, headers: [:])
+        let review = ServerQRReview(code: .endpoint(URL(string: endpoint("/upload", queryKey: false))!),
+                                    current: values, ownTracks: false)
+        let check = ServerQRReviewCheck()
+        XCTAssertTrue(check.status == .checking)
+        check.start(review)
+        XCTAssertTrue(check.status == .unreachable)
+        check.cancel()
+    }
+
+    @MainActor func testReviewCheckReplacesHealthProbeAndIgnoresCancelledResult() async throws {
+        try await checkReviewReplacesProbe(waitForAccount: false)
+    }
+
+    @MainActor func testReviewCheckReplacesAccountProbeAndIgnoresCancelledResult() async throws {
+        try await checkReviewReplacesProbe(waitForAccount: true)
+    }
+
+    @MainActor private func checkReviewReplacesProbe(waitForAccount: Bool) async throws {
+        let started = expectation(description: "Review probe started")
+        let cancelled = expectation(description: "Review probe cancelled")
+        let pausedPath = waitForAccount ? "/api/v1/users/me" : "/api/v1/health"
+        DawarichTestProtocol.handler = { mock in
+            switch mock.request.url?.path {
+            case pausedPath:
+                mock.onStop = { cancelled.fulfill() }
+                started.fulfill()
+            case "/api/v1/health":
+                mock.respond(status: 200, headers: self.authenticatedHealth)
+            default:
+                XCTFail("Unexpected review request")
+                mock.respond(status: 404, headers: [:])
+            }
+        }
+        let values = ServerQRValues(endpoint: "", token: "", deviceId: "", uniqueId: false, acceptHTTP: false, headers: [:])
+        let review = ServerQRReview(code: .dawarich(URL(string: endpoint())!), current: values, ownTracks: false)
+        let check = ServerQRReviewCheck()
+        check.start(review)
+        XCTAssertTrue(check.status == .checking)
+        await fulfillment(of: [started], timeout: 2)
+        var replacement = review
+        replacement.previewStatus = .dawarich(version: "replacement", account: nil)
+        check.start(replacement)
+        let stale = expectation(description: "Cancelled result stays ignored")
+        stale.isInverted = true
+        withObservationTracking { _ = check.status } onChange: { stale.fulfill() }
+        await fulfillment(of: [cancelled], timeout: 2)
+        await fulfillment(of: [stale], timeout: 0.1)
+        XCTAssertTrue(check.status == .dawarich(version: "replacement", account: nil))
+        check.cancel()
+    }
+
     @MainActor func testBridgeReplacesProbeAndClearResetsStatusWithoutSendStatistics() async throws {
         try await checkBridgeReplacesProbe(waitForAccount: false)
     }

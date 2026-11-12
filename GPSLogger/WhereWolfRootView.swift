@@ -14,6 +14,9 @@ enum SettingsDestination: Hashable {
 
 struct WhereWolfRootView: View {
     @State private var sceneID = UUID()
+#if !WHEREWOLF_APP_STORE
+    @State private var qrReviewPreview = ServerQRReview.preview()
+#endif
     @State private var selection = 0
     @State private var tabActivation = 0
     @State private var mapTab = 0
@@ -69,6 +72,12 @@ struct WhereWolfRootView: View {
                 OnboardingView(model: onboarding)
             }
         }
+#if !WHEREWOLF_APP_STORE
+        .sheet(item: $qrReviewPreview) { review in
+            ServerQRCodeSheet(current: review.values, ownTracks: review.ownTracks, preview: review,
+                              onUse: { _ in true })
+        }
+#endif
     }
 
     private var appContent: some View {
