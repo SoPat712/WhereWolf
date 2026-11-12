@@ -199,8 +199,10 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   action only once it's dismissed, so a CarPlay automation on a locked phone timed out after four minutes.
   Failures throw. Get Tracking Status keeps its dialog. Start Trip, End Trip and Send Now are also
   LiveActivityIntents for the widgets' buttons. Start Trip and Toggle Trip await the enabled trip
-  Live Activity for at most two seconds inside `perform()`, allowing background intent starts while
-  preserving audio hiding; other background starts still require foreground or an audio restore.
+  Live Activity for at most two seconds inside `perform()`. End Trip and Toggle Trip likewise await
+  tracking-activity restoration after the summary commits, bounded to seven seconds including its
+  five-second pedometer wait. These allowances preserve audio hiding; other background starts require
+  foreground or an audio restore.
   `INAlternativeAppNames` in the phone's Info.plist supplies "Werewolf" and
   "Where Wolf" for the App Shortcuts' application-name token. Keep the display
   name WhereWolf and the token in every phrase.
@@ -680,7 +682,7 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   the camera projection. Give Legal a 44-point touch target, try its native
   accessibility action, and fall back to Apple's Maps legal page if unavailable.
 - **`WhereWolfLocationEngine`** uses iOS 17 `CLLocationUpdate.liveUpdates` for
-  Best accuracy with automatic pausing. An active widget-backed tracking activity
+  Best accuracy with automatic pausing. An active or stale trip or widget-backed tracking activity
   (Status, Minimal, or Blank with Lock Screen Card on) supports background updates
   with the indicator off. With Always access and no active
   supporting Live Activity, indicator-off tracking falls back to `CLLocationManager`.
@@ -812,12 +814,15 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   empty Island views. Minimal and Status always include the card; Live Activities shows
   its toggle on and disabled, and hides it when tracking activities are off.
   The shared `TrackingLockScreenCard` shows status, last fix/send, queue count and
-  Send Now. A trip adds mode, distance, live duration and End Trip; omit the trip
-  line while a separate trip activity is active. Fix, distance and queue growth
-  changes coalesce to 60 seconds; sends, queue drains, trip/status changes and
+  Send Now. Without a separate trip activity, a trip adds mode, distance, live duration and End Trip.
+  Fix, distance and queue growth changes coalesce to 60 seconds; sends, queue drains, trip/status changes and
   reminder deadlines update immediately. Observe queue, send, trip and engine
   events without requiring a scene. End and recover both types; replace the type
   when appearance or card selection requires it.
+  Tracking steps aside only after a trip activity is active or stale; this is not dismissal.
+  The widget-backed trip supports background location updates. Restore eligible tracking before
+  ending it in foreground or within End Trip/Toggle Trip's bounded intent allowance; other background
+  ends use the engine fallback until foreground. Audio-hidden trips reserve restoration for the trip.
   Trip relevance is 100; tracking remains zero. Background intent starts expand the trip once with a
   bundled silent alert sound; later updates never alert. Relevance ranks WhereWolf's own activities, not other apps;
   iOS controls which activity occupies the main Island or a detached bubble.

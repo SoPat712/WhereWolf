@@ -592,6 +592,69 @@ final class BackgroundRuntimeTests: XCTestCase {
         }
     }
 
+    @MainActor func testTripActivityReplacesWidgetAndAppOnlyTrackingThenRestoresTracking() async throws {
+        for appearance in ["minimal", "blank"] {
+            try await withTrackingActivity { _ in
+                let runtime = WhereWolfBackgroundRuntime.shared
+                let manager = GLManager.shared()!
+                let defaults = UserDefaults.standard
+                defer {
+                    defaults.removeObject(forKey: GLTripStartTimeDefaultsName)
+                    manager.tripLiveActivityEnabled = false
+                }
+                manager.useNewLocationEngine = true
+                manager.showBackgroundLocationIndicator = false
+                manager.showBackgroundLocationIndicatorDuringTrip = false
+                runtime.appearance = appearance
+                try await waitUntil {
+                    runtime.activityStatus == "Active"
+                        && (appearance == "blank" ? !Activity<IslandOnlyTrackingAttributes>.activities.isEmpty
+                            : !Activity<TrackingActivityAttributes>.activities.isEmpty)
+                }
+                defaults.set(Date(), forKey: GLTripStartTimeDefaultsName)
+                manager.tripLiveActivityEnabled = true
+                try await waitUntil {
+                    WhereWolfBackgroundRuntime.tripActivityState == .active
+                        && !WhereWolfBackgroundRuntime.hasActiveTrackingActivity
+                        && runtime.activityStatus == "Stepped aside for the trip"
+                        && WhereWolfLocationEngine.shared.usingLiveUpdates
+                }
+                XCTAssertTrue(WhereWolfBackgroundRuntime.hasBackgroundLocationActivity)
+                XCTAssertFalse(WhereWolfLocationEngine.shared.hasBackgroundSession)
+                defaults.removeObject(forKey: GLTripStartTimeDefaultsName)
+                manager.syncTripLiveActivity()
+                try await waitUntil {
+                    Activity<TripActivityAttributes>.activities.isEmpty && runtime.activityStatus == "Active"
+                        && WhereWolfBackgroundRuntime.hasActiveTrackingActivity
+                        && WhereWolfLocationEngine.shared.usingLiveUpdates == (appearance != "blank")
+                }
+            }
+        }
+    }
+
+    @MainActor func testStoppingTrackingDuringTripDoesNotRestoreTrackingActivity() async throws {
+        try await withTrackingActivity { _ in
+            let manager = GLManager.shared()!
+            let defaults = UserDefaults.standard
+            defer {
+                defaults.removeObject(forKey: GLTripStartTimeDefaultsName)
+                manager.tripLiveActivityEnabled = false
+            }
+            defaults.set(Date(), forKey: GLTripStartTimeDefaultsName)
+            manager.tripLiveActivityEnabled = true
+            try await waitUntil {
+                WhereWolfBackgroundRuntime.tripActivityState == .active
+                    && !WhereWolfBackgroundRuntime.hasActiveTrackingActivity
+            }
+            manager.stopAllUpdates()
+            try await waitUntil {
+                Activity<TripActivityAttributes>.activities.isEmpty && !WhereWolfBackgroundRuntime.hasActiveTrackingActivity
+            }
+            XCTAssertFalse(manager.trackingEnabled)
+            XCTAssertFalse(WhereWolfBackgroundRuntime.hasBackgroundLocationActivity)
+        }
+    }
+
     @MainActor func testAudioHidesAndRestoresSeparateTripActivityWithoutEndingTrip() async throws {
         try await withTrackingActivity { _ in
             let runtime = WhereWolfBackgroundRuntime.shared
@@ -610,7 +673,13 @@ final class BackgroundRuntimeTests: XCTestCase {
             }
             defaults.set(start, forKey: GLTripStartTimeDefaultsName)
             manager.tripLiveActivityEnabled = true
-            try await waitUntil { Activity<TripActivityAttributes>.activities.contains { $0.activityState == .active } }
+            try await waitUntil {
+                Activity<TripActivityAttributes>.activities.contains { $0.activityState == .active }
+                    && !WhereWolfBackgroundRuntime.hasActiveTrackingActivity
+                    && runtime.activityStatus == "Stepped aside for the trip"
+            }
+            XCTAssertTrue(WhereWolfBackgroundRuntime.hasBackgroundLocationActivity)
+            XCTAssertEqual(runtime.activityStatus, "Stepped aside for the trip")
             runtime.hideWhileAudioPlays = true
             try clock.fireNext()
             try await waitUntil {
@@ -624,12 +693,16 @@ final class BackgroundRuntimeTests: XCTestCase {
             try clock.fireNext()
             try await waitUntil {
                 Activity<TripActivityAttributes>.activities.contains { $0.activityState == .active }
-                    && WhereWolfBackgroundRuntime.hasActiveTrackingActivity
+                    && !WhereWolfBackgroundRuntime.hasActiveTrackingActivity
+                    && runtime.activityStatus == "Stepped aside for the trip"
             }
             XCTAssertEqual(manager.currentTripStart(), start)
             defaults.removeObject(forKey: GLTripStartTimeDefaultsName)
             manager.syncTripLiveActivity()
-            try await waitUntil { Activity<TripActivityAttributes>.activities.isEmpty }
+            try await waitUntil {
+                Activity<TripActivityAttributes>.activities.isEmpty && WhereWolfBackgroundRuntime.hasActiveTrackingActivity
+                    && runtime.activityStatus == "Active"
+            }
         }
     }
 
@@ -842,7 +915,7 @@ final class BackgroundRuntimeTests: XCTestCase {
         }
         let runtime = WhereWolfBackgroundRuntime.shared
         let manager = GLManager.shared()!
-        XCTFail("Timed out waiting for \(description): activity=\(runtime.activityStatus), audio=\(runtime.audioStatus), appState=\(UIApplication.shared.applicationState.rawValue), tracking=\(manager.trackingEnabled), authorization=\(manager.locationManager.authorizationStatus.rawValue), appearance=\(runtime.appearance), hideForAudio=\(runtime.hideWhileAudioPlays), widgetActivities=\(Activity<TrackingActivityAttributes>.activities.count), blankActivities=\(Activity<IslandOnlyTrackingAttributes>.activities.count)", file: file, line: line)
+        XCTFail("Timed out waiting for \(description): activity=\(runtime.activityStatus), audio=\(runtime.audioStatus), appState=\(UIApplication.shared.applicationState.rawValue), tracking=\(manager.trackingEnabled), authorization=\(manager.locationManager.authorizationStatus.rawValue), appearance=\(runtime.appearance), hideForAudio=\(runtime.hideWhileAudioPlays), widgetActivities=\(Activity<TrackingActivityAttributes>.activities.count), blankActivities=\(Activity<IslandOnlyTrackingAttributes>.activities.count), tripActivities=\(Activity<TripActivityAttributes>.activities.count)", file: file, line: line)
         throw NSError(domain: "BackgroundRuntimeTests", code: 1)
     }
 

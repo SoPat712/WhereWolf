@@ -42,7 +42,7 @@ final class TripLiveActivityRequestPolicyTests: XCTestCase {
     }
 
     func testIntentAllowanceCannotStartAnotherTrip() {
-        let intent = TripLiveActivityRequestPolicy.IntentStart(tripStart: tripStart.addingTimeInterval(-60), now: 100)
+        let intent = TripLiveActivityRequestPolicy.IntentAllowance(tripStart: tripStart.addingTimeInterval(-60), now: 100)
         XCTAssertEqual(decision(intent: intent), .deferRequest)
     }
 
@@ -69,13 +69,13 @@ final class TripLiveActivityRequestPolicyTests: XCTestCase {
         XCTAssertTrue(data[44...].allSatisfy { $0 == 0 })
     }
 
-    private func intentStart() -> TripLiveActivityRequestPolicy.IntentStart {
+    private func intentStart() -> TripLiveActivityRequestPolicy.IntentAllowance {
         .init(tripStart: tripStart, now: 100)
     }
 
     private func decision(enabled: Bool = true, authorized: Bool = true, requestPending: Bool = true,
                           isActive: Bool = false, audioAction: LiveActivityAudioPolicy.Action = .keep,
-                          intent: TripLiveActivityRequestPolicy.IntentStart? = nil,
+                          intent: TripLiveActivityRequestPolicy.IntentAllowance? = nil,
                           now: TimeInterval = 100) -> TripLiveActivityRequestPolicy.Decision {
         TripLiveActivityRequestPolicy.decision(tripStart: tripStart, enabled: enabled, authorized: authorized,
             requestPending: requestPending, isActive: isActive, audioAction: audioAction, intentStart: intent, now: now)

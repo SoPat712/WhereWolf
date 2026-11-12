@@ -20,9 +20,14 @@ struct TripLiveActivityWidget: Widget {
                         Text(TripFormat.modeName(context.state.mode))
                             .font(.headline)
                     }
+                    // The expanded Island's top corners also clip content that sits close to them.
+                    .padding(.leading, 8)
+                    .padding(.top, 6)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
                     TripStat(value: TripFormat.speed(context.state.speed), unit: TripFormat.speedUnit)
+                        .padding(.trailing, 8)
+                        .padding(.top, 6)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     VStack(spacing: 8) {

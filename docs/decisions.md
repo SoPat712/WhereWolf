@@ -353,6 +353,13 @@ This log lists the decisions agents made on their own while working on WhereWolf
 - **Decided:** the same framing and found moment, then a review sheet at 70% height. iOS draws it as glass over the app, like the setup guide; a regular glass card on an opaque sheet frosted to white in the first render. The card names the kind of code, the server and format, and says "API key included" without showing the key. For a Dawarich code it checks the scanned key live and shows the version and account. Use This Server saves through the same path as Save, and Scan Again remounts the camera. A launch argument opens the review on the simulator for renders, compiled out of App Store builds. The camera steps are not yet tried on the phone.
 - **Undo:** `git revert d0c20ff`.
 
+## 2026-11-12: the trip is WhereWolf's only Live Activity during a trip
+
+- **Asked for:** "Give this trip live activity highest priority!" After swiping the trip toward the middle of the Island, "it won't come back". The expanded Island also cut off the car icon.
+- **Found:** a trip ran two WhereWolf activities: the trip and the tracking activity, which is Blank on the owner's phone. With two activities a swipe toward the middle hides the attached one and promotes the other, so the swipe promoted an empty activity and left nothing to swipe back. `relevanceScore` only orders an app's own activities; iOS chooses between apps. The icon was clipped by the Island's top corner. I first blamed the custom symbols' weight masters, whose paths don't match (25 of 48), but that wasn't the cause, and they are unchanged.
+- **Decided:** the tracking activity ends once the trip activity is active or stale and returns when the trip ends. The trip activity counts as background-location support. The tracking activity is requested before the trip activity ends, in the foreground or within End Trip / Toggle Trip's intent run (at most seven seconds, including the summary's pedometer wait). Other background ends use the engine's normal fallback until the app opens. The expanded Island's mode and speed sit 8 points in and 6 down from its top corners, like the buttons' inset.
+- **Undo:** revert the commit.
+
 ## Deferred for the owner
 
 - **Watch complication for Today:** it needs a new watch widget extension and bundle identifier, which is an Apple developer account change.

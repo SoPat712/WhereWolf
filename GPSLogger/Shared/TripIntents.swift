@@ -114,7 +114,9 @@ struct EndTripIntent: AppIntent {
         #if WHEREWOLF_APP
         // A CarPlay reconnect runs the disconnect automation with no trip in progress.
         guard GLManager.shared().tripInProgress() else { return .result() }
+        let tripStart = GLManager.shared().currentTripStart()
         GLTripActions.endTripRestoringTracking()
+        await TripLiveActivityController.shared.restoreTrackingFromIntent(tripStart: tripStart)
         SharedStateObserver.shared.tripChanged(inProgress: false)
         #endif
         return .result()
@@ -176,7 +178,9 @@ struct ToggleTripIntent: SetValueIntent, LiveActivityIntent {
                 await TripLiveActivityController.shared.requestFromIntent(tripStart: manager.currentTripStart())
             }
         } else {
+            let tripStart = manager.currentTripStart()
             GLTripActions.endTripRestoringTracking()
+            await TripLiveActivityController.shared.restoreTrackingFromIntent(tripStart: tripStart)
         }
         SharedStateObserver.shared.tripChanged(inProgress: value)
         #endif

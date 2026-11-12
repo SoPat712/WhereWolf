@@ -64,8 +64,16 @@ private enum TrackingActivityHandle {
 
     static var hasActiveTrackingActivity: Bool { TrackingActivityHandle.all.contains { $0.isActive } }
 
+    static var tripActivityState: TrackingActivityHandoffPolicy.TripActivity {
+        let states = Activity<TripActivityAttributes>.activities.map(\.activityState)
+        if states.contains(.active) { return .active }
+        if states.contains(.stale) { return .stale }
+        return .absent
+    }
+
     static var hasBackgroundLocationActivity: Bool {
-        TrackingActivityHandle.all.contains { $0.isActive && !$0.isIslandOnly }
+        (tripActivityState.supportsBackgroundLocation && !TripLiveActivityController.shared.endingActivities)
+            || (!shared.endingTrackingActivities && TrackingActivityHandle.all.contains { $0.isActive && !$0.isIslandOnly })
     }
 
     private enum Key {
@@ -106,6 +114,9 @@ private enum TrackingActivityHandle {
     @ObservationIgnored private var started = false
     @ObservationIgnored private var suppressed = false
     @ObservationIgnored private var wasEligible = false
+    @ObservationIgnored private var tripActivityEnding = false
+    @ObservationIgnored private var endingTripStart: Date?
+    @ObservationIgnored private var endingTrackingActivities = false
     @ObservationIgnored private var lastUpdate = Date.distantPast
     @ObservationIgnored private var lastContent: TrackingActivityAttributes.ContentState?
     @ObservationIgnored var audioDependencies = AudioDependencies() {
@@ -388,19 +399,26 @@ private enum TrackingActivityHandle {
     private func updateActivity() async {
         let current = revision
         let kind: LiveActivityAudioPolicy.Kind = appearance == "blank" ? .blank : appearance == "status" ? .status : .minimal
-        let audioAction = audioAction(for: kind, eligible: eligible && liveActivityEnabled,
+        let steppingAside = trackingHandoffDecision(audioAction: .keep) == .stepAside
+        let audioAction = audioAction(for: kind, eligible: eligible && liveActivityEnabled && !steppingAside,
                                       hasActivity: Self.hasActiveTrackingActivity)
+        let handoff = trackingHandoffDecision(audioAction: audioAction)
         guard eligible && liveActivityEnabled else {
             await endActivities()
             activityStatus = liveActivityEnabled ? "Waiting for tracking and location access" : "Off"
             return
         }
-        if audioAction == .hide {
+        if handoff == .stepAside {
+            if activity != nil || Self.hasActiveTrackingActivity { await endActivities() }
+            activityStatus = "Stepped aside for the trip"
+            return
+        }
+        if handoff == .hideForAudio {
             if activity != nil || Self.hasActiveTrackingActivity { await endActivities() }
             activityStatus = "Hidden while other audio plays"
             return
         }
-        if audioAction == .waitForForeground {
+        if handoff == .waitForAudioRestore {
             activityStatus = "Open WhereWolf to restore the Live Activity"
             return
         }
@@ -444,7 +462,7 @@ private enum TrackingActivityHandle {
             activityStatus = "Ended or dismissed · reopen the app or retry"
             return
         }
-        guard UIApplication.shared.applicationState == .active || audioAction == .restore else {
+        guard trackingHandoffDecision(audioAction: audioAction) == .request else {
             activityStatus = "Open WhereWolf to start the Live Activity"
             return
         }
@@ -486,12 +504,38 @@ private enum TrackingActivityHandle {
                      trackingStatus: !gl.trackingEnabled ? .stopped : paused ? .paused : .tracking,
                      tripModeName: trip ? TripModeStore.name(gl.currentTripMode) : nil,
                      tripStart: gl.currentTripStart(), tripDistance: trip && distance.isFinite ? max(0, distance) : nil,
-                     separateTripActivity: Activity<TripActivityAttributes>.activities.contains {
-                         $0.activityState == .active || $0.activityState == .stale
-                     })
+                     separateTripActivity: Self.tripActivityState.supportsBackgroundLocation)
     }
 
     func tripActivityChanged() { refresh() }
+
+    func prepareForTripActivityEnd(tripStart: Date?) async {
+        tripActivityEnding = true
+        endingTripStart = tripStart
+        refresh()
+        await updateTask?.value
+    }
+
+    func finishTripActivityEnd() {
+        tripActivityEnding = false
+        endingTripStart = nil
+        refresh()
+    }
+
+    private func trackingHandoffDecision(audioAction: LiveActivityAudioPolicy.Action) -> TrackingActivityHandoffPolicy.Decision {
+        var tripActivity = Self.tripActivityState
+        let gl = GLManager.shared()!
+        if tripActivity == .absent && gl.tripInProgress() && gl.tripLiveActivityEnabled
+            && audioPolicy.hasPendingRestore(for: .trip) {
+            tripActivity = .audioHidden
+        }
+        return TrackingActivityHandoffPolicy.decision(tripActivity: tripActivity,
+            endingTripActivity: tripActivityEnding, trackingEligible: eligible && liveActivityEnabled,
+            hasTrackingActivity: Self.hasActiveTrackingActivity,
+            isForeground: UIApplication.shared.applicationState == .active, audioAction: audioAction,
+            endingTripStart: endingTripStart, intentEnd: TripLiveActivityController.shared.trackingRestoreIntent,
+            now: ProcessInfo.processInfo.systemUptime)
+    }
 
     private func endActivities() async {
         delayedUpdate?.cancel()
@@ -500,8 +544,13 @@ private enum TrackingActivityHandle {
         activityObserver = nil
         activity = nil
         lastContent = nil
-        for old in TrackingActivityHandle.all { await old.end() }
+        endingTrackingActivities = true
         GLManager.shared().updateLocationEngine()
+        defer {
+            endingTrackingActivities = false
+            GLManager.shared().updateLocationEngine()
+        }
+        for old in TrackingActivityHandle.all { await old.end() }
     }
 
     private func observe(_ activity: TrackingActivityHandle) {

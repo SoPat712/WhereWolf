@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A13B00000000000000000002 /* TrackingActivityHandoffPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13B00000000000000000001 /* TrackingActivityHandoffPolicy.swift */; };
+		A13B00000000000000000004 /* TrackingActivityHandoffPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13B00000000000000000003 /* TrackingActivityHandoffPolicyTests.swift */; };
 		A13A00000000000000000002 /* TripLiveActivityRequestPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13A00000000000000000001 /* TripLiveActivityRequestPolicy.swift */; };
 		A13A00000000000000000004 /* TripLiveActivityRequestPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13A00000000000000000003 /* TripLiveActivityRequestPolicyTests.swift */; };
 		A13A00000000000000000006 /* TripStartSilence.wav in Resources */ = {isa = PBXBuildFile; fileRef = A13A00000000000000000005 /* TripStartSilence.wav */; };
@@ -225,6 +227,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		A13B00000000000000000001 /* TrackingActivityHandoffPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/LiveActivity/TrackingActivityHandoffPolicy.swift; sourceTree = SOURCE_ROOT; };
+		A13B00000000000000000003 /* TrackingActivityHandoffPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/TrackingActivityHandoffPolicyTests.swift; sourceTree = SOURCE_ROOT; };
 		A13A00000000000000000001 /* TripLiveActivityRequestPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/LiveActivity/TripLiveActivityRequestPolicy.swift; sourceTree = SOURCE_ROOT; };
 		A13A00000000000000000003 /* TripLiveActivityRequestPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/TripLiveActivityRequestPolicyTests.swift; sourceTree = SOURCE_ROOT; };
 		A13A00000000000000000005 /* TripStartSilence.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = GPSLogger/LiveActivity/TripStartSilence.wav; sourceTree = SOURCE_ROOT; };
@@ -499,6 +503,7 @@
 				B08800000000000000000052 /* LiveActivityAudioPolicyTests.swift */,
 				B08800000000000000000056 /* LiveActivityReopenPromptTests.swift */,
 				A13A00000000000000000003 /* TripLiveActivityRequestPolicyTests.swift */,
+				A13B00000000000000000003 /* TrackingActivityHandoffPolicyTests.swift */,
 				A09900000000000000000021 /* TipDonationTests.swift */,
 				B08800000000000000000014 /* TrackingActivity */,
 				6DEC9B3621F3F88500D9E8C4 /* WhereWolf.entitlements */,
@@ -514,6 +519,7 @@
 				3E3B58A80A63E1DB5824D0A8 /* SharedStateObserver.swift */,
 				4CA9E95D988A1EFBA8532E4D /* TripLiveActivityController.swift */,
 				A13A00000000000000000001 /* TripLiveActivityRequestPolicy.swift */,
+				A13B00000000000000000001 /* TrackingActivityHandoffPolicy.swift */,
 				A13A00000000000000000005 /* TripStartSilence.wav */,
 				007A0E62CFBBFA8FE9DEADC3 /* TripModesView.swift */,
 				13B6E06D1F014687E75390A3 /* AppleHealthSettingsView.swift */,
@@ -988,6 +994,7 @@
 				5BB8EF3C5CA85922D301E133 /* SharedStateObserver.swift in Sources */,
 				80437EB826C8A904ACDF70BB /* TripLiveActivityController.swift in Sources */,
 				A13A00000000000000000002 /* TripLiveActivityRequestPolicy.swift in Sources */,
+				A13B00000000000000000002 /* TrackingActivityHandoffPolicy.swift in Sources */,
 				D1DD2EEF17FE44F979CA2C48 /* TripModesView.swift in Sources */,
 				4F04FB995B6FEC63BBAD2D53 /* AppleHealthSettingsView.swift in Sources */,
 				B030BC96F749619DECB8DE60 /* TripModes.swift in Sources */,
@@ -1025,6 +1032,7 @@
 				B08800000000000000000053 /* LiveActivityAudioPolicyTests.swift in Sources */,
 				B08800000000000000000057 /* LiveActivityReopenPromptTests.swift in Sources */,
 				A13A00000000000000000004 /* TripLiveActivityRequestPolicyTests.swift in Sources */,
+				A13B00000000000000000004 /* TrackingActivityHandoffPolicyTests.swift in Sources */,
 				A0CC00000000000000000002 /* HistoryPlaybackTests.swift in Sources */,
 				D1F600000000000000000006 /* HistoryLandmarkTests.swift in Sources */,
 				C0A7C4000000000000000018 /* WatchLinkTests.swift in Sources */,
