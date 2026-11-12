@@ -316,6 +316,8 @@ struct NativeMapSurface: UIViewRepresentable {
     var replayOverview = false
     // The trip opened from the Trip tab, as route indices: drawn red, and fitted by the overview.
     var replayHighlight: ClosedRange<Int>? = nil
+    // The overview's fit for that trip, which is its nearest fix when it has none of its own.
+    var replayFitRange: ClosedRange<Int>? = nil
     var rulerZoom: ReplayRulerHold? = nil
     var rulerScaleChannel: RulerScaleChannel? = nil
     var replayPoseChannel: ReplayPoseChannel? = nil
@@ -977,7 +979,7 @@ struct NativeMapSurface: UIViewRepresentable {
         private func applyPosition(_ map: MKMapView, animated: Bool, force: Bool = false) {
             let next: Request
             if parent.replayOverview, let route = parent.replayRoute {
-                next = .overview(ObjectIdentifier(route), parent.replayHighlight)
+                next = .overview(ObjectIdentifier(route), parent.replayFitRange)
             } else if parent.replayFollowing, parent.replayRoute != nil, let coordinate = parent.selected {
                 next = .camera(MapCamera(centerCoordinate: coordinate,
                     distance: rulerDistance ?? parent.replayFollowDistance ?? parent.position.camera?.distance ?? 2_000,
@@ -1551,7 +1553,7 @@ struct NativeMapSurface: UIViewRepresentable {
         fileprivate func replayOverviewCamera(on map: MKMapView) -> MapCamera? {
             guard let route = replayRoute else { return nil }
             let clear = NativeMapSurface.replayClearRect(on: map)
-            let highlight = parent.replayHighlight.flatMap { range in
+            let highlight = parent.replayFitRange.flatMap { range in
                 range.upperBound < route.coordinates.count ? range : nil
             }
             if let fit = overviewFit, fit.route == ObjectIdentifier(route), fit.highlight == highlight, fit.bounds == map.bounds,

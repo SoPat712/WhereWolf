@@ -253,6 +253,7 @@ struct WhereWolfRootView: View {
                                 replayFollowDistance: replayCameraDistance ?? 2_000,
                                 replayOverview: mapTab == 0 && replayOverview,
                                 replayHighlight: mapTab == 0 ? history.highlightedRange : nil,
+                                replayFitRange: mapTab == 0 ? history.highlightedFitRange : nil,
                                 rulerZoom: mapTab == 0 ? history.rulerZoom : nil,
                                 rulerScaleChannel: mapTab == 0 ? history.rulerScaleChannel : nil,
                                 replayPoseChannel: mapTab == 0 ? history.poseChannel : nil,

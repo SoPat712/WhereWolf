@@ -293,6 +293,7 @@ final class MapChromeTests: XCTestCase {
             // As in the app, an opened trip still follows the replay while its overview fits only the trip.
             surface.replayOverview = true
             surface.replayHighlight = 5...8
+            surface.replayFitRange = 5...8
             surface.replayPosition = 5
             surface.selected = coordinates[5]
             surface.replayCameraAction += 1

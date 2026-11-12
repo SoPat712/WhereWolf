@@ -366,6 +366,20 @@ This log lists the decisions agents made on their own while working on WhereWolf
 - **Decided:** the Island and Lock Screen show the mode in a green badge with a still red recording dot (Live Activities can't loop an animation), the time, distance with average speed (pace on foot) and top speed, climb on the Lock Screen, and a north-up sketch of the trip so far in the map's blue, ending at a ringed marker. The sketch is at most 48 quantized shape points with no coordinates, built from the same ordered trip fixes as top speed and climb, from a buffer of at most 384 fixes, and sent with the existing 15-second updates. Compact shows the icon with a red dot and the time; minimal rings the icon in red. The views are shared with the app so a non-App Store launch argument renders them on the simulator with invented data. A map behind the Island's sketch is next (Island only, at the owner's choice).
 - **Undo:** `git revert 98cd3fa`.
 
+## 2026-11-12: a map behind the trip route, and an expanded Island that fits
+
+- **Asked for:** "can we put a map behind it", then "build it for lock screen too! default on! but keep the setting to turn it off for privacy". From the phone: the expanded Island cut off Send Now and End Trip, and had no map.
+- **Found:** the real expanded Island is 380 by 158 points on a 402-point phone and cuts its content off about 13 points above its bottom edge; content starts 17 points down and the regions sit 11 apart. The simulator mock let content run to the edge, so the first renders hid the overflow. `MKMapSnapshotter.Options.showsBuildings` is ignored on current iOS.
+- **Decided:** the app renders small dark Apple Maps snapshots (flat, muted, no points of interest, under a 45% black wash), one per presentation at its own size and 2x, into the App Group, and the activity draws the route in each snapshot's own Mercator frame so it lines up exactly. Snapshots refresh when the route leaves the inner margin, at most every two minutes, and only the current and previous pair are kept, backup-excluded, deleted when the trip or activity ends. Map on Lock Screen (Settings → Live Activities, on by default, in backup and sync) turns the Lock Screen map off and deletes its images; the privacy policy says so and that map data is fetched in the background. Then, at the owner's suggestion, Send Now and End Trip became round buttons stacked beside the map (as in the system's timer activity), the speed moved into a small badge in the map's corner, and average, top speed and climb stack beside it, so the map grows to 196 by 78 points in the Island and 196 by 88 on the Lock Screen, which keeps within its 160-point limit. The preview mock clips both like the phone.
+- **Undo:** revert the commit.
+
+## 2026-11-12: opening a trip that never moved
+
+- **Asked for:** "pressing on a 0.00 mile didn't move trip zooms me out all the way".
+- **Found:** a trip that never moved can have no stored fix between its start and end. It then had no highlight range, and the overview fell back to fitting the whole loaded history.
+- **Decided:** the map fits an opened trip by a separate range, which is the trip's own fixes or, when it has none, the fix nearest its start, so the overview shows that spot with its usual 150-meter minimum. The red trip line still draws only the trip's own fixes.
+- **Undo:** revert the commit.
+
 ## Deferred for the owner
 
 - **Watch complication for Today:** it needs a new watch widget extension and bundle identifier, which is an Apple developer account change.

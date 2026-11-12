@@ -1900,6 +1900,7 @@ final class HistoryPlaybackTests: XCTestCase {
         XCTAssertEqual(model.highlightedRange, 2...2)
         model.showTrip(start.addingTimeInterval(130)...start.addingTimeInterval(170))
         XCTAssertNil(model.highlightedRange, "A trip between two fixes has none of its own")
+        XCTAssertEqual(model.highlightedFitRange, 2...2, "It fits the fix nearest its start, not the whole history")
         model.showTrip(start...start.addingTimeInterval(600))
         model.returnToLive()
         XCTAssertNil(model.highlightedTrip)

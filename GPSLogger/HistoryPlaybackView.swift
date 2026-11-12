@@ -665,6 +665,15 @@ final class HistoryPlaybackModel {
         return start <= end ? start...end : nil
     }
 
+    // What the map fits for an opened trip. A trip with no fix of its own, such as one that never moved, fits the
+    // fix nearest its start rather than the whole history.
+    var highlightedFitRange: ClosedRange<Int>? {
+        if let range = highlightedRange { return range }
+        guard let trip = highlightedTrip,
+              let index = landmarks.nearestPoint(to: trip.lowerBound, pointCount: points.count) else { return nil }
+        return index...index
+    }
+
     func togglePlayback() {
         interruptRuler()
         if isPlaying {
