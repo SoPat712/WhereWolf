@@ -339,6 +339,13 @@ This log lists the decisions agents made on their own while working on WhereWolf
 - **Later the same evening:** the owner turned down using Dawarich's server-side tracking settings ("our specialty is tracking") and asked for the account instead. After the key is accepted, `GET /api/v1/users/me` shows its email in an Account row, kept in memory only (5c94514). Family sharing may come later.
 - **Undo:** `git revert 5c94514 1d0fe6f`.
 
+## 2026-11-12: CarPlay-started trips show in the Dynamic Island (fb10584)
+
+- **Asked for:** "starting that trip from carplay should show/focus the live activity in the dynamic island!"
+- **Found:** `TripLiveActivityController` requested the trip activity only while the app was active, or for an audio restore. A trip started by the CarPlay Shortcuts automation on a locked phone never got one, although Start Trip is a `LiveActivityIntent`, which ActivityKit lets start a Live Activity from the background while `perform()` runs.
+- **Decided:** Start Trip and the Control Center toggle request the trip activity inside `perform()`, waiting at most two seconds. Hide While Audio Plays still wins. Other background paths keep the old rule. The trip's relevance is 100 against the tracking activity's 0, so it takes the main Island. A background intent start expands it once, with a bundled silent sound, and later updates never alert. It still needs the trip Live Activity setting on. Not yet tried from the car.
+- **Undo:** `git revert fb10584`.
+
 ## Deferred for the owner
 
 - **Watch complication for Today:** it needs a new watch widget extension and bundle identifier, which is an Apple developer account change.
