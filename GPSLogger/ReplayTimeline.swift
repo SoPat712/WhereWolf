@@ -151,6 +151,10 @@ struct ReplayStatus: Equatable {
     let altitude: Double?
     let altitudeTrend: Int
     let legDistance: Double?
+    var stop: HistoryStop? = nil
+
+    var title: String { stop?.name ?? activity.title }
+    var symbol: String { stop?.symbol ?? activity.symbol }
 
     var time: Date { Date(timeIntervalSince1970: TimeInterval(minute) * 60) }
 
@@ -399,11 +403,13 @@ enum ReplayCameraFocus: Equatable {
 final class ReplayRouteGeometry {
     let coordinates: [CLLocationCoordinate2D]
     let pointIDs: [Int64]
+    let timestamps: [Date]
     private let directions: [CGVector?]
 
     init(points: [RecordedLocation], stays: [ReplayStay] = []) {
         coordinates = points.map(\.coordinate)
         pointIDs = points.map(\.id)
+        timestamps = points.map(\.timestamp)
         var directions = [CGVector?](repeating: nil, count: coordinates.count)
         let world = MKMapRect.world.width
         for index in coordinates.indices.dropFirst() {

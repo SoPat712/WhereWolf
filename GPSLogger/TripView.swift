@@ -258,7 +258,7 @@ struct TripView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 8)
         }
-        .glassButtonStyle(prominent: true, tint: recording ? .red : .green)
+        .glassButtonStyle(prominent: true, tint: recording ? .red : .blue)
     }
 
     private func toggleTrip() {

@@ -1,4 +1,5 @@
 import ActivityKit
+import MapKit
 import UIKit
 
 @MainActor
@@ -29,6 +30,23 @@ import UIKit
         controller.onChange = { [weak self] in self?.refresh(force: true) }
         return controller
     }()
+    private var newDataObserver: NSObjectProtocol?
+    private var lastFixAtlasPrepare = Date.distantPast
+
+    override init() {
+        super.init()
+        // A cold launch has no fix yet when the scene activates, and fixes reach this controller only during trips,
+        // so fixes while the app is open keep the saved maps around the current location.
+        newDataObserver = NotificationCenter.default.addObserver(forName: Notification.Name(GLNewDataNotification),
+                                                                 object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.trip == nil, UIApplication.shared.applicationState == .active,
+                      Date().timeIntervalSince(self.lastFixAtlasPrepare) >= 60 else { return }
+                self.lastFixAtlasPrepare = Date()
+                self.prepareMapAtlas()
+            }
+        }
+    }
     private enum IntentOperation { case start, end }
     private struct IntentRequest {
         let id: UUID
@@ -121,6 +139,7 @@ import UIKit
         if let previous = trip?.start, tripStart == nil { endingTripStart = previous }
         if tripStart != nil { endingTripStart = nil }
         trip = tripStart.map { Trip(start: $0, mode: mode, distance: distance, speed: speed) }
+        prepareMapAtlas()
         finalContent = nil
         requestPending = trip != nil
         refresh(force: true)
@@ -235,9 +254,26 @@ import UIKit
 
     private func updateMap() {
         let manager = GLManager.shared()!
+        prepareMapAtlas()
         mapController.update(points: tripStats?.routeMapPoints ?? [],
                              enabled: manager.tripLiveActivityEnabled && manager.trackingEnabled,
                              showsOnLockScreen: TripActivityMapSettings.showsOnLockScreen())
+    }
+
+    private func prepareMapAtlas() {
+        let manager = GLManager.shared()!
+        let anchor: MKMapPoint?
+        if manager.tripInProgress() {
+            anchor = tripStats?.routeMapPoints.last
+        } else if let location = manager.lastLocation,
+                  location.horizontalAccuracy.isFinite, location.horizontalAccuracy >= 0,
+                  CLLocationCoordinate2DIsValid(location.coordinate) {
+            anchor = MKMapPoint(location.coordinate)
+        } else {
+            anchor = nil
+        }
+        mapController.prepareAtlas(anchor: anchor, tripLiveActivityEnabled: manager.tripLiveActivityEnabled,
+                                   trackingEnabled: manager.trackingEnabled)
     }
 
     private func content(mode: String, distance: Double, speed: Double) -> ActivityContent<TripActivityAttributes.ContentState> {

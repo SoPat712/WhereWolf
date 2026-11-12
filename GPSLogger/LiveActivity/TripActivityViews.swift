@@ -28,7 +28,7 @@ struct TripModeIcon: View {
         Image(tripMode: mode)
             .resizable()
             .scaledToFit()
-            .foregroundStyle(.green)
+            .foregroundStyle(.blue)
     }
 }
 
@@ -79,7 +79,7 @@ private struct TripModeHeading: View {
             TripModeIcon(mode: mode)
                 .frame(width: lockScreen ? 19 : 16, height: lockScreen ? 19 : 16)
                 .frame(width: lockScreen ? 30 : 26, height: lockScreen ? 30 : 26)
-                .background(.green.opacity(0.14), in: Circle())
+                .background(.blue.opacity(0.16), in: Circle())
             Text(TripActivityFormat.modeName(mode) + (lockScreen ? " trip" : ""))
                 .font(.headline)
                 .lineLimit(1)
@@ -146,9 +146,7 @@ struct TripMinimalView: View {
 
     var body: some View {
         TripModeIcon(mode: mode)
-            .frame(width: 19, height: 19)
-            .frame(width: 30, height: 30)
-            .overlay { Circle().strokeBorder(.red, lineWidth: 2) }
+            .frame(width: 22, height: 22)
             .accessibilityLabel("\(TripActivityFormat.modeName(mode)), recording")
     }
 }
@@ -271,8 +269,8 @@ struct TripActionButtons: View {
                 Image(systemName: "arrow.up")
                     .font(.system(size: diameter * 0.42, weight: .bold))
                     .frame(width: diameter, height: diameter)
-                    .background(.green.opacity(0.22), in: Circle())
-                    .foregroundStyle(.green)
+                    .background(.blue.opacity(0.22), in: Circle())
+                    .foregroundStyle(.blue)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Send Now")

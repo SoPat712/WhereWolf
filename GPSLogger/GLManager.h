@@ -273,6 +273,7 @@ typedef NS_ENUM(NSInteger, GLSendStatus) {
 
 - (void)numberOfLocationsInQueue:(void(^)(long num))callback;
 - (void)numberOfObjectsInQueue:(void(^)(long locations, long trips, long stats))callback;
+- (void)loadQueuedReplayLocations:(void (^)(NSArray<NSDictionary *> *records))completion;
 - (void)accountInfo:(void(^)(NSString *name))block;
 - (NSSet <__kindof CLRegion *>*)monitoredRegions;
 

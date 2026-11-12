@@ -26,11 +26,11 @@ final class ServerQRReviewTests: XCTestCase {
         return try XCTUnwrap(DawarichServer.parseQRCode(String(decoding: data, as: UTF8.self), ownTracks: ownTracks))
     }
 
-    private func setupURL(scheme: String = "wherewolf", headers: [String: String] = [:]) -> URL {
+    private func setupURL(scheme: String = "wherewolf", path: String = "/upload", headers: [String: String] = [:]) -> URL {
         var parts = URLComponents()
         parts.scheme = scheme
         parts.host = "setup"
-        parts.queryItems = [URLQueryItem(name: "url", value: endpoint(path: "/upload").absoluteString),
+        parts.queryItems = [URLQueryItem(name: "url", value: endpoint(path: path).absoluteString),
                             URLQueryItem(name: "token", value: key),
                             URLQueryItem(name: "device_id", value: "scanned-phone"),
                             URLQueryItem(name: "unique_id", value: "yes")]
@@ -66,6 +66,55 @@ final class ServerQRReviewTests: XCTestCase {
         XCTAssertTrue(review.includesKey)
         XCTAssertEqual(review.format, "OwnTracks")
         XCTAssertTrue(review.destination == .server(endpoint: expected.endpoint, token: expected.token, ownTracks: true))
+    }
+
+    func testDawarichBadgeRecognizesAccountJSON() throws {
+        for ownTracks in [false, true] {
+            let review = ServerQRReview(code: try accountCode(ownTracks: ownTracks), current: current, ownTracks: ownTracks)
+            XCTAssertTrue(review.isDawarich)
+        }
+    }
+
+    func testDawarichBadgeRecognizesSetupLinksAndUploadURLs() throws {
+        for suffix in ["/api/v1/overland/batches", "/api/v1/owntracks/points"] {
+            for trailing in ["", "/"] {
+                let path = "/my%20server/a%2Fb" + suffix + trailing
+                let codes = [try parsed(endpoint(path: path)),
+                             try parsed(setupURL(path: path)),
+                             try parsed(setupURL(scheme: "overland", path: path))]
+                for code in codes {
+                    XCTAssertTrue(ServerQRReview(code: code, current: current, ownTracks: false).isDawarich)
+                }
+            }
+        }
+    }
+
+    func testDawarichBadgeDoesNotRecognizeOtherURLsOrSetupLinks() throws {
+        for path in ["/upload", "/api/v1/overland/batches/extra", "/api/v1/owntracks/points/extra"] {
+            for code in [try parsed(endpoint(path: path)), try parsed(setupURL(path: path))] {
+                XCTAssertFalse(ServerQRReview(code: code, current: current, ownTracks: false).isDawarich)
+            }
+        }
+    }
+
+    func testDawarichBadgeUsesProbeCredentialRecognition() throws {
+        let code = try parsed(endpoint(keyed: false))
+        XCTAssertTrue(ServerQRReview(code: code, current: current, ownTracks: false).isDawarich)
+        var empty = current
+        empty.token = ""
+        XCTAssertFalse(ServerQRReview(code: code, current: empty, ownTracks: false).isDawarich)
+    }
+
+    func testFoundAnnouncementNamesDawarichForEveryCodeKind() throws {
+        let codes = [try accountCode(), try parsed(endpoint()),
+                     try parsed(setupURL(path: "/tracking/api/v1/overland/batches"))]
+        for code in codes {
+            XCTAssertEqual(ServerQRReview(code: code, current: current, ownTracks: false).foundAnnouncement,
+                           "Dawarich server found")
+        }
+        for code in [try parsed(endpoint(path: "/upload")), try parsed(setupURL())] {
+            XCTAssertEqual(ServerQRReview(code: code, current: current, ownTracks: false).foundAnnouncement, "Code found")
+        }
     }
 
     func testSetupReviewAppliesParsedFieldsAndReplacesNonemptyHeaders() throws {
@@ -248,6 +297,62 @@ final class ServerQRReviewTests: XCTestCase {
     }
 
     #if !WHEREWOLF_APP_STORE
+    func testScanPreviewFixturesCoverEveryCodeKindWithoutProbing() throws {
+        let expected: [(String, ServerQRReview.Kind, Bool)] = [
+            ("dawarich", .dawarich, true), ("setup", .setup, true), ("url", .url, true), ("other", .url, false)
+        ]
+        for (name, kind, isDawarich) in expected {
+            let preview = try XCTUnwrap(ServerQRScanPreview.parse(arguments: ["WhereWolf", "-WhereWolfQRScanPreview", name]))
+            XCTAssertEqual(preview.fixture.rawValue, name)
+            XCTAssertNil(preview.hold)
+            let code = try XCTUnwrap(DawarichServer.parseQRCode(preview.fixture.text, ownTracks: false))
+            var review = ServerQRReview(code: code, current: ServerQRPreviewFixture.current, ownTracks: false)
+            review.previewStatus = preview.fixture.status
+            XCTAssertEqual(review.kind, kind)
+            XCTAssertEqual(review.isDawarich, isDawarich)
+            if name != "other" {
+                let direct = try XCTUnwrap(ServerQRReview.preview(arguments: ["-WhereWolfQRReviewPreview", name]))
+                XCTAssertTrue(review.values == direct.values)
+                XCTAssertTrue(review.serverDisplay == "dawarich.example.com/tracking")
+            }
+            let check = ServerQRReviewCheck()
+            check.start(review)
+            XCTAssertTrue(check.status == preview.fixture.status)
+            check.cancel()
+        }
+    }
+
+    func testScanPreviewParsesHoldStagesInEitherArgumentOrder() throws {
+        for stage in ["check", "badge"] {
+            for arguments in [
+                ["-WhereWolfQRScanPreview", "dawarich", "-WhereWolfQRScanPreviewHold", stage],
+                ["-WhereWolfQRScanPreviewHold", stage, "-WhereWolfQRScanPreview", "setup"]
+            ] {
+                let preview = try XCTUnwrap(ServerQRScanPreview.parse(arguments: arguments))
+                XCTAssertEqual(preview.hold?.rawValue, stage)
+            }
+        }
+    }
+
+    func testScanPreviewIgnoresMissingAndUnknownArguments() throws {
+        for arguments in [
+            [], ["-WhereWolfQRScanPreview"], ["-WhereWolfQRScanPreview", "unknown"],
+            ["-WhereWolfQRScanPreview", "DAWARICH"], ["-WhereWolfQRScanPreviewHold", "badge"],
+            ["-WhereWolfQRScanPreview", "-WhereWolfQRScanPreviewHold", "check"]
+        ] {
+            XCTAssertNil(ServerQRScanPreview.parse(arguments: arguments))
+        }
+        for arguments in [
+            ["-WhereWolfQRScanPreview", "url", "-WhereWolfQRScanPreviewHold"],
+            ["-WhereWolfQRScanPreview", "url", "-WhereWolfQRScanPreviewHold", "unknown"],
+            ["-WhereWolfQRScanPreviewHold", "unknown", "-WhereWolfQRScanPreview", "url"]
+        ] {
+            let preview = try XCTUnwrap(ServerQRScanPreview.parse(arguments: arguments))
+            XCTAssertEqual(preview.fixture, .url)
+            XCTAssertNil(preview.hold)
+        }
+    }
+
     func testPreviewFixturesCoverEachReviewKindWithoutProbing() {
         let expected: [(String, ServerQRReview.Kind)] = [("dawarich", .dawarich), ("setup", .setup), ("url", .url)]
         for (name, kind) in expected {

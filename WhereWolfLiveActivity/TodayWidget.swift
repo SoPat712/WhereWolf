@@ -99,7 +99,7 @@ struct TodayWidgetView: View {
                     Spacer(minLength: 0)
                     HStack(spacing: 6) {
                         Image(systemName: state.trackingEnabled ? "location.fill" : "location.slash")
-                            .foregroundStyle(state.trackingEnabled ? .green : .secondary)
+                            .foregroundStyle(state.trackingEnabled ? .blue : .secondary)
                         Text(state.trackingEnabled ? "Tracking" : "Not Tracking")
                     }
                     .font(.caption)

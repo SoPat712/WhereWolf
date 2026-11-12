@@ -16,8 +16,9 @@ struct WhereWolfRootView: View {
     @State private var sceneID = UUID()
 #if !WHEREWOLF_APP_STORE
     @State private var qrReviewPreview = ServerQRReview.preview()
+    @State private var qrScanPreview = ServerQRScanPreview.parse()
 #endif
-    @State private var selection = 0
+    @State private var selection = DawarichInsightsModel.previewEnabled ? 3 : 0
     @State private var tabActivation = 0
     @State private var mapTab = 0
     @State private var speedometerHeight: CGFloat = 0
@@ -30,9 +31,13 @@ struct WhereWolfRootView: View {
     @State private var tripTab = TripTabPolicy()
     @State private var pendingTrip: ClosedRange<Date>?
     @State private var tripSlide = 0
-    @State private var history = HistoryPlaybackModel()
+    @State private var history = HistoryPlaybackModel(serverHistory: .shared)
     @State private var bridge = GLManagerBridge.shared
-    @State private var onboarding = OnboardingModel.live()
+    @State private var onboarding: OnboardingModel = {
+        let model = OnboardingModel.live()
+        if DawarichInsightsModel.previewEnabled { model.isPresented = false }
+        return model
+    }()
     @State private var drawerGeometry = MapDrawerGeometry()
     @State private var recenterRequest = 0
     @State private var replayCameraDistance: CLLocationDistance?
@@ -77,6 +82,9 @@ struct WhereWolfRootView: View {
             ServerQRCodeSheet(current: review.values, ownTracks: review.ownTracks, preview: review,
                               onUse: { _ in true })
         }
+        .sheet(item: $qrScanPreview) { preview in
+            ServerQRCodeSheet(scanPreview: preview)
+        }
 #endif
     }
 
@@ -96,7 +104,8 @@ struct WhereWolfRootView: View {
                                      safeTop: geometry.safeAreaInsets.top)),
                 controls: AnyView(panelContent),
                 onSelect: selectTab,
-                settings: AnyView(settingsPage)
+                settings: AnyView(settingsPage),
+                insights: insightsEnabled ? AnyView(insightsPage) : nil
             )
             .ignoresSafeArea(.container)
         }
@@ -126,6 +135,16 @@ struct WhereWolfRootView: View {
             if scenePhase == .active, selection == 0, tick % 60 == 0 { history.expireOldPoints() }
         }
         .onChange(of: selection) { _, _ in updateConsumers() }
+        .onChange(of: insightsEnabled) { _, enabled in
+            if !enabled, selection == 3 {
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) { selectTab(2) }
+            }
+        }
+        .onChange(of: bridge.dawarichConfigurationRevision) { _, _ in
+            if !DawarichInsightsModel.previewEnabled, bridge.dawarich == .unknown { bridge.refreshDawarich() }
+        }
         .onChange(of: history.landmarks.timestamps.count) { _, _ in
             guard let trip = pendingTrip, !history.landmarks.timestamps.isEmpty else { return }
             pendingTrip = nil
@@ -147,12 +166,13 @@ struct WhereWolfRootView: View {
         .onChange(of: scenePhase) { _, phase in
             bridge.setSceneActive(phase == .active, id: sceneID)
             updateConsumers()
-            if phase == .active { showNewTrip() }
+            if phase == .active, !DawarichInsightsModel.previewEnabled { showNewTrip() }
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WhereWolfOpenTracker"))) { _ in
             selectTab(0)
         }
         .onAppear {
+            if !DawarichInsightsModel.previewEnabled, bridge.dawarich == .unknown { bridge.refreshDawarich() }
             bridge.setSceneActive(scenePhase == .active, id: sceneID)
             updateConsumers()
         }
@@ -207,6 +227,29 @@ struct WhereWolfRootView: View {
         }
     }
 
+    private var insightsEnabled: Bool {
+        ShellTabPolicy.showsInsights(status: bridge.dawarich, preview: DawarichInsightsModel.previewEnabled)
+    }
+
+    private var insightsPage: some View {
+        let gl = GLManager.shared()!
+        let connection = DawarichInsightsConnection(status: bridge.dawarich, endpoint: gl.apiEndpointURL() ?? "",
+                                                   token: gl.apiAccessToken() ?? "", headers: gl.customHTTPHeaders)
+        return NavigationStack {
+            DawarichInsightsView(connection: connection, active: selection == 3 && scenePhase == .active,
+                                 preview: DawarichInsightsModel.previewEnabled) { request in
+                pendingTrip = nil
+                selectTab(0)
+                replayCameraFree = false
+                replayOverview = false
+                history.navigate(to: request, waitForServer: connection?.version.map {
+                    DawarichHistoryClient.supports(version: $0)
+                } ?? false)
+            }
+            .id(connection?.id ?? "preview")
+        }
+    }
+
     private var settingsPage: some View {
         NavigationStack(path: $settingsPath) {
             SettingsView(openSetup: { selectTab(0); onboarding.reopen() })
@@ -251,13 +294,16 @@ struct WhereWolfRootView: View {
         let selected = mapTab == 0 && history.isBrowsing ? replayPose?.coordinate.coordinate : nil
         return NativeMapSurface(position: camera, mapType: mapAppearance.mapType,
                                 coordinates: coords,
-                                replayRoute: mapTab == 0 && replayPose != nil ? history.routeGeometry : nil,
+                                replayRoute: mapTab == 0 ? history.routeGeometry : nil,
                                 replayPosition: replayPose?.position ?? 0,
                                 replayAccuracy: history.playbackAccuracy,
+                                replayDayTracks: mapTab == 0 ? history.replayDayTracks : nil,
+                                replaySecondsPerBar: mapTab == 0 ? history.rulerSecondsPerBar : nil,
+                                replayFrame: mapTab == 0 && !replayCameraFree ? history.replayFrame : nil,
                                 replayActive: mapTab == 0 && history.isBrowsing,
                                 replayFollowing: !replayCameraFree,
                                 replayFollowDistance: replayCameraDistance ?? 2_000,
-                                replayOverview: mapTab == 0 && replayOverview,
+                                replayOverview: mapTab == 0 && (replayOverview || (!replayCameraFree && history.replayFrame != nil)),
                                 replayHighlight: mapTab == 0 ? history.highlightedRange : nil,
                                 replayFitRange: mapTab == 0 ? history.highlightedFitRange : nil,
                                 rulerZoom: mapTab == 0 ? history.rulerZoom : nil,
@@ -454,6 +500,7 @@ struct WhereWolfRootView: View {
     }
 
     private func selectTab(_ index: Int) {
+        let index = ShellTabPolicy.validSelection(index, insights: insightsEnabled)
         tabActivation += 1
         if index == 2 { settingsPath = [] }
         if index != 0 { history.pause() }

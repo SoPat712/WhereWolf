@@ -145,6 +145,7 @@ final class RulerScaleChannel {
         let width: CGFloat
         var axis: HistoryRulerAxis? = nil
         var interval: TimeInterval? = nil
+        var serverRuler: ServerHistoryRuler? = nil
     }
 
     private(set) var frame: Frame?
@@ -197,12 +198,14 @@ struct ReplayRulerHold: Equatable {
     var axis: HistoryRulerAxis? = nil
     var frameRange: ClosedRange<Double>? = nil
     var interval: TimeInterval? = nil
+    var serverRuler: ServerHistoryRuler? = nil
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.pointsPerBar == rhs.pointsPerBar && lhs.visibleBars == rhs.visibleBars
             && lhs.coarseness == rhs.coarseness && lhs.axis === rhs.axis
             && lhs.frameRange == rhs.frameRange
             && lhs.interval == rhs.interval
+            && lhs.serverRuler === rhs.serverRuler
     }
 
     // Mid detents fit only the bars near the needle, so the map stays close until the coarsest steps.
@@ -215,6 +218,15 @@ struct ReplayRulerHold: Equatable {
 
     func window(at position: Double, count: Int) -> Range<Int> {
         guard count > 0 else { return 0..<0 }
+        if let serverRuler, let axis {
+            let mapping = axis.mapping(pointsPerBar: pointsPerBar, pointCount: serverRuler.count, interval: interval)
+            let needle = mapping.coordinate(at: serverRuler.index(forSourcePosition: position))
+            let range = frameRange ?? (mapping.index(at: needle - halfWindow)...mapping.index(at: needle + halfWindow))
+            let positions = serverRuler.sourcePositions
+            let lower = min(count, HistoryLandmarks.lowerBound(positions.count) { Double(positions[$0]) >= range.lowerBound })
+            let upper = min(count, HistoryLandmarks.lowerBound(positions.count) { Double(positions[$0]) > range.upperBound })
+            return lower..<max(lower, upper)
+        }
         if let frameRange {
             let lower = min(count - 1, max(0, Int(floor(frameRange.lowerBound))))
             let upper = min(count, max(lower + 1, Int(ceil(frameRange.upperBound)) + 1))
@@ -236,6 +248,11 @@ struct ReplayRulerHold: Equatable {
 
     func needsFit(at position: Double, since previous: Double?, count: Int? = nil) -> Bool {
         guard let previous else { return true }
+        if let serverRuler, let axis {
+            let mapping = axis.mapping(pointsPerBar: pointsPerBar, pointCount: serverRuler.count, interval: interval)
+            return abs(mapping.coordinate(at: serverRuler.index(forSourcePosition: position))
+                - mapping.coordinate(at: serverRuler.index(forSourcePosition: previous))) > halfWindow
+        }
         if let axis {
             let mapping = axis.mapping(pointsPerBar: pointsPerBar, pointCount: count ?? axis.count, interval: interval)
             if mapping.weight > 0 {

@@ -490,6 +490,127 @@ final class DawarichServerTests: XCTestCase {
         try await checkBridgeReplacesProbe(waitForAccount: true)
     }
 
+    @MainActor func testForegroundReprobeKeepsInsightsWhileCheckingAndAfterTransientFailure() async throws {
+        try await withAuthenticatedBridge { bridge, sceneID, probe in
+            let authenticated = bridge.dawarich
+            let revision = bridge.dawarichConfigurationRevision
+            for _ in 0..<2 {
+                let requests = probe.requests
+                bridge.setSceneActive(true, id: sceneID)
+                XCTAssertEqual(probe.requests, requests + 1)
+                XCTAssertTrue(bridge.dawarich == authenticated)
+                XCTAssertTrue(ShellTabPolicy.showsInsights(status: bridge.dawarich))
+                try await probe.complete(.notDawarich)
+                XCTAssertTrue(bridge.dawarich == authenticated)
+                XCTAssertTrue(ShellTabPolicy.showsInsights(status: bridge.dawarich))
+                XCTAssertEqual(bridge.dawarichConfigurationRevision, revision)
+                bridge.setSceneActive(false, id: sceneID)
+            }
+        }
+    }
+
+    @MainActor func testForegroundReprobeRevokesInsightsForExplicitRejection() async throws {
+        let rejections: [(DawarichStatus, Bool)] = [
+            (.notDawarich, true),
+            (.dawarich(version: "1.2.3", authenticated: false, account: nil), false)
+        ]
+        for (status, rejected) in rejections {
+            try await withAuthenticatedBridge { bridge, sceneID, probe in
+                let revision = bridge.dawarichConfigurationRevision
+                bridge.setSceneActive(true, id: sceneID)
+                try await probe.complete(status, rejected: rejected)
+                XCTAssertFalse(ShellTabPolicy.showsInsights(status: bridge.dawarich))
+                XCTAssertEqual(bridge.dawarichConfigurationRevision, revision)
+
+                bridge.setSceneActive(false, id: sceneID)
+                bridge.setSceneActive(true, id: sceneID)
+                XCTAssertFalse(ShellTabPolicy.showsInsights(status: bridge.dawarich))
+                try await probe.complete(.notDawarich)
+                XCTAssertTrue(bridge.dawarich == .notDawarich)
+            }
+        }
+    }
+
+    @MainActor func testCredentialChangeDuringForegroundReprobeClearsInsightsAndIgnoresCancelledResult() async throws {
+        try await withAuthenticatedBridge { bridge, sceneID, probe in
+            let revision = bridge.dawarichConfigurationRevision
+            bridge.setSceneActive(true, id: sceneID)
+            XCTAssertTrue(ShellTabPolicy.showsInsights(status: bridge.dawarich))
+            bridge.setSceneActive(false, id: sceneID)
+            XCTAssertTrue(GLManager.shared().saveNewAPIEndpoint(self.endpoint(queryKey: false),
+                                                               andAccessToken: "replacement-fixture"))
+            bridge.refresh()
+            XCTAssertTrue(bridge.dawarich == .unknown)
+            XCTAssertGreaterThan(bridge.dawarichConfigurationRevision, revision)
+            try await probe.complete(.dawarich(version: "1.2.3", authenticated: true, account: self.email))
+            XCTAssertTrue(bridge.dawarich == .unknown)
+            XCTAssertFalse(ShellTabPolicy.showsInsights(status: bridge.dawarich))
+
+            bridge.setSceneActive(true, id: sceneID)
+            XCTAssertTrue(bridge.dawarich == .checking)
+            try await probe.complete(.notDawarich)
+            XCTAssertTrue(bridge.dawarich == .notDawarich)
+        }
+    }
+
+    @MainActor private func withAuthenticatedBridge(_ body: (GLManagerBridge, UUID, DawarichBridgeProbe) async throws -> Void) async throws {
+        let defaults = UserDefaults.standard
+        let domain = Bundle.main.bundleIdentifier!
+        let saved = defaults.persistentDomain(forName: domain) ?? [:]
+        let store = GLServerCredentials.store
+        GLServerCredentials.store = MemorySettingsCredentialStore()
+        let probe = DawarichBridgeProbe()
+        let bridge = GLManagerBridge(probeDawarich: probe.start)
+        let sceneID = UUID()
+        defer {
+            bridge.setSceneActive(false, id: sceneID)
+            _ = bridge.clearServer()
+            GLServerCredentials.store = store
+            defaults.setPersistentDomain(saved, forName: domain)
+            bridge.refresh()
+        }
+        XCTAssertTrue(bridge.saveServer(url: endpoint(), token: "", deviceId: "", uniqueId: false, acceptHTTP: false, headers: [:]))
+        XCTAssertEqual(probe.requests, 1)
+        XCTAssertTrue(bridge.dawarich == .checking)
+        try await probe.complete(.dawarich(version: "1.2.3", authenticated: true, account: email))
+        XCTAssertTrue(bridge.dawarich == .dawarich(version: "1.2.3", authenticated: true, account: email))
+        try await body(bridge, sceneID, probe)
+    }
+
+    @MainActor func testHeaderChangesOutsideTheServerFormInvalidateRecognition() async throws {
+        let defaults = UserDefaults.standard
+        let domain = Bundle.main.bundleIdentifier!
+        let saved = defaults.persistentDomain(forName: domain) ?? [:]
+        let store = GLServerCredentials.store
+        GLServerCredentials.store = MemorySettingsCredentialStore()
+        let bridge = GLManagerBridge.shared
+        defer {
+            _ = bridge.clearServer()
+            GLServerCredentials.store = store
+            defaults.setPersistentDomain(saved, forName: domain)
+            bridge.refresh()
+        }
+        DawarichTestProtocol.handler = { mock in
+            mock.respond(status: 200, headers: mock.request.url?.path.hasSuffix("/health") == true ? self.authenticatedHealth : [:])
+        }
+        XCTAssertTrue(bridge.saveServer(url: endpoint(), token: "", deviceId: "", uniqueId: false, acceptHTTP: false, headers: [:]))
+        let published = expectation(description: "Recognition published")
+        func observe() {
+            if bridge.dawarich == .checking {
+                withObservationTracking { _ = bridge.dawarich } onChange: { DispatchQueue.main.async { observe() } }
+            } else { published.fulfill() }
+        }
+        observe()
+        await fulfillment(of: [published], timeout: 2)
+        XCTAssertTrue(ShellTabPolicy.showsInsights(status: bridge.dawarich))
+        let revision = bridge.dawarichConfigurationRevision
+        GLManager.shared().customHTTPHeaders = ["X-Proxy": "replacement-fixture"]
+        bridge.refresh()
+        XCTAssertTrue(bridge.dawarich == .unknown)
+        XCTAssertGreaterThan(bridge.dawarichConfigurationRevision, revision)
+        XCTAssertFalse(ShellTabPolicy.showsInsights(status: bridge.dawarich))
+    }
+
     @MainActor private func checkBridgeReplacesProbe(waitForAccount: Bool) async throws {
         let defaults = UserDefaults.standard
         let domain = Bundle.main.bundleIdentifier!
@@ -561,6 +682,29 @@ private extension URLSessionConfiguration {
         let configuration = dawarich_testConfiguration()
         configuration.protocolClasses = [DawarichTestProtocol.self]
         return configuration
+    }
+}
+
+private final class DawarichBridgeProbe {
+    private(set) var requests = 0
+    private var completion: ((DawarichStatus, Bool) -> Void)?
+
+    func start(_ server: DawarichServer, _ headers: [String: String],
+               _ completion: @escaping (DawarichStatus, Bool) -> Void) -> DawarichProbe {
+        XCTAssertEqual(server.root.host, "wherewolf.test")
+        requests += 1
+        self.completion = completion
+        return DawarichProbe()
+    }
+
+    @MainActor func complete(_ status: DawarichStatus, rejected: Bool = false) async throws {
+        let callback = try XCTUnwrap(completion)
+        completion = nil
+        callback(status, rejected)
+        // The bridge queues publication; drain behind it even when status stays equal.
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
     }
 }
 

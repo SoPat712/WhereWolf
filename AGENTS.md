@@ -112,6 +112,8 @@ uses a Debug build compiled with `-O`. The tour changes no settings, tracking or
 
 Non-App Store builds open the QR review sheet with `-WhereWolfQRReviewPreview dawarich`,
 `-WhereWolfQRReviewPreview setup` or `-WhereWolfQRReviewPreview url`.
+`-WhereWolfQRScanPreview dawarich|setup|url|other` plays the scan with a dark camera stand-in;
+`-WhereWolfQRScanPreviewHold check|badge` holds the artwork.
 These render fixtures use a sample host/account and fake key, with no camera, network probe or settings writes.
 
 Tests use an in-memory queue and mocked `wherewolf.test` requests. Objective-C tests
@@ -221,10 +223,11 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   See `docs/workout-import.md` for ordering and signing constraints.
 - **Screens are SwiftUI** (`GPSLogger/*.swift`). SceneDelegate creates the root
   hosting controller; `WhereWolfShell` uses `UITabBarController` with a regular
-  Settings child, one persistent map host moved between the map-tab placeholders,
+  Settings child and, for authenticated Dawarich, an Insights child before Settings,
+  one persistent map host moved between the map-tab placeholders,
   and the drawer above all tab pages. `MapControlPanel` is a Find My style drawer:
   one glass sheet with Tracker/Trip controls above `DrawerTabStrip`. The system
-  bar is hidden on those tabs. Settings hides the map and uses the native bar
+  bar is hidden on those tabs. Settings and Insights hide the map and use the native bar
   and safe area. Both bars call the root's `selectTab`. The drawer's existing
   display-link spring tweens its current frame and corner radius into the native
   bar's measured glass platter, fading its controls and grabber. The tab items keep
@@ -233,11 +236,15 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   the transparent native bar from the start so Settings' safe area stays fixed;
   the landing frame exchanges the bars without a native animation. A native bar tap updates the
   drawer strip's selection before the handoff, since SwiftUI publishes it a few frames later. The
-  shell lays Settings out behind the map for one pass a second after it first appears, since SwiftUI
+  shell lays both native pages out behind the map for one pass a second after it first appears, since SwiftUI
   builds hosted views only in a window, so the first switch is as quick as later ones. Returning
   tweens from the platter to the closed drawer. Retarget from the current geometry
   on interruption; Reduce Motion swaps instantly. A completed handoff clears its
-  spring and geometry; leaving native Settings starts from a fresh platter measure.
+  spring and geometry; leaving either native page starts from a fresh platter measure.
+  Tab IDs stay Tracker 0, Trip 1, Settings 2 and Insights 3; native order is 0/1/3/2 when available.
+  Availability changes finish any handoff without animation, remeasure the three/four-item platter and
+  move a removed Insights selection to Settings. Native indices never stand in for tab IDs.
+  A wider four-item platter eases strip insets from its remaining size difference, preserving retargets and item size.
   Ignore old SwiftUI selection renders until an eager native selection is acknowledged
   or a later tab activation replaces it. Replaced springs cannot finish a newer handoff.
   Measure layout bounds of visible native item controls or button-trait views,
@@ -260,7 +267,7 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   hosting roots. Fitting content has no vertical scrolling or bounce; enable
   scrolling only for content exceeding the screen's available height.
   Trip has no title: while idle a scrolling row of mode buttons, ending in Edit (Trip Modes), sits above a
-  green Start Trip button beside the Trip Settings button. Recording replaces the row with a card whose
+  blue Start Trip button beside the Trip Settings button. Recording replaces the row with a card whose
   breathing red dot (a Core Animation opacity animation, which costs the app nothing per frame) names the
   mode above elapsed time, redrawn on each whole second since the start,
   and a grid of distance, average speed (pace on foot),
@@ -319,7 +326,9 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   Local-midnight dividers and weekday labels outrank stop labels, which outrank no-data labels, then time
   labels; time marks coarsen through 1/5/15 minutes, 1 hour and 6 hours to keep at least
   60 points between labels. Stop capsules use the nearest Wi-Fi Place within
-  `GLWifiPlaceMatchDistance` of the stay center, otherwise gray `mappin` and a duration.
+  `GLWifiPlaceMatchDistance` of the stay center, then a confirmed Dawarich visit overlapping in time
+  and within that distance, otherwise gray `mappin` and a duration. Suggested/declined visits and masked
+  coordinates never supply names. Place IDs join the refreshed catalog; symbols use the Wi-Fi name rules.
   Blend spaces fixes evenly through five minutes per bar and at Every point. Coarser scales use cumulative
   interval^w widths, normalized to the point count: w = smoothstep(clamp(log(seconds per bar / 300) / log(288))).
   Eleven prefix sums (w = 0, 0.1, …, 1) build with landmarks off the main thread; gestures interpolate
@@ -337,13 +346,13 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   The buttons beside Play jump to the previous/next arrival or departure through the
   existing selection path; disable at the ends and name the target for VoiceOver.
   The time beneath the ruler opens the native Go To sheet while browsing; Live keeps
-  its plain label. Go To uses medium/large detents, compact date/time pickers bounded
-  from the oldest retained point to now, and selects the nearest stored point.
-  Its day sections, and the stops and movements within each day, are newest first, with
-  shared activity/distance calculations and a tinted Viewing badge on the selected row. It uses the
-  glass Settings sheet styling; day headers read Today, Yesterday or the date with the day's stop count
-  and distance, and rows show a colored icon, the time range, the duration and any distance.
-  Selecting a row jumps to its start and dismisses. Cancel and Go use native toolbars.
+  its plain label. Go To is a glass Settings sheet with medium/large detents and a month calendar,
+  bounded by the first history day and today. Distance dots mark days; today and the viewed day are distinct.
+  `HistoryDaySummaryProvider` supplies cached totals; phone totals build with landmarks from the shared
+  journey distances. Not downloaded days stay selectable, with dashed rings and Go disabled until loaded.
+  Picking a day shows its existing stops/movements newest first, with the Viewing badge; a row jumps to
+  its start and dismisses. Exact Date and Time expands native pickers; Go selects the nearest stored point.
+  Cancel and Go stay native. Day targets are at least 44 points; accessibility text sizes use a date list.
   Pinching the history ruler changes a scale retained across tabs, playback and pinches at
   Live, without defaults; returning to Live from history resets it to every point. Spread for fewer points per bar;
   pinch together for more. Use every 1–2–5 step from one point per bar through the
@@ -485,13 +494,47 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   `GET /api/v1/health` with `Authorization: Bearer` and the custom headers, after saves and when Destination or the
   guide's server sheet appears. Dawarich answers with `X-Dawarich-Response` ("authenticated" for a valid key) and
   `X-Dawarich-Version`; after authenticated health, `/api/v1/users/me` supplies the account email in memory only.
-  `DawarichStatusRow` shows the server and known account, and other servers get no row. The probe sends no location and
-  touches no queue, history or send statistics. Scan QR Code (VisionKit, shown only where supported) reads Dawarich's
+  `DawarichStatusRow` shows the server and known account, and other servers get no row. The probe sends no location.
+  Changed endpoints, keys or custom headers invalidate recognition, including Backup & Sync changes. The root probes
+  on launch and after those invalidations; Insights uses the same authenticated status.
+  It touches no queue, history or send statistics. Scan QR Code (VisionKit, shown only where supported) reads Dawarich's
   account JSON `{"server_url", "api_key"}`, setup links through `ServerSetup.parse` and plain endpoints. A framed camera
-  tightens, pulses and draws a check on recognition, then turns off before a glass review card shows the host/prefix,
-  format and key presence. Dawarich checks use the scanned values; Use This Server saves through the form's existing
-  path, while Scan Again remounts the camera. Reduce Motion uses a quick fade. Camera access is asked only on tap;
+  tightens, pulses and draws a check on recognition (Dawarich adds an original SF Symbol/text badge), then turns off
+  before a glass review card shows the host/prefix, format and key presence. Dawarich checks use the scanned values;
+  Use This Server saves through the form's existing path, while Scan Again remounts the camera. Reduce Motion uses a quick fade. Camera access is asked only on tap;
   frames are never stored.
+- **Dawarich reads**: `DawarichServer.request`, `DawarichVersion` and `DawarichTransport` share
+  authenticated GET construction, session policy and sanitized errors. History keeps its 1.20–1.x
+  stable-release gate, two-request limit, coalescing, cancellation and Retry-After; Insights keeps
+  endpoint version floors and unavailable/cache fallback behavior. Insights refuses redirects;
+  history permits only the configured origin/path prefix. No request logs contain private data.
+- **Dawarich history**: `ServerHistoryStore` pages masked points by local day; timeline batches
+  cover at most 30 days, with exact `/maps/statistics` totals and first/last point times.
+  Protected, backup-excluded `ServerHistoryCache` keeps 90 most recently viewed point days,
+  persistent summaries and first date; identity includes credentials, headers and timezone.
+  Phone/queued timestamps win; imported Health routes never enter replay queue reads.
+  Sparse ruler positions never index route geometry: `ServerHistoryRuler.sourcePositions` maps
+  real fixes for camera windows and playback. Utility-built projections publish after interaction,
+  preserving needle time and seconds per bar; year/month labels outrank days. Missing days show
+  Loading/Not downloaded, never phone No data. Day-scale playback drops to Every point.
+  `CombinedHistoryDaySummaryProvider` gives Go To phone totals inside its window and server totals
+  outside, including unknown days. Calendar month/day and navigation requests have separate scopes;
+  `HistoryNavigationRequest` waits for its server days before applying and cancels on manual navigation.
+  At day scale, loaded server points share `ReplayDayRouteCache`; unloaded days use masked `/tracks`
+  with separate spans, simplified off-main after settling. Transient track geometry is bounded to
+  250,000 vertices and cleared with server history. Cross-midnight tracks lack vertex times and wait
+  for complete day points. Camera frame bounds include these tracks without creating route points.
+  Every point through five minutes keeps literal spacing; no frame starts requests or rebuilds.
+  `ServerHistoryNames` reads masked visits alongside requested phone/server days and places once per refresh,
+  through the same two-request client. The masked timeline supplies overnight arrival times for `/visits`' start-only
+  filter; lookback is capped at 31 days, with longer visits using visible timeline metadata. Names share the protected
+  history cache (90 visit days), source invalidation and Clear. Landmark-only publication preserves axis, needle and
+  geometry after interaction/playback; no visit/place writes reach the server.
+- **Insights**: native sections read only supported, nonempty endpoints and existing digests.
+  `DawarichInsightsCache` protects and excludes responses/thumbnails from backups and sync, with
+  six-hour freshness and 32 MB/64 MB bounds. History & Replay has one Storage section with separate
+  sizes and Clear actions for server history and Insights; neither affects the server or upload queue.
+  Non-App Store `-WhereWolfInsightsPreview` uses invented fixtures without requests or settings writes.
 - **Connection test**: Settings → Destination and the guide's glass server sheet share one
   native section. Save edits through the bridge, then use a valid fix at most 30 seconds old
   or a separate one-shot location manager with a 15-second deadline. GLManager reuses
@@ -558,7 +601,13 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   Playback frames reach the map and the ruler through `ReplayPoseChannel`, each taking its usual update path
   with the new pose; SwiftUI hears of a frame only when its point or the ruler's minute changes, or playback
   stops. Re-rendering the root on every frame took most of each frame's main-thread time.
-  `ReplayRoutePresentation` retains every vertex and draws every route line with a
+  `ReplayRoutePresentation` retains every vertex; below one day per ruler bar it draws every point as before.
+  At a day per bar and above, `ReplayDayRouteCache` simplifies local days on a utility queue to about one screen
+  point, cached by day and zoom bucket; loaded days override optional `ReplayDayTracks`. Rebuild only after the
+  ruler and camera settle, invalidate changed/expired days on reload, and keep opened-trip geometry exact.
+  `ReplayRouteDisplay` retains outgoing overlays until a render begun after the replacement's installation,
+  then exchanges the layers and overlays in one transaction. Camera fits still use the complete route.
+  Draw every route line with a
   plain `MKPolylineRenderer`, the only renderer MapKit draws as vector geometry at
   a constant screen width. Path renderer subclasses become bitmap tiles that stretch
   between zoom levels, so do not use them for routes.
@@ -840,10 +889,21 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   iOS controls which activity occupies the main Island or a detached bubble.
   The trip activity's Trail look pairs distance, average/pace and top speed with a north-up blue route sketch.
   Its 15-second updates carry at most 48 quantized points per shape, without coordinates, from the ordered trip-stats stream.
-  Dark MapKit snapshots on the expanded Island and, by default, Lock Screen align each sketch in its actual Mercator
-  image frame; refresh together on leaving the inner margin at most every two minutes, keeping current/previous
+  The expanded Island and, by default, Lock Screen align each sketch in its actual Mercator image frame.
+  `TripActivityMapAtlas` builds five dark, flat, muted north-up maps (8/24/72/216/648 km, 1024 pt at 2x) only while
+  the app is active, tracking and trip activities are enabled, and shared storage is available. Anchor at the trip's
+  newest point or GLManager's existing last location; never start acquisition. Outside trips, scene activation and fixes
+  while open (at most once a minute) re-anchor it. Rebuild missing, 30-day-old or
+  quarter-side-distant levels, finest first, at most once per level per ten minutes unless missing. Keep the protected,
+  backup-excluded atlas in app-only Application Support; turning off Trip Live Activity deletes it.
+  Crop on a utility queue while locked, keeping one decoded level, dropped on memory warning or trip end.
+  Refresh together on leaving the inner margin: crops at most every 15 seconds; exact foreground MapKit snapshots
+  at most every two minutes. Prefer crops at least 300 px wide for every needed presentation, then foreground
+  snapshots, then background crops at least 120 px wide, otherwise a plain sketch. Cancel MapKit on resign/background
+  and try a crop immediately. Round crops outward and quantize in their actual frames. Keep current/previous
   backup-excluded App Group image pairs until trip/activity end. Turning off Map on Lock Screen deletes its images.
-  Non-App Store `-WhereWolfTripActivityPreview car|walk|short|map` renders the shared views with invented data.
+  Non-App Store `-WhereWolfTripActivityPreview car|walk|short|map|map-atlas` renders the shared views with invented data;
+  `map-atlas` builds a separate preview atlas, then crops both panels without exact snapshots.
   The phone's expanded Island (380 x 158 pt on a 402-pt phone) cuts content off about 13 points above its bottom edge;
   content starts 17 points down and the regions sit 11 apart. The preview mock clips the same way, so keep it in step.
   Hide While Audio Plays defaults off. Two other-audio readings

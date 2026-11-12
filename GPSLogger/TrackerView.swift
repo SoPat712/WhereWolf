@@ -305,9 +305,10 @@ struct ReplayStatusOverlay: View {
 
     private func title(_ status: ReplayStatus) -> some View {
         Label {
-            Text(status.activity.title).font(.callout.weight(.semibold))
+            Text(status.title).font(.callout.weight(.semibold))
         } icon: {
-            Image(systemName: status.activity.symbol).font(.subheadline.weight(.semibold)).foregroundStyle(.tint)
+            Image(systemName: status.symbol).font(.subheadline.weight(.semibold))
+                .foregroundStyle(status.stop.map { WifiPlace.tint(for: $0.color) } ?? .accentColor)
         }
     }
 
@@ -348,7 +349,7 @@ struct ReplayStatusOverlay: View {
     }
 
     private func accessibilityText(_ status: ReplayStatus) -> String {
-        var parts = [status.activity.title, timeText(status.time)]
+        var parts = [status.title, timeText(status.time)]
         if let altitude = status.altitude {
             let trend = status.altitudeTrend > 0 ? ", rising" : status.altitudeTrend < 0 ? ", falling" : ""
             parts.append("Altitude \(ReplayStatus.altitudeText(altitude, metric: metric))\(trend)")

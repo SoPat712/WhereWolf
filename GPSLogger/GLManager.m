@@ -2124,6 +2124,21 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     }] resume];
 }
 
+- (void)loadQueuedReplayLocations:(void (^)(NSArray<NSDictionary *> *records))completion {
+    LOLDatabase *database = self.db;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        NSMutableArray *records = [NSMutableArray array];
+        [database accessCollection:GLLocationQueueName withBlock:^(id<LOLDatabaseAccessor> accessor) {
+            [accessor enumerateKeysAndObjectsUsingBlock:^BOOL(NSString *key, NSDictionary *record) {
+                if(![record isKindOfClass:NSDictionary.class] || [key hasPrefix:@"healthkit:"]) return NO;
+                if([self queuedLocationDate:record]) [records addObject:@{@"key": key, @"record": record}];
+                return NO;
+            }];
+        }];
+        dispatch_async(dispatch_get_main_queue(), ^{ completion(records); });
+    });
+}
+
 - (void)numberOfLocationsInQueue:(void(^)(long num))callback {
     [self.db accessCollection:GLLocationQueueName withBlock:^(id<LOLDatabaseAccessor> accessor) {
         [accessor countObjectsUsingBlock:^(long num) {

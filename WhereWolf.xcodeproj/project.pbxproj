@@ -12,6 +12,8 @@
 		A13D00000000000000000005 /* TripActivityMapGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13D00000000000000000004 /* TripActivityMapGeometry.swift */; };
 		A13D00000000000000000007 /* TripActivityMapSnapshotter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13D00000000000000000006 /* TripActivityMapSnapshotter.swift */; };
 		A13D00000000000000000009 /* TripActivityMapTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13D00000000000000000008 /* TripActivityMapTests.swift */; };
+		A13D0000000000000000000B /* TripActivityMapAtlas.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13D0000000000000000000A /* TripActivityMapAtlas.swift */; };
+		A13D0000000000000000000D /* TripActivityMapAtlasTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13D0000000000000000000C /* TripActivityMapAtlasTests.swift */; };
 		A13C00000000000000000002 /* TripRouteSketch.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13C00000000000000000001 /* TripRouteSketch.swift */; };
 		A13C00000000000000000003 /* TripRouteSketch.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13C00000000000000000001 /* TripRouteSketch.swift */; };
 		A13C00000000000000000005 /* TripActivityState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13C00000000000000000004 /* TripActivityState.swift */; };
@@ -174,6 +176,8 @@
 		D1F600000000000000000002 /* HistoryLandmarks.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F600000000000000000001 /* HistoryLandmarks.swift */; };
 		D1F600000000000000000004 /* HistoryGoToView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F600000000000000000003 /* HistoryGoToView.swift */; };
 		D1F600000000000000000006 /* HistoryLandmarkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F600000000000000000005 /* HistoryLandmarkTests.swift */; };
+		D1F6B0000000000000000002 /* HistoryDaySummaries.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F6B0000000000000000001 /* HistoryDaySummaries.swift */; };
+		D1F6B0000000000000000004 /* HistoryGoToTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F6B0000000000000000003 /* HistoryGoToTests.swift */; };
 		D7E7DABBA0D8363EABE4833D /* GLCloudFileWriter.m in Sources */ = {isa = PBXBuildFile; fileRef = 07DEEF5A710246B9B0582158 /* GLCloudFileWriter.m */; };
 		E23F46BF79C789B08211F303 /* SharedTripState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5CC3037773D353A885327FA /* SharedTripState.swift */; };
 		E7C650B0826A973D9430D5CA /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 4B4C34C503F74BA4B4862F77 /* PrivacyInfo.xcprivacy */; };
@@ -190,6 +194,26 @@
 		D0DA0000000000000000000A /* ServerQRReview.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0DA00000000000000000009 /* ServerQRReview.swift */; };
 		D0DA0000000000000000000C /* ServerQRReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0DA0000000000000000000B /* ServerQRReviewView.swift */; };
 		D0DA0000000000000000000E /* ServerQRReviewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0DA0000000000000000000D /* ServerQRReviewTests.swift */; };
+		2FD66BFF189E6E2531810794 /* DawarichInsightsData.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADB98CEB0DA8F5C2931F7633 /* DawarichInsightsData.swift */; };
+		3E0C546C00749998B5FF00B0 /* DawarichInsightsCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 187A3CE37C03707820AAC12B /* DawarichInsightsCache.swift */; };
+		0387653317BBB73588C60951 /* DawarichInsightsClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9B188607C76F01C4C1F7388 /* DawarichInsightsClient.swift */; };
+		F41386F1599FB0E8FC4CE6F9 /* DawarichInsightsModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AADE95E5D25688033940124 /* DawarichInsightsModel.swift */; };
+		AF1AAD4C5CBB80417E8F6F96 /* DawarichInsightsFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4B416AA55ED440F509CED80 /* DawarichInsightsFixtures.swift */; };
+		DF038A786A8766F1DC0421B1 /* DawarichInsightsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B39A07C054CB7CCDDF015032 /* DawarichInsightsView.swift */; };
+		D52CA31AEA8144BE728BC5C3 /* HistoryNavigationRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7AD66F6C430A060F2D32B29 /* HistoryNavigationRequest.swift */; };
+		A65C6497ED5BD21798B2B3E1 /* DawarichInsightsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8778C8929CD21C108BFD3314 /* DawarichInsightsTests.swift */; };
+		DA2000000000000000000002 /* DawarichHistoryClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA2000000000000000000001 /* DawarichHistoryClient.swift */; };
+		DF7000000000000000000002 /* DawarichStopNames.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF7000000000000000000001 /* DawarichStopNames.swift */; };
+		DA2000000000000000000004 /* ServerHistoryCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA2000000000000000000003 /* ServerHistoryCache.swift */; };
+		DA2000000000000000000006 /* ServerHistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA2000000000000000000005 /* ServerHistoryStore.swift */; };
+		DF7000000000000000000004 /* ServerHistoryNames.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF7000000000000000000003 /* ServerHistoryNames.swift */; };
+		DA2000000000000000000008 /* ServerHistoryRuler.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA2000000000000000000007 /* ServerHistoryRuler.swift */; };
+		DA200000000000000000000A /* DawarichHistoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA2000000000000000000009 /* DawarichHistoryTests.swift */; };
+		DF7000000000000000000006 /* DawarichStopNameTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF7000000000000000000005 /* DawarichStopNameTests.swift */; };
+		DA200000000000000000000C /* ServerHistoryModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA200000000000000000000B /* ServerHistoryModelTests.swift */; };
+		091F5F9090C119746FBF304A /* DawarichHistoryTracks.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7741CB1599EE4BA1489F1A2F /* DawarichHistoryTracks.swift */; };
+		C3C22CB72FA547FEE8AB0B82 /* HistoryIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC8B81E2D802CB7B4F42CC18 /* HistoryIntegrationTests.swift */; };
+		23A3ED7F6C0EC94B18B517E7 /* DawarichRequestTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEAB434337290C38F36B405A /* DawarichRequestTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -246,6 +270,8 @@
 		A13D00000000000000000004 /* TripActivityMapGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/LiveActivity/TripActivityMapGeometry.swift; sourceTree = SOURCE_ROOT; };
 		A13D00000000000000000006 /* TripActivityMapSnapshotter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/LiveActivity/TripActivityMapSnapshotter.swift; sourceTree = SOURCE_ROOT; };
 		A13D00000000000000000008 /* TripActivityMapTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/TripActivityMapTests.swift; sourceTree = SOURCE_ROOT; };
+		A13D0000000000000000000A /* TripActivityMapAtlas.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/LiveActivity/TripActivityMapAtlas.swift; sourceTree = SOURCE_ROOT; };
+		A13D0000000000000000000C /* TripActivityMapAtlasTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/TripActivityMapAtlasTests.swift; sourceTree = SOURCE_ROOT; };
 		A13C00000000000000000001 /* TripRouteSketch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/LiveActivity/TripRouteSketch.swift; sourceTree = SOURCE_ROOT; };
 		A13C00000000000000000004 /* TripActivityState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/LiveActivity/TripActivityState.swift; sourceTree = SOURCE_ROOT; };
 		A13C00000000000000000007 /* TripFormat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/Shared/TripFormat.swift; sourceTree = SOURCE_ROOT; };
@@ -417,6 +443,8 @@
 		D1F600000000000000000001 /* HistoryLandmarks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryLandmarks.swift; sourceTree = "<group>"; };
 		D1F600000000000000000003 /* HistoryGoToView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryGoToView.swift; sourceTree = "<group>"; };
 		D1F600000000000000000005 /* HistoryLandmarkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/HistoryLandmarkTests.swift; sourceTree = SOURCE_ROOT; };
+		D1F6B0000000000000000001 /* HistoryDaySummaries.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryDaySummaries.swift; sourceTree = "<group>"; };
+		D1F6B0000000000000000003 /* HistoryGoToTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/HistoryGoToTests.swift; sourceTree = SOURCE_ROOT; };
 		D57439666CE09C401BE55DDB /* HistorySettingsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = HistorySettingsView.swift; path = GPSLogger/HistorySettingsView.swift; sourceTree = "<group>"; };
 		D5CC3037773D353A885327FA /* SharedTripState.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SharedTripState.swift; path = GPSLogger/Shared/SharedTripState.swift; sourceTree = "<group>"; };
 		D8F54F73CE518F85F9D383BF /* TripActivityAttributes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripActivityAttributes.swift; path = GPSLogger/LiveActivity/TripActivityAttributes.swift; sourceTree = "<group>"; };
@@ -429,6 +457,26 @@
 		D0DA00000000000000000009 /* ServerQRReview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/ServerQRReview.swift; sourceTree = SOURCE_ROOT; };
 		D0DA0000000000000000000B /* ServerQRReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/ServerQRReviewView.swift; sourceTree = SOURCE_ROOT; };
 		D0DA0000000000000000000D /* ServerQRReviewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/ServerQRReviewTests.swift; sourceTree = SOURCE_ROOT; };
+		ADB98CEB0DA8F5C2931F7633 /* DawarichInsightsData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/DawarichInsightsData.swift; sourceTree = SOURCE_ROOT; };
+		187A3CE37C03707820AAC12B /* DawarichInsightsCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/DawarichInsightsCache.swift; sourceTree = SOURCE_ROOT; };
+		B9B188607C76F01C4C1F7388 /* DawarichInsightsClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/DawarichInsightsClient.swift; sourceTree = SOURCE_ROOT; };
+		0AADE95E5D25688033940124 /* DawarichInsightsModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/DawarichInsightsModel.swift; sourceTree = SOURCE_ROOT; };
+		D4B416AA55ED440F509CED80 /* DawarichInsightsFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/DawarichInsightsFixtures.swift; sourceTree = SOURCE_ROOT; };
+		B39A07C054CB7CCDDF015032 /* DawarichInsightsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/DawarichInsightsView.swift; sourceTree = SOURCE_ROOT; };
+		A7AD66F6C430A060F2D32B29 /* HistoryNavigationRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/HistoryNavigationRequest.swift; sourceTree = SOURCE_ROOT; };
+		8778C8929CD21C108BFD3314 /* DawarichInsightsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/DawarichInsightsTests.swift; sourceTree = SOURCE_ROOT; };
+		DA2000000000000000000001 /* DawarichHistoryClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/DawarichHistoryClient.swift; sourceTree = SOURCE_ROOT; };
+		DF7000000000000000000001 /* DawarichStopNames.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/DawarichStopNames.swift; sourceTree = SOURCE_ROOT; };
+		DA2000000000000000000003 /* ServerHistoryCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/ServerHistoryCache.swift; sourceTree = SOURCE_ROOT; };
+		DA2000000000000000000005 /* ServerHistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/ServerHistoryStore.swift; sourceTree = SOURCE_ROOT; };
+		DF7000000000000000000003 /* ServerHistoryNames.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/ServerHistoryNames.swift; sourceTree = SOURCE_ROOT; };
+		DA2000000000000000000007 /* ServerHistoryRuler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/ServerHistoryRuler.swift; sourceTree = SOURCE_ROOT; };
+		DA2000000000000000000009 /* DawarichHistoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/DawarichHistoryTests.swift; sourceTree = SOURCE_ROOT; };
+		DF7000000000000000000005 /* DawarichStopNameTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/DawarichStopNameTests.swift; sourceTree = SOURCE_ROOT; };
+		DA200000000000000000000B /* ServerHistoryModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/ServerHistoryModelTests.swift; sourceTree = SOURCE_ROOT; };
+		7741CB1599EE4BA1489F1A2F /* DawarichHistoryTracks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/DawarichHistoryTracks.swift; sourceTree = SOURCE_ROOT; };
+		DC8B81E2D802CB7B4F42CC18 /* HistoryIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/HistoryIntegrationTests.swift; sourceTree = SOURCE_ROOT; };
+		CEAB434337290C38F36B405A /* DawarichRequestTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/DawarichRequestTests.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -507,12 +555,19 @@
 				A01100000000000000000001 /* WhereWolfTests.m */,
 				C0B0A0000000000000000007 /* OnboardingTests.swift */,
 				D0DA00000000000000000007 /* DawarichServerTests.swift */,
+				8778C8929CD21C108BFD3314 /* DawarichInsightsTests.swift */,
+				CEAB434337290C38F36B405A /* DawarichRequestTests.swift */,
+				DA200000000000000000000B /* ServerHistoryModelTests.swift */,
+				DC8B81E2D802CB7B4F42CC18 /* HistoryIntegrationTests.swift */,
+				DA2000000000000000000009 /* DawarichHistoryTests.swift */,
+				DF7000000000000000000005 /* DawarichStopNameTests.swift */,
 				D0DA0000000000000000000D /* ServerQRReviewTests.swift */,
 				C0F000000000000000000112 /* CoverageReportTests.swift */,
 				C0F000000000000000000110 /* ConnectionTestTests.swift */,
 				C0F00000000000000000010E /* SettingsBackupTests.swift */,
 				A0CC00000000000000000001 /* HistoryPlaybackTests.swift */,
 				D1F600000000000000000005 /* HistoryLandmarkTests.swift */,
+				D1F6B0000000000000000003 /* HistoryGoToTests.swift */,
 				C0A7C4000000000000000008 /* WatchLinkTests.swift */,
 				00D3E0000000000000000001 /* TripEndPromptTests.swift */,
 				C0A100000000000000000006 /* TrackingPolicyTests.m */,
@@ -563,7 +618,9 @@
 				A13D00000000000000000001 /* TripActivityMap.swift */,
 				A13D00000000000000000004 /* TripActivityMapGeometry.swift */,
 				A13D00000000000000000006 /* TripActivityMapSnapshotter.swift */,
+				A13D0000000000000000000A /* TripActivityMapAtlas.swift */,
 				A13D00000000000000000008 /* TripActivityMapTests.swift */,
+				A13D0000000000000000000C /* TripActivityMapAtlasTests.swift */,
 				A13C00000000000000000007 /* TripFormat.swift */,
 				A13C0000000000000000000A /* TripActivityPreview.swift */,
 				A13C0000000000000000000C /* TripRouteSketchTests.swift */,
@@ -628,6 +685,20 @@
 				D0DA00000000000000000009 /* ServerQRReview.swift */,
 				D0DA00000000000000000003 /* DawarichStatusRow.swift */,
 				D0DA00000000000000000001 /* DawarichServer.swift */,
+				A7AD66F6C430A060F2D32B29 /* HistoryNavigationRequest.swift */,
+				B39A07C054CB7CCDDF015032 /* DawarichInsightsView.swift */,
+				D4B416AA55ED440F509CED80 /* DawarichInsightsFixtures.swift */,
+				0AADE95E5D25688033940124 /* DawarichInsightsModel.swift */,
+				B9B188607C76F01C4C1F7388 /* DawarichInsightsClient.swift */,
+				187A3CE37C03707820AAC12B /* DawarichInsightsCache.swift */,
+				ADB98CEB0DA8F5C2931F7633 /* DawarichInsightsData.swift */,
+				DA2000000000000000000007 /* ServerHistoryRuler.swift */,
+				DA2000000000000000000005 /* ServerHistoryStore.swift */,
+				DF7000000000000000000003 /* ServerHistoryNames.swift */,
+				DA2000000000000000000003 /* ServerHistoryCache.swift */,
+				DA2000000000000000000001 /* DawarichHistoryClient.swift */,
+				DF7000000000000000000001 /* DawarichStopNames.swift */,
+				7741CB1599EE4BA1489F1A2F /* DawarichHistoryTracks.swift */,
 				C0B0A0000000000000000001 /* OnboardingModel.swift */,
 				C0F000000000000000000114 /* SettingsImportView.swift */,
 				C0F00000000000000000010C /* CoverageView.swift */,
@@ -657,6 +728,7 @@
 				A06600000000000000000001 /* RecentLocationHistory.swift */,
 				A07700000000000000000001 /* HistoryPlaybackView.swift */,
 				D1F600000000000000000003 /* HistoryGoToView.swift */,
+				D1F6B0000000000000000001 /* HistoryDaySummaries.swift */,
 				D1F600000000000000000001 /* HistoryLandmarks.swift */,
 				D1F0000000000000000000A1 /* MapMotion.swift */,
 				D1F0000000000000000000B1 /* ReplayTimeline.swift */,
@@ -975,6 +1047,20 @@
 				D0DA0000000000000000000A /* ServerQRReview.swift in Sources */,
 				D0DA00000000000000000004 /* DawarichStatusRow.swift in Sources */,
 				D0DA00000000000000000002 /* DawarichServer.swift in Sources */,
+				D52CA31AEA8144BE728BC5C3 /* HistoryNavigationRequest.swift in Sources */,
+				DF038A786A8766F1DC0421B1 /* DawarichInsightsView.swift in Sources */,
+				AF1AAD4C5CBB80417E8F6F96 /* DawarichInsightsFixtures.swift in Sources */,
+				F41386F1599FB0E8FC4CE6F9 /* DawarichInsightsModel.swift in Sources */,
+				0387653317BBB73588C60951 /* DawarichInsightsClient.swift in Sources */,
+				3E0C546C00749998B5FF00B0 /* DawarichInsightsCache.swift in Sources */,
+				2FD66BFF189E6E2531810794 /* DawarichInsightsData.swift in Sources */,
+				DA2000000000000000000008 /* ServerHistoryRuler.swift in Sources */,
+				DA2000000000000000000006 /* ServerHistoryStore.swift in Sources */,
+				DF7000000000000000000004 /* ServerHistoryNames.swift in Sources */,
+				DA2000000000000000000004 /* ServerHistoryCache.swift in Sources */,
+				DA2000000000000000000002 /* DawarichHistoryClient.swift in Sources */,
+				DF7000000000000000000002 /* DawarichStopNames.swift in Sources */,
+				091F5F9090C119746FBF304A /* DawarichHistoryTracks.swift in Sources */,
 				C0B0A0000000000000000002 /* OnboardingModel.swift in Sources */,
 				C0F000000000000000000115 /* SettingsImportView.swift in Sources */,
 				C0F00000000000000000010D /* CoverageView.swift in Sources */,
@@ -1003,6 +1089,7 @@
 				A06600000000000000000002 /* RecentLocationHistory.swift in Sources */,
 				A07700000000000000000002 /* HistoryPlaybackView.swift in Sources */,
 				D1F600000000000000000004 /* HistoryGoToView.swift in Sources */,
+				D1F6B0000000000000000002 /* HistoryDaySummaries.swift in Sources */,
 				D1F600000000000000000002 /* HistoryLandmarks.swift in Sources */,
 				D1F0000000000000000000A2 /* MapMotion.swift in Sources */,
 				D1F0000000000000000000B2 /* ReplayTimeline.swift in Sources */,
@@ -1044,6 +1131,7 @@
 				A13D00000000000000000002 /* TripActivityMap.swift in Sources */,
 				A13D00000000000000000005 /* TripActivityMapGeometry.swift in Sources */,
 				A13D00000000000000000007 /* TripActivityMapSnapshotter.swift in Sources */,
+				A13D0000000000000000000B /* TripActivityMapAtlas.swift in Sources */,
 				A13C00000000000000000008 /* TripFormat.swift in Sources */,
 				A13C0000000000000000000B /* TripActivityPreview.swift in Sources */,
 				A13C00000000000000000010 /* TripActivityViews.swift in Sources */,
@@ -1060,6 +1148,12 @@
 				A01100000000000000000002 /* WhereWolfTests.m in Sources */,
 				C0B0A0000000000000000008 /* OnboardingTests.swift in Sources */,
 				D0DA00000000000000000008 /* DawarichServerTests.swift in Sources */,
+				A65C6497ED5BD21798B2B3E1 /* DawarichInsightsTests.swift in Sources */,
+				23A3ED7F6C0EC94B18B517E7 /* DawarichRequestTests.swift in Sources */,
+				DA200000000000000000000C /* ServerHistoryModelTests.swift in Sources */,
+				C3C22CB72FA547FEE8AB0B82 /* HistoryIntegrationTests.swift in Sources */,
+				DA200000000000000000000A /* DawarichHistoryTests.swift in Sources */,
+				DF7000000000000000000006 /* DawarichStopNameTests.swift in Sources */,
 				D0DA0000000000000000000E /* ServerQRReviewTests.swift in Sources */,
 				C0F000000000000000000113 /* CoverageReportTests.swift in Sources */,
 				C0F000000000000000000111 /* ConnectionTestTests.swift in Sources */,
@@ -1078,6 +1172,7 @@
 				A13B00000000000000000004 /* TrackingActivityHandoffPolicyTests.swift in Sources */,
 				A0CC00000000000000000002 /* HistoryPlaybackTests.swift in Sources */,
 				D1F600000000000000000006 /* HistoryLandmarkTests.swift in Sources */,
+				D1F6B0000000000000000004 /* HistoryGoToTests.swift in Sources */,
 				C0A7C4000000000000000018 /* WatchLinkTests.swift in Sources */,
 				00D3E0000000000000000002 /* TripEndPromptTests.swift in Sources */,
 				A0DD00000000000000000002 /* SettingsReliabilityTests.swift in Sources */,
@@ -1087,6 +1182,7 @@
 				A13C0000000000000000000D /* TripRouteSketchTests.swift in Sources */,
 				A13C0000000000000000000F /* TripActivityStateTests.swift in Sources */,
 				A13D00000000000000000009 /* TripActivityMapTests.swift in Sources */,
+				A13D0000000000000000000D /* TripActivityMapAtlasTests.swift in Sources */,
 				06E1F7368FAE37CA1EFFE6A5 /* HealthTripRecorderTests.swift in Sources */,
 				8906128EBAE97CD9E2B23394 /* UpstreamIntegrationTests.m in Sources */,
 				FD8716D075FB5292BFD3C574 /* HistoryRetentionTests.swift in Sources */,

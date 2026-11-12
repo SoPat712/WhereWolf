@@ -63,6 +63,12 @@ struct ServerQRReview: Identifiable {
 
     var format: String { ownTracks ? "OwnTracks" : "GeoJSON" }
 
+    var isDawarich: Bool {
+        kind == .dawarich || DawarichServer(endpoint: values.endpoint, token: values.token) != nil
+    }
+
+    var foundAnnouncement: String { isDawarich ? "Dawarich server found" : "Code found" }
+
     var includesKey: Bool {
         let parts = URLComponents(string: values.endpoint)
         return !(parts?.queryItems?.first(where: { $0.name == "api_key" })?.value ?? "").isEmpty
@@ -123,30 +129,62 @@ final class ServerQRReviewCheck {
 }
 
 #if !WHEREWOLF_APP_STORE
+enum ServerQRPreviewFixture: String {
+    case dawarich, setup, url, other
+
+    static let current = ServerQRValues(endpoint: "", token: "", deviceId: "", uniqueId: false,
+                                        acceptHTTP: false, headers: [:])
+    private static let endpoint = "https://dawarich.example.com/tracking/api/v1/overland/batches"
+
+    var text: String {
+        switch self {
+        case .dawarich:
+            return #"{"server_url":"https://dawarich.example.com/tracking","api_key":"preview-only-key"}"#
+        case .setup:
+            var parts = URLComponents(string: "wherewolf://setup")!
+            parts.queryItems = [URLQueryItem(name: "url", value: Self.endpoint),
+                                URLQueryItem(name: "token", value: "preview-only-key")]
+            return parts.url!.absoluteString
+        case .url:
+            return Self.endpoint + "?api_key=preview-only-key"
+        case .other:
+            return "https://dawarich.example.com/tracking/upload?api_key=preview-only-key"
+        }
+    }
+
+    var status: DawarichReviewStatus {
+        self == .other ? .unreachable : .dawarich(version: "1.2.3", account: "you" + "@" + "example.com")
+    }
+}
+
+struct ServerQRScanPreview: Identifiable {
+    enum Hold: String { case check, badge }
+
+    let id = UUID()
+    let fixture: ServerQRPreviewFixture
+    let hold: Hold?
+
+    static func parse(arguments: [String] = ProcessInfo.processInfo.arguments) -> ServerQRScanPreview? {
+        guard let index = arguments.firstIndex(of: "-WhereWolfQRScanPreview"),
+              arguments.indices.contains(index + 1),
+              let fixture = ServerQRPreviewFixture(rawValue: arguments[index + 1]) else { return nil }
+        var hold: Hold?
+        if let index = arguments.firstIndex(of: "-WhereWolfQRScanPreviewHold"),
+           arguments.indices.contains(index + 1) {
+            hold = Hold(rawValue: arguments[index + 1])
+        }
+        return ServerQRScanPreview(fixture: fixture, hold: hold)
+    }
+}
+
 extension ServerQRReview {
     static func preview(arguments: [String] = ProcessInfo.processInfo.arguments) -> ServerQRReview? {
         guard let index = arguments.firstIndex(of: "-WhereWolfQRReviewPreview"),
-              arguments.indices.contains(index + 1) else { return nil }
-        let fixture = arguments[index + 1]
-        let current = ServerQRValues(endpoint: "", token: "", deviceId: "", uniqueId: false,
-                                     acceptHTTP: false, headers: [:])
-        let code: ServerSetupCode
-        switch fixture {
-        case "dawarich":
-            var parts = URLComponents(string: "https://dawarich.example.com/tracking/api/v1/overland/batches")!
-            parts.queryItems = [URLQueryItem(name: "api_key", value: "preview-only-key")]
-            code = .dawarich(parts.url!)
-        case "setup":
-            var parts = URLComponents(string: "wherewolf://setup")!
-            parts.queryItems = [URLQueryItem(name: "url", value: "https://dawarich.example.com/tracking"),
-                                URLQueryItem(name: "token", value: "preview-only-key")]
-            code = .setupLink(parts.url!, ServerSetup.parse(parts.url!)!)
-        case "url":
-            code = .endpoint(URL(string: "https://dawarich.example.com/tracking")!)
-        default: return nil
-        }
-        var review = ServerQRReview(code: code, current: current, ownTracks: false)
-        review.previewStatus = .dawarich(version: "1.2.3", account: "you" + "@" + "example.com")
+              arguments.indices.contains(index + 1),
+              let fixture = ServerQRPreviewFixture(rawValue: arguments[index + 1]), fixture != .other,
+              let code = DawarichServer.parseQRCode(fixture.text, ownTracks: false) else { return nil }
+        var review = ServerQRReview(code: code, current: ServerQRPreviewFixture.current, ownTracks: false)
+        review.previewStatus = fixture.status
         return review
     }
 }

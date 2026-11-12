@@ -5,6 +5,21 @@ struct DrawerBarGeometry: Equatable {
     var frame: CGRect
     var radius: CGFloat
 
+    func nativeInsetProgress(closed: CGSize, system: CGSize) -> CGFloat {
+        let progress: CGFloat
+        if system.width < closed.width {
+            progress = (closed.width - frame.width) / max(1, closed.width - system.width)
+        } else if system.height < closed.height {
+            progress = (closed.height - frame.height) / max(1, closed.height - system.height)
+        } else {
+            // A full-height native bar may grow in both directions. Geometry preserves the
+            // inset on a retarget; a new spring's zero progress would jump it.
+            let span = hypot(closed.width - system.width, closed.height - system.height)
+            progress = 1 - hypot(frame.width - system.width, frame.height - system.height) / max(1, span)
+        }
+        return min(1, max(0, progress))
+    }
+
     func blended(to other: Self, progress: CGFloat) -> Self {
         if progress == 0 { return self }
         if progress == 1 { return other }
@@ -879,15 +894,12 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
             // Past the closed capsule the strip settles into the system bar: the side insets and
             // margins shrink to the system's while the items keep their size.
             if let system = systemBar {
-                let closedWidth = collapsedWidth()
-                if geometry.frame.width < closedWidth {
-                    let span = max(1, closedWidth - system.geometry.frame.width)
-                    let t = min(1, max(0, (closedWidth - geometry.frame.width) / span))
-                    let start = tabsLeadingConstraint.constant
-                    let inset = start + (max(0, system.tabsInset) - start) * t
-                    tabsLeadingConstraint.constant = inset
-                    tabsTrailingConstraint.constant = -inset
-                }
+                let t = geometry.nativeInsetProgress(closed: CGSize(width: collapsedWidth(), height: values.collapsed),
+                                                     system: system.geometry.frame.size)
+                let start = tabsLeadingConstraint.constant
+                let inset = start + (max(0, system.tabsInset) - start) * t
+                tabsLeadingConstraint.constant = inset
+                tabsTrailingConstraint.constant = -inset
                 if geometry.frame.height < values.collapsed {
                     let room = max(0, geometry.frame.height - measuredTabsHeight)
                     let share = closedTabsTopMargin / (closedTabsTopMargin + closedTabsBottomMargin)

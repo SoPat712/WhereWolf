@@ -104,9 +104,14 @@ struct ServerQRCodeSheet: View {
     @State private var checkVisible = false
     @State private var checkProgress: CGFloat = 0
     @State private var pulseExpanded = false
+    @State private var badgeVisible = false
+    @State private var badgeLabelVisible = false
     @State private var torchOn = false
     @State private var feedback: Feedback?
     @State private var detent: PresentationDetent
+#if !WHEREWOLF_APP_STORE
+    private var scanPreview: ServerQRScanPreview? = nil
+#endif
     // The review sits low like the guide's sheets, so iOS draws it as glass over the app; the camera needs the full height.
     private static let reviewDetent = PresentationDetent.fraction(0.7)
 
@@ -120,6 +125,21 @@ struct ServerQRCodeSheet: View {
         _showsReview = State(initialValue: preview != nil)
         _cameraOff = State(initialValue: preview != nil)
         _detent = State(initialValue: preview != nil ? Self.reviewDetent : .large)
+    }
+
+#if !WHEREWOLF_APP_STORE
+    init(scanPreview: ServerQRScanPreview) {
+        self.init(current: ServerQRPreviewFixture.current, ownTracks: false, onUse: { _ in true })
+        self.scanPreview = scanPreview
+    }
+#endif
+
+    private var isScanPreview: Bool {
+#if !WHEREWOLF_APP_STORE
+        scanPreview != nil
+#else
+        false
+#endif
     }
 
     private enum Feedback {
@@ -160,6 +180,16 @@ struct ServerQRCodeSheet: View {
         .onChange(of: showsReview) { _, review in detent = review ? Self.reviewDetent : .large }
         .presentationDragIndicator(.hidden)
         .task(id: closing ? nil : review?.id) { await animateFound() }
+#if !WHEREWOLF_APP_STORE
+        .task(id: scannerID) {
+            guard let scanPreview else { return }
+            do {
+                try await Task.sleep(for: .seconds(1))
+                try Task.checkCancellation()
+                _ = receive(scanPreview.fixture.text)
+            } catch { return }
+        }
+#endif
         .onChange(of: scenePhase) { _, phase in if phase != .active { setTorch(false) } }
         .onDisappear {
             closing = true
@@ -175,7 +205,9 @@ struct ServerQRCodeSheet: View {
                 ZStack {
                     Color(uiColor: .systemGroupedBackground)
                     if !cameraOff {
-                        if DataScannerViewController.isSupported && DataScannerViewController.isAvailable {
+                        if isScanPreview {
+                            Color.black
+                        } else if DataScannerViewController.isSupported && DataScannerViewController.isAvailable {
                             QRScannerCamera(isActive: scenePhase == .active && review == nil && !closing,
                                             onScan: receive, onRejected: { showFeedback(.invalidCode) },
                                             onUnavailable: { showFeedback(.unavailable) })
@@ -208,7 +240,7 @@ struct ServerQRCodeSheet: View {
                     cameraButton("Close", symbol: "xmark", action: close)
                         .accessibilityIdentifier("wherewolf.scanQRCode.close")
                     Spacer()
-                    if !cameraOff, AVCaptureDevice.default(for: .video)?.hasTorch == true {
+                    if !isScanPreview, !cameraOff, AVCaptureDevice.default(for: .video)?.hasTorch == true {
                         cameraButton("Flashlight", symbol: torchOn ? "flashlight.on.fill" : "flashlight.off.fill") {
                             setTorch(!torchOn)
                         }
@@ -228,6 +260,7 @@ struct ServerQRCodeSheet: View {
             .padding(16)
         }
         .onAppear {
+            guard !isScanPreview else { return }
             if !DataScannerViewController.isSupported || !DataScannerViewController.isAvailable {
                 showFeedback(.unavailable)
             }
@@ -244,7 +277,7 @@ struct ServerQRCodeSheet: View {
 
     private var instructionContent: some View {
         VStack(spacing: 10) {
-            Text(review == nil ? "Scan the QR code from Dawarich's Account page, or a setup link." : "Code found")
+            Text(review?.foundAnnouncement ?? "Scan the QR code from Dawarich's Account page, or a setup link.")
                 .font(.callout.weight(.medium))
             if let feedback {
                 Text(feedback.message)
@@ -278,9 +311,40 @@ struct ServerQRCodeSheet: View {
             }
             RoundedRectangle(cornerRadius: 40).fill(.blue)
                 .overlay {
-                    QRScanCheckmark().trim(from: 0, to: checkProgress)
-                        .stroke(.white, style: StrokeStyle(lineWidth: 11, lineCap: .round, lineJoin: .round))
+                    ZStack {
+                        if review?.isDawarich == true {
+                            Image(systemName: "mappin.and.ellipse")
+                                .font(.system(size: 50, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 106, height: 64)
+                                .scaleEffect(badgeVisible ? 1 : 0.85)
+                                .offset(y: badgeVisible ? -12 : -32)
+                                .opacity(badgeVisible ? 1 : 0)
+                            Text("Dawarich")
+                                .font(.system(size: 22, weight: .bold, design: .rounded))
+                                .foregroundStyle(.white)
+                                .lineLimit(1).minimumScaleFactor(0.8)
+                                .dynamicTypeSize(.medium)
+                                .frame(width: 124, height: 28)
+                                .offset(y: badgeLabelVisible ? 39 : 45)
+                                .opacity(badgeLabelVisible ? 1 : 0)
+                        }
+                        ZStack {
+                            Image(systemName: "seal.fill")
+                                .resizable().scaledToFit()
+                                .foregroundStyle(.white)
+                                .opacity(badgeVisible ? 1 : 0)
+                            QRScanCheckmark().trim(from: 0, to: checkProgress)
+                                .stroke(.white, style: StrokeStyle(lineWidth: 11, lineCap: .round, lineJoin: .round))
+                                .opacity(badgeVisible ? 0 : 1)
+                            QRScanCheckmark().trim(from: 0, to: checkProgress)
+                                .stroke(.blue, style: StrokeStyle(lineWidth: 11, lineCap: .round, lineJoin: .round))
+                                .opacity(badgeVisible ? 1 : 0)
+                        }
                         .frame(width: 110, height: 110)
+                        .scaleEffect(badgeVisible ? 0.32 : 1)
+                        .offset(x: badgeVisible ? 53 : 0, y: badgeVisible ? -53 : 0)
+                    }
                 }
                 .scaleEffect(reduceMotion || checkVisible ? 1 : 0.4)
                 .opacity(checkVisible ? 1 : 0)
@@ -296,16 +360,20 @@ struct ServerQRCodeSheet: View {
         let format: Bool
         if case .setupLink = code { format = setupUsesOwnTracks ?? ownTracks }
         else { format = ownTracks }
-        review = ServerQRReview(code: code, current: current, ownTracks: format)
+        var received = ServerQRReview(code: code, current: current, ownTracks: format)
+#if !WHEREWOLF_APP_STORE
+        if let scanPreview { received.previewStatus = scanPreview.fixture.status }
+#endif
+        review = received
         UINotificationFeedbackGenerator().notificationOccurred(.success)
-        UIAccessibility.post(notification: .announcement, argument: "Code found")
+        UIAccessibility.post(notification: .announcement, argument: received.foundAnnouncement)
         return true
     }
 
-    // Fixed geometry stays mounted: only scale, opacity and the check's stroke animate.
+    // Fixed geometry stays mounted: only scale, opacity, offsets and the check's stroke animate.
     // Changing the code or closing the sheet cancels every delayed stage.
     private func animateFound() async {
-        guard review != nil, !showsReview, !closing else { return }
+        guard let review, !showsReview, !closing else { return }
         do {
             if reduceMotion {
                 cameraOff = true
@@ -321,6 +389,18 @@ struct ServerQRCodeSheet: View {
             withAnimation(.spring(duration: 0.45, bounce: 0.22)) { checkVisible = true }
             withAnimation(.easeOut(duration: 0.35)) { checkProgress = 1 }
             try await Task.sleep(for: .seconds(0.66))
+#if !WHEREWOLF_APP_STORE
+            if scanPreview?.hold == .check { return }
+#endif
+            if review.isDawarich {
+                withAnimation(.spring(duration: 0.32, bounce: 0.12)) { badgeVisible = true }
+                try await Task.sleep(for: .seconds(0.1))
+                withAnimation(.easeOut(duration: 0.2)) { badgeLabelVisible = true }
+                try await Task.sleep(for: .seconds(0.3))
+            }
+#if !WHEREWOLF_APP_STORE
+            if scanPreview?.hold == .badge { return }
+#endif
             cameraOff = true
             setTorch(false)
             // Give SwiftUI a pass to dismantle the camera before fading the overlay.
@@ -342,6 +422,8 @@ struct ServerQRCodeSheet: View {
         checkVisible = false
         checkProgress = 0
         pulseExpanded = false
+        badgeVisible = false
+        badgeLabelVisible = false
         feedback = nil
         scannerID = UUID()
     }
@@ -354,6 +436,7 @@ struct ServerQRCodeSheet: View {
     }
 
     private func setTorch(_ enabled: Bool) {
+        guard !isScanPreview else { return }
         guard enabled || torchOn else { return }
         guard let device = AVCaptureDevice.default(for: .video), device.hasTorch else { torchOn = false; return }
         do {

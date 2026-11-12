@@ -43,6 +43,17 @@ struct TripActivityMapFrame {
         return p.x >= margin && p.x <= 1 - margin && p.y >= margin && p.y <= 1 - margin
     }
 
+    func alignedRect(in frame: TripActivityMapFrame) -> MKMapRect {
+        let world = MKMapRect.world.size.width
+        let offset = ((frame.rect.midX - rect.midX) / world).rounded() * world
+        return MKMapRect(x: rect.minX + offset, y: rect.minY, width: rect.size.width, height: rect.size.height)
+    }
+
+    func contains(_ frame: TripActivityMapFrame) -> Bool {
+        let other = frame.alignedRect(in: self)
+        return other.minX >= rect.minX && other.maxX <= rect.maxX && other.minY >= rect.minY && other.maxY <= rect.maxY
+    }
+
     func quantizationPosition(_ point: MKMapPoint) -> CGPoint {
         let p = normalized(point)
         return CGPoint(x: min(1, max(0, p.x)) * 255, y: min(1, max(0, p.y)) * 255)
@@ -66,18 +77,41 @@ struct TripActivityMapFrame {
 
 // No ActivityKit, clock, IO or network: requests are driven by committed trip updates.
 struct TripActivityMapPolicy {
+    enum Source: Equatable { case atlas, snapshot, none }
     static let refreshInterval: TimeInterval = 120
+    static let cropRefreshInterval: TimeInterval = 15
+    static let preferredCropWidth: CGFloat = 300
+    static let minimumCropWidth: CGFloat = 120
     private(set) var frames: [TripActivityMap.Presentation: TripActivityMapFrame] = [:]
     private(set) var lastRequest: TimeInterval?
+    private(set) var lastSnapshotRequest: TimeInterval?
     private(set) var inFlight = false
 
-    mutating func begin(newest: MKMapPoint?, now: TimeInterval, enabled: Bool, showsOnLockScreen: Bool) -> Bool {
+    static func source(cropWidths: [CGFloat]?, isActive: Bool) -> Source {
+        if let cropWidths, !cropWidths.isEmpty, cropWidths.allSatisfy({ $0 >= preferredCropWidth }) { return .atlas }
+        if isActive { return .snapshot }
+        if let cropWidths, !cropWidths.isEmpty, cropWidths.allSatisfy({ $0 >= minimumCropWidth }) { return .atlas }
+        return .none
+    }
+
+    mutating func begin(newest: MKMapPoint?, now: TimeInterval, enabled: Bool, showsOnLockScreen: Bool,
+                        source: Source = .snapshot) -> Bool {
         let presentations: [TripActivityMap.Presentation] = showsOnLockScreen ? [.island, .lockScreen] : [.island]
-        guard enabled, let newest, !inFlight,
-              lastRequest.map({ now - $0 >= Self.refreshInterval }) ?? true,
+        guard enabled, source != .none, let newest, !inFlight,
+              lastRequest.map({ now - $0 >= Self.cropRefreshInterval }) ?? true,
+              source != .snapshot || (lastSnapshotRequest.map({ now - $0 >= Self.refreshInterval }) ?? true),
               presentations.contains(where: { frames[$0].map { !$0.contains(newest, margin: 0.20) } ?? true }) else { return false }
         lastRequest = now
+        if source == .snapshot { lastSnapshotRequest = now }
         inFlight = true
+        return true
+    }
+
+    mutating func fellBackToCrop(now: TimeInterval) { lastRequest = now }
+
+    mutating func fallBackToSnapshot(now: TimeInterval) -> Bool {
+        guard inFlight, lastSnapshotRequest.map({ now - $0 >= Self.refreshInterval }) ?? true else { return false }
+        lastSnapshotRequest = now
         return true
     }
 

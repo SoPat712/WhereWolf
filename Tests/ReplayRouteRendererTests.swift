@@ -1,9 +1,361 @@
 import XCTest
 import MapKit
+import SwiftUI
 @testable import WhereWolf
 
 @MainActor
 final class ReplayRouteRendererTests: XCTestCase {
+    func testDaySimplificationPreservesEndpointsAndBoundsEveryOriginalPoint() {
+        let points = (0..<8_000).map { index in
+            MKMapPoint(x: Double(index) * 2, y: sin(Double(index) * 0.017) * 100)
+        }
+        for tolerance in [0.25, 1, 4, 32] {
+            let kept = ReplayRouteDetail.retainedIndices(points, tolerance: tolerance)
+            XCTAssertEqual(kept.first, 0)
+            XCTAssertEqual(kept.last, points.count - 1)
+            XCTAssertLessThan(kept.count, points.count / 2)
+            for (first, last) in zip(kept, kept.dropFirst()) {
+                let a = points[first], b = points[last]
+                let dx = b.x - a.x, dy = b.y - a.y, length = hypot(dx, dy)
+                for index in first...last {
+                    let p = points[index]
+                    let along = length > 0 ? ((p.x - a.x) * dx + (p.y - a.y) * dy) / length : 0
+                    let error: Double
+                    if along <= 0 { error = hypot(p.x - a.x, p.y - a.y) }
+                    else if along >= length { error = hypot(p.x - b.x, p.y - b.y) }
+                    else { error = abs((p.x - a.x) * dy - (p.y - a.y) * dx) / length }
+                    XCTAssertLessThanOrEqual(error, tolerance + 0.000_001)
+                }
+            }
+        }
+        let repeated = Array(repeating: MKMapPoint(x: 1, y: 2), count: 10_000)
+        XCTAssertEqual(ReplayRouteDetail.retainedIndices(repeated, tolerance: 1), [0, 9_999])
+        XCTAssertTrue(ReplayRouteDetail.retainedIndices([], tolerance: 1).isEmpty)
+    }
+
+    func testDayThresholdAndZoomBuckets() {
+        for value in [0.0, 300, 3_600, 86_399.999, .nan, .infinity] {
+            XCTAssertFalse(ReplayRouteDetail.simplified(secondsPerBar: value))
+        }
+        for value in [86_400.0, 604_800, 31_536_000] {
+            XCTAssertTrue(ReplayRouteDetail.simplified(secondsPerBar: value))
+        }
+        for scale in stride(from: 0.25, through: 300, by: 0.23) {
+            let tolerance = ReplayRouteDetail.tolerance(bucket: ReplayRouteDetail.zoomBucket(mapPointsPerPoint: scale))
+            XCTAssertLessThanOrEqual(tolerance, scale)
+            XCTAssertGreaterThanOrEqual(tolerance / scale, 1 / sqrt(2))
+        }
+    }
+
+    func testDayCacheInvalidatesOnlyChangedDaysOnAppendExpiryAndReload() {
+        let input = dailyRoute(days: 3, count: 200)
+        var builder = ReplayDayRouteBuilder()
+        func build(_ range: Range<Int>, _ points: [MKMapPoint]? = nil, bucket: Int = 4) -> ReplayDayGeometry {
+            builder.build(points: points ?? Array(input.points[range]), ids: Array(input.ids[range]),
+                dates: Array(input.dates[range]), tracks: nil, calendar: input.calendar, bucket: bucket, highlight: nil)
+        }
+        _ = build(0..<550)
+        XCTAssertEqual(builder.simplificationCount, 3)
+        _ = build(0..<550)
+        XCTAssertEqual(builder.simplificationCount, 3)
+        _ = build(0..<600)
+        XCTAssertEqual(builder.simplificationCount, 4, "Append rebuilds only the last day")
+        let expired = build(250..<600)
+        XCTAssertEqual(builder.simplificationCount, 5, "Expiry rebuilds the first partial day; later offsets just rebase")
+        XCTAssertEqual(builder.cachedDays.count, 2)
+        XCTAssertEqual(expired.sourceIndices.first, 0)
+        XCTAssertEqual(expired.sourceIndices.last, 349)
+        var changed = Array(input.points[250..<600])
+        changed[10].y += 50
+        _ = build(250..<600, changed)
+        XCTAssertEqual(builder.simplificationCount, 6, "An interior coordinate change cannot hit the old cache")
+        _ = build(250..<600, changed, bucket: 6)
+        XCTAssertEqual(builder.simplificationCount, 8)
+        _ = build(250..<600, changed)
+        XCTAssertEqual(builder.simplificationCount, 8, "Previously viewed zoom buckets are reused")
+        _ = build(0..<0)
+        XCTAssertTrue(builder.cachedDays.isEmpty)
+    }
+
+    func testDayGroupingUsesLocalCalendarAcrossDSTAndInvalidatesTimeZone() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/New_York")!
+        let start = calendar.date(from: DateComponents(year: 2026, month: 11, day: 1))!
+        let dates = [start, start.addingTimeInterval(24 * 3_600), start.addingTimeInterval(25 * 3_600)]
+        let points = [0.0, 1, 2].map { MKMapPoint(x: $0, y: 0) }
+        var builder = ReplayDayRouteBuilder()
+        let geometry = builder.build(points: points, ids: [1, 2, 3], dates: dates, tracks: nil,
+            calendar: calendar, bucket: 0, highlight: nil)
+        XCTAssertEqual(geometry.spans.count, 2)
+        XCTAssertEqual(geometry.spans[0], 0...1, "The fall-back day contains 25 hours")
+        let count = builder.simplificationCount
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        _ = builder.build(points: points, ids: [1, 2, 3], dates: dates, tracks: nil,
+            calendar: calendar, bucket: 0, highlight: nil)
+        XCTAssertGreaterThan(builder.simplificationCount, count)
+    }
+
+    func testExternalDayTracksFillOnlyUnloadedDaysAndKeepTheirVertices() {
+        let input = dailyRoute(days: 1, count: 200)
+        let today = input.calendar.startOfDay(for: input.dates[0])
+        let yesterday = input.calendar.date(byAdding: .day, value: -1, to: today)!
+        let external = [MKMapPoint(x: 1_000, y: 2_000), MKMapPoint(x: 1_003, y: 2_001), MKMapPoint(x: 1_006, y: 2_000)]
+        var builder = ReplayDayRouteBuilder()
+        let geometry = builder.build(points: input.points, ids: input.ids, dates: input.dates,
+            tracks: ReplayDayTracks(days: [yesterday: external, today: external]), calendar: input.calendar,
+            bucket: 40, highlight: nil)
+        XCTAssertEqual(geometry.spans.count, 2)
+        XCTAssertEqual(geometry.spans[0], 0...2)
+        for index in external.indices {
+            XCTAssertEqual(geometry.points[index].x, external[index].x)
+            XCTAssertEqual(geometry.points[index].y, external[index].y)
+        }
+        XCTAssertEqual(geometry.position(for: 0), 3, "The loaded day wins, with no bridge to the external day")
+        XCTAssertEqual(geometry.points[3].x, input.points[0].x)
+        XCTAssertEqual(builder.simplificationCount, 1)
+    }
+
+    func testCoarseOverlaysRespectSegmentAndLengthCapsIncludingJoinTails() {
+        var points = (0..<12_000).map { index in
+            let x = index < 6_000 ? Double(index) * 70 : 420_000 + Double(index - 6_000) * 500
+            return MKMapPoint(x: x, y: Double(index % 2) * 40)
+        }
+        points.insert(MKMapPoint(x: -1_000_000, y: 0), at: 0)
+        let geometry = ReplayDayGeometry(points: points, spans: [0...(points.count - 1)],
+            sourceIndices: Array(points.indices), renderedIndices: Array(points.indices))
+        let presentation = ReplayRoutePresentation(dayGeometry: geometry, position: 6_000)
+        XCTAssertGreaterThan(presentation.sections.count, 10)
+        XCTAssertEqual(presentation.sections[0].end, 1)
+        for section in presentation.sections {
+            for line in [section.polyline, section.future] {
+                XCTAssertLessThanOrEqual(line.pointCount - 1, 1_024)
+                var length = 0.0
+                for index in 1..<line.pointCount {
+                    length += hypot(line.points()[index].x - line.points()[index - 1].x,
+                                    line.points()[index].y - line.points()[index - 1].y)
+                }
+                if length > 100_000.000_001 { XCTAssertEqual(line.pointCount, 2, "Isolate an indivisible long jump") }
+            }
+        }
+        let longJump = [MKMapPoint(x: 0, y: 0), MKMapPoint(x: 1, y: 0), MKMapPoint(x: 200_000, y: 0), MKMapPoint(x: 200_001, y: 0)]
+        XCTAssertEqual(ReplayRouteDetail.retainedIndices(longJump, tolerance: 10_000), [0, 1, 2, 3])
+    }
+
+    func testDetailHandoffWaitsForItsOwnRenderAndRestoresFineOverlayIdentity() {
+        let input = dailyRoute(days: 4, count: 1_500)
+        let fine = ReplayRoutePresentation(coordinates: input.points.map(\.coordinate), pointIDs: input.ids, position: 200, now: 10)
+        let originals = fine.sections.map { ObjectIdentifier($0.polyline) }
+        let display = ReplayRouteDisplay(fine)
+        var builder = ReplayDayRouteBuilder()
+        let geometry = builder.build(points: input.points, ids: input.ids, dates: input.dates, tracks: nil,
+            calendar: input.calendar, bucket: 4, highlight: nil)
+        display.renderingBegan()
+        let staged = display.stage(geometry, position: 200, now: 10)
+        XCTAssertTrue(staged.removed.isEmpty, "Outgoing geometry covers the map while the new overlays render")
+        display.renderingFinished(fullyRendered: true)
+        XCTAssertTrue(display.finishHandoff().isEmpty, "An already-running render cannot confirm the new geometry")
+        display.renderingBegan()
+        display.renderingFinished(fullyRendered: false)
+        XCTAssertTrue(display.finishHandoff().isEmpty)
+        display.renderingBegan()
+        display.renderingFinished(fullyRendered: true)
+        XCTAssertFalse(display.finishHandoff().removed.isEmpty)
+        XCTAssertTrue(display.isSimplified)
+        XCTAssertTrue(fine.fullRoute.pointCount == input.points.count)
+        for source in [0.0, 100.5, 2_999, 3_000.5, 5_999] {
+            _ = display.updatePosition(source, now: 20)
+            assertCoverage(display.presentation, position: display.position(source), now: 30)
+        }
+        XCTAssertEqual(fine.position, 200, "Coarse frames do not reconcile the hidden full-detail sections")
+        display.renderingBegan()
+        _ = display.stage(nil, position: 5_999, now: 30)
+        display.renderingFinished(fullyRendered: true)
+        XCTAssertTrue(display.finishHandoff().isEmpty, "Reused fine overlays also need a render after reinstallation")
+        fine.expireCoverage(now: 40)
+        XCTAssertTrue(display.finishHandoff().isEmpty, "Coverage expiry cannot complete a handoff")
+        display.renderingBegan()
+        display.renderingFinished(fullyRendered: true)
+        _ = display.finishHandoff()
+        XCTAssertFalse(display.isSimplified)
+        XCTAssertTrue(display.presentation === fine)
+        XCTAssertEqual(fine.sections.map { ObjectIdentifier($0.polyline) }, originals)
+    }
+
+    func testCoarseGeometryPreservesOpenedTripAndMarkerMapping() {
+        let input = dailyRoute(days: 2, count: 2_000)
+        var builder = ReplayDayRouteBuilder()
+        let geometry = builder.build(points: input.points, ids: input.ids, dates: input.dates, tracks: nil,
+            calendar: input.calendar, bucket: 12, highlight: 1_900...2_100)
+        for index in 1_900...2_100 {
+            let rendered = Int(geometry.position(for: Double(index)))
+            XCTAssertEqual(geometry.points[rendered].x, input.points[index].x)
+            XCTAssertEqual(geometry.points[rendered].y, input.points[index].y)
+        }
+        let range = geometry.range(for: 1_900...2_100)
+        XCTAssertEqual(range.count, 201)
+        XCTAssertEqual(geometry.position(for: 1_999.5), geometry.position(for: 1_999) + 0.5)
+        let fine = ReplayRoutePresentation(coordinates: input.points.map(\.coordinate), pointIDs: input.ids, position: 2_050)
+        _ = fine.highlight(1_900...2_100)
+        let display = ReplayRouteDisplay(fine)
+        _ = display.stage(geometry, position: 2_050)
+        display.renderingBegan()
+        display.renderingFinished(fullyRendered: true)
+        let removed = display.finishHandoff().removed.map { ObjectIdentifier($0) }
+        for red in fine.highlightOverlays {
+            XCTAssertFalse(removed.contains(ObjectIdentifier(red)))
+            XCTAssertEqual(display.renderer(for: red)?.strokeColor, .systemRed)
+            XCTAssertEqual(display.renderer(for: red)?.lineWidth, 4)
+        }
+        XCTAssertEqual(display.range(1_900...2_100), range)
+    }
+
+    func testCoarseReloadRebasesTheMarkerWithoutInstallingFullDetail() {
+        let input = dailyRoute(days: 3, count: 2_000)
+        var builder = ReplayDayRouteBuilder()
+        let geometry = builder.build(points: input.points, ids: input.ids, dates: input.dates, tracks: nil,
+            calendar: input.calendar, bucket: 6, highlight: nil)
+        let fine = ReplayRoutePresentation(coordinates: input.points.map(\.coordinate), pointIDs: input.ids, position: 2_500)
+        let display = ReplayRouteDisplay(fine)
+        _ = display.stage(geometry, position: 2_500)
+        display.renderingBegan()
+        display.renderingFinished(fullyRendered: true)
+        _ = display.finishHandoff()
+        let outgoing = display.presentation
+        let change = display.reload(coordinates: input.points.dropFirst(1_500).map(\.coordinate),
+            ids: Array(input.ids.dropFirst(1_500)), position: 1_000)
+        XCTAssertTrue(display.presentation === outgoing)
+        XCTAssertEqual(display.position(1_000), geometry.position(for: 2_500))
+        XCTAssertEqual(display.position(0), geometry.position(for: 1_500))
+        XCTAssertTrue(change.added.isEmpty && change.addedDots.isEmpty)
+        XCTAssertEqual(fine.fullRoute.pointCount, 4_500)
+        let replacement = builder.build(points: Array(input.points.dropFirst(1_500)), ids: Array(input.ids.dropFirst(1_500)),
+            dates: Array(input.dates.dropFirst(1_500)), tracks: nil, calendar: input.calendar, bucket: 6, highlight: nil)
+        _ = display.stage(replacement, position: 1_000)
+        display.renderingBegan()
+        display.renderingFinished(fullyRendered: true)
+        _ = display.finishHandoff()
+        XCTAssertFalse(display.presentation === outgoing)
+        XCTAssertEqual(display.position(1_000), replacement.position(for: 1_000))
+    }
+
+    func testCoarseLayersEndAtTheExactUnsimplifiedMarkerPose() throws {
+        let input = dailyRoute(days: 1, count: 400)
+        var builder = ReplayDayRouteBuilder()
+        let geometry = builder.build(points: input.points, ids: input.ids, dates: input.dates, tracks: nil,
+            calendar: input.calendar, bucket: 6, highlight: nil)
+        let source = 150.5, position = geometry.position(for: source)
+        let route = ReplayRoutePresentation(dayGeometry: geometry, position: source, now: 10)
+        let coordinate = interpolated(input.points.map(\.coordinate), at: source)
+        let map = MKMapView(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        map.region = MKCoordinateRegion(center: coordinate, latitudinalMeters: 1_000, longitudinalMeters: 1_000)
+        map.layoutIfNeeded()
+        let marker = MKAnnotationView()
+        map.addSubview(marker)
+        let screen = ReplayScreenProjection(map: map, container: map)
+        let endpoint = screen.direct(MKMapPoint(coordinate))
+        for future in [false, true] {
+            let layer = ReplayTrailLayer(future: future)
+            layer.update(route: route.fullRoute, position: position, coordinate: coordinate,
+                coverage: route.layerCoverage(future: future, now: 20), projection: screen, on: map, below: marker)
+            var last: CGPoint?
+            try XCTUnwrap(layer.path).applyWithBlock {
+                if $0.pointee.type == .addLineToPoint { last = $0.pointee.points[0] }
+            }
+            XCTAssertEqual(try XCTUnwrap(last).x, endpoint.x, accuracy: 0.000_001)
+            XCTAssertEqual(try XCTUnwrap(last).y, endpoint.y, accuracy: 0.000_001)
+        }
+        assertCoverage(route, position: position, now: 20)
+    }
+
+    func testPinchFramesNeverRequestDayGeometryAndSettledFramesRequestOnce() {
+        let input = dailyRoute(days: 2, count: 200)
+        let points = input.points.indices.map {
+            RecordedLocation(id: input.ids[$0], timestamp: input.dates[$0],
+                latitude: input.points[$0].coordinate.latitude, longitude: input.points[$0].coordinate.longitude)
+        }
+        let channel = RulerScaleChannel()
+        var surface = NativeMapSurface(position: .camera(MapCamera(centerCoordinate: points[0].coordinate, distance: 10_000)),
+            mapType: .standard, coordinates: [], replayRoute: ReplayRouteGeometry(points: points), replayPosition: 0,
+            replayActive: true, replayFollowing: false, rulerScaleChannel: channel,
+            selected: points[0].coordinate, selectedTitle: "Recorded point", scenePhase: .active, pageActive: true,
+            onCameraChange: { _, _ in }, onInteraction: {})
+        let coordinator = NativeMapSurface.Coordinator(surface)
+        let map = MKMapView(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        coordinator.map = map
+        coordinator.update(surface, animated: false)
+        defer { NativeMapSurface.dismantleUIView(map, coordinator: coordinator) }
+        XCTAssertEqual(coordinator.replayDetailRequestCount, 0)
+        let detents = HistoryRulerCoarseDrag.Detents(tickCount: 10_000, rulerWidth: 350)
+        for index in 0..<120 {
+            let step = 90 + Double(index) / 10
+            channel.send(.init(pointsPerBar: step, detents: detents, width: 350, interval: 1_000))
+            surface.rulerZoom = ReplayRulerHold(pointsPerBar: step, visibleBars: 20, interval: 1_000)
+            coordinator.update(surface, animated: false)
+        }
+        XCTAssertEqual(coordinator.replayDetailRequestCount, 0)
+        channel.send(nil)
+        XCTAssertEqual(coordinator.replayDetailRequestCount, 1)
+        for index in 0..<120 {
+            surface.replayPosition = Double(index)
+            surface.selected = points[index].coordinate
+            coordinator.update(surface, animated: false)
+        }
+        XCTAssertEqual(coordinator.replayDetailRequestCount, 1)
+        surface.rulerZoom = ReplayRulerHold(pointsPerBar: 80, visibleBars: 20, interval: 1_000)
+        coordinator.update(surface, animated: false)
+        XCTAssertEqual(coordinator.replayDetailRequestCount, 1)
+    }
+
+    func testRestoringMarkerKeepsUnmarkedLineNowOwnedByPastRoute() throws {
+        let values = coordinates(count: 3_500)
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let points = values.enumerated().map { index, coordinate in
+            RecordedLocation(id: Int64(index), timestamp: start.addingTimeInterval(Double(index)),
+                latitude: coordinate.latitude, longitude: coordinate.longitude)
+        }
+        var surface = NativeMapSurface(position: .camera(MapCamera(centerCoordinate: values[0], distance: 10_000)),
+            mapType: .standard, coordinates: [], replayRoute: ReplayRouteGeometry(points: points), replayPosition: 0,
+            replayActive: true, replayFollowing: false, selected: nil, selectedTitle: "Recorded point",
+            scenePhase: .active, pageActive: true, onCameraChange: { _, _ in }, onInteraction: {})
+        let coordinator = NativeMapSurface.Coordinator(surface)
+        let map = MKMapView(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        coordinator.map = map
+        defer { NativeMapSurface.dismantleUIView(map, coordinator: coordinator) }
+        coordinator.update(surface, animated: false)
+        let line = try XCTUnwrap(map.overlays.first {
+            (coordinator.mapView(map, rendererFor: $0) as? MKPolylineRenderer)?.strokeColor == .systemBlue
+        })
+
+        surface.replayPosition = 1_500
+        surface.selected = values[1_500]
+        coordinator.update(surface, animated: false)
+        XCTAssertTrue(map.overlays.contains { $0 === line }, "The old unmarked section is now ordinary past-route coverage")
+        coordinator.mapViewWillStartRenderingMap(map)
+        coordinator.mapViewDidFinishRenderingMap(map, fullyRendered: true)
+        coordinator.alignMarkers(on: map)
+        XCTAssertTrue(map.overlays.contains { $0 === line }, "The section must survive after temporary layer coverage ends")
+
+        surface.replayPosition = 0
+        surface.selected = nil
+        coordinator.update(surface, animated: false)
+        XCTAssertTrue(map.overlays.contains { $0 === line })
+        surface.selected = values[0]
+        coordinator.update(surface, animated: false)
+        XCTAssertFalse(map.overlays.contains { $0 === line }, "An active section belongs to the marker layers again")
+    }
+
+    private func dailyRoute(days: Int, count: Int) -> (points: [MKMapPoint], ids: [Int64], dates: [Date], calendar: Calendar) {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let day = calendar.date(from: DateComponents(year: 2026, month: 1, day: 1))!
+        let origin = MKMapPoint(CLLocationCoordinate2D(latitude: 45, longitude: -122))
+        let points = (0..<(days * count)).map { index in
+            MKMapPoint(x: origin.x + Double(index) * 2, y: origin.y + sin(Double(index) * 0.02) * 40)
+        }
+        let dates = points.indices.map { day.addingTimeInterval(Double($0 / count) * 86_400 + Double($0 % count)) }
+        return (points, points.indices.map { Int64($0) }, dates, calendar)
+    }
+
     func testUsesNativeVectorRenderersAndThinnerFutureDashes() throws {
         let route = ReplayRoutePresentation(coordinates: coordinates(count: 3_500))
         _ = route.updatePosition(1_500)

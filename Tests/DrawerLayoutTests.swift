@@ -738,6 +738,110 @@ final class WhereWolfTabRoutingTests: XCTestCase {
         }
     }
 
+    func testInsightsUsesTheSameNativeHandoffAndStableSettingsIdentity() async throws {
+        try await withShell { shell, panel, map in
+            self.updateInsights(shell, selection: 0, available: true)
+            XCTAssertEqual(shell.tabBar.items?.map(\.tag), [0, 1, 3, 2])
+            XCTAssertEqual(shell.tabBar.items?.map(\.title), ["Tracker", "Trip", "Insights", "Settings"])
+            let host = try XCTUnwrap(self.mapChildren(shell).compactMap { $0 as? FullScreenMapHost }.first)
+            panel.animationClock = { 0 }
+            self.updateInsights(shell, selection: 3, available: true, completeTransition: false)
+            let insights = try XCTUnwrap(shell.viewControllers?[2])
+            let safeBottom = insights.view.safeAreaInsets.bottom
+            XCTAssertEqual(insights.tabBarItem.tag, 3)
+            XCTAssertTrue(host.view.isHidden)
+            XCTAssertNil(shell.currentDrawerGeometry())
+            if !UIAccessibility.isReduceMotionEnabled {
+                XCTAssertTrue(panel.isBarTransitioning)
+                XCTAssertEqual(shell.tabBar.alpha, 0)
+            }
+            panel.advanceAnimation(at: 100)
+            XCTAssertTrue(panel.view.isHidden)
+            XCTAssertEqual(shell.tabBar.alpha, 1)
+            XCTAssertEqual(insights.additionalSafeAreaInsets, .zero)
+            XCTAssertEqual(insights.view.safeAreaInsets.bottom, safeBottom, accuracy: 0.5)
+            self.updateInsights(shell, selection: 2, available: true)
+            XCTAssertEqual(shell.selectedIndex, 3)
+            XCTAssertEqual(shell.selectedViewController?.tabBarItem.tag, 2)
+            XCTAssertFalse(panel.isBarTransitioning)
+            self.updateInsights(shell, selection: 0, available: true)
+            XCTAssertTrue(shell.currentMap() === map)
+            XCTAssertFalse(host.view.isHidden)
+            let grabber = try XCTUnwrap(self.findGrabber(in: panel.view))
+            XCTAssertEqual(grabber.accessibilityValue, "Collapsed")
+        }
+    }
+
+    func testInsightsRemovalDuringHandoffFinishesWithoutAStaleSpring() async throws {
+        try await withShell { shell, panel, _ in
+            self.updateInsights(shell, selection: 0, available: true)
+            panel.animationClock = { 0 }
+            self.updateInsights(shell, selection: 3, available: true, completeTransition: false)
+            panel.advanceAnimation(at: 0.04)
+            self.updateInsights(shell, selection: 3, available: false, completeTransition: false)
+            XCTAssertEqual(shell.selectedViewController?.tabBarItem.tag, 2)
+            XCTAssertEqual(shell.drawerTabs.selection, 2)
+            XCTAssertEqual(shell.tabBar.items?.map(\.tag), [0, 1, 2])
+            XCTAssertFalse(panel.isBarTransitioning)
+            XCTAssertTrue(panel.view.isHidden)
+            XCTAssertEqual(shell.tabBar.alpha, 1)
+            panel.advanceAnimation(at: 100)
+            XCTAssertTrue(panel.view.isHidden)
+            XCTAssertEqual(shell.tabBar.alpha, 1)
+        }
+    }
+
+    func testOptionalTabKeepsEagerNativeSelectionAheadOfStaleSwiftUI() async throws {
+        try await withShell { shell, panel, _ in
+            self.updateInsights(shell, selection: 2, available: true)
+            var requested: Int?
+            shell.onSelect = { requested = $0 }
+            let insights = try XCTUnwrap(shell.viewControllers?[2])
+            shell.selectedViewController = insights
+            shell.tabBarController(shell, didSelect: insights)
+            XCTAssertEqual(requested, 3)
+            XCTAssertEqual(shell.drawerTabs.selection, 3)
+            self.updateInsights(shell, selection: 2, available: true, activation: 0)
+            XCTAssertEqual(shell.selectedViewController?.tabBarItem.tag, 3)
+            self.updateInsights(shell, selection: 3, available: true, activation: 1)
+            let tracker = try XCTUnwrap(shell.viewControllers?.first)
+            shell.selectedViewController = tracker
+            shell.tabBarController(shell, didSelect: tracker)
+            self.updateInsights(shell, selection: 3, available: true, activation: 1)
+            XCTAssertEqual(shell.selectedViewController?.tabBarItem.tag, 0)
+            XCTAssertEqual(shell.drawerTabs.selection, 0)
+            self.updateInsights(shell, selection: 0, available: true, activation: 2)
+            panel.advanceAnimation(at: 100)
+            XCTAssertFalse(panel.view.isHidden)
+        }
+    }
+
+    func testAddingInsightsPreservesCollapsedMapAndRemovingItPreservesSettings() async throws {
+        try await withShell { shell, panel, _ in
+            let grabber = try XCTUnwrap(self.findGrabber(in: panel.view))
+            grabber.accessibilityDecrement()
+            try await self.waitForLayout(panel)
+            self.updateInsights(shell, selection: 0, available: true)
+            XCTAssertEqual(grabber.accessibilityValue, "Collapsed")
+            XCTAssertEqual(shell.selectedIndex, 0)
+            self.updateInsights(shell, selection: 2, available: true)
+            self.updateInsights(shell, selection: 2, available: false)
+            XCTAssertEqual(shell.selectedIndex, 2)
+            XCTAssertEqual(shell.drawerTabs.selection, 2)
+            XCTAssertTrue(panel.view.isHidden)
+        }
+    }
+
+    private func updateInsights(_ shell: WhereWolfShellController, selection: Int, available: Bool,
+                                activation: Int = 0, completeTransition: Bool = true) {
+        let map = shell.currentMap() ?? MKMapView()
+        shell.update(map: AnyView(ShellTestMap(map: map)), controls: AnyView(Text("Controls").frame(height: 100)),
+                     settings: AnyView(NavigationStack { Text("Settings") }), selection: selection,
+                     activation: activation, controlsID: selection < 2 ? selection : 0, contentInteracting: false,
+                     insights: available ? AnyView(NavigationStack { Text("Insights").navigationTitle("Insights") }) : nil)
+        if completeTransition { panelController(in: shell)?.advanceAnimation(at: 1_000) }
+    }
+
     private func update(_ shell: WhereWolfShellController, selection: Int, activation: Int = 0, map: MKMapView? = nil,
                         completeTransition: Bool = true) {
         let map = map ?? shell.currentMap() ?? MKMapView()

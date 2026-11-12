@@ -310,6 +310,10 @@ struct NativeMapSurface: UIViewRepresentable {
     var replayRoute: ReplayRouteGeometry?
     var replayPosition: Double
     var replayAccuracy: CLLocationAccuracy? = nil
+    var replayDayTracks: ReplayDayTracks? = nil
+    // An explicit settled interval can also drive day tracks whose raw points are not loaded.
+    var replaySecondsPerBar: TimeInterval? = nil
+    var replayFrame: ReplayHistoryFrame? = nil
     var replayActive = false
     var replayFollowing = true
     var replayFollowDistance: CLLocationDistance? = nil
@@ -481,7 +485,20 @@ struct NativeMapSurface: UIViewRepresentable {
         private var tripCoordinates: [CLLocationCoordinate2D] = []
         private var tripLine: MKPolyline?
         private var replayRoute: ReplayRouteGeometry?
+        private var unmarkedReplayLine: MKPolyline?
         private var replayPresentation: ReplayRoutePresentation?
+        private var replayDisplay: ReplayRouteDisplay?
+        private let replayDayCache = ReplayDayRouteCache()
+        private struct ReplayDetailRequest: Equatable {
+            let route: ObjectIdentifier
+            let tracks: ObjectIdentifier?
+            let calendar: Calendar
+            let bucket: Int
+            let highlight: ClosedRange<Int>?
+        }
+        private var replayDetailRequest: ReplayDetailRequest?
+        private var replayDetailGeneration = 0
+        private(set) var replayDetailRequestCount = 0
         private let replayTrailLayer = ReplayTrailLayer()
         private let replayFutureLayer = ReplayTrailLayer(future: true)
         private let replayHighlightLayer = ReplayTrailLayer(highlight: true)
@@ -500,7 +517,10 @@ struct NativeMapSurface: UIViewRepresentable {
 #if targetEnvironment(simulator)
         var displayedTrailCoordinate: CLLocationCoordinate2D? { replayTrailLayer.coordinate }
         var replayAuditValues: [String: Double] {
-            var values = replayPresentation?.auditValues ?? [:]
+            var values = replayDisplay?.presentation.auditValues ?? [:]
+            values["nativeRouteSimplified"] = replayDisplay?.isSimplified == true ? 1 : 0
+            values["nativeDisplayedRoutePoints"] = Double(replayDisplay?.presentation.fullRoute.pointCount ?? 0)
+            values["nativeDayRouteRequests"] = Double(replayDetailRequestCount)
             values["nativePosePosition"] = parent.replayPosition
             if parent.replayOverview, let map, let route = replayRoute,
                let bounds = ReplayOverviewFit.projectedBounds(route.coordinates.map { map.convert($0, toPointTo: nil) }) {
@@ -702,6 +722,7 @@ struct NativeMapSurface: UIViewRepresentable {
             updateHeadingMode(on: map)
             if visible && !wasVisible { viewportChanged(on: map) }
             alignMarkers(on: map)
+            updateReplayDetail(on: map)
         }
 
         private func sameCoordinates(_ lhs: [CLLocationCoordinate2D], _ rhs: [CLLocationCoordinate2D]) -> Bool {
@@ -718,26 +739,27 @@ struct NativeMapSurface: UIViewRepresentable {
         private func updateOverlays(_ map: MKMapView) {
             if replayRoute !== parent.replayRoute {
                 overviewFit = nil
+                invalidateReplayDetail()
                 replayRoute = parent.replayRoute
-                if let route = replayRoute, !route.coordinates.isEmpty {
-                    if let presentation = replayPresentation {
-                        presentation.update(coordinates: route.coordinates, pointIDs: route.pointIDs,
-                            position: parent.replayPosition).apply(to: map)
+                if let route = replayRoute {
+                    if let display = replayDisplay {
+                        display.reload(coordinates: route.coordinates, ids: route.pointIDs,
+                                       position: parent.replayPosition).apply(to: map)
                     } else {
                         let presentation = ReplayRoutePresentation(coordinates: route.coordinates,
                             pointIDs: route.pointIDs, position: parent.replayPosition)
                         replayPresentation = presentation
+                        replayDisplay = ReplayRouteDisplay(presentation)
                         map.addOverlays(presentation.overlays, level: .aboveRoads)
                     }
                 } else {
-                    if let presentation = replayPresentation {
-                        map.removeOverlays(presentation.overlays + presentation.highlightOverlays)
-                    }
+                    if let display = replayDisplay { map.removeOverlays(display.overlays) }
                     replayPresentation = nil
+                    replayDisplay = nil
                     replayRenderCamera = nil
                 }
             }
-            replayPresentation?.updatePosition(parent.replayPosition).apply(to: map)
+            replayDisplay?.updatePosition(parent.replayPosition).apply(to: map)
             scheduleReplayCoverageExpiry()
             if !sameCoordinates(tripCoordinates, parent.coordinates) {
                 if let tripLine { map.removeOverlay(tripLine) }
@@ -745,6 +767,56 @@ struct NativeMapSurface: UIViewRepresentable {
                 tripLine = parent.coordinates.count > 1
                     ? MKPolyline(coordinates: parent.coordinates, count: parent.coordinates.count) : nil
                 if let tripLine { map.addOverlay(tripLine, level: .aboveRoads) }
+            }
+        }
+
+        private func invalidateReplayDetail() {
+            replayDetailGeneration &+= 1
+            replayDetailRequest = nil
+        }
+
+        private var replayDetailSettled: Bool {
+            rulerScaleFrame == nil && rulerScalePendingCommit == nil && rulerDistanceEase == nil
+                && !cameraActionAnimating && !hasMapContact
+        }
+
+        private func updateReplayDetail(on map: MKMapView) {
+            guard parent.sceneVisible, parent.pageActive, replayDetailSettled,
+                  let route = replayRoute, let display = replayDisplay else { return }
+            let zoom = parent.rulerZoom
+            let seconds = parent.replaySecondsPerBar
+                ?? (zoom.map { $0.pointsPerBar * ($0.interval ?? $0.axis?.interval ?? 0) } ?? 0)
+            guard ReplayRouteDetail.simplified(secondsPerBar: seconds) else {
+                if replayDetailRequest != nil { invalidateReplayDetail() }
+                if display.wantsSimplified {
+                    display.stage(nil, position: parent.replayPosition).apply(to: map)
+                    alignMarkers(on: map)
+                }
+                return
+            }
+            guard let scale = mapScale(on: map) else { return }
+            let request = ReplayDetailRequest(route: ObjectIdentifier(route),
+                tracks: parent.replayDayTracks.map { ObjectIdentifier($0) }, calendar: .current,
+                bucket: ReplayRouteDetail.zoomBucket(mapPointsPerPoint: scale.pointsPerPoint), highlight: parent.replayHighlight)
+            guard replayDetailRequest != request else { return }
+            replayDetailRequest = request
+            replayDetailGeneration &+= 1
+            replayDetailRequestCount += 1
+            let generation = replayDetailGeneration
+            replayDayCache.request(route: display.fine.fullRoute, ids: route.pointIDs, dates: route.timestamps,
+                tracks: parent.replayDayTracks, calendar: request.calendar, bucket: request.bucket,
+                highlight: request.highlight) { [weak self, weak display] geometry in
+                guard let self, let display, self.replayDisplay === display,
+                      self.replayDetailGeneration == generation, let map = self.map else { return }
+                guard self.replayDetailSettled, self.parent.sceneVisible, self.parent.pageActive else {
+                    self.invalidateReplayDetail()
+                    return
+                }
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                display.stage(geometry, position: self.parent.replayPosition).apply(to: map)
+                self.alignMarkers(on: map)
+                CATransaction.commit()
             }
         }
 
@@ -756,8 +828,8 @@ struct NativeMapSurface: UIViewRepresentable {
         }
 
         private func scheduleReplayCoverageExpiry() {
-            replayPresentation?.expireCoverage()
-            let deadline = replayPresentation?.nextCoverageDeadline
+            replayDisplay?.expireCoverage()
+            let deadline = replayDisplay?.nextCoverageDeadline
             guard deadline != replayCoverageDeadline else { return }
             stopReplayCoverageExpiry()
             guard let deadline, parent.sceneVisible, parent.pageActive else { return }
@@ -812,6 +884,16 @@ struct NativeMapSurface: UIViewRepresentable {
                 replayAccuracyLayer.hide()
                 return
             }
+            if replayDetailSettled { replayDisplay?.finishHandoff().apply(to: map) }
+            let unmarked = parent.selected == nil ? replayDisplay?.presentation : nil
+            let line = unmarked.flatMap { $0.sections.indices.contains($0.activeIndex) ? $0.sections[$0.activeIndex].polyline : nil }
+            if unmarkedReplayLine !== line {
+                if let unmarkedReplayLine, replayDisplay?.presentation.contains(unmarkedReplayLine) != true {
+                    map.removeOverlay(unmarkedReplayLine)
+                }
+                unmarkedReplayLine = line
+                if let line { map.addOverlay(line, level: .aboveRoads) }
+            }
             if cameraZooming && zoomKeepsCentering, let coordinate = zoomAnchor(on: map) {
                 if anchorCoordinate?.latitude != coordinate.latitude || anchorCoordinate?.longitude != coordinate.longitude {
                     anchorCoordinate = coordinate
@@ -834,6 +916,9 @@ struct NativeMapSurface: UIViewRepresentable {
                     replayAccuracyLayer.hide()
                 }
                 if let presentation = replayPresentation, let container = view.superview {
+                    CATransaction.begin()
+                    CATransaction.setDisableActions(true)
+                    defer { CATransaction.commit() }
                     let screen = ReplayScreenProjection(map: map, container: container)
                     let now = CACurrentMediaTime()
                     let span = highlightCoverage(presentation.fullRoute)
@@ -874,12 +959,15 @@ struct NativeMapSurface: UIViewRepresentable {
                         presentation.highlight(range, now: now).apply(to: map)
                     }
                     let native = range != nil && revealedHighlight == range && presentation.highlightRendered(now: now)
-                    replayTrailLayer.update(route: presentation.fullRoute, position: parent.replayPosition,
-                        coordinate: pose, coverage: presentation.layerCoverage(future: false, now: now),
-                        hiding: native ? range : nil, projection: screen, on: map, below: view)
-                    replayFutureLayer.update(route: presentation.fullRoute, position: parent.replayPosition,
-                        coordinate: pose, coverage: presentation.layerCoverage(future: true, now: now),
-                        hiding: native ? range : nil, projection: screen, on: map, below: view)
+                    let displayed = replayDisplay?.presentation ?? presentation
+                    let displayedPosition = replayDisplay?.position(parent.replayPosition) ?? parent.replayPosition
+                    let hidden = native ? range.map { replayDisplay?.range($0) ?? $0 } : nil
+                    replayTrailLayer.update(route: displayed.fullRoute, position: displayedPosition,
+                        coordinate: pose, coverage: displayed.layerCoverage(future: false, now: now),
+                        hiding: hidden, projection: screen, on: map, below: view)
+                    replayFutureLayer.update(route: displayed.fullRoute, position: displayedPosition,
+                        coordinate: pose, coverage: displayed.layerCoverage(future: true, now: now),
+                        hiding: hidden, projection: screen, on: map, below: view)
                     if let layers = container.layer.sublayers,
                        let future = layers.firstIndex(of: replayFutureLayer), let trail = layers.firstIndex(of: replayTrailLayer),
                        future > trail {
@@ -981,7 +1069,7 @@ struct NativeMapSurface: UIViewRepresentable {
         private func applyPosition(_ map: MKMapView, animated: Bool, force: Bool = false) {
             let next: Request
             if parent.replayOverview, let route = parent.replayRoute {
-                next = .overview(ObjectIdentifier(route), parent.replayFitRange)
+                next = .overview(parent.replayFrame.map(ObjectIdentifier.init) ?? ObjectIdentifier(route), parent.replayFitRange)
             } else if parent.replayFollowing, parent.replayRoute != nil, let coordinate = parent.selected {
                 next = .camera(MapCamera(centerCoordinate: coordinate,
                     distance: rulerDistance ?? parent.replayFollowDistance ?? parent.position.camera?.distance ?? 2_000,
@@ -1104,9 +1192,13 @@ struct NativeMapSurface: UIViewRepresentable {
                 _ = updateRulerZoom(on: map, wasVisible: parent.scenePhase == .active
                     && parent.pageActive && parent.rulerZoomActive)
                 alignMarkers(on: map)
+                updateReplayDetail(on: map)
                 return
             }
-            if rulerScaleFrame == nil { resetRulerScaleFits() }
+            if rulerScaleFrame == nil {
+                resetRulerScaleFits()
+                invalidateReplayDetail()
+            }
             rulerScalePendingCommit = nil
             rulerScaleFrame = frame
             guard let map else { return }
@@ -1153,7 +1245,7 @@ struct NativeMapSurface: UIViewRepresentable {
                   rulerFollowing, !hasMapContact, var source = rulerFitSource(on: map) else { return }
             let bracket = frame.detents.bracket(at: frame.pointsPerBar)
             let step = min(bracket.upper, max(bracket.lower, frame.pointsPerBar))
-            let zoom = frame.detents.zoom(step: step, width: frame.width, axis: frame.axis, interval: frame.interval)
+            let zoom = frame.detents.zoom(step: step, width: frame.width, axis: frame.axis, interval: frame.interval, serverRuler: frame.serverRuler)
             beginRulerZoom(on: map)
             scaledRuler = zoom
             // Freeze the live fit's anchor for the gesture; live motion still centers the dot every frame.
@@ -1174,7 +1266,7 @@ struct NativeMapSurface: UIViewRepresentable {
             rulerLiveFitID = parent.replayActive ? nil : parent.liveRulerGeometry?.pointIDs.last
             func distance(at step: Double) -> CLLocationDistance? {
                 if let distance = rulerScaleDistances[step] { return distance }
-                let zoom = frame.detents.zoom(step: step, width: frame.width, axis: frame.axis, interval: frame.interval)
+                let zoom = frame.detents.zoom(step: step, width: frame.width, axis: frame.axis, interval: frame.interval, serverRuler: frame.serverRuler)
                 guard let distance = rulerZoomDistance(zoom, on: map, source: source) else { return nil }
                 rulerScaleDistances[step] = distance
                 rulerScaleZooms[step] = zoom
@@ -1375,7 +1467,10 @@ struct NativeMapSurface: UIViewRepresentable {
             rulerDistance = UIAccessibility.isReduceMotionEnabled ? ease.to : ease.distance(at: time)
             applyRulerPosition(on: map)
             alignMarkers(on: map)
-            if UIAccessibility.isReduceMotionEnabled || ease.progress(at: time) == 1 { stopRulerZoom() }
+            if UIAccessibility.isReduceMotionEnabled || ease.progress(at: time) == 1 {
+                stopRulerZoom()
+                updateReplayDetail(on: map)
+            }
         }
 
         func stopRulerZoom() {
@@ -1560,22 +1655,24 @@ struct NativeMapSurface: UIViewRepresentable {
                     anchorCoordinate = destination.centerCoordinate
                 }
                 if revealedHighlight != parent.replayHighlight { alignMarkers(on: map) }
+                updateReplayDetail(on: map)
             }
         }
 
         fileprivate func replayOverviewCamera(on map: MKMapView) -> MapCamera? {
             guard let route = replayRoute else { return nil }
+            let identity = parent.replayFrame.map(ObjectIdentifier.init) ?? ObjectIdentifier(route)
             let clear = NativeMapSurface.replayClearRect(on: map)
             let highlight = parent.replayFitRange.flatMap { range in
                 range.upperBound < route.coordinates.count ? range : nil
             }
-            if let fit = overviewFit, fit.route == ObjectIdentifier(route), fit.highlight == highlight, fit.bounds == map.bounds,
+            if let fit = overviewFit, fit.route == identity, fit.highlight == highlight, fit.bounds == map.bounds,
                fit.clear == clear, fit.heading == map.camera.heading, fit.pitch == map.camera.pitch,
                fit.type == map.mapType { return fit.camera }
             // An opened trip fits only its own fixes.
-            let coordinates = highlight.map { Array(route.coordinates[$0]) } ?? route.coordinates
+            let coordinates = highlight.map { Array(route.coordinates[$0]) } ?? parent.replayFrame?.coordinates ?? route.coordinates
             guard let camera = ReplayOverviewFit.camera(for: coordinates, on: map, clearRect: clear) else { return nil }
-            overviewFit = (ObjectIdentifier(route), highlight, map.bounds, clear, map.camera.heading, map.camera.pitch,
+            overviewFit = (identity, highlight, map.bounds, clear, map.camera.heading, map.camera.pitch,
                            map.mapType, camera)
             return camera
         }
@@ -1983,7 +2080,7 @@ struct NativeMapSurface: UIViewRepresentable {
             let camera = MapCamera(mapView.camera)
             if let previous = replayRenderCamera,
                previous.distance != camera.distance || previous.pitch != camera.pitch || previous.heading != camera.heading {
-                replayPresentation?.coverDuringCameraChange()
+                replayDisplay?.presentation.coverDuringCameraChange()
             }
             replayRenderCamera = camera
             alignMarkers(on: mapView)
@@ -1996,11 +2093,11 @@ struct NativeMapSurface: UIViewRepresentable {
         }
 
         func mapViewWillStartRenderingMap(_ mapView: MKMapView) {
-            replayPresentation?.renderingBegan()
+            replayDisplay?.renderingBegan()
         }
 
         func mapViewDidFinishRenderingMap(_ mapView: MKMapView, fullyRendered: Bool) {
-            replayPresentation?.renderingFinished(fullyRendered: fullyRendered)
+            replayDisplay?.renderingFinished(fullyRendered: fullyRendered)
             alignMarkers(on: mapView)
         }
 
@@ -2009,6 +2106,7 @@ struct NativeMapSurface: UIViewRepresentable {
                 beginInteraction()
                 return
             }
+            updateReplayDetail(on: mapView)
             if cameraActionAnimating || (scaledRuler != nil && !interacting) {
                 return
             }
@@ -2041,10 +2139,11 @@ struct NativeMapSurface: UIViewRepresentable {
         }
 
         func mapView(_ mapView: MKMapView, rendererFor overlay: any MKOverlay) -> MKOverlayRenderer {
-            if let presentation = replayPresentation, presentation.contains(overlay),
-               let renderer = presentation.renderer(for: overlay) { return renderer }
+            if let renderer = replayDisplay?.renderer(for: overlay) { return renderer }
             // A deferred renderer request for a removed replay line must not fall back to blue.
-            guard let line = overlay as? MKPolyline, line === tripLine else { return MKOverlayRenderer(overlay: overlay) }
+            guard let line = overlay as? MKPolyline, line === tripLine || line === unmarkedReplayLine else {
+                return MKOverlayRenderer(overlay: overlay)
+            }
             let renderer = MKPolylineRenderer(polyline: line)
             renderer.lineCap = .round
             renderer.lineJoin = .round

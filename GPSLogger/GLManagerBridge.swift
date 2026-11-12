@@ -15,6 +15,7 @@ struct SendStatusEntry: Identifiable, Equatable {
 @Observable
 final class GLManagerBridge {
     static let shared = GLManagerBridge()
+    typealias ProbeDawarich = (DawarichServer, [String: String], @escaping (DawarichStatus, Bool) -> Void) -> DawarichProbe
 
     private(set) var tripModes = TripModeStore.modes
     private(set) var tripModesRevision = 0
@@ -151,6 +152,7 @@ final class GLManagerBridge {
     private(set) var endpointSet = false
     private(set) var destinationSet = false
     private(set) var dawarich: DawarichStatus = .unknown
+    private(set) var dawarichConfigurationRevision = 0
     private(set) var speedUnit = "MPH"
     private(set) var lastSentText = "–"
     private(set) var sendHistory: [SendStatusEntry] = []
@@ -174,20 +176,39 @@ final class GLManagerBridge {
     @ObservationIgnored private var loadingRecordedTrips = false
     @ObservationIgnored private var dawarichProbe: DawarichProbe?
     @ObservationIgnored private var dawarichProbeID = UUID()
+    @ObservationIgnored private var dawarichServer: DawarichServer?
+    @ObservationIgnored private var dawarichHeaders: [String: String] = [:]
+    @ObservationIgnored private let probeDawarich: ProbeDawarich
 
-    private init() {
+    init(probeDawarich: @escaping ProbeDawarich = { server, headers, completion in
+        server.probeForHistory(headers: headers, completion: completion)
+    }) {
+        self.probeDawarich = probeDawarich
         let nc = NotificationCenter.default
         for name in [GLNewDataNotification, GLSendingStartedNotification, GLSendingFinishedNotification,
                      GLSettingsChangedNotification, GLAuthorizationStatusChangedNotification, GLNewActivityNotification,
                      GLTrackingStateChangedNotification, GLUploadStateChangedNotification,
                      "WhereWolfEngineStateChanged", "WhereWolfLiveUpdatesFailed", "WhereWolfUploadSchedulerStateChanged",
-                     "WhereWolfLocationHealthChanged", TripLog.changed.rawValue] {
+                     "WhereWolfLocationHealthChanged", TripLog.changed.rawValue,
+                     UIApplication.significantTimeChangeNotification.rawValue] {
             observers.append(nc.addObserver(forName: Notification.Name(name), object: nil, queue: .main) { [weak self] _ in
                 guard let self, !self.activeScenes.isEmpty else { return }
                 self.refresh()
+                // Compare with the configuration this bridge last checked: saves already re-check, and the history
+                // store learns of them only later on the main queue, so comparing with it probed every save twice.
+                if name == UIApplication.significantTimeChangeNotification.rawValue
+                    || (name == GLSettingsChangedNotification && self.dawarichConfigurationChanged()) {
+                    self.refreshDawarich()
+                }
             })
         }
         refresh()
+    }
+
+    deinit {
+        timer?.invalidate()
+        dawarichProbe?.cancel()
+        for observer in observers { NotificationCenter.default.removeObserver(observer) }
     }
 
     func setSceneActive(_ active: Bool, id: UUID) {
@@ -197,6 +218,7 @@ final class GLManagerBridge {
             timer = nil
         } else if timer == nil {
             refresh()
+            refreshDawarich()
             timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
                 self?.refreshClock()
             }
@@ -231,6 +253,7 @@ final class GLManagerBridge {
 
     func refresh() {
         guard let gl = GLManager.shared() else { return }
+        validateDawarichConfiguration(gl)
         tick += 1
         let catalog = TripModeStore.modes
         if tripModes != catalog { tripModes = catalog; tripModesRevision += 1 }
@@ -310,6 +333,7 @@ final class GLManagerBridge {
     }
 
     func refreshDawarich() {
+        if let gl = GLManager.shared() { validateDawarichConfiguration(gl) }
         dawarichProbeID = UUID()
         let probeID = dawarichProbeID
         dawarichProbe?.cancel()
@@ -317,15 +341,50 @@ final class GLManagerBridge {
         guard let gl = GLManager.shared(),
               let server = DawarichServer(endpoint: gl.apiEndpointURL() ?? "", token: gl.apiAccessToken() ?? "") else {
             dawarich = .unknown
+            updateServerHistory(endpoint: "", token: "", headers: [:], status: .unknown)
             return
         }
-        dawarich = .checking
-        dawarichProbe = server.probe(headers: gl.customHTTPHeaders) { [weak self] status in
+        let endpoint = gl.apiEndpointURL() ?? "", token = gl.apiAccessToken() ?? ""
+        let headers: [String: String] = gl.customHTTPHeaders ?? [:]
+        updateServerHistory(endpoint: endpoint, token: token, headers: headers, status: .checking)
+        // Rechecking unchanged credentials must keep Insights and its cached content available.
+        let authenticated: DawarichStatus?
+        if case .dawarich(_, true, _) = dawarich { authenticated = dawarich }
+        else { authenticated = nil }
+        dawarich = authenticated ?? .checking
+        dawarichProbe = probeDawarich(server, headers) { [weak self] status, rejected in
             DispatchQueue.main.async {
                 guard let self, self.dawarichProbeID == probeID else { return }
-                self.dawarich = status
+                self.dawarich = status == .notDawarich && !rejected ? authenticated ?? status : status
                 self.dawarichProbe = nil
+                ServerHistoryStore.shared.configure(endpoint: endpoint, token: token, headers: headers,
+                    status: rejected ? .dawarich(version: nil, authenticated: false, account: nil) : status)
             }
+        }
+    }
+
+    private func dawarichConfigurationChanged() -> Bool {
+        guard let gl = GLManager.shared() else { return false }
+        return DawarichServer(endpoint: gl.apiEndpointURL() ?? "", token: gl.apiAccessToken() ?? "") != dawarichServer
+            || (gl.customHTTPHeaders ?? [:]) != dawarichHeaders
+    }
+
+    private func validateDawarichConfiguration(_ gl: GLManager) {
+        let server = DawarichServer(endpoint: gl.apiEndpointURL() ?? "", token: gl.apiAccessToken() ?? "")
+        let headers = gl.customHTTPHeaders ?? [:]
+        guard server != dawarichServer || headers != dawarichHeaders else { return }
+        dawarichServer = server
+        dawarichHeaders = headers
+        dawarichProbeID = UUID()
+        dawarichProbe?.cancel()
+        dawarichProbe = nil
+        dawarich = .unknown
+        dawarichConfigurationRevision &+= 1
+    }
+
+    private func updateServerHistory(endpoint: String, token: String, headers: [String: String], status: DawarichStatus) {
+        DispatchQueue.main.async {
+            ServerHistoryStore.shared.configure(endpoint: endpoint, token: token, headers: headers, status: status)
         }
     }
 

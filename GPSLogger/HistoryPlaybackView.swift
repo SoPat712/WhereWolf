@@ -6,9 +6,57 @@ import UIKit
 @MainActor
 final class HistoryPlaybackModel {
     private(set) var points: [RecordedLocation] = [] {
-        didSet { clampRulerStep() }
+        didSet { serverRulerPointsRevision = nil; clampRulerStep() }
     }
+    // Phone reads advance independently; downloaded points and their geometry publish as one projection.
+    @ObservationIgnored private var phonePoints: [RecordedLocation] = [] {
+        didSet { invalidateServerProjection() }
+    }
+    @ObservationIgnored private var serverRulerPointsRevision: Int?
     private(set) var landmarks = HistoryLandmarks(points: [], timeline: ReplayTimeline(points: []), places: [])
+    private(set) var serverRuler: ServerHistoryRuler?
+    private(set) var serverRulerLandmarks: HistoryLandmarks?
+    private(set) var replayDayTracks: ReplayDayTracks?
+    private(set) var replayFrame: ReplayHistoryFrame?
+    @ObservationIgnored private var replayFrameGeneration = 0
+    private(set) var combinedDaySummaries: CombinedHistoryDaySummaryProvider?
+    @ObservationIgnored private let serverHistory: ServerHistoryStore?
+    @ObservationIgnored private var serverObserver: NSObjectProtocol?
+    @ObservationIgnored private var namesObserver: NSObjectProtocol?
+    @ObservationIgnored private var serverSnapshot = ServerHistorySnapshot()
+    @ObservationIgnored private var pendingServerResult: ServerResult?
+    @ObservationIgnored private var serverGeneration = 0
+    @ObservationIgnored private var serverRequestWork: DispatchWorkItem?
+    @ObservationIgnored private var serverRequestRange: ClosedRange<Date>?
+    @ObservationIgnored private let serverDayRequester: ((ClosedRange<Date>?, ServerHistoryRequestSource) -> Void)?
+    @ObservationIgnored private var pendingPlay = false
+    @ObservationIgnored private var queuedPoints: [ServerHistoryPoint] = []
+    @ObservationIgnored private var queueLoading = false
+    @ObservationIgnored private var lastQueueLoad = Date.distantPast
+    @ObservationIgnored private let queueLoader: (@escaping ([ServerHistoryPoint]) -> Void) -> Void
+    @ObservationIgnored private var serverPayloads: [Int64: RecordedPayload] = [:]
+    @ObservationIgnored private var serverBuildOperation: BlockOperation?
+    @ObservationIgnored private let serverProjectionQueue: OperationQueue
+    private static let serverBuildQueue: OperationQueue = {
+        let queue = OperationQueue()
+        queue.name = "me.joshpatra.WhereWolf.server-ruler"
+        queue.qualityOfService = .utility
+        queue.maxConcurrentOperationCount = 1
+        return queue
+    }()
+    private struct ServerResult {
+        let points: [RecordedLocation]
+        let landmarks: HistoryLandmarks
+        let timeline: ReplayTimeline
+        let geometry: ReplayRouteGeometry
+        let liveGeometry: LiveRulerGeometry
+        let ruler: ServerHistoryRuler?
+        let rulerLandmarks: HistoryLandmarks?
+        let payloads: [Int64: RecordedPayload]
+        let summaries: CombinedHistoryDaySummaryProvider?
+        let tracks: ReplayDayTracks?
+        let stopNames: DawarichStopNames
+    }
     private(set) var selectedIndex: Int?
     private(set) var payload: RecordedPayload?
     private(set) var isPlaying = false
@@ -43,6 +91,10 @@ final class HistoryPlaybackModel {
     private(set) var rulerFrameRevision = 0
     // The trip opened from the Trip tab, highlighted on the map and ruler until returning to Live.
     private(set) var highlightedTrip: ClosedRange<Date>?
+    private(set) var navigationRequest: HistoryNavigationRequest?
+    @ObservationIgnored private var navigationPending = false
+    @ObservationIgnored private var navigationWaitsForServer = false
+    @ObservationIgnored private var applyingNavigation = false
     @ObservationIgnored let rulerScaleChannel = RulerScaleChannel()
     private var rulerWidth: CGFloat = 350
     private(set) var consumerActive = false
@@ -51,13 +103,30 @@ final class HistoryPlaybackModel {
     var playbackRate = 1.0
 
     var rulerDetents: HistoryRulerCoarseDrag.Detents {
-        .init(tickCount: points.isEmpty ? 48 : points.count, rulerWidth: rulerWidth)
+        .init(tickCount: rulerPointCount == 0 ? 48 : rulerPointCount, rulerWidth: rulerWidth)
     }
 
     var rulerZoom: ReplayRulerHold? {
         guard rulerStep > 1 || rulerFrameRange != nil else { return nil }
-        return rulerDetents.zoom(step: rulerStep, width: rulerWidth, axis: landmarks.rulerAxis,
-                                frameRange: rulerFrameRange, interval: rulerInterval)
+        let hold = rulerDetents.zoom(step: rulerStep, width: rulerWidth, axis: rulerLandmarks.rulerAxis,
+                                    frameRange: rulerFrameRange, interval: rulerInterval)
+        return mapRulerHold(hold)
+    }
+
+    private func mapRulerHold(_ hold: ReplayRulerHold) -> ReplayRulerHold {
+        var hold = hold
+        hold.serverRuler = matchingServerRuler
+        if serverRuler != nil, hold.axis == nil {
+            hold.axis = rulerLandmarks.rulerAxis
+            hold.interval = rulerInterval
+        }
+        return hold
+    }
+
+    func sendRulerScaleFrame(_ frame: RulerScaleChannel.Frame?) {
+        var frame = frame
+        frame?.serverRuler = matchingServerRuler
+        rulerScaleChannel.send(frame)
     }
 
     func setRulerWidth(_ width: CGFloat) {
@@ -71,6 +140,8 @@ final class HistoryPlaybackModel {
         rulerFrameRange = nil
         guard rulerStep != step else { return }
         rulerStep = step
+        refreshReplayFrame()
+        requestServerDays()
         if UIAccessibility.isVoiceOverRunning {
             UIAccessibility.post(notification: .announcement, argument: rulerScaleLabel.buttonAccessibility)
         }
@@ -82,16 +153,16 @@ final class HistoryPlaybackModel {
     }
 
     func fitRuler(_ stretch: HistoryRulerStretch) {
-        guard !points.isEmpty else { return }
+        guard rulerPointCount > 0 else { return }
         var stretch = stretch
-        if stretch.frame == .all { stretch.range = 0...Double(points.count - 1) }
+        if stretch.frame == .all { stretch.range = 0...Double(rulerPointCount - 1) }
         else if let time = stretch.timeRange {
-            stretch.range = HistoryRulerFraming.index(at: time.lowerBound, pointCount: points.count,
-                timestampAt: { self.points[$0].timestamp })...HistoryRulerFraming.index(at: time.upperBound,
-                pointCount: points.count, timestampAt: { self.points[$0].timestamp })
+            stretch.range = HistoryRulerFraming.index(at: time.lowerBound, pointCount: rulerPointCount,
+                timestampAt: { self.rulerTimestamp(at: $0) })...HistoryRulerFraming.index(at: time.upperBound,
+                pointCount: rulerPointCount, timestampAt: { self.rulerTimestamp(at: $0) })
         }
-        let fit = HistoryRulerFraming.fit(stretch, axis: landmarks.rulerAxis, detents: rulerDetents,
-                                         width: rulerWidth, pointCount: points.count, interval: rulerInterval)
+        let fit = HistoryRulerFraming.fit(stretch, axis: rulerLandmarks.rulerAxis, detents: rulerDetents,
+                                         width: rulerWidth, pointCount: rulerPointCount, interval: rulerInterval)
         beginRulerInteraction()
         scrub(rulerPosition: fit.position, liveEdge: clock())
         rulerFrameRange = fit.stretch.range
@@ -105,8 +176,8 @@ final class HistoryPlaybackModel {
     }
 
     var rulerScaleLabel: HistoryRulerCoarseDrag.ScaleLabel {
-        HistoryRulerCoarseDrag.scaleLabel(pointsPerTick: rulerStep, pointCount: points.count,
-            timestampAt: { self.points[$0].timestamp }, emptyInterval: retentionInterval / 48)
+        HistoryRulerCoarseDrag.scaleLabel(pointsPerTick: rulerStep, pointCount: rulerPointCount,
+            timestampAt: { self.rulerTimestamp(at: $0) }, emptyInterval: retentionInterval / 48)
     }
 
     var rulerScaleMenu: [HistoryRulerCoarseDrag.MenuEntry] {
@@ -114,8 +185,8 @@ final class HistoryPlaybackModel {
     }
 
     private var rulerInterval: TimeInterval? {
-        HistoryRulerCoarseDrag.estimatedInterval(pointCount: points.count,
-            timestampAt: { self.points[$0].timestamp }, emptyInterval: retentionInterval / 48)
+        HistoryRulerCoarseDrag.estimatedInterval(pointCount: rulerPointCount,
+            timestampAt: { self.rulerTimestamp(at: $0) }, emptyInterval: retentionInterval / 48)
     }
 
     var retentionInterval: TimeInterval {
@@ -151,7 +222,9 @@ final class HistoryPlaybackModel {
     @ObservationIgnored private let landmarkClock: () -> TimeInterval
     @ObservationIgnored private let clock: () -> Date
     @ObservationIgnored private var landmarkGeneration = 0
-    @ObservationIgnored private var pendingLandmarks: (generation: Int, value: HistoryLandmarks)?
+    @ObservationIgnored private var landmarkPointsRevision = 0
+    @ObservationIgnored private var pendingLandmarks: (generation: Int, revision: Int, value: HistoryLandmarks)?
+    @ObservationIgnored private var pendingNamedLandmarks: (generation: Int, revision: Int, value: HistoryLandmarks, ruler: HistoryLandmarks?)?
     @ObservationIgnored private var lastLandmarkBuild: TimeInterval?
     @ObservationIgnored private var needsLandmarkRebuild = false
     @ObservationIgnored private var scheduledLandmarkRebuild: DispatchWorkItem?
@@ -177,7 +250,10 @@ final class HistoryPlaybackModel {
          places: @escaping () -> [WifiPlace] = { (GLManager.shared().wifiPlaces ?? []).compactMap(WifiPlace.init) },
          landmarkBuilder: @escaping HistoryLandmarks.Builder = HistoryLandmarks.build,
          landmarkClock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
-         clock: @escaping () -> Date = Date.init) {
+         clock: @escaping () -> Date = Date.init, serverHistory: ServerHistoryStore? = nil,
+         queueLoader: @escaping (@escaping ([ServerHistoryPoint]) -> Void) -> Void = ServerHistoryMerge.loadQueue,
+         serverDayRequester: ((ClosedRange<Date>?, ServerHistoryRequestSource) -> Void)? = nil,
+         serverProjectionQueue: OperationQueue? = nil) {
         self.pointLoader = pointLoader
         self.payloadLoader = payloadLoader
         self.retentionDurationProvider = retentionDuration
@@ -185,6 +261,310 @@ final class HistoryPlaybackModel {
         self.landmarkBuilder = landmarkBuilder
         self.landmarkClock = landmarkClock
         self.clock = clock
+        self.queueLoader = queueLoader
+        self.serverHistory = serverHistory
+        self.serverDayRequester = serverDayRequester
+        self.serverProjectionQueue = serverProjectionQueue ?? Self.serverBuildQueue
+        if let serverHistory {
+            serverObserver = NotificationCenter.default.addObserver(forName: .serverHistoryChanged,
+                object: serverHistory, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.applyServerHistory(serverHistory.snapshot) }
+            }
+            namesObserver = NotificationCenter.default.addObserver(forName: .serverHistoryNamesChanged,
+                object: serverHistory, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.applyStopNames(serverHistory.snapshot.stopNames) }
+            }
+        }
+    }
+
+    deinit {
+        if let serverObserver { NotificationCenter.default.removeObserver(serverObserver) }
+        if let namesObserver { NotificationCenter.default.removeObserver(namesObserver) }
+    }
+
+    var firstServerDay: Date? { _ = pointsRevision; return serverSnapshot.firstDay }
+    var rulerPointCount: Int { serverRuler?.count ?? points.count }
+    var rulerLandmarks: HistoryLandmarks { serverRulerLandmarks ?? landmarks }
+    var rulerSecondsPerBar: TimeInterval { (rulerInterval ?? retentionInterval / 48) * rulerStep }
+    var hasServerHistory: Bool { serverRuler != nil }
+    private var usesServerProjection: Bool { serverSnapshot.firstDay != nil || serverRuler != nil }
+    private var matchingServerRuler: ServerHistoryRuler? {
+        serverRulerPointsRevision == pointsRevision ? serverRuler : nil
+    }
+    var daySummaries: any HistoryDaySummaryProvider {
+        if let combinedDaySummaries { return combinedDaySummaries }
+        return landmarks.daySummaries
+    }
+
+    private func requestDays(_ range: ClosedRange<Date>?, source: ServerHistoryRequestSource) {
+        if let serverDayRequester { serverDayRequester(range, source) }
+        else { serverHistory?.requestDays(in: range, source: source) }
+    }
+
+    func requestCalendarDay(_ date: Date) {
+        requestDays(serverRange(in: date...date), source: .calendar)
+        serverHistory?.requestStopNames(in: date...date, source: .calendar)
+    }
+
+    func requestCalendarMonth(_ interval: DateInterval) {
+        requestDays(serverRange(in: interval.start...interval.end.addingTimeInterval(-0.001)), source: .calendarMonth)
+        serverHistory?.requestStopNames(in: interval.start...interval.end.addingTimeInterval(-0.001), source: .calendarMonth)
+    }
+
+    func closeCalendar() {
+        requestDays(nil, source: .calendar)
+        requestDays(nil, source: .calendarMonth)
+    }
+
+    private func serverRange(in range: ClosedRange<Date>) -> ClosedRange<Date>? {
+        guard let first = firstServerDay else { return nil }
+        let boundary = serverRuler?.phoneStart ?? points.first(where: { $0.id >= 0 })?.timestamp
+            ?? clock().addingTimeInterval(-retentionInterval)
+        let start = max(first, range.lowerBound)
+        let end = min(boundary.addingTimeInterval(-0.001), range.upperBound)
+        return start <= end ? start...end : nil
+    }
+
+    func rulerTimestamp(at index: Int) -> Date { serverRuler?.timestamp(at: index) ?? points[index].timestamp }
+
+    func serverDaySummary(on day: Date) -> ServerHistoryDay? {
+        _ = pointsRevision
+        let day = serverSnapshot.calendar.startOfDay(for: day)
+        let index = HistoryLandmarks.lowerBound(serverSnapshot.days.count) { serverSnapshot.days[$0].day >= day }
+        return index < serverSnapshot.days.count && serverSnapshot.days[index].day == day ? serverSnapshot.days[index] : nil
+    }
+
+    func serverPoints(on day: Date) async -> [RecordedLocation] {
+        guard let serverHistory else {
+            return serverSnapshot.points[serverSnapshot.calendar.startOfDay(for: day)]?.map(\.location) ?? []
+        }
+        return await serverHistory.points(on: day)
+    }
+
+    var rulerPlaybackPosition: Double {
+        if let rulerPosition { return rulerPosition }
+        guard isBrowsing else { return 0 }
+        if let serverRuler {
+            let index = renderPose.flatMap { pose in matchingServerRuler.map { $0.index(forSourcePosition: pose.position) } }
+                ?? rulerTime.map { serverRuler.index(at: $0) } ?? 0
+            return Double(serverRuler.count) - index
+        }
+        return Double(points.count) - playbackIndex
+    }
+
+    var rulerHighlightedRange: ClosedRange<Int>? {
+        guard let serverRuler, let trip = highlightedTrip else { return highlightedRange }
+        return Int(serverRuler.index(at: trip.lowerBound))...Int(serverRuler.index(at: trip.upperBound))
+    }
+
+    func applyServerHistory(_ snapshot: ServerHistorySnapshot, completion: (() -> Void)? = nil) {
+        if serverSnapshot.firstDay == nil, snapshot.firstDay != nil, navigationRequest != nil { navigationPending = true }
+        let changedSource = serverSnapshot.firstDay != nil || snapshot.firstDay != nil || serverRuler != nil
+        serverSnapshot = snapshot
+        if consumerActive { requestPhoneStopNames() }
+        guard changedSource, consumerActive else { completion?(); return }
+        if snapshot.firstDay == nil { interruptRuler(); stopPlayback(); pendingPlay = false }
+        reloadQueuedHistory()
+        rebuildServerProjection(completion: completion)
+    }
+
+    private func reloadQueuedHistory() {
+        guard serverSnapshot.firstDay != nil, !queueLoading, clock().timeIntervalSince(lastQueueLoad) >= 30 else { return }
+        queueLoading = true
+        lastQueueLoad = clock()
+        queueLoader { [weak self] points in
+            guard let self else { return }
+            self.queueLoading = false
+            self.queuedPoints = points
+            if self.serverSnapshot.firstDay != nil { self.rebuildServerProjection() }
+        }
+    }
+
+    private func invalidateServerProjection() {
+        serverGeneration &+= 1
+        pendingServerResult = nil
+        serverBuildOperation?.cancel()
+    }
+
+    private func rebuildServerProjection(completion: (() -> Void)? = nil) {
+        invalidateServerProjection()
+        scheduledLandmarkRebuild?.cancel(); scheduledLandmarkRebuild = nil
+        needsLandmarkRebuild = false
+        landmarkGeneration &+= 1
+        pendingLandmarks = nil
+        let generation = serverGeneration
+        let phone = phonePoints
+        let snapshot = serverSnapshot
+        let queued = queuedPoints
+        let places = placesProvider()
+        let now = clock(), cutoff = clock().addingTimeInterval(-retentionInterval)
+        let calendar = snapshot.calendar, locale = Locale.current
+        landmarkPlaces = places; landmarkCalendar = Calendar.current; landmarkLocale = locale
+        lastLandmarkBuild = landmarkClock()
+        let operation = BlockOperation()
+        serverBuildOperation = operation
+        operation.completionBlock = { DispatchQueue.main.async { completion?() } }
+        operation.addExecutionBlock { [weak self, weak operation] in
+            guard let operation, !operation.isCancelled else { return }
+            let server = snapshot.points.values.flatMap { $0 }
+            let merged = snapshot.firstDay == nil ? phone : ServerHistoryMerge.points(phone: phone,
+                server: server.map(\.location), queued: queued.map(\.location), retentionStart: cutoff)
+            let detailDays = Set(merged.map { calendar.startOfDay(for: $0.timestamp) })
+            let timeline = ReplayTimeline(points: merged)
+            guard !operation.isCancelled else { return }
+            let landmarks = HistoryLandmarks(points: merged, timeline: timeline, places: places,
+                calendar: calendar, locale: locale, timeDetailDays: snapshot.firstDay == nil ? nil : detailDays,
+                stopNames: snapshot.stopNames)
+            let ruler = snapshot.firstDay.map { _ in ServerHistoryRuler(points: merged,
+                phoneStart: phone.first?.timestamp ?? cutoff, snapshot: snapshot, now: now) }
+            let rulerLandmarks = ruler.map { HistoryLandmarks(points: merged, timeline: timeline, places: places,
+                calendar: calendar, locale: locale, ruler: $0, stopNames: snapshot.stopNames) }
+            let local = ServerHistoryMerge.points(phone: phone, server: [], queued: queued.map(\.location), retentionStart: cutoff)
+            let phoneLandmarks = HistoryLandmarks(points: local, timeline: ReplayTimeline(points: local), places: places,
+                                                  calendar: calendar, locale: locale)
+            let summaries = snapshot.firstDay.map { _ in CombinedHistoryDaySummaryProvider(phone: phoneLandmarks.daySummaries,
+                phoneWindow: DateInterval(start: phone.first?.timestamp ?? cutoff, end: now), snapshot: snapshot) }
+            let phoneDay = calendar.startOfDay(for: phone.first?.timestamp ?? cutoff)
+            let tracks = snapshot.tracks.filter { $0.key < phoneDay && snapshot.points[$0.key] == nil }
+            guard !operation.isCancelled else { return }
+            let payloads = Dictionary((server + queued).compactMap { point in point.payload.map { (point.location.id, $0) } },
+                uniquingKeysWith: { _, new in new })
+            let result = ServerResult(points: merged, landmarks: landmarks, timeline: timeline,
+                geometry: ReplayRouteGeometry(points: merged, stays: timeline.stays),
+                liveGeometry: LiveRulerGeometry(points: merged), ruler: ruler,
+                rulerLandmarks: rulerLandmarks, payloads: payloads, summaries: summaries,
+                tracks: snapshot.firstDay == nil ? nil : ReplayDayTracks(segments: tracks), stopNames: snapshot.stopNames)
+            DispatchQueue.main.async { [weak self] in
+                guard let self, generation == self.serverGeneration else { return }
+                if self.isRulerInteracting || self.isPlaying || !self.consumerActive { self.pendingServerResult = result }
+                else { self.publishServerResult(result) }
+            }
+        }
+        serverProjectionQueue.addOperation(operation)
+    }
+
+    private func publishServerResult(_ result: ServerResult) {
+        let time = rulerTime
+        let seconds = rulerSecondsPerBar
+        let wasFine = rulerStep == 1
+        let oldRange = rulerFrameRange.flatMap { range -> ClosedRange<Date>? in
+            guard let serverRuler, let start = serverRuler.time(at: range.lowerBound),
+                  let end = serverRuler.time(at: range.upperBound) else { return nil }
+            return start...end
+        }
+        serverRuler = result.ruler
+        serverRulerLandmarks = result.rulerLandmarks
+        combinedDaySummaries = result.summaries
+        replayDayTracks = result.tracks
+        points = result.points
+        landmarks = result.landmarks
+        serverPayloads = result.payloads
+        pointsRevision &+= 1
+        landmarkPointsRevision = pointsRevision
+        timelineCache = (pointsRevision, points.count, result.timeline)
+        routeCache = (pointsRevision, result.geometry)
+        liveRulerCache = (pointsRevision, result.liveGeometry)
+        serverRulerPointsRevision = pointsRevision
+        if result.stopNames != serverSnapshot.stopNames { rebuildStopNameLandmarks() }
+        lastPrefetchIndex = nil
+        selectedIndex = nil
+        if points.isEmpty { renderPose = nil; payload = nil }
+        if let time, isBrowsing {
+            if let ruler = result.ruler {
+                rulerPosition = Double(ruler.count) - ruler.index(at: time)
+                selectServerTime(time)
+            } else if !points.isEmpty {
+                selectNearest(to: time); rulerPosition = nil; rulerTime = selectedPoint?.timestamp
+            }
+        }
+        if !wasFine, let interval = rulerInterval, interval > 0 {
+            rulerStep = min(rulerDetents.steps[0], max(1, seconds / interval))
+        }
+        if let oldRange, let ruler = result.ruler {
+            rulerFrameRange = ruler.index(at: oldRange.lowerBound)...ruler.index(at: oldRange.upperBound)
+        }
+        if navigationPending { _ = applyNavigationRequest() }
+        refreshReplayFrame()
+        if pendingPlay, selectedPoint != nil {
+            pendingPlay = false
+            togglePlayback()
+        } else { requestServerDays() }
+    }
+
+    private func selectServerTime(_ time: Date, rulerIndex: Double? = nil) {
+        guard let serverRuler else { return }
+        rulerTime = time
+        let nearest = HistoryRulerFraming.index(at: time, pointCount: points.count,
+                                               timestampAt: { self.points[$0].timestamp })
+        let exact = !points.isEmpty && points[Int(nearest)].timestamp == time ? nearest : nil
+        let source = rulerIndex.flatMap { matchingServerRuler?.sourcePosition(at: $0) } ?? exact
+        let day = serverSnapshot.calendar.startOfDay(for: time)
+        let emptyDay = time < serverRuler.phoneStart && serverSnapshot.points[day]?.isEmpty == true
+        if emptyDay && source == nil {
+            selectedIndex = nil; renderPose = nil; payload = nil; playbackTime = nil; pendingPlay = false
+            return
+        }
+        if (source == nil && serverRuler.loadingDay(at: serverRuler.index(at: time)) != nil) || points.isEmpty {
+            selectedIndex = nil; renderPose = nil; payload = nil; playbackTime = nil
+            return
+        }
+        let position = source ?? HistoryRulerFraming.index(at: time, pointCount: points.count,
+                                                          timestampAt: { self.points[$0].timestamp })
+        showPlaybackPosition(index: Int(position), fraction: position - floor(position))
+        rulerTime = time
+    }
+
+    private func requestServerDays() {
+        guard consumerActive, !isRulerInteracting, let ruler = serverRuler, !ruler.timestamps.isEmpty else { return }
+        let index = rulerPointCount > 0 ? Double(rulerPointCount) - rulerPlaybackPosition : 0
+        let mapping = rulerLandmarks.rulerAxis.mapping(pointsPerBar: rulerStep, pointCount: rulerPointCount)
+        let half = rulerStep * Double(rulerWidth / 12) / 2
+        let center = mapping.coordinate(at: index)
+        guard let start = ruler.time(at: mapping.index(at: center - half)),
+              let end = ruler.time(at: mapping.index(at: center + half)) else { return }
+        let calendar = serverSnapshot.calendar
+        let first = calendar.date(byAdding: .day, value: -1, to: start)!
+        let last = calendar.date(byAdding: .day, value: 1, to: end)!
+        serverRequestRange = first...last
+        guard serverRequestWork == nil else { return }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.serverRequestWork = nil
+            guard self.consumerActive, !self.isRulerInteracting, let range = self.serverRequestRange else { return }
+            if self.rulerSecondsPerBar >= 86_400 {
+                self.requestDays(nil, source: .ruler)
+                if let range = self.serverRange(in: range) { self.serverHistory?.requestTracks(in: range) }
+            } else {
+                self.serverHistory?.cancelTrackRequests()
+                self.requestDays(self.serverRange(in: range), source: .ruler)
+            }
+            self.serverHistory?.requestStopNames(in: range, source: .ruler)
+        }
+        serverRequestWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
+    }
+
+    private func refreshReplayFrame() {
+        replayFrameGeneration &+= 1
+        guard !isRulerInteracting, isBrowsing, let ruler = serverRuler,
+              rulerFrameRange != nil || rulerSecondsPerBar >= 86_400 else { replayFrame = nil; return }
+        let range: ClosedRange<Double>
+        if let frame = rulerFrameRange { range = frame }
+        else {
+            let mapping = rulerLandmarks.rulerAxis.mapping(pointsPerBar: rulerStep, pointCount: rulerPointCount)
+            let needle = mapping.coordinate(at: Double(rulerPointCount) - rulerPlaybackPosition)
+            let half = rulerStep * Double(rulerWidth / 12) / 2
+            range = mapping.index(at: needle - half)...mapping.index(at: needle + half)
+        }
+        guard let first = ruler.time(at: range.lowerBound), let last = ruler.time(at: range.upperBound) else { return }
+        let generation = replayFrameGeneration, points = points, tracks = replayDayTracks, calendar = serverSnapshot.calendar
+        serverProjectionQueue.addOperation { [weak self] in
+            let frame = ReplayHistoryFrame(points: points, tracks: tracks, range: first...last, calendar: calendar)
+            DispatchQueue.main.async {
+                guard let self, self.replayFrameGeneration == generation, !self.isRulerInteracting else { return }
+                self.replayFrame = frame
+            }
+        }
     }
 
     var selectedPoint: RecordedLocation? {
@@ -201,7 +581,8 @@ final class HistoryPlaybackModel {
         guard let pose = renderPose, !points.isEmpty else { return nil }
         let index = min(points.count - 1, max(0, Int(pose.position)))
         func accuracy(at index: Int) -> Double? {
-            guard points.indices.contains(index), let value = payloadCache[points[index].id]?.accuracy,
+            guard points.indices.contains(index),
+                  let value = (payloadCache[points[index].id] ?? serverPayloads[points[index].id])?.accuracy,
                   value.isFinite, value >= 0 else { return nil }
             return value
         }
@@ -221,7 +602,7 @@ final class HistoryPlaybackModel {
     }
 
     var routeGeometry: ReplayRouteGeometry? {
-        guard isBrowsing, selectedIndex != nil else { return nil }
+        guard isBrowsing, selectedIndex != nil || serverRuler != nil else { return nil }
         if let routeCache, routeCache.revision == pointsRevision {
             return routeCache.geometry
         }
@@ -247,19 +628,21 @@ final class HistoryPlaybackModel {
         if let stay = timeline.stay(containing: index) {
             activity = .stayed(stay.span)
         } else {
-            activity = ReplayActivity.resolved(recorded: payloadCache[point.id]?.motion ?? [],
+            activity = ReplayActivity.resolved(recorded: (payloadCache[point.id] ?? serverPayloads[point.id])?.motion ?? [],
                                                inferred: timeline.inferredActivity(at: index))
         }
         // Playback can outrun payload reads, so nearby readings hold the value steady.
-        let altitudes = points[max(0, index - 24)...index].compactMap { payloadCache[$0.id]?.altitude }
+        let altitudes = points[max(0, index - 24)...index].compactMap { (payloadCache[$0.id] ?? serverPayloads[$0.id])?.altitude }
         return ReplayStatus(activity: activity,
                             minute: Int(point.timestamp.timeIntervalSince1970 / 60),
                             altitude: altitudes.last,
                             altitudeTrend: ReplayStatus.trend(altitudes),
-                            legDistance: timeline.legDistance(at: index))
+                            legDistance: timeline.legDistance(at: index),
+                            stop: landmarks.stop(containing: Double(index), pointCount: points.count))
     }
 
     var playbackIndex: Double {
+        if serverRuler != nil { return renderPose?.position ?? Double(selectedIndex ?? 0) }
         if let rulerPosition { return min(Double(max(0, points.count - 1)), max(0, Double(points.count) - rulerPosition)) }
         guard let selectedIndex else { return 0 }
         return Double(selectedIndex) + playbackFraction
@@ -268,7 +651,14 @@ final class HistoryPlaybackModel {
     func setConsumerActive(_ active: Bool) {
         guard active != consumerActive else { return }
         consumerActive = active
-        if active { reload() } else {
+        if active {
+            if let serverHistory { applyServerHistory(serverHistory.snapshot) }
+            reload()
+        } else {
+            serverRequestWork?.cancel(); serverRequestWork = nil
+            serverHistory?.cancelPointRequests()
+            serverHistory?.cancelTrackRequests()
+
             scheduledLandmarkRebuild?.cancel()
             scheduledLandmarkRebuild = nil
             interruptRuler()
@@ -289,6 +679,7 @@ final class HistoryPlaybackModel {
             needsReload = true
             return
         }
+        reloadQueuedHistory()
         let fullSnapshot = needsFullSnapshot
         needsFullSnapshot = false
         needsReload = false
@@ -313,33 +704,40 @@ final class HistoryPlaybackModel {
             let cutoff = self.clock().addingTimeInterval(-self.retentionInterval)
             let ordered = self.unique(incoming.filter { $0.timestamp >= cutoff })
             self.lastLoadedID = max(self.lastLoadedID, incoming.map(\.id).max() ?? 0)
-            if fullSnapshot {
-                self.points = self.unique(ordered + self.points)
-                self.lastPrefetchIndex = nil
-                if let selectedID { self.selectedIndex = self.points.firstIndex { $0.id == selectedID } }
-                else { self.selectedIndex = nil }
-                let retained = Set(self.points.map(\.id))
-                self.payloadCache = self.payloadCache.filter { retained.contains($0.key) }
-                if self.selectedIndex == nil { self.payload = nil }
-                else { self.loadSelectedPayload() }
+            if self.usesServerProjection {
+                if fullSnapshot { self.phonePoints = self.unique(ordered + self.phonePoints) }
+                else if !ordered.isEmpty { self.phonePoints = self.merging(ordered, into: self.phonePoints) }
             } else {
-                self.appendIncremental(ordered, selectedID: selectedID)
-            }
-            if fullSnapshot || !ordered.isEmpty {
-                self.pointsRevision &+= 1
-                self.rebasePlaybackPosition()
-                if fullSnapshot, self.rulerPosition != nil, let pose = self.renderPose {
-                    self.rulerPosition = Double(self.points.count) - pose.position
+                if fullSnapshot {
+                    self.points = self.unique(ordered + self.points)
+                    self.lastPrefetchIndex = nil
+                    if let selectedID { self.selectedIndex = self.points.firstIndex { $0.id == selectedID } }
+                    else { self.selectedIndex = nil }
+                    let retained = Set(self.points.map(\.id))
+                    self.payloadCache = self.payloadCache.filter { retained.contains($0.key) }
+                    if self.selectedIndex == nil { self.payload = nil }
+                    else { self.loadSelectedPayload() }
+                } else {
+                    self.appendIncremental(ordered, selectedID: selectedID)
+                }
+                if fullSnapshot || !ordered.isEmpty {
+                    self.phonePoints = self.points
+                    self.pointsRevision &+= 1
+                    self.rebasePlaybackPosition()
+                    if fullSnapshot, self.rulerPosition != nil, let pose = self.renderPose {
+                        self.rulerPosition = Double(self.points.count) - pose.position
+                    }
+                }
+                if self.isBrowsing && self.selectedIndex == nil && !self.points.isEmpty && !self.navigationPending {
+                    self.selectNearest(to: self.rulerTime ?? self.points.last!.timestamp)
                 }
             }
-            if self.isBrowsing && self.selectedIndex == nil && !self.points.isEmpty {
-                self.selectNearest(to: self.rulerTime ?? self.points.last!.timestamp)
-            }
             let places = self.placesProvider()
+            self.requestPhoneStopNames()
             let contextChanged = places != self.landmarkPlaces
                 || self.landmarkCalendar != Calendar.current || self.landmarkLocale != Locale.current
             if fullSnapshot || !ordered.isEmpty || contextChanged || expired {
-                self.rebuildLandmarks(places: places, promptly: fullSnapshot || contextChanged || expired)
+                self.rebuildLandmarks(places: places, promptly: fullSnapshot || contextChanged || expired || self.points.isEmpty)
             }
             self.prefetchPayloads(around: self.selectedIndex ?? max(0, self.points.count - 1))
             self.loading = false
@@ -369,6 +767,8 @@ final class HistoryPlaybackModel {
         scheduledLandmarkRebuild = nil
         needsLandmarkRebuild = false
         lastLandmarkBuild = now
+        if usesServerProjection { rebuildServerProjection(); return }
+        if serverSnapshot.stopNames != DawarichStopNames() { rebuildStopNameLandmarks(preservingAxis: false); return }
         let places = places ?? placesProvider()
         let calendar = Calendar.current
         let locale = Locale.current
@@ -378,20 +778,79 @@ final class HistoryPlaybackModel {
         landmarkGeneration &+= 1
         pendingLandmarks = nil
         let generation = landmarkGeneration
+        let revision = pointsRevision
         // Value copies and an immutable timeline belong to this generation even if points change.
         let points = points
         let timeline = timeline
         landmarkBuilder(points, timeline, places, calendar, locale) { [weak self] result in
             guard let self, self.landmarkGeneration == generation else { return }
-            if self.isRulerInteracting { self.pendingLandmarks = (generation, result) }
-            else { self.landmarks = result }
+            if self.isRulerInteracting { self.pendingLandmarks = (generation, revision, result) }
+            else {
+                self.landmarks = result
+                self.landmarkPointsRevision = revision
+                if self.navigationPending { self.applyNavigationRequest() }
+            }
         }
     }
 
     private func publishPendingLandmarks() {
+        publishNamedLandmarks()
         guard let pendingLandmarks else { return }
         self.pendingLandmarks = nil
-        if pendingLandmarks.generation == landmarkGeneration { landmarks = pendingLandmarks.value }
+        if pendingLandmarks.generation == landmarkGeneration {
+            landmarks = pendingLandmarks.value
+            landmarkPointsRevision = pendingLandmarks.revision
+            if navigationPending { applyNavigationRequest() }
+        }
+    }
+
+    func applyStopNames(_ names: DawarichStopNames, completion: (() -> Void)? = nil) {
+        guard serverSnapshot.stopNames != names else { completion?(); return }
+        serverSnapshot.stopNames = names
+        guard consumerActive else { needsLandmarkRebuild = true; completion?(); return }
+        rebuildStopNameLandmarks(completion: completion)
+    }
+
+    private func requestPhoneStopNames() {
+        guard let first = phonePoints.first, let last = phonePoints.last else { return }
+        serverHistory?.requestStopNames(in: first.timestamp...last.timestamp, source: .phoneNames)
+    }
+
+    private func rebuildStopNameLandmarks(preservingAxis: Bool = true, completion: (() -> Void)? = nil) {
+        landmarkGeneration &+= 1
+        pendingLandmarks = nil; pendingNamedLandmarks = nil
+        let generation = landmarkGeneration, revision = pointsRevision
+        let points = points, timeline = timeline, places = placesProvider(), ruler = serverRuler
+        let reuseAxis = preservingAxis && landmarkPointsRevision == revision
+        let axis = reuseAxis ? landmarks.rulerAxis : nil
+        let rulerAxis = reuseAxis ? serverRulerLandmarks?.rulerAxis : nil
+        let names = serverSnapshot.stopNames, calendar = serverSnapshot.calendar, locale = Locale.current
+        landmarkPlaces = places; landmarkCalendar = Calendar.current; landmarkLocale = locale
+        serverProjectionQueue.addOperation { [weak self] in
+            let value = HistoryLandmarks(points: points, timeline: timeline, places: places,
+                calendar: calendar, locale: locale,
+                timeDetailDays: ruler == nil ? nil : Set(points.map { calendar.startOfDay(for: $0.timestamp) }),
+                stopNames: names, axis: axis)
+            let rulerValue = ruler.map { HistoryLandmarks(points: points, timeline: timeline, places: places,
+                calendar: calendar, locale: locale, ruler: $0, stopNames: names, axis: rulerAxis) }
+            DispatchQueue.main.async {
+                defer { completion?() }
+                guard let self, self.landmarkGeneration == generation, self.pointsRevision == revision else { return }
+                self.pendingNamedLandmarks = (generation, revision, value, rulerValue)
+                self.publishNamedLandmarks()
+            }
+        }
+    }
+
+    private func publishNamedLandmarks() {
+        guard consumerActive, !isRulerInteracting, !isPlaying, let pending = pendingNamedLandmarks else { return }
+        pendingNamedLandmarks = nil
+        guard pending.generation == landmarkGeneration, pending.revision == pointsRevision else { return }
+        // Names replace presentation caches only: no selection, camera, point revision or scale writes.
+        landmarks = pending.value
+        serverRulerLandmarks = pending.ruler
+        landmarkPointsRevision = pending.revision
+        if navigationPending { applyNavigationRequest() }
     }
 
     // Go To lists every stretch, so opening it does not wait for the coalesced build.
@@ -425,6 +884,14 @@ final class HistoryPlaybackModel {
             if let position = rulerPosition { rulerPosition = position + Double(incoming.count) }
             return
         }
+        points = merging(incoming, into: points)
+        interruptRuler()
+        if let selectedID { self.selectedIndex = points.firstIndex { $0.id == selectedID } }
+    }
+
+    private func merging(_ incoming: [RecordedLocation], into points: [RecordedLocation]) -> [RecordedLocation] {
+        guard let first = incoming.first, let last = points.last else { return points + incoming }
+        guard Self.precedes(first, last) else { return points + incoming }
         var merged: [RecordedLocation] = []
         merged.reserveCapacity(points.count + incoming.count)
         var i = 0
@@ -438,13 +905,13 @@ final class HistoryPlaybackModel {
         }
         merged.append(contentsOf: points[i...])
         merged.append(contentsOf: incoming[j...])
-        points = merged
-        interruptRuler()
-        if let selectedID { self.selectedIndex = points.firstIndex { $0.id == selectedID } }
+        return merged
     }
 
     private func flushDeferredReload() {
         guard consumerActive, !isRulerInteracting, !isPlaying, !loading, !expiring else { return }
+        publishNamedLandmarks()
+        if let result = pendingServerResult { pendingServerResult = nil; publishServerResult(result) }
         if needsReload || needsFullSnapshot {
             needsReload = false
             reload()
@@ -481,10 +948,16 @@ final class HistoryPlaybackModel {
             flushDeferredReload()
         }
         let cutoff = now.addingTimeInterval(-retentionInterval)
+        guard let first = phonePoints.first, first.timestamp < cutoff else { return false }
+        phonePoints.removeAll { $0.timestamp < cutoff }
+        if usesServerProjection {
+            if rebuildingLandmarks { rebuildLandmarks() }
+            return true
+        }
         let selectedID = selectedPoint?.id
         let previousIndex = selectedIndex
         let previousCount = points.count
-        points.removeAll { $0.timestamp < cutoff }
+        points.removeAll { $0.id >= 0 && $0.timestamp < cutoff }
         guard points.count != previousCount else { return false }
         pointsRevision &+= 1
         if rebuildingLandmarks { rebuildLandmarks() }
@@ -527,6 +1000,13 @@ final class HistoryPlaybackModel {
     }
 
     func scrub(to time: Date) {
+        cancelNavigationRequest()
+        if let ruler = serverRuler {
+            interruptRuler(); pause(); isBrowsing = true
+            rulerPosition = Double(ruler.count) - ruler.index(at: time)
+            selectServerTime(time); requestServerDays()
+            return
+        }
         interruptRuler()
         let wasBrowsing = isBrowsing
         pause()
@@ -547,13 +1027,17 @@ final class HistoryPlaybackModel {
     }
 
     func beginRulerInteraction() {
+        cancelNavigationRequest()
         rulerFrameRange = nil
+        replayFrameGeneration &+= 1
+        replayFrame = nil
         if !isRulerInteracting { isRulerInteracting = true }
         stopPlayback()
     }
 
     func setRulerHold(_ hold: ReplayRulerHold) {
         rulerHoldCancelled = false
+        let hold = mapRulerHold(hold)
         if rulerHold != hold { rulerHold = hold }
     }
 
@@ -563,6 +1047,9 @@ final class HistoryPlaybackModel {
         rulerHold = nil
         if isRulerInteracting { isRulerInteracting = false }
         publishPendingLandmarks()
+        if let result = pendingServerResult { pendingServerResult = nil; publishServerResult(result) }
+        refreshReplayFrame()
+        requestServerDays()
         if wasHolding { loadSelectedPayload() }
         flushDeferredReload()
     }
@@ -573,6 +1060,15 @@ final class HistoryPlaybackModel {
     }
 
     func scrub(rulerPosition position: Double, liveEdge: Date) {
+        if let ruler = serverRuler {
+            stopPlayback(); isBrowsing = true
+            let bounded = min(Double(ruler.count), max(0, position))
+            rulerPosition = bounded
+            let index = Double(ruler.count) - bounded
+            if let time = ruler.time(at: index) { selectServerTime(time, rulerIndex: index) }
+            requestServerDays()
+            return
+        }
         pause()
         if !isBrowsing { isBrowsing = true }
         let position = min(Double(points.isEmpty ? 48 : points.count), max(0, position))
@@ -641,6 +1137,8 @@ final class HistoryPlaybackModel {
 
     private func interruptRuler() {
         rulerFrameRange = nil
+        replayFrameGeneration &+= 1
+        replayFrame = nil
         rulerInteractionRevision &+= 1
         rulerHoldCancelled = true
         rulerHold = nil
@@ -650,9 +1148,11 @@ final class HistoryPlaybackModel {
     }
 
     func returnToLive() {
+        cancelNavigationRequest()
         interruptRuler()
         pause()
         highlightedTrip = nil
+        pendingPlay = false
         rulerStep = 1
         isBrowsing = false
         selectedIndex = nil
@@ -664,6 +1164,7 @@ final class HistoryPlaybackModel {
     }
 
     func select(_ index: Int) {
+        cancelNavigationRequest()
         interruptRuler()
         pause()
         playbackTime = nil
@@ -687,11 +1188,86 @@ final class HistoryPlaybackModel {
     }
 
     func goTo(_ time: Date) {
+        if let ruler = serverRuler {
+            let day = serverSnapshot.calendar.startOfDay(for: time)
+            if time >= ruler.phoneStart || serverSnapshot.points[day]?.isEmpty == false,
+               let index = landmarks.nearestPoint(to: time, pointCount: points.count) {
+                scrub(pointAt: index)
+            } else { scrub(to: time) }
+            return
+        }
+        if serverSnapshot.firstDay != nil {
+            isBrowsing = true; rulerTime = time; selectedIndex = nil; renderPose = nil
+            return
+        }
         guard let index = landmarks.nearestPoint(to: time, pointCount: points.count) else { return }
         scrub(pointAt: index)
     }
 
+    func navigate(to request: HistoryNavigationRequest, waitForServer: Bool = false) {
+        cancelNavigationRequest()
+        navigationRequest = request
+        navigationPending = true
+        navigationWaitsForServer = waitForServer
+        highlightedTrip = nil
+        pause()
+        if !applyNavigationRequest() { reload() }
+    }
+
+    @discardableResult func applyNavigationRequest() -> Bool {
+        guard let request = navigationRequest else { return false }
+        applyingNavigation = true
+        defer { applyingNavigation = false }
+        let range = request.interval.map { $0.start...$0.end.addingTimeInterval(-0.001) } ?? request.date...request.date
+        let phoneStart = points.first(where: { $0.id >= 0 })?.timestamp ?? clock().addingTimeInterval(-retentionInterval)
+        if navigationWaitsForServer, firstServerDay == nil, range.lowerBound < phoneStart {
+            isBrowsing = true
+            rulerTime = request.date
+            selectedIndex = nil; renderPose = nil; payload = nil
+            return false
+        }
+        if let remote = serverRange(in: range) {
+            requestDays(remote, source: .navigation)
+            let calendar = serverSnapshot.calendar
+            var day = calendar.startOfDay(for: remote.lowerBound)
+            let last = calendar.startOfDay(for: remote.upperBound)
+            var ready = true
+            while day <= last {
+                if serverSnapshot.points[day] == nil && serverDaySummary(on: day)?.pointCount != 0 { ready = false }
+                day = calendar.date(byAdding: .day, value: 1, to: day)!
+            }
+            if !ready || serverRuler == nil {
+                navigationPending = true
+                isBrowsing = true
+                rulerTime = request.date
+                rulerPosition = serverRuler.map { Double($0.count) - $0.index(at: request.date) }
+                selectedIndex = nil; renderPose = nil; payload = nil
+                return false
+            }
+        }
+        guard !points.isEmpty, landmarks.timestamps.count == points.count else { return false }
+        navigationPending = false
+        requestDays(nil, source: .navigation)
+        if let interval = request.interval,
+           points.contains(where: { $0.timestamp >= interval.start && $0.timestamp < interval.end }) {
+            fitRuler(HistoryRulerStretch(range: 0...0, title: request.date.formatted(.dateTime.month(.wide).year()),
+                                        timeRange: interval.start...interval.end.addingTimeInterval(-0.001), frame: .month))
+        } else {
+            goTo(request.date)
+        }
+        return true
+    }
+
+    private func cancelNavigationRequest() {
+        guard !applyingNavigation, navigationRequest != nil || navigationPending else { return }
+        navigationRequest = nil
+        navigationPending = false
+        navigationWaitsForServer = false
+        requestDays(nil, source: .navigation)
+    }
+
     func showTrip(_ trip: ClosedRange<Date>) {
+        cancelNavigationRequest()
         highlightedTrip = trip
         goTo(trip.lowerBound)
     }
@@ -723,6 +1299,11 @@ final class HistoryPlaybackModel {
     }
 
     func togglePlayback() {
+        if serverRuler != nil, !isPlaying {
+            if rulerSecondsPerBar >= 86_400 { setRulerStep(1) }
+            requestServerDays()
+            if selectedPoint == nil, isBrowsing { pendingPlay = true; return }
+        }
         interruptRuler()
         if isPlaying {
             pause()
@@ -804,6 +1385,22 @@ final class HistoryPlaybackModel {
         var remaining = elapsed
         let timeline = timeline
         while points.indices.contains(index + 1) {
+            if let ruler = serverRuler {
+                let current = ruler.index(at: points[index].timestamp)
+                let next = ruler.index(at: points[index + 1].timestamp)
+                let missing = HistoryLandmarks.lowerBound(ruler.loadingDays.count) {
+                    ruler.loadingDays[$0].range.upperBound > current
+                }
+                if missing < ruler.loadingDays.count, ruler.loadingDays[missing].range.lowerBound < next {
+                    stopPlayback()
+                    let time = ruler.loadingDays[missing].day
+                    rulerPosition = Double(ruler.count) - ruler.index(at: time)
+                    selectServerTime(time)
+                    pendingPlay = true
+                    requestServerDays()
+                    return
+                }
+            }
             let duration = timeline.duration(segment: index, rate: playbackRate)
             let available = duration * (1 - fraction)
             if remaining < available {
@@ -856,7 +1453,7 @@ final class HistoryPlaybackModel {
             payload = nil
             return
         }
-        let cached = payloadCache[id]
+        let cached = payloadCache[id] ?? serverPayloads[id]
         if payload != cached { payload = cached }
         prefetchPayloads(around: selectedIndex)
     }
@@ -870,7 +1467,7 @@ final class HistoryPlaybackModel {
         }
         let lower = max(0, index - 48)
         let upper = min(points.count, index + 49)
-        let ids = points[lower..<upper].map(\.id).filter { payloadCache[$0] == nil }
+        let ids = points[lower..<upper].map(\.id).filter { $0 >= 0 && payloadCache[$0] == nil }
         lastPrefetchIndex = index
         guard !ids.isEmpty else { return }
         payloadLoading = true
@@ -956,7 +1553,7 @@ struct HistoryPlaybackView: View {
             }
             .glassButtonStyle(prominent: true, tint: .blue)
             .buttonBorderShape(.circle)
-            .disabled(history.points.count < 2)
+            .disabled(history.points.count < 2 && !history.hasServerHistory)
             .accessibilityLabel(history.isPlaying ? "Pause" : "Play")
 
             Button { history.jumpToStop(1) } label: {
@@ -1131,9 +1728,10 @@ struct HistoryRuler: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
 
-    private var tickCount: Int { history.points.isEmpty ? 48 : history.points.count }
+    private var tickCount: Int { history.rulerPointCount == 0 ? 48 : history.rulerPointCount }
 
     private var position: Double {
+        if history.hasServerHistory { return history.rulerPlaybackPosition }
         if let position = history.rulerPosition { return position }
         guard history.isBrowsing else { return 0 }
         if history.points.isEmpty {
@@ -1182,14 +1780,14 @@ struct HistoryRuler: View {
                                 revision: history.rulerInteractionRevision,
                                 active: history.consumerActive && scenePhase == .active,
                                 reduceMotion: reduceMotion, value: value,
-                                points: history.points, landmarks: history.landmarks, retentionInterval: history.retentionInterval,
+                                points: history.points, landmarks: history.rulerLandmarks, retentionInterval: history.retentionInterval,
                                 onBegin: {
                 liveEdge = Date()
-                interactionPointCount = history.points.count
+                interactionPointCount = history.rulerPointCount
                 history.beginRulerInteraction()
                 return liveEdge
             }, onMove: { position in
-                let appended = history.points.count - interactionPointCount
+                let appended = history.rulerPointCount - interactionPointCount
                 history.scrub(rulerPosition: position + Double(appended), liveEdge: liveEdge)
                 return history.rulerInteractionRevision
             }, onEnd: { position in
@@ -1201,17 +1799,19 @@ struct HistoryRuler: View {
             }, onScale: { step in
                 history.setRulerStep(step, snapping: false)
             }, onContinuousScale: { frame in
-                history.rulerScaleChannel.send(frame)
+                history.sendRulerScaleFrame(frame)
             }, onAdjust: { direction in
                 let target = min(tickCount, max(0, Int(position.rounded()) + direction))
                 if target == 0 { onLive() }
-                else if history.points.isEmpty {
+                else if history.hasServerHistory {
+                    history.scrub(rulerPosition: Double(target), liveEdge: liveEdge)
+                } else if history.points.isEmpty {
                     history.scrub(to: liveEdge.addingTimeInterval(-history.retentionInterval * Double(target) / 48))
                 } else {
                     history.scrub(pointAt: history.points.count - target)
                 }
-            }, highlight: history.highlightedRange, poseChannel: history.poseChannel,
-               showsFrames: true, onFit: { history.fitRuler($0) })
+            }, highlight: history.rulerHighlightedRange, poseChannel: history.poseChannel,
+               showsFrames: true, onFit: { history.fitRuler($0) }, rulerTimeline: history.serverRuler, rulerSourcePositions: history.serverRuler?.sourcePositions)
             .frame(height: 100)
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { history.setRulerWidth($0) }
             HStack {
@@ -1233,7 +1833,7 @@ struct HistoryRuler: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("Go To")
                     .accessibilityValue(value)
-                    .disabled(history.points.isEmpty)
+                    .disabled(history.rulerPointCount == 0)
                 } else {
                     Text(value)
                         .font(.caption2.weight(.semibold).monospacedDigit())
@@ -1270,7 +1870,11 @@ struct HistoryRuler: View {
         .glassPanel(cornerRadius: 22)
         .padding(.horizontal, 16)
         .onAppear { liveEdge = Date() }
-        .sheet(isPresented: $showingGoTo) { HistoryGoToView(history: history) }
+        .sheet(isPresented: $showingGoTo) {
+            HistoryGoToView(history: history,
+                onSelectDay: history.requestCalendarDay, onMonthChange: history.requestCalendarMonth)
+                .onDisappear { history.closeCalendar() }
+        }
     }
 }
 
@@ -1320,11 +1924,12 @@ enum HistoryRulerCoarseDrag {
         }
 
         func zoom(step: Double, width: CGFloat, axis: HistoryRulerAxis? = nil,
-                  frameRange: ClosedRange<Double>? = nil, interval: TimeInterval? = nil) -> ReplayRulerHold {
+                  frameRange: ClosedRange<Double>? = nil, interval: TimeInterval? = nil,
+                  serverRuler: ServerHistoryRuler? = nil) -> ReplayRulerHold {
             let scale = HistoryRulerCoarseDrag.scale(step: step, coarsest: steps[0])
             return ReplayRulerHold(pointsPerBar: step, visibleBars: Double(width / scale.spacing),
                 coarseness: HistoryRulerCoarseDrag.coarseness(step: step, coarsest: steps[0]),
-                axis: axis, frameRange: frameRange, interval: interval)
+                axis: axis, frameRange: frameRange, interval: interval, serverRuler: serverRuler)
         }
 
         func scale(at index: Int) -> Scale {
@@ -1595,6 +2200,10 @@ struct HistoryRulerSurface: UIViewRepresentable {
     var poseChannel: ReplayPoseChannel? = nil
     var showsFrames = false
     var onFit: (HistoryRulerStretch) -> Void = { _ in }
+    var rulerTimeline: ServerHistoryRuler? = nil
+    var rulerSourcePositions: [Int]? = nil
+    var rulerPointCount: Int { rulerTimeline?.count ?? points.count }
+    func timestamp(at index: Int) -> Date { rulerTimeline?.timestamp(at: index) ?? points[index].timestamp }
 
     func makeUIView(context: Context) -> HistoryRulerContainer {
         HistoryRulerContainer()
@@ -1671,10 +2280,9 @@ private final class HistoryRulerTicks: UIView {
     private func x(at index: Int) -> CGFloat { x(at: Double(index)) }
 
     private func stretch(_ range: ClosedRange<Int>, title: String) -> HistoryRulerStretch {
-        let times = landmarks?.timestamps ?? []
-        let last = max(0, times.count - 1)
-        let timeRange: ClosedRange<Date>? = times.isEmpty ? nil
-            : times[min(last, max(0, range.lowerBound))]...times[min(last, max(0, range.upperBound))]
+        let timeRange: ClosedRange<Date>? = landmarks.map {
+            $0.rulerTimestamp(at: range.lowerBound)...$0.rulerTimestamp(at: range.upperBound)
+        }
         return .init(range: Double(range.lowerBound)...Double(range.upperBound), title: title, timeRange: timeRange)
     }
 
@@ -1698,7 +2306,8 @@ private final class HistoryRulerTicks: UIView {
                     stretch: stretch(trip, title: "trip"), priority: 2))
             }
         }
-        let visibleStops: ArraySlice<HistoryStop> = pointCount > 0 ? (landmarks?.visibleStops(in: range) ?? []) : []
+        let coarseDays = landmarks?.isServerRuler == true && (interval ?? 0) * scale.pointsPerTick >= 86_400
+        let visibleStops: ArraySlice<HistoryStop> = pointCount > 0 && !coarseDays ? (landmarks?.visibleStops(in: range) ?? []) : []
         let stops = landmarks?.stops ?? []
         for index in visibleStops.indices {
             let stop = stops[index]
@@ -1730,8 +2339,10 @@ private final class HistoryRulerTicks: UIView {
             let x = center + scale.screenOffset(of: bar.position, at: axisPosition)
             let stop = landmarks?.stop(containing: mapping.index(at: Double(tickCount) - bar.position), pointCount: pointCount)
             let snapped = stop.map { $0.id == snappedStop } == true
-            let color: UIColor = snapped ? .white : .label
-            let minorAlpha = stop == nil ? 0.25 : 0.15
+            let day = landmarks?.loadingDay(at: mapping.index(at: Double(tickCount) - bar.position))
+            let loading = coarseDays && day?.pointCount != nil ? nil : day
+            let color: UIColor = loading != nil ? .tertiaryLabel : (snapped ? .white : .label)
+            let minorAlpha = loading != nil ? 0.12 : (stop == nil ? 0.25 : 0.15)
             let alpha = snapped ? 0.95 * bar.alpha
                 : max(minorAlpha * bar.alpha, 2 * minorAlpha * bar.majorAlpha)
             let major = CGFloat(bar.majorAlpha / bar.alpha)
@@ -1773,7 +2384,32 @@ private final class HistoryRulerTicks: UIView {
             labels.append(Label(text: text, symbol: symbol, color: color, hairline: hairline, stretch: stretch))
         }
         let markRange = mapping.weight > 0 ? range.lowerBound...min(Double(pointCount), range.upperBound + 1) : range
-        for day in HistoryLandmarks.visibleMarks(landmarks.days, in: markRange) {
+        func spacedMarks(_ marks: [HistoryTimeMark]) -> ArraySlice<HistoryTimeMark> {
+            let visible = HistoryLandmarks.visibleMarks(marks, in: markRange)
+            var result: [HistoryTimeMark] = []
+            var index = visible.startIndex
+            while index < visible.endIndex {
+                let mark = visible[index]
+                result.append(mark)
+                let nextX = x(at: landmarks.markPosition(mark, mapping: mapping)) + 60
+                let start = index + 1
+                index = start + HistoryLandmarks.lowerBound(visible.endIndex - start) {
+                    x(at: landmarks.markPosition(visible[start + $0], mapping: mapping)) >= nextX
+                }
+            }
+            return result[...]
+        }
+        for (marks, priority, frame) in [(landmarks.years, HistoryRulerLabelLayout.Priority.year, HistoryRulerFrame.year),
+                                          (landmarks.months, .month, .month)] {
+            for mark in spacedMarks(marks) {
+                let x = x(at: landmarks.markPosition(mark, mapping: mapping))
+                add(landmarks.text(for: mark), at: x + 3, priority: priority, color: .label, hairline: x,
+                    stretch: landmarks.stretch(frame: frame, at: mark.time))
+            }
+        }
+        let dayMarks = landmarks.isServerRuler ? spacedMarks(landmarks.days)
+            : HistoryLandmarks.visibleMarks(landmarks.days, in: markRange)
+        for day in dayMarks {
             let dayIndex = landmarks.markPosition(day, mapping: mapping)
             let x = x(at: dayIndex)
             context.setStrokeColor(UIColor.separator.cgColor)
@@ -1803,6 +2439,17 @@ private final class HistoryRulerTicks: UIView {
             let width = widths[gap.label] ?? 0
             add(gap.label, at: max(0, min(bounds.width - width, center - width / 2)), priority: .gap, color: .systemRed,
                 stretch: stretch((gap.index - 1)...gap.index, title: gap.label))
+        }
+        let loadingDays: ArraySlice<HistoryLoadingDay> = (interval ?? 0) * scale.pointsPerTick < 86_400
+            ? landmarks.visibleLoadingDays(in: range) : []
+        for day in loadingDays {
+            let left = max(0, x(at: day.range.lowerBound)), right = min(bounds.width, x(at: day.range.upperBound))
+            guard right - left > 70 else { continue }
+            measure(day.label)
+            let width = widths[day.label] ?? 0
+            if right - left > width + 12 {
+                add(day.label, at: (left + right - width) / 2, priority: .loading, color: .tertiaryLabel)
+            }
         }
         let proposed = landmarks.timeLevel(in: markRange, pointsPerBar: scale.pointsPerTick,
                                            spacing: Double(scale.spacing), mapping: mapping)
@@ -2038,8 +2685,8 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
     private var currentValue: String {
         guard moving, let configuration else { return configuration?.value ?? "" }
         if position <= 0 { return "Live" }
-        let time = HistoryRulerCoarseDrag.time(at: position, pointCount: configuration.points.count,
-                                              timestampAt: { configuration.points[$0].timestamp },
+        let time = HistoryRulerCoarseDrag.time(at: position, pointCount: configuration.rulerPointCount,
+                                              timestampAt: { configuration.timestamp(at: $0) },
                                               liveEdge: interactionLiveEdge,
                                               retentionInterval: configuration.retentionInterval)
         return time.formatted(date: .abbreviated, time: .shortened)
@@ -2049,7 +2696,7 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
         guard let configuration else { return .init(text: "", accessibility: "") }
         return HistoryRulerCoarseDrag.scaleLabel(
             pointsPerTick: pinching ? coarseDetents.nearestStep(to: ticks.scale.pointsPerTick) : ticks.scale.pointsPerTick,
-            pointCount: configuration.points.count, timestampAt: { configuration.points[$0].timestamp },
+            pointCount: configuration.rulerPointCount, timestampAt: { configuration.timestamp(at: $0) },
             emptyInterval: configuration.retentionInterval / 48)
     }
 
@@ -2148,10 +2795,10 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
         // A completed utility build must not retarget the axis underneath a drag or its momentum.
         if !moving { ticks.landmarks = configuration.landmarks }
         ticks.highlight = configuration.highlight
-        ticks.pointCount = configuration.points.count
+        ticks.pointCount = configuration.rulerPointCount
         if !moving {
-            ticks.interval = HistoryRulerCoarseDrag.estimatedInterval(pointCount: configuration.points.count,
-                timestampAt: { configuration.points[$0].timestamp }, emptyInterval: configuration.retentionInterval / 48)
+            ticks.interval = HistoryRulerCoarseDrag.estimatedInterval(pointCount: configuration.rulerPointCount,
+                timestampAt: { configuration.timestamp(at: $0) }, emptyInterval: configuration.retentionInterval / 48)
         }
         appliedRevision = configuration.revision
         if !moving { ticks.tickCount = configuration.tickCount }
@@ -2197,7 +2844,13 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
     // Playback frames move the needle's point without a SwiftUI update, as `HistoryRuler.position` would.
     private func followPlayback(_ frame: ReplayPoseChannel.Frame) {
         guard var configuration, configuration.active, !moving, !configuration.points.isEmpty else { return }
-        let position = Double(configuration.points.count) - frame.pose.position
+        let index: Double
+        if let positions = configuration.rulerSourcePositions, !positions.isEmpty {
+            let lo = min(positions.count - 1, max(0, Int(frame.pose.position)))
+            let hi = min(positions.count - 1, lo + 1)
+            index = Double(positions[lo]) + Double(positions[hi] - positions[lo]) * (frame.pose.position - Double(lo))
+        } else { index = frame.pose.position }
+        let position = Double(configuration.rulerPointCount) - index
         guard position != configuration.position else { return }
         configuration.position = position
         self.configuration = configuration
@@ -2446,14 +3099,14 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
         }
         let axis = ObjectIdentifier(landmarks.rulerAxis)
         if frameContext?.axis != axis || frameContext?.day != day || frameContext?.width != bounds.width
-            || frameContext?.count != configuration.points.count || frameContext?.interval != ticks.interval
+            || frameContext?.count != configuration.rulerPointCount || frameContext?.interval != ticks.interval
             || frameContext?.steps != coarseDetents.steps {
-            frameContext = (axis, day, configuration.points.count, ticks.interval, bounds.width, coarseDetents.steps)
+            frameContext = (axis, day, configuration.rulerPointCount, ticks.interval, bounds.width, coarseDetents.steps)
             frameFits = landmarks.rulerFrames.compactMap { frame in
                 guard var stretch = landmarks.stretch(frame: frame, at: index) else { return nil }
-                if frame == .all { stretch.range = 0...Double(max(0, configuration.points.count - 1)) }
+                if frame == .all { stretch.range = 0...Double(max(0, configuration.rulerPointCount - 1)) }
                 return (frame, HistoryRulerFraming.fit(stretch, axis: landmarks.rulerAxis, detents: coarseDetents,
-                                                      width: bounds.width, pointCount: configuration.points.count, interval: ticks.interval))
+                                                      width: bounds.width, pointCount: configuration.rulerPointCount, interval: ticks.interval))
             }
             let actions = [
                 UIAccessibilityCustomAction(name: "Finer Scale", target: self, selector: #selector(finerScale)),
@@ -2756,7 +3409,7 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
         let target = stopSnap.move(position: min(Double(ticks.tickCount), max(0, position)),
                                    translation: Double(translation), finger: Double(finger),
                                    pointsPerBar: ticks.scale.pointsPerTick, spacing: Double(ticks.scale.spacing),
-                                   pointCount: configuration.points.count,
+                                   pointCount: configuration.rulerPointCount,
                                    landmarks: ticks.landmarks ?? configuration.landmarks, mapping: ticks.mapping)
         if stopSnap.boundary != nil && stopSnap.boundary != previousSnap {
             selectionFeedback.selectionChanged()
@@ -2803,7 +3456,7 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
 
     private func updateAccessibility() {
         let stop = position > 0 ? ticks.landmarks?.stop(containing: Double(ticks.tickCount) - position,
-                                                       pointCount: configuration?.points.count) : nil
+                                                       pointCount: configuration?.rulerPointCount) : nil
         let value = currentValue + (stop.map { ", \($0.accessibility)" } ?? "")
         scrollView.accessibilityValue = "\(value), \(scaleLabel.accessibility)"
         scrollView.accessibilityHint = held

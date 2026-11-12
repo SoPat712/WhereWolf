@@ -39,7 +39,7 @@ struct TripControl: ControlWidget {
             } valueLabel: { isOn in
                 Text(isOn ? "\(TripActivityFormat.modeName(value.mode)) Trip" : "Start \(TripActivityFormat.modeName(value.mode))")
             }
-            .tint(.green)
+            .tint(.blue)
         }
         .displayName("WhereWolf Trip")
         .description("Starts a trip in the last trip mode, or ends the trip in progress.")

@@ -23,11 +23,12 @@ struct WhereWolfShell: UIViewControllerRepresentable {
     let controls: AnyView
     let onSelect: (Int) -> Void
     let settings: AnyView
+    var insights: AnyView? = nil
 
     func makeUIViewController(context: Context) -> WhereWolfShellController {
         let controller = WhereWolfShellController(
             map: map, controls: controls, settings: settings,
-            selection: selection, controlsID: controlsID, onSelect: onSelect
+            selection: selection, controlsID: controlsID, onSelect: onSelect, insights: insights
         )
         controller.setSetupPresented(setupPresented)
         drawerGeometry.readMap = { [weak controller] in controller?.currentMap() }
@@ -49,12 +50,12 @@ struct WhereWolfShell: UIViewControllerRepresentable {
         controller.update(map: map, controls: controls, settings: settings,
                           selection: selection, activation: activation,
                           controlsID: controlsID, contentInteracting: contentInteracting,
-                          slideActivation: slideActivation)
+                          slideActivation: slideActivation, insights: insights)
     }
 }
 
 // The map keeps one container across its placeholders. The drawer stays above all tab pages
-// while its glass changes into the native Settings bar, whose layout owns the Settings safe area.
+// while its glass changes into the native bar, whose layout owns both full pages’ safe areas.
 final class WhereWolfShellController: UITabBarController, UITabBarControllerDelegate {
     var onSelect: (Int) -> Void
     var onUserLocation: ((CLLocation?) -> Void)? {
@@ -65,6 +66,9 @@ final class WhereWolfShellController: UITabBarController, UITabBarControllerDele
     private let mapPage = UIViewController()
     private let mapHost: FullScreenMapHost
     private let settingsHost: UIHostingController<AnyView>
+    private let insightsHost: UIHostingController<AnyView>
+    private let mapPages = [UIViewController(), UIViewController()]
+    private(set) var showsInsights: Bool
     private let panel: MapControlPanelController
     private var setupPresented = false
     private var currentSelection = -1
@@ -80,7 +84,7 @@ final class WhereWolfShellController: UITabBarController, UITabBarControllerDele
     private var updatingBar = false
     private var suppressSystemBar = true
     private var barLayoutSize = CGSize.zero
-    private var settingsPrepared = false
+    private var preparedPages = Set<Int>()
 #if targetEnvironment(simulator)
     private let tabAudit = ShellTabAuditView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
 #endif
@@ -88,20 +92,18 @@ final class WhereWolfShellController: UITabBarController, UITabBarControllerDele
     private(set) var drawerTabs: DrawerTabStrip
 
     init(map: AnyView, controls: AnyView, settings: AnyView,
-         selection: Int, controlsID: Int, onSelect: @escaping (Int) -> Void) {
+         selection: Int, controlsID: Int, onSelect: @escaping (Int) -> Void, insights: AnyView? = nil) {
         self.onSelect = onSelect
         mapHost = FullScreenMapHost(rootView: map)
         settingsHost = UIHostingController(rootView: settings)
-        let tabs = DrawerTabStrip(selection: selection, onSelect: onSelect)
+        insightsHost = UIHostingController(rootView: insights ?? AnyView(EmptyView()))
+        showsInsights = insights != nil
+        let tabs = DrawerTabStrip(selection: selection, showsInsights: insights != nil, onSelect: onSelect)
         drawerTabs = tabs
         panel = MapControlPanelController(controls: controls, tabs: AnyView(tabs.tint(.blue)))
         currentControlsID = controlsID
         renderedSelection = selection
         super.init(nibName: nil, bundle: nil)
-        let pages = [UIViewController(), UIViewController(), settingsHost]
-        for (page, tab) in zip(pages, DrawerTabStrip.tabs) {
-            page.tabBarItem = UITabBarItem(title: tab.title, image: UIImage(systemName: tab.symbol), tag: tab.id)
-        }
         panel.onCollapsedTopChange = { [weak self] top in
             self?.collapsedTop = top
             self?.updateMapClosedTop()
@@ -119,7 +121,7 @@ final class WhereWolfShellController: UITabBarController, UITabBarControllerDele
                     "settingsSafeBottom": self.settingsHost.view.safeAreaInsets.bottom]
         }
 #endif
-        setViewControllers(pages, animated: false)
+        configurePages()
         delegate = self
         apply(selection: selection)
     }
@@ -146,23 +148,35 @@ final class WhereWolfShellController: UITabBarController, UITabBarControllerDele
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        // Settings' Form takes a few hundred milliseconds to build the first time, which would hold the
-        // first switch on the map with the drawer. Build it once launch has settled.
-        guard !settingsPrepared else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.prepareSettings() }
+        // Build full pages after launch settles, so their first native switch is already laid out.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.prepareNativePages() }
     }
 
-    private func prepareSettings() {
-        guard !settingsPrepared, currentSelection != 2, view.window != nil,
-              settingsHost.view.superview == nil else { return }
-        settingsPrepared = true
-        // SwiftUI builds a hosted view only inside a window, so Settings spends one layout pass behind
-        // the map and leaves before the frame is drawn.
-        UIView.performWithoutAnimation {
-            settingsHost.view.frame = view.bounds
-            view.insertSubview(settingsHost.view, at: 0)
-            settingsHost.view.layoutIfNeeded()
-            settingsHost.view.removeFromSuperview()
+    private var drawerTabItems: [DrawerTab] { DrawerTabStrip.items(showsInsights: showsInsights) }
+
+    private func configurePages() {
+        let pages: [UIViewController] = drawerTabItems.map { tab in
+            let page: UIViewController = tab.id < 2 ? mapPages[tab.id] : tab.id == 2 ? settingsHost : insightsHost
+            page.tabBarItem = UITabBarItem(title: tab.title, image: UIImage(systemName: tab.symbol), tag: tab.id)
+            return page
+        }
+        setViewControllers(pages, animated: false)
+    }
+
+    private func prepareNativePages() {
+        guard view.window != nil else { return }
+        for (id, host) in [(2, settingsHost), (3, insightsHost)] where id == 2 || showsInsights {
+            guard !preparedPages.contains(id) else { continue }
+            if currentSelection == id { preparedPages.insert(id); continue }
+            guard host.view.superview == nil else { continue }
+            preparedPages.insert(id)
+            // SwiftUI builds hosted views only in a window. Remove each before the frame is drawn.
+            UIView.performWithoutAnimation {
+                host.view.frame = view.bounds
+                view.insertSubview(host.view, at: 0)
+                host.view.layoutIfNeeded()
+                host.view.removeFromSuperview()
+            }
         }
     }
 
@@ -177,11 +191,11 @@ final class WhereWolfShellController: UITabBarController, UITabBarControllerDele
         updateMapClearance(panel.currentGeometry().top)
         guard !updatingBar, view.bounds.size != barLayoutSize else { return }
         barLayoutSize = view.bounds.size
-        if currentSelection == 2 {
+        if currentSelection >= 2 {
             measureSystemBar()
         }
         if panel.isBarTransitioning, let geometry = systemPlatterGeometry {
-            panel.transitionBar(toSystem: currentSelection == 2, systemGeometry: geometry,
+            panel.transitionBar(toSystem: currentSelection >= 2, systemGeometry: geometry,
                                 systemTabsInset: systemTabsInset, animated: true)
         }
     }
@@ -190,15 +204,28 @@ final class WhereWolfShellController: UITabBarController, UITabBarControllerDele
         guard setupPresented != presented else { return }
         setupPresented = presented
         mapHost.view.isUserInteractionEnabled = !presented
-        panel.view.isHidden = presented || (currentSelection == 2 && !panel.isBarTransitioning)
+        panel.view.isHidden = presented || (currentSelection >= 2 && !panel.isBarTransitioning)
         applySystemBarSuppression()
     }
 
     func update(map: AnyView, controls: AnyView, settings: AnyView,
                 selection: Int, activation: Int, controlsID: Int, contentInteracting: Bool,
-                slideActivation: Int = 0) {
+                slideActivation: Int = 0, insights: AnyView? = nil) {
         // Native selection moves UIKit before SwiftUI publishes the matching selection.
         guard activation >= currentActivation else { return }
+        let availabilityChanged = showsInsights != (insights != nil)
+        let selection = ShellTabPolicy.validSelection(selection, insights: insights != nil)
+        if availabilityChanged {
+            if panel.isBarTransitioning, let geometry = systemPlatterGeometry {
+                panel.transitionBar(toSystem: currentSelection >= 2, systemGeometry: geometry,
+                                    systemTabsInset: systemTabsInset, animated: false)
+            }
+            showsInsights = insights != nil
+            pendingNativeSelection = nil
+            UIView.performWithoutAnimation { configurePages() }
+            systemPlatterGeometry = nil
+            barLayoutSize = .zero
+        }
         if selectingNative, selection != currentSelection { return }
         if let pending = pendingNativeSelection {
             guard activation >= pending.activation,
@@ -209,7 +236,9 @@ final class WhereWolfShellController: UITabBarController, UITabBarControllerDele
         let slides = slideActivation != appliedSlideActivation
         appliedSlideActivation = slideActivation
         mapHost.rootView = map
-        if selection != renderedSelection || controlsID != currentControlsID {
+        insightsHost.rootView = insights ?? AnyView(EmptyView())
+        let controlsChanged = selection != renderedSelection || controlsID != currentControlsID
+        if availabilityChanged || controlsChanged {
             renderedSelection = selection
             currentControlsID = controlsID
             settingsHost.rootView = settings
@@ -217,15 +246,19 @@ final class WhereWolfShellController: UITabBarController, UITabBarControllerDele
             let crossfade = selection < 2 && selection != previousRenderedSelection
                 && (0..<2).contains(previousRenderedSelection)
             let side: CGFloat? = crossfade && slides ? (selection < previousRenderedSelection ? -1 : 1) : nil
-            drawerTabs = DrawerTabStrip(selection: selection, animatesSelection: side != nil, onSelect: onSelect)
-            if selection < 2 {
+            drawerTabs = DrawerTabStrip(selection: selection, animatesSelection: side != nil,
+                                        showsInsights: showsInsights, animatesHighlight: !availabilityChanged, onSelect: onSelect)
+            if selection < 2, controlsChanged {
                 panel.update(controls: controls, tabs: AnyView(drawerTabs.tint(.blue)), crossfade: crossfade, slide: side)
             } else {
                 panel.updateTabs(AnyView(drawerTabs.tint(.blue)))
             }
         }
         panel.setContentInteracting(contentInteracting)
-        apply(selection: selection)
+        apply(selection: selection, animated: !availabilityChanged, force: availabilityChanged)
+        if availabilityChanged {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.prepareNativePages() }
+        }
         // Tapping the current map tab reopens a collapsed drawer.
         if activation != currentActivation {
             currentActivation = activation
@@ -234,7 +267,8 @@ final class WhereWolfShellController: UITabBarController, UITabBarControllerDele
     }
 
     func tabBarController(_ tabBarController: UITabBarController, didSelect viewController: UIViewController) {
-        guard let index = viewControllers?.firstIndex(of: viewController) else { return }
+        let index = viewController.tabBarItem.tag
+        guard drawerTabItems.contains(where: { $0.id == index }) else { return }
         // UIKit has already shown the placeholder page; move the map in before SwiftUI's update.
         pendingNativeSelection = (index, currentActivation + 1)
         selectingNative = true
@@ -242,29 +276,29 @@ final class WhereWolfShellController: UITabBarController, UITabBarControllerDele
         // The drawer takes over from the native bar before SwiftUI publishes the selection, so its
         // strip must already show the new tab.
         if drawerTabs.selection != index {
-            drawerTabs = DrawerTabStrip(selection: index, onSelect: onSelect)
+            drawerTabs = DrawerTabStrip(selection: index, showsInsights: showsInsights, onSelect: onSelect)
             panel.updateTabs(AnyView(drawerTabs.tint(.blue)))
         }
         apply(selection: index)
         onSelect(index)
     }
 
-    private func apply(selection requested: Int) {
-        let index = min(2, max(0, requested))
-        guard index != currentSelection else { return }
+    private func apply(selection requested: Int, animated: Bool = true, force: Bool = false) {
+        let index = ShellTabPolicy.validSelection(requested, insights: showsInsights)
+        guard force || index != currentSelection else { return }
         let previous = currentSelection
-        let fromSystem = previous == 2 && !suppressSystemBar
+        let fromSystem = previous >= 2 && !suppressSystemBar
         currentSelection = index
         loadViewIfNeeded()
         updatingBar = true
         defer { updatingBar = false }
         let showsMap = index < 2
-        let crossesSettings = previous >= 0 && ((previous == 2) != (index == 2))
+        let crossesSettings = previous >= 0 && ((previous >= 2) != (index >= 2))
         let continuesTween = panel.isBarTransitioning
         UIView.performWithoutAnimation {
             // Reserve the native bar's final safe area before Settings draws its first frame.
-            if index == 2 { setSystemBar(hidden: false, transparent: true) }
-            if previous == 2 {
+            if index >= 2 { setSystemBar(hidden: false, transparent: true) }
+            if previous >= 2 {
                 tabBar.layoutIfNeeded()
                 measureSystemBar()
             }
@@ -276,22 +310,22 @@ final class WhereWolfShellController: UITabBarController, UITabBarControllerDele
                 }
                 install(mapPage, in: page)
             }
-            selectedIndex = index
+            selectedIndex = drawerTabItems.firstIndex { $0.id == index } ?? 0
             mapHost.view.isHidden = !showsMap
             if showsMap { setSystemBar(hidden: true) }
             view.layoutIfNeeded()
             barLayoutSize = view.bounds.size
-            if index == 2 {
+            if index >= 2 {
                 tabBar.layoutIfNeeded()
                 measureSystemBar()
             }
             if (crossesSettings || continuesTween), let geometry = systemPlatterGeometry {
                 panel.transitionBar(toSystem: !showsMap, systemGeometry: geometry, systemTabsInset: systemTabsInset,
-                                    animated: !UIAccessibility.isReduceMotionEnabled, fromSystem: fromSystem)
+                                    animated: animated && !UIAccessibility.isReduceMotionEnabled, fromSystem: fromSystem)
             } else {
                 panel.setVisible(showsMap)
                 setSystemBar(hidden: showsMap)
-                if previous >= 0, previous < 2, showsMap { panel.expand() }
+                if previous >= 0, previous < 2, previous != index, showsMap { panel.expand() }
             }
             view.bringSubviewToFront(panel.view)
         }
@@ -302,7 +336,7 @@ final class WhereWolfShellController: UITabBarController, UITabBarControllerDele
         let geometry = SystemTabBarGeometry.measure(tabBar, in: view)
         systemPlatterGeometry = geometry
         systemTabsInset = SystemTabBarGeometry.stripInset(
-            for: geometry, items: SystemTabBarGeometry.itemFrames(in: tabBar, container: view))
+            for: geometry, items: SystemTabBarGeometry.itemFrames(in: tabBar, container: view), itemCount: drawerTabItems.count)
     }
 
     private func setSystemBar(hidden: Bool, transparent: Bool = false) {
@@ -329,7 +363,7 @@ final class WhereWolfShellController: UITabBarController, UITabBarControllerDele
     }
 
     private func finishBarTransition(toSystem: Bool) {
-        guard toSystem == (currentSelection == 2) else { return }
+        guard toSystem == (currentSelection >= 2) else { return }
         UIView.performWithoutAnimation { setSystemBar(hidden: !toSystem) }
     }
 
@@ -387,7 +421,7 @@ final class WhereWolfShellController: UITabBarController, UITabBarControllerDele
     private func tabAuditValue() -> String {
         let barHidden: Bool
         if #available(iOS 18.0, *) { barHidden = isTabBarHidden } else { barHidden = tabBar.isHidden }
-        let measuredPlatter = currentSelection == 2 && !panel.isBarTransitioning
+        let measuredPlatter = currentSelection >= 2 && !panel.isBarTransitioning
             ? SystemTabBarGeometry.measure(tabBar, in: view) : systemPlatterGeometry
         let values: [String: Any] = [
             "selection": currentSelection,
@@ -398,7 +432,7 @@ final class WhereWolfShellController: UITabBarController, UITabBarControllerDele
             "systemItemFrames": SystemTabBarGeometry.itemFrames(in: tabBar, container: view).map {
                 ["x": Double($0.minX), "y": Double($0.minY), "width": Double($0.width), "height": Double($0.height)]
             },
-            "systemItemContent": currentSelection == 2 ? SystemTabBarGeometry.itemContent(in: tabBar, container: view) : [],
+            "systemItemContent": currentSelection >= 2 ? SystemTabBarGeometry.itemContent(in: tabBar, container: view) : [],
             "barTransitioning": panel.isBarTransitioning,
             "drawerSettled": panel.isLayoutSettled,
             "reduceMotion": UIAccessibility.isReduceMotionEnabled,
@@ -487,10 +521,10 @@ enum SystemTabBarGeometry {
 #endif
 
     // The drawer strip's side inset that puts its equal cells on the system items' centers.
-    static func stripInset(for platter: DrawerBarGeometry, items: [CGRect]) -> CGFloat {
+    static func stripInset(for platter: DrawerBarGeometry, items: [CGRect], itemCount: Int = 3) -> CGFloat {
         var lefts: [CGFloat] = []
         for x in items.map(\.minX).sorted() where lefts.last.map({ x - $0 > 1 }) ?? true { lefts.append(x) }
-        guard lefts.count == DrawerTabStrip.tabs.count, let first = lefts.first, let last = lefts.last else {
+        guard lefts.count == itemCount, lefts.count > 1, let first = lefts.first, let last = lefts.last else {
             return defaultStripInset
         }
         let pitch = (last - first) / CGFloat(lefts.count - 1)
@@ -507,6 +541,20 @@ enum SystemTabBarGeometry {
     }
 }
 
+enum ShellTabPolicy {
+    // IDs stay stable when Insights is inserted before Settings; native indices may change.
+    static func showsInsights(status: DawarichStatus, preview: Bool = false) -> Bool {
+        if preview { return true }
+        if case .dawarich(_, true, _) = status { return true }
+        return false
+    }
+
+    static func validSelection(_ selection: Int, insights: Bool) -> Int {
+        if selection == 3 { return insights ? 3 : 2 }
+        return min(2, max(0, selection))
+    }
+}
+
 struct DrawerTab: Identifiable {
     let id: Int
     let title: String
@@ -516,6 +564,8 @@ struct DrawerTab: Identifiable {
 struct DrawerTabStrip: View {
     var selection: Int
     var animatesSelection = false
+    var showsInsights = false
+    var animatesHighlight = true
     var onSelect: (Int) -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var highlight
@@ -538,9 +588,16 @@ struct DrawerTabStrip: View {
         DrawerTab(id: 2, title: "Settings", symbol: "gearshape.fill"),
     ]
 
+    static func items(showsInsights: Bool) -> [DrawerTab] {
+        guard showsInsights else { return tabs }
+        return [tabs[0], tabs[1], DrawerTab(id: 3, title: "Insights", symbol: "chart.bar.xaxis"), tabs[2]]
+    }
+
+    var items: [DrawerTab] { Self.items(showsInsights: showsInsights) }
+
     var body: some View {
         HStack(spacing: 0) {
-            ForEach(Self.tabs) { tab in
+            ForEach(items) { tab in
                 VStack(spacing: 0) {
                     Image(systemName: tab.symbol)
                         .font(.system(size: 22.6, weight: .semibold))
@@ -588,7 +645,7 @@ struct DrawerTabStrip: View {
                     if let index = tab(at: value.location.x) { onSelect(index) }
                 }
         )
-        .animation(.spring(response: 0.35, dampingFraction: 0.82), value: highlighted)
+        .animation(animatesHighlight ? .spring(response: 0.35, dampingFraction: 0.82) : nil, value: highlighted)
         .dynamicTypeSize(...DynamicTypeSize.xxLarge)
     }
 
@@ -596,7 +653,7 @@ struct DrawerTabStrip: View {
 
     private func tab(at x: CGFloat) -> Int? {
         guard width > 0 else { return nil }
-        return min(Self.tabs.count - 1, max(0, Int(x / (width / CGFloat(Self.tabs.count)))))
+        return items[min(items.count - 1, max(0, Int(x / (width / CGFloat(items.count)))))].id
     }
 }
 

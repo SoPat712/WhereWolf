@@ -96,7 +96,7 @@ struct StatusWidgetView: View {
                         .lineLimit(1)
                 } else {
                     Image(systemName: state.trackingEnabled ? "location.fill" : "location.slash")
-                        .foregroundStyle(state.trackingEnabled ? .green : .secondary)
+                        .foregroundStyle(state.trackingEnabled ? .blue : .secondary)
                     Text(state.trackingEnabled ? "Tracking" : "Not Tracking")
                         .font(.headline)
                         .lineLimit(1)
@@ -239,7 +239,7 @@ struct TripButton: View {
                     .widgetAccentable()
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(.green)
+                .tint(.blue)
             }
         }
     }

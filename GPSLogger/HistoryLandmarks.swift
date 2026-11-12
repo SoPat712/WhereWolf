@@ -8,27 +8,32 @@ final class HistoryRulerAxis {
     let count: Int
     let interval: TimeInterval?
     private let cumulative: [[Double]]
+    private let samplePositions: [Int]?
 
-    init(timestamps: [Date]) {
-        count = timestamps.count
+    init(timestamps: [Date], positions: [Int]? = nil) {
+        samplePositions = positions
+        let pointCount = positions?.last.map { $0 + 1 } ?? timestamps.count
+        count = pointCount
         let span = timestamps.last.flatMap { last in timestamps.first.map { last.timeIntervalSince($0) } } ?? 0
-        let mean = count > 1 ? span / Double(count - 1) : 0
-        interval = mean.isFinite && mean > 0 ? mean : nil
-        guard count > 1, let interval else { cumulative = []; return }
-        let intervals = zip(timestamps, timestamps.dropFirst()).map { first, last in
-            let value = last.timeIntervalSince(first)
-            return value.isFinite && value >= 0 ? max(0.000_001, value) / interval : 1
+        let mean = pointCount > 1 ? span / Double(pointCount - 1) : 0
+        let meanInterval = mean.isFinite && mean > 0 ? mean : nil
+        interval = meanInterval
+        guard pointCount > 1, let interval = meanInterval else { cumulative = []; return }
+        let intervals = timestamps.indices.dropFirst().map { index -> (duration: Double, width: Double) in
+            let value = timestamps[index].timeIntervalSince(timestamps[index - 1])
+            let width = Double(positions.map { $0[index] - $0[index - 1] } ?? 1)
+            return (value.isFinite && value >= 0 ? max(0.000_001, value) / interval / width : 1, width)
         }
         cumulative = (0...Self.weightSteps).map { step in
-            if step == 0 { return (0..<timestamps.count).map(Double.init) }
+            if step == 0 { return positions?.map(Double.init) ?? (0..<timestamps.count).map(Double.init) }
             let weight = Double(step) / Double(Self.weightSteps)
             var sum = 0.0
             var prefix = [0.0]
             prefix.reserveCapacity(timestamps.count)
-            for interval in intervals { sum += pow(interval, weight); prefix.append(sum) }
-            let normalization = Double(timestamps.count - 1) / sum
+            for interval in intervals { sum += interval.width * pow(interval.duration, weight); prefix.append(sum) }
+            let normalization = Double(pointCount - 1) / sum
             for index in prefix.indices { prefix[index] *= normalization }
-            prefix[prefix.count - 1] = Double(timestamps.count - 1)
+            prefix[prefix.count - 1] = Double(pointCount - 1)
             return prefix
         }
     }
@@ -77,8 +82,16 @@ final class HistoryRulerAxis {
 
         private func rawPrefix(at index: Int) -> Double {
             guard weight > 0, let axis, index < axis.count else { return Double(index) }
-            let a = axis.cumulative[lower][index]
-            return a + (axis.cumulative[upper][index] - a) * fraction
+            func sample(_ index: Int) -> Double {
+                let a = axis.cumulative[lower][index]
+                return a + (axis.cumulative[upper][index] - a) * fraction
+            }
+            guard let positions = axis.samplePositions else { return sample(index) }
+            let next = HistoryLandmarks.lowerBound(positions.count) { positions[$0] >= index }
+            guard next > 0 else { return sample(0) }
+            guard next < positions.count else { return sample(positions.count - 1) }
+            let t = Double(index - positions[next - 1]) / Double(positions[next] - positions[next - 1])
+            return sample(next - 1) + (sample(next) - sample(next - 1)) * t
         }
 
         private func prefix(at index: Int) -> Double {
@@ -99,6 +112,20 @@ final class HistoryRulerAxis {
         func index(at coordinate: Double) -> Double {
             guard weight > 0, let axis, coordinate > 0,
                   coordinate < Double(min(pointCount, axis.count) - 1) else { return coordinate }
+            if let positions = axis.samplePositions, pointCount == axis.count {
+                func value(_ sample: Int) -> Double {
+                    let a = axis.cumulative[lower][sample]
+                    return a + (axis.cumulative[upper][sample] - a) * fraction
+                }
+                var lo = 0, hi = positions.count - 1
+                while hi - lo > 1 {
+                    let mid = (lo + hi) / 2
+                    if value(mid) <= coordinate { lo = mid } else { hi = mid }
+                }
+                let a = value(lo), b = value(hi)
+                return Double(positions[lo]) + (coordinate - a) / max(Double.leastNormalMagnitude, b - a)
+                    * Double(positions[hi] - positions[lo])
+            }
             var lo = 0, hi = min(pointCount, axis.count) - 1
             while hi - lo > 1 {
                 let mid = (lo + hi) / 2
@@ -255,6 +282,7 @@ struct HistoryStop: Identifiable, Equatable {
     let name: String?
     let symbol: String
     let color: String
+    let nameID: String?
 
     let label: String
     var accessibility: String {
@@ -262,7 +290,7 @@ struct HistoryStop: Identifiable, Equatable {
     }
     var title: String { name ?? "Stop" }
 
-    init(id: Int, end: Int, arrival: Date, departure: Date, name: String?, symbol: String, color: String) {
+    init(id: Int, end: Int, arrival: Date, departure: Date, name: String?, symbol: String, color: String, nameID: String? = nil) {
         self.id = id
         self.end = end
         self.arrival = arrival
@@ -270,6 +298,7 @@ struct HistoryStop: Identifiable, Equatable {
         self.name = name
         self.symbol = symbol
         self.color = color
+        self.nameID = nameID
         label = name ?? "Stop · \(max(1, Int(departure.timeIntervalSince(arrival) / 60))) min"
     }
 }
@@ -309,7 +338,7 @@ struct HistoryStopBoundary: Equatable {
 }
 
 struct HistoryTimeMark: Hashable {
-    enum Style: Hashable { case weekday, minute, hour }
+    enum Style: Hashable { case year, month, weekday, minute, hour }
     let index: Int
     let time: Date
     let style: Style
@@ -356,8 +385,14 @@ final class HistoryLandmarks {
     let boundaries: [HistoryStopBoundary]
     let gaps: [HistoryGap]
     let days: [HistoryTimeMark]
+    let months: [HistoryTimeMark]
+    let years: [HistoryTimeMark]
+    let loadingDays: [HistoryLoadingDay]
+    let isServerRuler: Bool
+    private let serverRuler: ServerHistoryRuler?
     let timeMarks: [[HistoryTimeMark]]
     let journey: [HistoryJourneyDay]
+    let daySummaries: PhoneHistoryDaySummaryProvider
     private let calendar: Calendar
     private let locale: Locale
     @MainActor private var textCache: [HistoryTimeMark: String] = [:]
@@ -379,12 +414,16 @@ final class HistoryLandmarks {
 
     init(points: [RecordedLocation], timeline: ReplayTimeline, places: [WifiPlace],
          calendar: Calendar = .current, locale: Locale = .current,
-         matchDistance: Double = GLWifiPlaceMatchDistance) {
+         matchDistance: Double = GLWifiPlaceMatchDistance, ruler: ServerHistoryRuler? = nil,
+         timeDetailDays: Set<Date>? = nil, stopNames: DawarichStopNames = DawarichStopNames(), axis: HistoryRulerAxis? = nil) {
         self.calendar = calendar
         self.locale = locale
-        let timestamps = points.map(\.timestamp)
+        let timestamps = ruler?.timestamps ?? points.map(\.timestamp)
+        loadingDays = ruler?.loadingDays ?? []
+        isServerRuler = ruler != nil
+        serverRuler = ruler
         self.timestamps = timestamps
-        rulerAxis = HistoryRulerAxis(timestamps: timestamps)
+        rulerAxis = axis ?? HistoryRulerAxis(timestamps: timestamps, positions: ruler?.positions)
         if let first = timestamps.first, let last = timestamps.last, timestamps.count > 1 {
             let days = (calendar.dateComponents([.day], from: calendar.startOfDay(for: first),
                                                to: calendar.startOfDay(for: last)).day ?? 0) + 1
@@ -395,7 +434,17 @@ final class HistoryLandmarks {
                 return days >= needed
             }
         } else { rulerFrames = [] }
-        let detected = timeline.stays.map { stay in
+        var names = stopNames
+        if let ruler {
+            let additional = ruler.snapshot.days.flatMap(\.stops).compactMap { interval -> DawarichStopVisit? in
+                guard !names.days.contains(calendar.startOfDay(for: interval.startedAt)),
+                      let visit = interval.visit else { return nil }
+                return visit.clipped(from: interval.startedAt, to: interval.endedAt)
+            }
+            names.visits += additional
+        }
+        let namer = HistoryStopNamer(wifi: places, names: names, distance: matchDistance)
+        var detected = timeline.stays.map { stay in
             let first = points[stay.start]
             // Unwrap longitude about the first fix so a stay at the dateline has a local center.
             let latitudes = points[stay.start...stay.end].map(\.latitude)
@@ -406,22 +455,42 @@ final class HistoryLandmarks {
             var longitude = (longitudes.min()! + longitudes.max()!) / 2
             longitude -= floor((longitude + 180) / 360) * 360
             let center = CLLocation(latitude: (latitudes.min()! + latitudes.max()!) / 2, longitude: longitude)
-            let nearest = places.map { place in
-                (place, center.distance(from: CLLocation(latitude: place.latitude, longitude: place.longitude)))
-            }.filter { $0.1 <= matchDistance }.min { $0.1 < $1.1 }?.0
-            return HistoryStop(id: stay.start, end: stay.end, arrival: points[stay.start].timestamp,
-                               departure: points[stay.end].timestamp, name: nearest?.name,
-                               symbol: nearest?.symbol ?? "mappin", color: nearest?.color ?? "gray")
+            let name = namer.name(at: center, from: first.timestamp, to: points[stay.end].timestamp)
+            return HistoryStop(id: ruler.map { Int($0.index(at: points[stay.start].timestamp).rounded()) } ?? stay.start,
+                               end: ruler.map { Int($0.index(at: points[stay.end].timestamp).rounded()) } ?? stay.end,
+                               arrival: points[stay.start].timestamp,
+                               departure: points[stay.end].timestamp, name: name?.title,
+                               symbol: name?.symbol ?? "mappin", color: name?.color ?? "gray", nameID: name?.identity)
+        }
+        if let ruler {
+            let visits = ruler.snapshot.days.filter { ruler.snapshot.points[$0.day] == nil }
+                .flatMap(\.stops).filter { $0.startedAt < ruler.phoneStart }
+            if !visits.isEmpty {
+                detected.removeAll { stop in
+                    stop.departure < ruler.phoneStart && visits.contains {
+                        $0.startedAt <= stop.departure && $0.endedAt >= stop.arrival
+                    }
+                }
+                detected += visits.map { visit in
+                    let center = visit.visit?.place?.location
+                    let name = center.flatMap { namer.name(at: $0, from: visit.startedAt, to: visit.endedAt) }
+                    return HistoryStop(id: Int(ruler.index(at: visit.startedAt).rounded()),
+                        end: Int(ruler.index(at: min(visit.endedAt, ruler.phoneStart)).rounded()),
+                        arrival: visit.startedAt, departure: min(visit.endedAt, ruler.phoneStart),
+                        name: name?.title, symbol: name?.symbol ?? "mappin", color: name?.color ?? "gray", nameID: name?.identity)
+                }
+                detected.sort { $0.id == $1.id ? $0.end < $1.end : $0.id < $1.id }
+            }
         }
         // A fix that strays out of the box splits one visit in two; show it once. An unnamed pair must touch,
         // so two places across town minutes apart stay separate.
         var stops: [HistoryStop] = []
         for stop in detected {
-            if let previous = stops.last, previous.name == stop.name,
+            if let previous = stops.last, (previous.nameID ?? previous.name) == (stop.nameID ?? stop.name),
                stop.arrival.timeIntervalSince(previous.departure) < CoverageReport.gapThreshold,
                stop.name != nil || stop.id - previous.end <= 1 {
                 stops[stops.count - 1] = HistoryStop(id: previous.id, end: stop.end, arrival: previous.arrival,
-                    departure: stop.departure, name: previous.name, symbol: previous.symbol, color: previous.color)
+                    departure: stop.departure, name: previous.name, symbol: previous.symbol, color: previous.color, nameID: previous.nameID)
             } else {
                 stops.append(stop)
             }
@@ -434,21 +503,32 @@ final class HistoryLandmarks {
         gaps = timestamps.indices.dropFirst().compactMap { index in
             let duration = timestamps[index].timeIntervalSince(timestamps[index - 1])
             guard duration >= CoverageReport.gapThreshold else { return nil }
-            let stop = Self.lowerBound(stops.count) { stops[$0].end >= index }
-            if stops.indices.contains(stop), stops[stop].id < index { return nil }
-            return HistoryGap(index: index, duration: duration)
+            if let ruler, timestamps[index - 1] < ruler.phoneStart { return nil }
+            let projected = ruler?.positions[index] ?? index
+            let stop = Self.lowerBound(stops.count) { stops[$0].end >= projected }
+            if stops.indices.contains(stop), stops[stop].id < projected { return nil }
+            return HistoryGap(index: projected, duration: duration)
         }
-        let marks = Self.marks(timestamps: timestamps, calendar: calendar)
-        days = marks.days
+        let marks = Self.marks(timestamps: timestamps, calendar: calendar,
+                               detailDays: ruler?.detailDays ?? timeDetailDays)
+        func project(_ mark: HistoryTimeMark) -> HistoryTimeMark {
+            guard let ruler else { return mark }
+            return HistoryTimeMark(index: ruler.positions[min(ruler.positions.count - 1, mark.index)],
+                time: mark.time, style: mark.style, position: ruler.index(at: mark.time))
+        }
+        days = marks.days.map(project)
+        months = ruler == nil ? [] : Self.calendarMarks(.month, style: .month, timestamps: timestamps, calendar: calendar).map(project)
+        years = ruler == nil ? [] : Self.calendarMarks(.year, style: .year, timestamps: timestamps, calendar: calendar).map(project)
         rulerDayStretches = Dictionary(uniqueKeysWithValues: marks.days.compactMap { mark -> (Date, HistoryRulerStretch)? in
             guard let day = calendar.dateInterval(of: .day, for: mark.time) else { return nil }
-            let start = HistoryRulerFraming.index(at: day.start, timestamps: timestamps)
-            let end = HistoryRulerFraming.index(at: day.end, timestamps: timestamps)
+            let start = ruler?.index(at: day.start) ?? HistoryRulerFraming.index(at: day.start, timestamps: timestamps)
+            let end = ruler?.index(at: day.end) ?? HistoryRulerFraming.index(at: day.end, timestamps: timestamps)
             let range = start...end
             return (mark.time, HistoryRulerStretch(range: range, title: "Day", timeRange: day.start...day.end, frame: .day))
         })
-        timeMarks = marks.levels
-        journey = Self.journey(points: points, timeline: timeline, stops: stops, calendar: calendar)
+        timeMarks = marks.levels.map { $0.map(project) }
+        journey = ruler == nil ? Self.journey(points: points, timeline: timeline, stops: stops, calendar: calendar) : []
+        daySummaries = PhoneHistoryDaySummaryProvider(timestamps: timestamps, journey: journey, calendar: calendar)
     }
 
     @MainActor func text(for mark: HistoryTimeMark) -> String {
@@ -461,6 +541,8 @@ final class HistoryLandmarks {
             formatter.calendar = calendar
             formatter.timeZone = calendar.timeZone
             switch mark.style {
+            case .year: formatter.setLocalizedDateFormatFromTemplate("yyyy")
+            case .month: formatter.setLocalizedDateFormatFromTemplate("MMM")
             case .weekday: formatter.dateFormat = "EEE"
             case .minute: formatter.dateStyle = .none; formatter.timeStyle = .short
             case .hour: formatter.setLocalizedDateFormatFromTemplate("j")
@@ -473,7 +555,7 @@ final class HistoryLandmarks {
         return text
     }
 
-    private static func marks(timestamps: [Date], calendar: Calendar)
+    private static func marks(timestamps: [Date], calendar: Calendar, detailDays: Set<Date>? = nil)
         -> (days: [HistoryTimeMark], levels: [[HistoryTimeMark]]) {
         var days: [HistoryTimeMark] = []
         var levels = [[HistoryTimeMark]](repeating: [], count: timeMinutes.count)
@@ -483,6 +565,17 @@ final class HistoryLandmarks {
         let zone = calendar.timeZone
         while day <= last {
             guard let nextDay = calendar.date(byAdding: .day, value: 1, to: day), nextDay > day else { break }
+            if let detailDays, !detailDays.contains(day) {
+                if day >= first {
+                    let index = lowerBound(timestamps.count) { timestamps[$0] >= day }
+                    if index < timestamps.count {
+                        days.append(HistoryTimeMark(index: index, time: day, style: .weekday,
+                            position: HistoryRulerFraming.index(at: day, timestamps: timestamps)))
+                    }
+                }
+                day = nextDay
+                continue
+            }
             var boundary = day
             // One pass over absolute minutes, split at offset changes. Calendar and time-zone
             // lookups happen per day/transition; every level shares the wall-minute arithmetic.
@@ -518,8 +611,42 @@ final class HistoryLandmarks {
         return (days, levels)
     }
 
+    private static func calendarMarks(_ component: Calendar.Component, style: HistoryTimeMark.Style,
+                                      timestamps: [Date], calendar: Calendar) -> [HistoryTimeMark] {
+        guard let first = timestamps.first, let last = timestamps.last,
+              var boundary = calendar.dateInterval(of: component, for: first)?.start else { return [] }
+        var marks: [HistoryTimeMark] = []
+        while boundary <= last {
+            if boundary >= first {
+                let index = lowerBound(timestamps.count) { timestamps[$0] >= boundary }
+                marks.append(.init(index: index, time: boundary, style: style,
+                    position: HistoryRulerFraming.index(at: boundary, timestamps: timestamps)))
+            }
+            guard let next = calendar.date(byAdding: component, value: 1, to: boundary), next > boundary else { break }
+            boundary = next
+        }
+        return marks
+    }
+
+    func rulerTimestamp(at index: Int) -> Date {
+        if let serverRuler { return serverRuler.timestamp(at: index) }
+        guard !timestamps.isEmpty else { return .distantPast }
+        return timestamps[min(timestamps.count - 1, max(0, index))]
+    }
+
+    func loadingDay(at index: Double) -> HistoryLoadingDay? {
+        let next = Self.lowerBound(loadingDays.count) { loadingDays[$0].range.upperBound >= index }
+        return next < loadingDays.count && loadingDays[next].range.contains(index) ? loadingDays[next] : nil
+    }
+
+    func visibleLoadingDays(in range: ClosedRange<Double>) -> ArraySlice<HistoryLoadingDay> {
+        let first = Self.lowerBound(loadingDays.count) { loadingDays[$0].range.upperBound >= range.lowerBound }
+        let end = Self.lowerBound(loadingDays.count) { loadingDays[$0].range.lowerBound > range.upperBound }
+        return loadingDays[first..<max(first, end)]
+    }
+
     func stop(containing position: Double, pointCount: Int? = nil) -> HistoryStop? {
-        let count = pointCount ?? timestamps.count
+        let count = pointCount ?? serverRuler?.count ?? timestamps.count
         guard position >= 0, position <= Double(count - 1) else { return nil }
         let upper = Self.lowerBound(stops.count) { Double(stops[$0].end) >= position }
         guard stops.indices.contains(upper), Double(stops[upper].id) <= position else { return nil }
@@ -527,7 +654,7 @@ final class HistoryLandmarks {
     }
 
     func boundary(from position: Double, direction: Int, pointCount: Int? = nil) -> HistoryStopBoundary? {
-        let count = pointCount ?? timestamps.count
+        let count = pointCount ?? serverRuler?.count ?? timestamps.count
         guard direction != 0, count > 0 else { return nil }
         func clampedIndex(_ index: Int) -> Double { Double(min(count - 1, max(0, boundaries[index].index))) }
         let index: Int
@@ -540,17 +667,18 @@ final class HistoryLandmarks {
     }
 
     func nearestPoint(to time: Date, pointCount: Int? = nil) -> Int? {
-        let count = pointCount ?? timestamps.count
+        let count = pointCount ?? serverRuler?.count ?? timestamps.count
         guard !timestamps.isEmpty, count > 0 else { return nil }
         let next = Self.lowerBound(timestamps.count) { timestamps[$0] >= time }
         let index: Int
         if next == 0 { index = 0 }
         else if next == timestamps.count { index = next - 1 }
         else { index = timestamps[next].timeIntervalSince(time) < time.timeIntervalSince(timestamps[next - 1]) ? next : next - 1 }
-        return min(count - 1, max(0, index))
+        return min(count - 1, max(0, serverRuler?.positions[index] ?? index))
     }
 
     func stretch(frame: HistoryRulerFrame, at index: Double) -> HistoryRulerStretch? {
+        if let serverRuler, let time = serverRuler.time(at: index) { return stretch(frame: frame, at: time) }
         guard timestamps.count > 1 else { return nil }
         let index = min(Double(timestamps.count - 1), max(0, index))
         let lo = Int(floor(index)), hi = min(timestamps.count - 1, lo + 1)
@@ -562,8 +690,10 @@ final class HistoryLandmarks {
         if frame == .day, let cached = rulerDayStretches[time] { return cached }
         guard let first = timestamps.first, let last = timestamps.last, timestamps.count > 1 else { return nil }
         let interval = frame.interval(containing: time, calendar: calendar) ?? DateInterval(start: first, end: last)
-        let start = HistoryRulerFraming.index(at: max(first, interval.start), timestamps: timestamps)
-        let end = HistoryRulerFraming.index(at: min(last, interval.end), timestamps: timestamps)
+        let start = serverRuler?.index(at: max(first, interval.start))
+            ?? HistoryRulerFraming.index(at: max(first, interval.start), timestamps: timestamps)
+        let end = serverRuler?.index(at: min(last, interval.end))
+            ?? HistoryRulerFraming.index(at: min(last, interval.end), timestamps: timestamps)
         return HistoryRulerStretch(range: start...end, title: frame.rawValue,
                                    timeRange: interval.start...interval.end, frame: frame)
     }
@@ -693,7 +823,7 @@ final class HistoryLandmarks {
 }
 
 struct HistoryRulerLabelLayout {
-    enum Priority: Int { case day, stop, gap, time }
+    enum Priority: Int { case year, month, day, stop, loading, gap, time }
     struct Candidate {
         let id: Int
         let priority: Priority

@@ -41,6 +41,73 @@ Successful delivery removes acknowledged records from the upload queue without
 deleting recent history. Active trip geometry is cleared when the trip ends;
 its queued summary and any Health export have separate lifetimes.
 
+## Your history from Dawarich
+
+With a recognized, authenticated Dawarich server running a supported version,
+WhereWolf reads your existing history to extend the replay ruler to your first
+saved day. These requests go only to the configured server, using its existing
+API key and custom headers. History redirects stay within that server’s origin
+and configured path prefix. Requests ask Dawarich to apply its privacy zones;
+unsupported versions do not enable server history. Nothing is uploaded back from
+this history cache, and it never changes recording, the upload queue, or Health.
+
+WhereWolf keeps points for the 90 most recently viewed days and a small day index
+with dates, point counts, distances, first and last visible point times,
+and available stops and journeys, including visible stop coordinates for naming.
+This copy lives in its own protected SQLite cache, excluded from device backups
+and Backup & Sync. Previously authenticated
+history for the same configuration can be viewed offline: downloaded days remain
+available, and other days say “Not downloaded.” Phone history and unsent phone
+points take priority over overlapping server timestamps.
+
+WhereWolf also reads your places and visits to name stops in phone and server
+history. Your Wi-Fi Place names take priority; otherwise a confirmed visit must
+overlap the stop in time and be within 300 metres. Suggested or declined visits
+do not supply names. These masked, read-only requests use the same server, key
+and headers. Places refresh once per history refresh; visits load for requested
+days, using the timeline to include visits that started earlier. The protected
+history cache keeps the place catalog and visit reads for up to 90 requested days,
+alongside the day index’s available stop metadata.
+WhereWolf never creates, confirms, merges or edits server visits or places.
+
+At day scale and above, the map simplifies loaded points and reads masked track
+lines for other days. These lines stay in memory, bounded to 250,000 vertices;
+they are not recorded as points or saved to disk. Tracks spanning midnight wait
+for complete day points because the server’s line vertices have no timestamps.
+
+Settings → History & Replay → Storage shows separate sizes and Clear controls
+for Server History and Insights Cache. Clearing Server History removes
+this device’s downloaded points, day index, places, visits and in-memory tracks,
+without deleting anything on your server or from the upload queue. A later server refresh can download history
+again. Changing the server, credentials, custom headers or local time zone
+replaces the cache so another account’s history is not mixed in.
+
+## Insights from Dawarich
+
+With a recognized, authenticated Dawarich server, the Insights tab reads yearly
+totals, comparisons, countries, cities, time by country, places, visits, photos
+and existing yearly digests. These use the same configured server, API key and custom headers as
+history. Insights refuses redirects.
+Photo thumbnails are requested from Dawarich, not directly from its photo services.
+Where supported, requests ask Dawarich to mask its privacy zones. Opening a month
+or photo first loads the required server days, then selects that month or moment
+in Tracker. Downloaded insights never
+enter the upload queue or your recorded trips.
+
+Responses and thumbnails are kept in a separate protected cache on this iPhone,
+excluded from device backups and Backup & Sync. Responses can contain location
+and visit details and photo metadata. The cache holds at most 32 MB of responses
+and 64 MB of thumbnails, removing older files when full. While the server remains
+recognized, cached sections stay visible if a refresh fails, with their update time. Opening Insights refreshes
+data older than six hours; pulling to refresh requests an update sooner.
+Settings → History & Replay → Storage → Insights Cache → Clear deletes these downloads.
+It does not delete anything from your server or photo library.
+
+Insights never generates a digest or changes server data. WhereWolf does not log
+the requests' server addresses, API keys, account emails, coordinates or photo
+data, and does not send the downloaded information to the developer.
+
+
 ## Sending to your chosen destination
 
 WhereWolf sends queued location records to the server address you configure. It
@@ -61,8 +128,8 @@ For recognized Dawarich upload URLs, WhereWolf checks the server's health endpoi
 with your API key and custom headers to identify its version and authentication
 status. With a valid key, WhereWolf also reads the account's email address to show
 which account the key belongs to and keeps it only on the iPhone while the app
-runs. These checks send nothing else, including location, and do not read server
-history.
+runs. These identification checks send no location. Once authenticated, the
+separate history requests described above can read saved server history.
 
 WhereWolf also requests account information from the configured server. The
 server operator receives these requests and handles the data under its own
@@ -171,12 +238,13 @@ The trip Live Activity shows small Apple Maps snapshots behind its route sketch
 in the expanded Dynamic Island and, by default, on the Lock Screen. Turn off
 **Map on Lock Screen** in Settings → Live Activities to keep a plain Lock Screen
 route panel. Anyone who sees your Lock Screen map can see where the trip started.
-To draw them, WhereWolf asks Apple Maps for map data around the trip, including
-while the app is in the background, as the app's own map does when it's open.
-The images stay on your device in the App Group, are excluded from backups,
-and are never uploaded or exported. WhereWolf keeps only the current and
-previous pair of images and deletes them when the trip or its Live Activity
-ends. Turning off the Lock Screen map deletes its images.
+WhereWolf asks Apple Maps for map data only while the app is open, around your
+current location or trip. It keeps five map images on this device to crop while
+the phone is locked. These images stay in the app; only the current and previous
+pair of cropped images go to the App Group for the Live Activity. All are excluded
+from backups and are never uploaded or exported. The cropped images are deleted
+when the trip or its Live Activity ends. Turning off Map on Lock Screen deletes
+its cropped images; turning off Trip Live Activity deletes the saved maps too.
 
 ## Maps, tips, and external links
 

@@ -7,6 +7,7 @@ struct TripActivityPreview: View {
     private let start = Date().addingTimeInterval(-764)
     @State private var mapState: TripActivityMap?
     @State private var mapController: TripActivityMapController?
+    @State private var mapAtlas: TripActivityMapAtlas?
     // Fixture files never prune or replace a real trip's snapshots.
     private let mapFiles = TripActivityMapFiles(directory: TripActivityMapFiles.sharedDirectory?
         .deletingLastPathComponent().appendingPathComponent("TripActivityMapPreview", isDirectory: true))
@@ -14,7 +15,7 @@ struct TripActivityPreview: View {
     static func fixture(arguments: [String] = ProcessInfo.processInfo.arguments) -> TripActivityPreview? {
         guard let index = arguments.firstIndex(of: "-WhereWolfTripActivityPreview"),
               arguments.indices.contains(index + 1),
-              ["car", "walk", "short", "map"].contains(arguments[index + 1]) else { return nil }
+              ["car", "walk", "short", "map", "map-atlas"].contains(arguments[index + 1]) else { return nil }
         return TripActivityPreview(kind: arguments[index + 1])
     }
 
@@ -31,7 +32,7 @@ struct TripActivityPreview: View {
         return TripActivityState(mode: walk ? "walk" : "car", distance: short ? 0 : (walk ? 1_018 : 13_550),
             speed: walk ? 1.3 : 15.2, topSpeed: short ? -1 : (walk ? 1.9 : 25.9),
             climb: short ? 0 : (walk ? 24 : 36.6), averageSpeed: short ? nil : (walk ? 1.33 : 13.86),
-            route: kind == "map" ? Self.portlandRoute().routeSketch() : TripRouteSketch(points: route), map: mapState)
+            route: kind.hasPrefix("map") ? Self.portlandRoute().routeSketch() : TripRouteSketch(points: route), map: mapState)
     }
 
     private static func portlandRoute() -> TripStatsAccumulator {
@@ -107,19 +108,36 @@ struct TripActivityPreview: View {
         }
         .background(Color(red: 0.07, green: 0.08, blue: 0.10).ignoresSafeArea())
         .task {
-            guard kind == "map", mapController == nil else { return }
+            guard kind.hasPrefix("map"), mapController == nil else { return }
             let stats = Self.portlandRoute()
-            let controller = TripActivityMapController(files: mapFiles)
+            let atlas = TripActivityMapAtlas(files: TripActivityMapAtlasFiles(directory: TripActivityMapAtlasFiles.defaultDirectory?
+                .deletingLastPathComponent().appendingPathComponent("TripActivityMapAtlasPreview", isDirectory: true)))
+            mapAtlas = atlas
+            let controller = TripActivityMapController(files: mapFiles, atlas: atlas,
+                isActive: { kind != "map-atlas" && UIApplication.shared.applicationState == .active })
             mapController = controller
             controller.reset()
             controller.onChange = { [weak controller] in
                 mapState = controller?.map(for: stats.routeMapPoints) { stats.routeSketch(in: $0) }
             }
-            controller.update(points: stats.routeMapPoints, enabled: true, showsOnLockScreen: true)
+            if kind == "map-atlas" {
+                atlas.onChange = { [weak controller, weak atlas] in
+                    guard atlas?.levels.count == TripActivityMapAtlasPolicy.sides.count else { return }
+                    controller?.update(points: stats.routeMapPoints, enabled: true, showsOnLockScreen: true)
+                }
+                atlas.update(anchor: stats.routeMapPoints.last, tripLiveActivityEnabled: true, trackingEnabled: true)
+                if atlas.levels.count == TripActivityMapAtlasPolicy.sides.count {
+                    controller.update(points: stats.routeMapPoints, enabled: true, showsOnLockScreen: true)
+                }
+            } else {
+                controller.update(points: stats.routeMapPoints, enabled: true, showsOnLockScreen: true)
+            }
         }
         .onDisappear {
             mapController?.reset()
             mapController = nil
+            mapAtlas?.removeAll()
+            mapAtlas = nil
             mapState = nil
         }
     }
