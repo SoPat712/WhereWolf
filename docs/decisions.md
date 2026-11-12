@@ -380,6 +380,13 @@ This log lists the decisions agents made on their own while working on WhereWolf
 - **Decided:** the map fits an opened trip by a separate range, which is the trip's own fixes or, when it has none, the fix nearest its start, so the overview shows that spot with its usual 150-meter minimum. The red trip line still draws only the trip's own fixes.
 - **Undo:** `git revert ec1bf4c`.
 
+## 2026-11-12: Blend spacing and frame buttons on the history ruler (04f7c3f)
+
+- **Asked for:** the ruler that reaches years back. Of Blend, Points and Time spacing in the playable sketch, the owner picked Blend; this is its second step, on the phone's own history, with fine scales feeling exactly as before.
+- **Decided:** through five minutes per bar and at Every point, fixes stay evenly spaced as before (time spacing was tried on 2026-11-08 and was hard to scroll). Coarser scales give each interval interval^w of the width, with w = smoothstep(log(seconds per bar / 300) / log(288)): about 0.1 at 15 minutes, 0.41 at an hour, 0.85 at six hours and 1 from a day per bar, so a day of history is always the same width there. Eleven cumulative widths build off the main thread with the landmarks, and gestures interpolate neighbouring caches. Day, Week, Month, Year and All buttons sit above the ruler, showing only frames the history can fill (Day, Week where it applies, and All on a phone's week); they and taps on day labels, trip bands and No-data bands fit that stretch on the ruler and the map. Reading older history from Dawarich, which brings Month and Year, is the next step.
+- **Also:** each test suite's UUID preferences domain left an empty plist behind, 23,348 of them in the shared simulator's container, which made a render's preference backup run for over an hour. The test bundle now sweeps them when it loads.
+- **Undo:** `git revert 04f7c3f`.
+
 ## Deferred for the owner
 
 - **Watch complication for Today:** it needs a new watch widget extension and bundle identifier, which is an Apple developer account change.
