@@ -1,6 +1,252 @@
 import Foundation
 import CoreLocation
 
+// Eleven immutable prefix sums cover the dial. Building them with the landmarks keeps powers and
+// collection walks off the gesture path; a frame interpolates two scalars, or binary-searches them.
+final class HistoryRulerAxis {
+    static let weightSteps = 10
+    let count: Int
+    let interval: TimeInterval?
+    private let cumulative: [[Double]]
+
+    init(timestamps: [Date]) {
+        count = timestamps.count
+        let span = timestamps.last.flatMap { last in timestamps.first.map { last.timeIntervalSince($0) } } ?? 0
+        let mean = count > 1 ? span / Double(count - 1) : 0
+        interval = mean.isFinite && mean > 0 ? mean : nil
+        guard count > 1, let interval else { cumulative = []; return }
+        let intervals = zip(timestamps, timestamps.dropFirst()).map { first, last in
+            let value = last.timeIntervalSince(first)
+            return value.isFinite && value >= 0 ? max(0.000_001, value) / interval : 1
+        }
+        cumulative = (0...Self.weightSteps).map { step in
+            if step == 0 { return (0..<timestamps.count).map(Double.init) }
+            let weight = Double(step) / Double(Self.weightSteps)
+            var sum = 0.0
+            var prefix = [0.0]
+            prefix.reserveCapacity(timestamps.count)
+            for interval in intervals { sum += pow(interval, weight); prefix.append(sum) }
+            let normalization = Double(timestamps.count - 1) / sum
+            for index in prefix.indices { prefix[index] *= normalization }
+            prefix[prefix.count - 1] = Double(timestamps.count - 1)
+            return prefix
+        }
+    }
+
+    // The approved sketch's beta is 1-w. Keep its smoothstep in log time, without quantizing gestures.
+    static func weight(secondsPerBar: TimeInterval) -> Double {
+        guard secondsPerBar > 300 else { return 0 }
+        let t = min(1, log(secondsPerBar / 300) / log(86_400.0 / 300))
+        return t * t * (3 - 2 * t)
+    }
+
+    func mapping(pointsPerBar: Double, pointCount: Int, interval: TimeInterval? = nil) -> Mapping {
+        let interval = interval ?? self.interval ?? 0
+        let weight = Self.weight(secondsPerBar: interval * pointsPerBar)
+        // Even a sparse archive's Every point remains literal. Open its dial smoothly over the first
+        // octave when the average interval already exceeds five minutes; ordinary phone history uses 1.
+        let opening = interval > 300 ? min(1, max(0, log(max(1, pointsPerBar)) / log(2))) : 1
+        return mapping(weight: weight * opening * opening * (3 - 2 * opening), pointCount: pointCount)
+    }
+
+    func mapping(weight: Double, pointCount: Int) -> Mapping {
+        Mapping(axis: self, weight: weight, pointCount: pointCount)
+    }
+
+    struct Mapping: Equatable {
+        let axis: HistoryRulerAxis?
+        let weight: Double
+        let pointCount: Int
+        private let lower: Int
+        private let upper: Int
+        private let fraction: Double
+
+        init(axis: HistoryRulerAxis? = nil, weight: Double = 0, pointCount: Int) {
+            self.axis = axis
+            self.weight = axis?.cumulative.isEmpty == false && weight.isFinite ? min(1, max(0, weight)) : 0
+            self.pointCount = max(0, pointCount)
+            let dial = self.weight * Double(HistoryRulerAxis.weightSteps)
+            lower = Int(floor(dial))
+            upper = min(HistoryRulerAxis.weightSteps, lower + 1)
+            fraction = dial - Double(lower)
+        }
+
+        static func == (lhs: Self, rhs: Self) -> Bool {
+            lhs.weight == rhs.weight && lhs.pointCount == rhs.pointCount && (lhs.weight == 0 || lhs.axis === rhs.axis)
+        }
+
+        private func rawPrefix(at index: Int) -> Double {
+            guard weight > 0, let axis, index < axis.count else { return Double(index) }
+            let a = axis.cumulative[lower][index]
+            return a + (axis.cumulative[upper][index] - a) * fraction
+        }
+
+        private func prefix(at index: Int) -> Double {
+            let last = min(pointCount, axis?.count ?? 0) - 1
+            if let axis, last > 0, pointCount < axis.count {
+                return rawPrefix(at: index) * Double(last) / rawPrefix(at: last)
+            }
+            return rawPrefix(at: index)
+        }
+
+        func coordinate(at index: Double) -> Double {
+            // Extend pending appends and the last point-to-Live interval uniformly. Live is always count.
+            guard weight > 0, let axis, index > 0, index < Double(min(pointCount, axis.count) - 1) else { return index }
+            let lo = Int(floor(index)), t = index - floor(index)
+            return prefix(at: lo) + (prefix(at: lo + 1) - prefix(at: lo)) * t
+        }
+
+        func index(at coordinate: Double) -> Double {
+            guard weight > 0, let axis, coordinate > 0,
+                  coordinate < Double(min(pointCount, axis.count) - 1) else { return coordinate }
+            var lo = 0, hi = min(pointCount, axis.count) - 1
+            while hi - lo > 1 {
+                let mid = (lo + hi) / 2
+                if prefix(at: mid) <= coordinate { lo = mid } else { hi = mid }
+            }
+            let a = prefix(at: lo), b = prefix(at: hi)
+            return Double(lo) + (coordinate - a) / max(Double.leastNormalMagnitude, b - a)
+        }
+
+        func reverseCoordinate(at position: Double) -> Double {
+            weight == 0 ? position : Double(pointCount) - coordinate(at: Double(pointCount) - position)
+        }
+
+        func reversePosition(at coordinate: Double) -> Double {
+            weight == 0 ? coordinate : Double(pointCount) - index(at: Double(pointCount) - coordinate)
+        }
+    }
+}
+
+enum HistoryRulerFrame: String, CaseIterable, Hashable {
+    case day = "Day", week = "Week", month = "Month", year = "Year", all = "All"
+
+    func interval(containing date: Date, calendar: Calendar) -> DateInterval? {
+        switch self {
+        case .day: return calendar.dateInterval(of: .day, for: date)
+        case .week:
+            // The sketch uses Monday weeks, independently of the first weekday in the locale.
+            var calendar = calendar
+            calendar.firstWeekday = 2
+            return calendar.dateInterval(of: .weekOfYear, for: date)
+        case .month: return calendar.dateInterval(of: .month, for: date)
+        case .year: return calendar.dateInterval(of: .year, for: date)
+        case .all: return nil
+        }
+    }
+}
+
+struct HistoryRulerStretch: Equatable {
+    var range: ClosedRange<Double>
+    let title: String
+    var timeRange: ClosedRange<Date>? = nil
+    var frame: HistoryRulerFrame? = nil
+    var accessibility: String {
+        "Fit \(title)" + (timeRange.map { ", \($0.lowerBound.formatted(date: .abbreviated, time: .shortened))" } ?? "")
+    }
+}
+
+struct HistoryRulerHitTarget: Equatable {
+    let frame: CGRect
+    let stretch: HistoryRulerStretch
+    var priority = 0
+
+    var touchFrame: CGRect {
+        frame.insetBy(dx: -max(0, 44 - frame.width) / 2, dy: -max(0, 44 - frame.height) / 2)
+    }
+
+    func touchFrame(in bounds: CGRect) -> CGRect {
+        var target = touchFrame
+        target.origin.x = max(bounds.minX, min(bounds.maxX - target.width, target.minX))
+        target.origin.y = max(bounds.minY, min(bounds.maxY - target.height, target.minY))
+        return target.intersection(bounds)
+    }
+
+    static func pick(at point: CGPoint, in targets: [Self], bounds: CGRect? = nil) -> Self? {
+        targets.filter { target in
+            (bounds.map { target.touchFrame(in: $0) } ?? target.touchFrame).contains(point)
+        }.min {
+            if $0.priority != $1.priority { return $0.priority < $1.priority }
+            return hypot($0.frame.midX - point.x, $0.frame.midY - point.y)
+                < hypot($1.frame.midX - point.x, $1.frame.midY - point.y)
+        }
+    }
+}
+
+enum HistoryRulerFraming {
+    struct Fit {
+        let step: Double
+        let position: Double
+        let stretch: HistoryRulerStretch
+    }
+
+    static func nearestFrame(to step: Double, fits: [(HistoryRulerFrame, Fit)]) -> HistoryRulerFrame? {
+        fits.min { abs(log(max(1, $0.1.step) / max(1, step)))
+            < abs(log(max(1, $1.1.step) / max(1, step))) }?.0
+    }
+
+    static func index(at time: Date, timestamps: [Date]) -> Double {
+        index(at: time, pointCount: timestamps.count, timestampAt: { timestamps[$0] })
+    }
+
+    static func index(at time: Date, pointCount: Int, timestampAt: (Int) -> Date) -> Double {
+        guard pointCount > 0 else { return 0 }
+        let next = HistoryLandmarks.lowerBound(pointCount) { timestampAt($0) >= time }
+        guard next > 0 else { return 0 }
+        guard next < pointCount else { return Double(pointCount - 1) }
+        let duration = timestampAt(next).timeIntervalSince(timestampAt(next - 1))
+        return Double(next - 1) + (duration > 0 ? time.timeIntervalSince(timestampAt(next - 1)) / duration : 1)
+    }
+
+    static func fit(_ stretch: HistoryRulerStretch, axis: HistoryRulerAxis,
+                    detents: HistoryRulerCoarseDrag.Detents, width: CGFloat, pointCount: Int? = nil,
+                    interval: TimeInterval? = nil) -> Fit {
+        let count = pointCount ?? axis.count
+        let last = Double(max(0, count - 1))
+        let lo = min(last, max(0, stretch.range.lowerBound))
+        let hi = min(last, max(lo, stretch.range.upperBound))
+        let target = max(1, Double(width) * 0.92)
+        func screenWidth(at step: Double) -> Double {
+            let mapping = axis.mapping(pointsPerBar: step, pointCount: count, interval: interval)
+            let spacing = HistoryRulerCoarseDrag.scale(step: step, coarsest: detents.steps[0]).spacing
+            return (mapping.coordinate(at: hi) - mapping.coordinate(at: lo)) / step * Double(spacing)
+        }
+        // A sparse silence can grow before it shrinks as Blend opens. Search the bounded dial first,
+        // then refine its last descending crossing; a binary search from Every point misses that frame.
+        let end = log(detents.steps[0])
+        let samples = 64
+        var best = 0.0, error = abs(log(max(0.000_001, screenWidth(at: 1)) / target))
+        var previous = screenWidth(at: 1)
+        var crossing: (lower: Double, upper: Double, descending: Bool)?
+        for sample in 1...samples {
+            let value = end * Double(sample) / Double(samples)
+            let width = screenWidth(at: exp(value))
+            let nextError = abs(log(max(0.000_001, width) / target))
+            if nextError < error { best = value; error = nextError }
+            if previous >= target && width <= target {
+                crossing = (end * Double(sample - 1) / Double(samples), value, true)
+            } else if previous <= target && width >= target && crossing == nil {
+                crossing = (end * Double(sample - 1) / Double(samples), value, false)
+            }
+            previous = width
+        }
+        if var crossing {
+            for _ in 0..<40 {
+                let middle = (crossing.lower + crossing.upper) / 2
+                let tooWide = screenWidth(at: exp(middle)) > target
+                if tooWide == crossing.descending { crossing.lower = middle } else { crossing.upper = middle }
+            }
+            best = crossing.descending ? crossing.upper : crossing.lower
+        }
+        let step = exp(best)
+        let mapping = axis.mapping(pointsPerBar: step, pointCount: count, interval: interval)
+        let midpoint = (mapping.coordinate(at: lo) + mapping.coordinate(at: hi)) / 2
+        var stretch = stretch
+        stretch.range = lo...hi
+        return Fit(step: step, position: Double(count) - mapping.index(at: midpoint), stretch: stretch)
+    }
+}
+
 struct HistoryStop: Identifiable, Equatable {
     let id: Int
     let end: Int
@@ -67,6 +313,7 @@ struct HistoryTimeMark: Hashable {
     let index: Int
     let time: Date
     let style: Style
+    var position: Double? = nil
 }
 
 struct HistoryJourneyRow: Identifiable, Equatable {
@@ -102,6 +349,9 @@ struct HistoryJourneyDay: Identifiable {
 final class HistoryLandmarks {
     static let timeMinutes = [1, 5, 15, 60, 360]
     let timestamps: [Date]
+    let rulerAxis: HistoryRulerAxis
+    let rulerFrames: [HistoryRulerFrame]
+    private let rulerDayStretches: [Date: HistoryRulerStretch]
     let stops: [HistoryStop]
     let boundaries: [HistoryStopBoundary]
     let gaps: [HistoryGap]
@@ -134,6 +384,17 @@ final class HistoryLandmarks {
         self.locale = locale
         let timestamps = points.map(\.timestamp)
         self.timestamps = timestamps
+        rulerAxis = HistoryRulerAxis(timestamps: timestamps)
+        if let first = timestamps.first, let last = timestamps.last, timestamps.count > 1 {
+            let days = (calendar.dateComponents([.day], from: calendar.startOfDay(for: first),
+                                               to: calendar.startOfDay(for: last)).day ?? 0) + 1
+            rulerFrames = HistoryRulerFrame.allCases.filter { frame in
+                guard frame != .all else { return true }
+                guard let interval = frame.interval(containing: last, calendar: calendar) else { return false }
+                let needed = calendar.dateComponents([.day], from: interval.start, to: interval.end).day ?? 1
+                return days >= needed
+            }
+        } else { rulerFrames = [] }
         let detected = timeline.stays.map { stay in
             let first = points[stay.start]
             // Unwrap longitude about the first fix so a stay at the dateline has a local center.
@@ -179,6 +440,13 @@ final class HistoryLandmarks {
         }
         let marks = Self.marks(timestamps: timestamps, calendar: calendar)
         days = marks.days
+        rulerDayStretches = Dictionary(uniqueKeysWithValues: marks.days.compactMap { mark -> (Date, HistoryRulerStretch)? in
+            guard let day = calendar.dateInterval(of: .day, for: mark.time) else { return nil }
+            let start = HistoryRulerFraming.index(at: day.start, timestamps: timestamps)
+            let end = HistoryRulerFraming.index(at: day.end, timestamps: timestamps)
+            let range = start...end
+            return (mark.time, HistoryRulerStretch(range: range, title: "Day", timeRange: day.start...day.end, frame: .day))
+        })
         timeMarks = marks.levels
         journey = Self.journey(points: points, timeline: timeline, stops: stops, calendar: calendar)
     }
@@ -226,14 +494,19 @@ final class HistoryLandmarks {
                     if boundary >= first {
                         while index < timestamps.count && timestamps[index] < boundary { index += 1 }
                         if index < timestamps.count {
+                            let position: Double
+                            if index > 0, timestamps[index] > timestamps[index - 1] {
+                                position = Double(index - 1) + boundary.timeIntervalSince(timestamps[index - 1])
+                                    / timestamps[index].timeIntervalSince(timestamps[index - 1])
+                            } else { position = Double(index) }
                             if boundary == day {
-                                days.append(HistoryTimeMark(index: index, time: boundary, style: .weekday))
+                                days.append(HistoryTimeMark(index: index, time: boundary, style: .weekday, position: position))
                             }
                             let absoluteMinute = Int(floor((boundary.timeIntervalSince1970 + Double(offset)) / 60))
                             let wallMinute = (absoluteMinute % 1_440 + 1_440) % 1_440
                             for level in timeMinutes.indices where wallMinute.isMultiple(of: timeMinutes[level]) {
                                 levels[level].append(HistoryTimeMark(index: index, time: boundary,
-                                    style: timeMinutes[level] >= 60 ? .hour : .minute))
+                                    style: timeMinutes[level] >= 60 ? .hour : .minute, position: position))
                             }
                         }
                     }
@@ -277,6 +550,24 @@ final class HistoryLandmarks {
         return min(count - 1, max(0, index))
     }
 
+    func stretch(frame: HistoryRulerFrame, at index: Double) -> HistoryRulerStretch? {
+        guard timestamps.count > 1 else { return nil }
+        let index = min(Double(timestamps.count - 1), max(0, index))
+        let lo = Int(floor(index)), hi = min(timestamps.count - 1, lo + 1)
+        let time = timestamps[lo].addingTimeInterval(timestamps[hi].timeIntervalSince(timestamps[lo]) * (index - Double(lo)))
+        return stretch(frame: frame, at: time)
+    }
+
+    func stretch(frame: HistoryRulerFrame, at time: Date) -> HistoryRulerStretch? {
+        if frame == .day, let cached = rulerDayStretches[time] { return cached }
+        guard let first = timestamps.first, let last = timestamps.last, timestamps.count > 1 else { return nil }
+        let interval = frame.interval(containing: time, calendar: calendar) ?? DateInterval(start: first, end: last)
+        let start = HistoryRulerFraming.index(at: max(first, interval.start), timestamps: timestamps)
+        let end = HistoryRulerFraming.index(at: min(last, interval.end), timestamps: timestamps)
+        return HistoryRulerStretch(range: start...end, title: frame.rawValue,
+                                   timeRange: interval.start...interval.end, frame: frame)
+    }
+
     func viewingRow(at position: Double) -> HistoryJourneyRow? {
         guard position >= 0, position <= Double(timestamps.count - 1) else { return nil }
         // Rows display newest first; search oldest first so the earlier row owns a shared boundary.
@@ -310,12 +601,22 @@ final class HistoryLandmarks {
         return marks[first..<end]
     }
 
+    func markPosition(_ mark: HistoryTimeMark, mapping: HistoryRulerAxis.Mapping?) -> Double {
+        let weight = mapping?.weight ?? 0
+        guard weight > 0 else { return Double(mark.index) }
+        let fractional = mark.position ?? HistoryRulerFraming.index(at: mark.time, timestamps: timestamps)
+        return Double(mark.index) + (fractional - Double(mark.index)) * weight
+    }
+
     // Coarsen until every adjacent boundary in the viewport is at least 60 screen points apart.
-    func timeLevel(in range: ClosedRange<Double>, pointsPerBar: Double, spacing: Double) -> Int {
+    func timeLevel(in range: ClosedRange<Double>, pointsPerBar: Double, spacing: Double,
+                   mapping: HistoryRulerAxis.Mapping? = nil) -> Int {
         for level in timeMarks.indices {
             let marks = Self.visibleMarks(timeMarks[level], in: range)
             if zip(marks, marks.dropFirst()).allSatisfy({
-                Double($0.1.index - $0.0.index) * spacing / pointsPerBar >= 60
+                let a = markPosition($0.0, mapping: mapping), b = markPosition($0.1, mapping: mapping)
+                let distance = mapping.map { $0.coordinate(at: b) - $0.coordinate(at: a) } ?? (b - a)
+                return distance * spacing / pointsPerBar >= 60
             }) { return level }
         }
         return timeMarks.count - 1
@@ -431,7 +732,8 @@ struct HistoryStopSnap {
     mutating func reset() { self = Self() }
 
     mutating func move(position: Double, translation: Double, finger: Double, pointsPerBar: Double,
-                       spacing: Double, pointCount: Int, landmarks: HistoryLandmarks) -> Double {
+                       spacing: Double, pointCount: Int, landmarks: HistoryLandmarks,
+                       mapping: HistoryRulerAxis.Mapping? = nil) -> Double {
         guard pointsPerBar > 1, pointCount > 0 else { reset(); return position + translation * pointsPerBar / spacing }
         boundary = boundary?.clamped(to: pointCount)
         if let boundary {
@@ -441,9 +743,17 @@ struct HistoryStopSnap {
             releasedIndex = boundary.index
             return position
         }
-        let proposed = position + translation * pointsPerBar / spacing
+        let mapping = mapping.flatMap { $0.weight > 0 ? $0 : nil }
+        let axisPosition = mapping?.reverseCoordinate(at: position) ?? position
+        let proposedCoordinate = axisPosition + translation * pointsPerBar / spacing
+        let proposed = mapping?.reversePosition(at: proposedCoordinate) ?? proposedCoordinate
         let index = Double(pointCount) - proposed
-        if let releasedIndex, abs(index - Double(releasedIndex)) * spacing / pointsPerBar > 6 {
+        func distance(to boundary: Int) -> Double {
+            guard let mapping else { return abs(Double(boundary) - index) * spacing / pointsPerBar }
+            let coordinate = mapping.reverseCoordinate(at: Double(pointCount - boundary))
+            return abs(coordinate - proposedCoordinate) * spacing / pointsPerBar
+        }
+        if let releasedIndex, distance(to: releasedIndex) > 6 {
             self.releasedIndex = nil
         }
         let next = HistoryLandmarks.lowerBound(landmarks.boundaries.count) {
@@ -452,8 +762,8 @@ struct HistoryStopSnap {
         let nearby = [next - 1, next].filter { landmarks.boundaries.indices.contains($0) }
             .compactMap { landmarks.boundaries[$0].clamped(to: pointCount) }
         if let target = nearby.filter({ $0.index != releasedIndex }).min(by: {
-            abs(Double($0.index) - index) < abs(Double($1.index) - index)
-        }), abs(Double(target.index) - index) * spacing / pointsPerBar <= 6 {
+            distance(to: $0.index) < distance(to: $1.index)
+        }), distance(to: target.index) <= 6 {
             boundary = target
             fingerAtSnap = finger
             return Double(pointCount - target.index)

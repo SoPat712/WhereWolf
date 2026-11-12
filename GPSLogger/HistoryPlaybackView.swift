@@ -6,7 +6,7 @@ import UIKit
 @MainActor
 final class HistoryPlaybackModel {
     private(set) var points: [RecordedLocation] = [] {
-        didSet { setRulerStep(rulerStep) }
+        didSet { clampRulerStep() }
     }
     private(set) var landmarks = HistoryLandmarks(points: [], timeline: ReplayTimeline(points: []), places: [])
     private(set) var selectedIndex: Int?
@@ -39,6 +39,8 @@ final class HistoryPlaybackModel {
     private(set) var rulerHold: ReplayRulerHold?
     private(set) var rulerHoldCancelled = false
     private(set) var rulerStep = 1.0
+    private(set) var rulerFrameRange: ClosedRange<Double>?
+    private(set) var rulerFrameRevision = 0
     // The trip opened from the Trip tab, highlighted on the map and ruler until returning to Live.
     private(set) var highlightedTrip: ClosedRange<Date>?
     @ObservationIgnored let rulerScaleChannel = RulerScaleChannel()
@@ -53,22 +55,52 @@ final class HistoryPlaybackModel {
     }
 
     var rulerZoom: ReplayRulerHold? {
-        guard rulerStep > 1 else { return nil }
-        return rulerDetents.zoom(step: rulerStep, width: rulerWidth)
+        guard rulerStep > 1 || rulerFrameRange != nil else { return nil }
+        return rulerDetents.zoom(step: rulerStep, width: rulerWidth, axis: landmarks.rulerAxis,
+                                frameRange: rulerFrameRange, interval: rulerInterval)
     }
 
     func setRulerWidth(_ width: CGFloat) {
         guard width > 0, width != rulerWidth else { return }
         rulerWidth = width
-        setRulerStep(rulerStep)
+        clampRulerStep()
     }
 
-    func setRulerStep(_ step: Double) {
-        let step = rulerDetents.nearestStep(to: step)
+    func setRulerStep(_ step: Double, snapping: Bool = true) {
+        let step = snapping ? rulerDetents.nearestStep(to: step) : min(rulerDetents.steps[0], max(1, step))
+        rulerFrameRange = nil
         guard rulerStep != step else { return }
         rulerStep = step
         if UIAccessibility.isVoiceOverRunning {
             UIAccessibility.post(notification: .announcement, argument: rulerScaleLabel.buttonAccessibility)
+        }
+    }
+
+    private func clampRulerStep() {
+        let step = min(rulerDetents.steps[0], max(1, rulerStep))
+        if step != rulerStep { setRulerStep(step, snapping: false) }
+    }
+
+    func fitRuler(_ stretch: HistoryRulerStretch) {
+        guard !points.isEmpty else { return }
+        var stretch = stretch
+        if stretch.frame == .all { stretch.range = 0...Double(points.count - 1) }
+        else if let time = stretch.timeRange {
+            stretch.range = HistoryRulerFraming.index(at: time.lowerBound, pointCount: points.count,
+                timestampAt: { self.points[$0].timestamp })...HistoryRulerFraming.index(at: time.upperBound,
+                pointCount: points.count, timestampAt: { self.points[$0].timestamp })
+        }
+        let fit = HistoryRulerFraming.fit(stretch, axis: landmarks.rulerAxis, detents: rulerDetents,
+                                         width: rulerWidth, pointCount: points.count, interval: rulerInterval)
+        beginRulerInteraction()
+        scrub(rulerPosition: fit.position, liveEdge: clock())
+        rulerFrameRange = fit.stretch.range
+        rulerStep = fit.step
+        endRulerInteraction(cancelled: false)
+        rulerFrameRevision &+= 1
+        if UIAccessibility.isVoiceOverRunning {
+            UIAccessibility.post(notification: .announcement,
+                                 argument: "\(stretch.title), \(rulerScaleLabel.buttonAccessibility)")
         }
     }
 
@@ -78,9 +110,12 @@ final class HistoryPlaybackModel {
     }
 
     var rulerScaleMenu: [HistoryRulerCoarseDrag.MenuEntry] {
-        let interval = HistoryRulerCoarseDrag.estimatedInterval(pointCount: points.count,
+        rulerDetents.menuEntries(interval: rulerInterval ?? retentionInterval / 48, current: rulerStep)
+    }
+
+    private var rulerInterval: TimeInterval? {
+        HistoryRulerCoarseDrag.estimatedInterval(pointCount: points.count,
             timestampAt: { self.points[$0].timestamp }, emptyInterval: retentionInterval / 48)
-        return rulerDetents.menuEntries(interval: interval ?? retentionInterval / 48, current: rulerStep)
     }
 
     var retentionInterval: TimeInterval {
@@ -116,6 +151,7 @@ final class HistoryPlaybackModel {
     @ObservationIgnored private let landmarkClock: () -> TimeInterval
     @ObservationIgnored private let clock: () -> Date
     @ObservationIgnored private var landmarkGeneration = 0
+    @ObservationIgnored private var pendingLandmarks: (generation: Int, value: HistoryLandmarks)?
     @ObservationIgnored private var lastLandmarkBuild: TimeInterval?
     @ObservationIgnored private var needsLandmarkRebuild = false
     @ObservationIgnored private var scheduledLandmarkRebuild: DispatchWorkItem?
@@ -340,14 +376,22 @@ final class HistoryPlaybackModel {
         landmarkCalendar = calendar
         landmarkLocale = locale
         landmarkGeneration &+= 1
+        pendingLandmarks = nil
         let generation = landmarkGeneration
         // Value copies and an immutable timeline belong to this generation even if points change.
         let points = points
         let timeline = timeline
         landmarkBuilder(points, timeline, places, calendar, locale) { [weak self] result in
             guard let self, self.landmarkGeneration == generation else { return }
-            self.landmarks = result
+            if self.isRulerInteracting { self.pendingLandmarks = (generation, result) }
+            else { self.landmarks = result }
         }
+    }
+
+    private func publishPendingLandmarks() {
+        guard let pendingLandmarks else { return }
+        self.pendingLandmarks = nil
+        if pendingLandmarks.generation == landmarkGeneration { landmarks = pendingLandmarks.value }
     }
 
     // Go To lists every stretch, so opening it does not wait for the coalesced build.
@@ -503,6 +547,7 @@ final class HistoryPlaybackModel {
     }
 
     func beginRulerInteraction() {
+        rulerFrameRange = nil
         if !isRulerInteracting { isRulerInteracting = true }
         stopPlayback()
     }
@@ -517,6 +562,7 @@ final class HistoryPlaybackModel {
         rulerHoldCancelled = cancelled
         rulerHold = nil
         if isRulerInteracting { isRulerInteracting = false }
+        publishPendingLandmarks()
         if wasHolding { loadSelectedPayload() }
         flushDeferredReload()
     }
@@ -594,10 +640,12 @@ final class HistoryPlaybackModel {
     }
 
     private func interruptRuler() {
+        rulerFrameRange = nil
         rulerInteractionRevision &+= 1
         rulerHoldCancelled = true
         rulerHold = nil
         isRulerInteracting = false
+        publishPendingLandmarks()
         rulerPosition = nil
     }
 
@@ -1151,7 +1199,7 @@ struct HistoryRuler: View {
             }, onHold: { hold in
                 history.setRulerHold(hold)
             }, onScale: { step in
-                history.setRulerStep(step)
+                history.setRulerStep(step, snapping: false)
             }, onContinuousScale: { frame in
                 history.rulerScaleChannel.send(frame)
             }, onAdjust: { direction in
@@ -1162,8 +1210,9 @@ struct HistoryRuler: View {
                 } else {
                     history.scrub(pointAt: history.points.count - target)
                 }
-            }, highlight: history.highlightedRange, poseChannel: history.poseChannel)
-            .frame(height: 56)
+            }, highlight: history.highlightedRange, poseChannel: history.poseChannel,
+               showsFrames: true, onFit: { history.fitRuler($0) })
+            .frame(height: 100)
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { history.setRulerWidth($0) }
             HStack {
                 if history.isBrowsing && position > 0 {
@@ -1270,10 +1319,12 @@ enum HistoryRulerCoarseDrag {
             return min(steps.count - 1, min(nearest + 1, max(nearest - 1, index(nearest: projected))))
         }
 
-        func zoom(step: Double, width: CGFloat) -> ReplayRulerHold {
+        func zoom(step: Double, width: CGFloat, axis: HistoryRulerAxis? = nil,
+                  frameRange: ClosedRange<Double>? = nil, interval: TimeInterval? = nil) -> ReplayRulerHold {
             let scale = HistoryRulerCoarseDrag.scale(step: step, coarsest: steps[0])
             return ReplayRulerHold(pointsPerBar: step, visibleBars: Double(width / scale.spacing),
-                coarseness: HistoryRulerCoarseDrag.coarseness(step: step, coarsest: steps[0]))
+                coarseness: HistoryRulerCoarseDrag.coarseness(step: step, coarsest: steps[0]),
+                axis: axis, frameRange: frameRange, interval: interval)
         }
 
         func scale(at index: Int) -> Scale {
@@ -1281,17 +1332,26 @@ enum HistoryRulerCoarseDrag {
         }
 
         func menuEntries(interval: TimeInterval, current: Double) -> [MenuEntry] {
+            let longerTargets: [(String, Double)] = [
+                ("1 day", 86_400 / interval), ("1 week", 604_800 / interval), ("1 month", 2_629_800 / interval)
+            ]
+            // Preserve the original time entries' clamping before deduplication, including at fine scales.
+            // Only the new calendar entries require the ladder to reach their requested duration.
             let targets: [(String, Double)] = [
                 ("Every point", 1), ("1 minute", 60 / interval), ("5 minutes", 300 / interval),
                 ("15 minutes", 900 / interval), ("1 hour", 3_600 / interval),
-                ("6 hours", 21_600 / interval), ("Whole history", steps[0])
-            ]
+                ("6 hours", 21_600 / interval)
+            ] + longerTargets.filter { $0.1 <= steps[0] } + [("Whole history", steps[0])]
             var seen = Set<Double>()
-            return targets.compactMap { title, target in
+            var entries: [MenuEntry] = targets.compactMap { title, target in
                 let step = nearestStep(to: target)
                 guard seen.insert(step).inserted else { return nil }
-                return MenuEntry(title: title, step: step, selected: step == current)
+                return MenuEntry(title: title, step: step, selected: false)
             }
+            if let selected = entries.indices.min(by: {
+                abs(log(entries[$0].step / max(1, current))) < abs(log(entries[$1].step / max(1, current)))
+            }) { entries[selected].selected = true }
+            return entries
         }
     }
 
@@ -1473,8 +1533,8 @@ enum HistoryRulerCoarseDrag {
         return lower...max(lower, upper)
     }
 
-    // The history's average time per point. Bars are evenly spaced points, so a bar's time swings from
-    // seconds on a drive to hours across a stop; the average names the scale and changes only with it.
+    // The axis is normalized to the point count, so this estimate also names blended slices. It stays
+    // independent of the needle; only at pure time does every bar cover exactly the estimate.
     static func estimatedInterval(pointCount: Int, timestampAt: (Int) -> Date,
                                   emptyInterval: TimeInterval) -> TimeInterval? {
         guard pointCount > 0 else { return emptyInterval }
@@ -1533,6 +1593,8 @@ struct HistoryRulerSurface: UIViewRepresentable {
     var onAdjust: (Int) -> Void
     var highlight: ClosedRange<Int>? = nil
     var poseChannel: ReplayPoseChannel? = nil
+    var showsFrames = false
+    var onFit: (HistoryRulerStretch) -> Void = { _ in }
 
     func makeUIView(context: Context) -> HistoryRulerContainer {
         HistoryRulerContainer()
@@ -1563,6 +1625,13 @@ private final class HistoryRulerTicks: UIView {
     var detents = HistoryRulerCoarseDrag.Detents(tickCount: 1, rulerWidth: 350)
     var snappedStop: Int?
     var highlight: ClosedRange<Int>?
+    var interval: TimeInterval?
+    var mapping: HistoryRulerAxis.Mapping {
+        landmarks?.rulerAxis.mapping(pointsPerBar: scale.pointsPerTick, pointCount: tickCount, interval: interval)
+            ?? .init(pointCount: tickCount)
+    }
+    private(set) var hitTargets: [HistoryRulerHitTarget] = []
+    var onHitTargetsChanged: (() -> Void)?
     var landmarks: HistoryLandmarks? {
         didSet {
             guard oldValue !== landmarks else { return }
@@ -1593,25 +1662,40 @@ private final class HistoryRulerTicks: UIView {
         return image
     }
 
-    private func x(at index: Int) -> CGFloat {
-        let index = min(max(0, pointCount - 1), max(0, index))
-        return bounds.midX + scale.screenOffset(of: Double(tickCount - index), at: position)
+    private func x(at index: Double) -> CGFloat {
+        let index = min(Double(max(0, pointCount - 1)), max(0, index))
+        return bounds.midX + scale.screenOffset(of: Double(tickCount) - mapping.coordinate(at: index),
+                                                at: mapping.reverseCoordinate(at: position))
+    }
+
+    private func x(at index: Int) -> CGFloat { x(at: Double(index)) }
+
+    private func stretch(_ range: ClosedRange<Int>, title: String) -> HistoryRulerStretch {
+        let times = landmarks?.timestamps ?? []
+        let last = max(0, times.count - 1)
+        let timeRange: ClosedRange<Date>? = times.isEmpty ? nil
+            : times[min(last, max(0, range.lowerBound))]...times[min(last, max(0, range.upperBound))]
+        return .init(range: Double(range.lowerBound)...Double(range.upperBound), title: title, timeRange: timeRange)
     }
 
     override func draw(_ rect: CGRect) {
         guard let context = UIGraphicsGetCurrentContext() else { return }
         let center = bounds.width / 2
-        let selected = Double(tickCount) - position
+        let mapping = mapping
+        let selected = mapping.coordinate(at: Double(tickCount) - position)
         let halfWindow = Double((bounds.width / 2 + 100) / scale.spacing) * scale.pointsPerTick
         let maximum = Double(max(0, tickCount - 1))
-        let lower = min(maximum, max(0, selected - halfWindow))
-        let range = lower...min(maximum, max(lower, selected + halfWindow))
+        let lower = min(maximum, max(0, mapping.index(at: selected - halfWindow)))
+        let range = lower...min(maximum, max(lower, mapping.index(at: selected + halfWindow)))
+        var targets: [HistoryRulerHitTarget] = []
         if pointCount > 0, let trip = highlight, trip.lowerBound <= Int(range.upperBound), trip.upperBound >= Int(range.lowerBound) {
             let left = max(-8, x(at: trip.lowerBound) - 3), right = min(bounds.width + 8, x(at: trip.upperBound) + 3)
             if right - left >= 1 {
                 UIColor.systemRed.withAlphaComponent(0.3).setFill()
                 UIBezierPath(roundedRect: CGRect(x: left, y: 18, width: right - left, height: bounds.height - 20),
                              cornerRadius: min(7, (right - left) / 2)).fill()
+                targets.append(.init(frame: CGRect(x: left, y: 18, width: right - left, height: bounds.height - 20),
+                    stretch: stretch(trip, title: "trip"), priority: 2))
             }
         }
         let visibleStops: ArraySlice<HistoryStop> = pointCount > 0 ? (landmarks?.visibleStops(in: range) ?? []) : []
@@ -1635,12 +1719,16 @@ private final class HistoryRulerTicks: UIView {
             UIColor.systemRed.withAlphaComponent(0.22).setFill()
             UIBezierPath(roundedRect: CGRect(x: (left + right - width) / 2, y: 18, width: width,
                                              height: bounds.height - 20), cornerRadius: 4).fill()
+            targets.append(.init(frame: CGRect(x: (left + right - width) / 2, y: 18,
+                                               width: width, height: bounds.height - 20),
+                stretch: stretch((gap.index - 1)...gap.index, title: gap.label), priority: 3))
         }
-        let firstBar = min(Double(tickCount), max(0, position - halfWindow))
-        let barRange = firstBar...min(Double(tickCount), max(firstBar, position + halfWindow))
+        let axisPosition = mapping.reverseCoordinate(at: position)
+        let firstBar = min(Double(tickCount), max(0, axisPosition - halfWindow))
+        let barRange = firstBar...min(Double(tickCount), max(firstBar, axisPosition + halfWindow))
         for bar in detents.bracket(at: scale.pointsPerTick).bars(in: barRange) {
-            let x = center + scale.screenOffset(of: bar.position, at: position)
-            let stop = landmarks?.stop(containing: Double(tickCount) - bar.position, pointCount: pointCount)
+            let x = center + scale.screenOffset(of: bar.position, at: axisPosition)
+            let stop = landmarks?.stop(containing: mapping.index(at: Double(tickCount) - bar.position), pointCount: pointCount)
             let snapped = stop.map { $0.id == snappedStop } == true
             let color: UIColor = snapped ? .white : .label
             let minorAlpha = stop == nil ? 0.25 : 0.15
@@ -1654,44 +1742,50 @@ private final class HistoryRulerTicks: UIView {
             context.addLine(to: CGPoint(x: x, y: 22 + scale.bottom))
             context.strokePath()
         }
-        drawLabels(in: range, stops: visibleStops, gaps: visibleGaps, context: context)
+        drawLabels(in: range, stops: visibleStops, gaps: visibleGaps, context: context, targets: &targets)
+        if hitTargets != targets { hitTargets = targets; onHitTargetsChanged?() }
         context.setShadow(offset: .zero, blur: 3, color: UIColor.systemBlue.withAlphaComponent(0.35).cgColor)
         UIColor.systemBlue.setFill()
         UIBezierPath(roundedRect: CGRect(x: center - 2, y: 17, width: 4, height: 34), cornerRadius: 2).fill()
     }
 
     private func drawLabels(in range: ClosedRange<Double>, stops: ArraySlice<HistoryStop>, gaps: ArraySlice<HistoryGap>,
-                            context: CGContext) {
+                            context: CGContext, targets: inout [HistoryRulerHitTarget]) {
         guard let landmarks, pointCount > 0 else { return }
         struct Label {
             let text: String
             let symbol: UIImage?
             let color: UIColor
             let hairline: CGFloat?
+            let stretch: HistoryRulerStretch?
         }
         var labels: [Label] = []
         var candidates: [HistoryRulerLabelLayout.Candidate] = []
         func add(_ text: String, at x: CGFloat, priority: HistoryRulerLabelLayout.Priority,
                  symbol: UIImage? = nil, symbolAt symbolX: CGFloat? = nil, color: UIColor = .secondaryLabel,
-                 hairline: CGFloat? = nil) {
+                 hairline: CGFloat? = nil, stretch: HistoryRulerStretch? = nil) {
             measure(text)
             let width = (widths[text] ?? 0) + (symbol == nil ? 0 : 14)
             let frame = CGRect(x: x, y: 0, width: width, height: 16)
             guard frame.maxX >= 0, frame.minX <= bounds.width else { return }
             candidates.append(.init(id: labels.count, priority: priority, frame: frame,
                                     symbolFrame: symbol.map { _ in CGRect(x: symbolX ?? x, y: 0, width: 14, height: 16) }))
-            labels.append(Label(text: text, symbol: symbol, color: color, hairline: hairline))
+            labels.append(Label(text: text, symbol: symbol, color: color, hairline: hairline, stretch: stretch))
         }
-        for day in HistoryLandmarks.visibleMarks(landmarks.days, in: range) {
-            let x = x(at: day.index)
+        let markRange = mapping.weight > 0 ? range.lowerBound...min(Double(pointCount), range.upperBound + 1) : range
+        for day in HistoryLandmarks.visibleMarks(landmarks.days, in: markRange) {
+            let dayIndex = landmarks.markPosition(day, mapping: mapping)
+            let x = x(at: dayIndex)
             context.setStrokeColor(UIColor.separator.cgColor)
             context.setLineWidth(0.5)
             context.move(to: CGPoint(x: x, y: 0))
             context.addLine(to: CGPoint(x: x, y: bounds.height))
             context.strokePath()
-            add(landmarks.text(for: day), at: x + 3, priority: .day)
+            // Use the boundary's actual date even while its fine-scale label sits at the next fix.
+            add(landmarks.text(for: day), at: x + 3, priority: .day,
+                stretch: landmarks.stretch(frame: .day, at: day.time))
         }
-        // Fixes are evenly spaced, so a long stop with few fixes can be narrower than its label.
+        // At fine scales a long stop with few fixes can be narrower than its label.
         // The label still centers on it; the layout falls back to the symbol where labels collide.
         for stop in stops {
             let left = max(0, x(at: stop.id)), right = min(bounds.width, x(at: stop.end))
@@ -1707,25 +1801,30 @@ private final class HistoryRulerTicks: UIView {
             let center = (x(at: gap.index - 1) + x(at: gap.index)) / 2
             measure(gap.label)
             let width = widths[gap.label] ?? 0
-            add(gap.label, at: max(0, min(bounds.width - width, center - width / 2)), priority: .gap, color: .systemRed)
+            add(gap.label, at: max(0, min(bounds.width - width, center - width / 2)), priority: .gap, color: .systemRed,
+                stretch: stretch((gap.index - 1)...gap.index, title: gap.label))
         }
-        let proposed = landmarks.timeLevel(in: range, pointsPerBar: scale.pointsPerTick, spacing: Double(scale.spacing))
+        let proposed = landmarks.timeLevel(in: markRange, pointsPerBar: scale.pointsPerTick,
+                                           spacing: Double(scale.spacing), mapping: mapping)
         // Require a little extra room before restoring a finer label interval.
         if let previous = labelLevel, proposed < previous {
-            let finer = landmarks.timeLevel(in: range, pointsPerBar: scale.pointsPerTick * 1.08,
-                                            spacing: Double(scale.spacing))
+            let finer = landmarks.timeLevel(in: markRange, pointsPerBar: scale.pointsPerTick * 1.08,
+                                            spacing: Double(scale.spacing), mapping: mapping)
             if finer < previous { labelLevel = finer }
         } else { labelLevel = proposed }
         let level = labelLevel ?? proposed
         var lastTimeX = -CGFloat.infinity
-        for mark in HistoryLandmarks.visibleMarks(landmarks.timeMarks[level], in: range) {
-            let x = x(at: mark.index)
+        for mark in HistoryLandmarks.visibleMarks(landmarks.timeMarks[level], in: markRange) {
+            let x = x(at: landmarks.markPosition(mark, mapping: mapping))
             guard x - lastTimeX >= 60 else { continue }
             lastTimeX = x
             add(landmarks.text(for: mark), at: x + 3, priority: .time, hairline: x)
         }
         for placement in HistoryRulerLabelLayout.resolve(candidates) {
             let label = labels[placement.id]
+            if let stretch = label.stretch {
+                targets.append(.init(frame: placement.frame, stretch: stretch, priority: 0))
+            }
             if let x = label.hairline {
                 context.setStrokeColor(UIColor.tertiaryLabel.cgColor)
                 context.setLineWidth(0.5)
@@ -1857,6 +1956,12 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
     private let ticks = HistoryRulerTicks()
     private let coarsePress: UILongPressGestureRecognizer
     private let pinch: UIPinchGestureRecognizer
+    private let labelTap = UITapGestureRecognizer()
+    private let frameStrip = UIStackView()
+    private var frameButtons: [HistoryRulerFrame: UIButton] = [:]
+    private var frameFits: [(HistoryRulerFrame, HistoryRulerFraming.Fit)] = []
+    private var frameContext: (axis: ObjectIdentifier, day: Int, count: Int, interval: TimeInterval?, width: CGFloat, steps: [Double])?
+    private var stretchElements: [HistoryRulerStretchElement] = []
     private let coarseBubble = HistoryRulerCoarseBubble(frame: .zero)
     private let normalAccessibilityHint = "Older points are on the left. Drag right to browse them, or left toward Live. Pinch to change the scale; hold to scrub."
     private let selectionFeedback = UISelectionFeedbackGenerator()
@@ -1905,15 +2010,17 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
     private var maximumOffset: CGFloat { ticks.scale.contentOffset(at: 0, tickCount: ticks.tickCount) }
     // UIScrollView rounds offsets to pixels. Reading a rounded offset back would move an anchored
     // position a little on every scale frame, and could leave Live after a pinch there.
-    private var exactPosition: (offset: CGFloat, scale: HistoryRulerCoarseDrag.Scale, tickCount: Int, value: Double)?
+    private var exactPosition: (offset: CGFloat, scale: HistoryRulerCoarseDrag.Scale,
+                                mapping: HistoryRulerAxis.Mapping, tickCount: Int, value: Double)?
     private var position: Double {
         if let exact = exactPosition, exact.offset == scrollView.contentOffset.x,
-           exact.scale == ticks.scale, exact.tickCount == ticks.tickCount { return exact.value }
-        return ticks.scale.position(at: scrollView.contentOffset.x, tickCount: ticks.tickCount)
+           exact.scale == ticks.scale, exact.mapping == ticks.mapping,
+           exact.tickCount == ticks.tickCount { return exact.value }
+        return ticks.mapping.reversePosition(at: ticks.scale.position(at: scrollView.contentOffset.x, tickCount: ticks.tickCount))
     }
 
     private func setExactPosition(_ value: Double) {
-        exactPosition = (scrollView.contentOffset.x, ticks.scale, ticks.tickCount, value)
+        exactPosition = (scrollView.contentOffset.x, ticks.scale, ticks.mapping, ticks.tickCount, value)
     }
     private var pixel: CGFloat { 1 / max(1, traitCollection.displayScale) }
     // Momentum and bounces settle on whole pixels, and a coarse scale's Live edge usually falls between two.
@@ -1921,7 +2028,9 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
         guard maximumOffset - scrollView.contentOffset.x >= pixel else { return 0 }
         return min(Double(ticks.tickCount), max(0, position))
     }
-    private var motionPosition: Double { position / ticks.scale.pointsPerTick * Double(ticks.scale.spacing) }
+    private var motionPosition: Double {
+        ticks.mapping.reverseCoordinate(at: position) / ticks.scale.pointsPerTick * Double(ticks.scale.spacing)
+    }
     private var held: Bool { coarseDragging || pinching }
     private var moving: Bool { dragging || decelerating || held || liveScroll != nil }
     private var coarseBubbleVisible: Bool { coarseBubble.superview != nil }
@@ -1975,6 +2084,16 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
         }
         scrollView.addSubview(contentView)
         addSubview(scrollView)
+        frameStrip.axis = .horizontal
+        frameStrip.distribution = .fillEqually
+        frameStrip.spacing = 2
+        addSubview(frameStrip)
+        ticks.onHitTargetsChanged = { [weak self] in
+            if UIAccessibility.isVoiceOverRunning { self?.updateStretchAccessibility() }
+        }
+        labelTap.delegate = self
+        labelTap.addTarget(self, action: #selector(labelTapped(_:)))
+        scrollView.addGestureRecognizer(labelTap)
         coarsePress.minimumPressDuration = 0.35
         coarsePress.allowableMovement = 16
         coarsePress.cancelsTouchesInView = true
@@ -1988,6 +2107,8 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
             UIAccessibilityCustomAction(name: "Finer Scale", target: self, selector: #selector(finerScale)),
             UIAccessibilityCustomAction(name: "Coarser Scale", target: self, selector: #selector(coarserScale))
         ]
+        NotificationCenter.default.addObserver(self, selector: #selector(accessibilityStatusChanged),
+            name: UIAccessibility.voiceOverStatusDidChangeNotification, object: nil)
 #if targetEnvironment(simulator)
         motionElement.ruler = self
         motionElement.accessibilityLabel = "History ruler motion"
@@ -2023,17 +2144,24 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
         }
         self.configuration = configuration
         attachPoseChannel(configuration.poseChannel)
-        ticks.landmarks = configuration.landmarks
+        let previousMapping = ticks.mapping
+        // A completed utility build must not retarget the axis underneath a drag or its momentum.
+        if !moving { ticks.landmarks = configuration.landmarks }
         ticks.highlight = configuration.highlight
         ticks.pointCount = configuration.points.count
+        if !moving {
+            ticks.interval = HistoryRulerCoarseDrag.estimatedInterval(pointCount: configuration.points.count,
+                timestampAt: { configuration.points[$0].timestamp }, emptyInterval: configuration.retentionInterval / 48)
+        }
         appliedRevision = configuration.revision
         if !moving { ticks.tickCount = configuration.tickCount }
+        if ticks.mapping != previousMapping { updateGeometry(at: Double(ticks.tickCount) - shownIndex) }
         coarseDetents = configuration.detents
         ticks.detents = coarseDetents
         if !pinching && pendingScaleCommit == nil && !returnsToLive && liveScroll == nil {
             let step = (interrupted || scaleChanged) && !externalStep ? completingStep ?? configuration.step : configuration.step
             coarseLevel = coarseDetents.index(nearest: step)
-            let scale = coarseDetents.scale(at: coarseLevel)
+            let scale = HistoryRulerCoarseDrag.scale(step: step, coarsest: coarseDetents.steps[0])
             if scale != scaleTo { setScale(scale, animated: configuration.active && !configuration.reduceMotion) }
         }
         scrollView.isScrollEnabled = configuration.active && !held
@@ -2044,6 +2172,7 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
         scrollView.decelerationRate = configuration.reduceMotion ? .fast : .normal
         if configuration.active && held { updateCoarseBubble() }
         if !configuration.active { removeCoarseBubble() }
+        configureFrameButtons()
         updateAccessibility()
         if returnsToLive {
             updateGeometry(at: Double(ticks.tickCount) - shownIndex)
@@ -2089,7 +2218,8 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
     func advanceLiveScroll(at time: Double) {
         guard let scroll = liveScroll else { return }
         let progress = min(1, max(0, (time - scroll.start) / LiveScroll.duration))
-        updateGeometry(at: progress < 1 ? scroll.from * pow(1 - progress, 3) : 0)
+        let from = ticks.mapping.reverseCoordinate(at: scroll.from)
+        updateGeometry(at: progress < 1 ? ticks.mapping.reversePosition(at: from * pow(1 - progress, 3)) : 0)
         redraw()
         guard progress == 1 else { return }
         stopLiveScroll()
@@ -2129,14 +2259,18 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
 
     private func updateGeometry(at anchoredPosition: Double? = nil) {
         let anchor = anchoredPosition ?? position
-        let contentSize = CGSize(width: bounds.width + maximumOffset, height: bounds.height)
-        guard anchoredPosition != nil || scrollView.frame != bounds || scrollView.contentSize != contentSize else { return }
+        let frameHeight: CGFloat = configuration?.showsFrames == true ? 44 : 0
+        let rulerBounds = CGRect(x: 0, y: frameHeight, width: bounds.width, height: max(0, bounds.height - frameHeight))
+        let contentSize = CGSize(width: bounds.width + maximumOffset, height: rulerBounds.height)
+        guard anchoredPosition != nil || scrollView.frame != rulerBounds || scrollView.contentSize != contentSize else { return }
         suppressScroll = true
-        ticks.frame = bounds
-        scrollView.frame = bounds
+        frameStrip.frame = CGRect(x: 0, y: 0, width: bounds.width, height: frameHeight)
+        ticks.frame = rulerBounds
+        scrollView.frame = rulerBounds
         contentView.frame = CGRect(origin: .zero, size: contentSize)
         scrollView.contentSize = contentSize
-        let offset = CGPoint(x: ticks.scale.contentOffset(at: anchor, tickCount: ticks.tickCount), y: 0)
+        let offset = CGPoint(x: ticks.scale.contentOffset(at: ticks.mapping.reverseCoordinate(at: anchor),
+                                                        tickCount: ticks.tickCount), y: 0)
         if scrollView.contentOffset != offset { scrollView.setContentOffset(offset, animated: false) }
         setExactPosition(anchor)
         suppressScroll = false
@@ -2266,7 +2400,140 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
         ticks.snappedStop = stopSnap.boundary?.stop.id
         ticks.setNeedsDisplay()
         updateAccessibility()
+        updateFrameSelection()
     }
+
+    private func configureFrameButtons() {
+        guard let configuration else { return }
+        let frames = configuration.showsFrames ? (ticks.landmarks ?? configuration.landmarks).rulerFrames : []
+        if frameStrip.arrangedSubviews.count != frames.count || Set(frameButtons.keys) != Set(frames) {
+            for view in frameStrip.arrangedSubviews { frameStrip.removeArrangedSubview(view); view.removeFromSuperview() }
+            frameButtons.removeAll(keepingCapacity: true)
+            for frame in frames {
+                var style = UIButton.Configuration.plain()
+                style.title = frame.rawValue
+                style.baseForegroundColor = .secondaryLabel
+                style.background.cornerRadius = 12
+                style.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attributes in
+                    var attributes = attributes
+                    attributes.font = UIFontMetrics(forTextStyle: .caption1)
+                        .scaledFont(for: UIFont.systemFont(ofSize: 12, weight: .semibold))
+                    return attributes
+                }
+                let button = UIButton(configuration: style)
+                button.accessibilityLabel = "\(frame.rawValue) history frame"
+                button.accessibilityHint = "Fits this frame around the needle on the ruler and map."
+                button.addAction(UIAction { [weak self] _ in _ = self?.fitFrame(frame) }, for: .touchUpInside)
+                frameStrip.addArrangedSubview(button)
+                frameButtons[frame] = button
+            }
+            frameContext = nil
+        }
+        for button in frameButtons.values {
+            button.isEnabled = configuration.active
+        }
+        frameStrip.isHidden = !configuration.showsFrames
+        updateFrameSelection()
+        updateStretchAccessibility()
+    }
+
+    private func updateFrameSelection() {
+        guard let configuration, !frameButtons.isEmpty else { return }
+        let landmarks = ticks.landmarks ?? configuration.landmarks
+        let index = Double(ticks.tickCount) - position
+        let day = HistoryLandmarks.lowerBound(landmarks.days.count) {
+            (landmarks.days[$0].position ?? Double(landmarks.days[$0].index)) > index
+        }
+        let axis = ObjectIdentifier(landmarks.rulerAxis)
+        if frameContext?.axis != axis || frameContext?.day != day || frameContext?.width != bounds.width
+            || frameContext?.count != configuration.points.count || frameContext?.interval != ticks.interval
+            || frameContext?.steps != coarseDetents.steps {
+            frameContext = (axis, day, configuration.points.count, ticks.interval, bounds.width, coarseDetents.steps)
+            frameFits = landmarks.rulerFrames.compactMap { frame in
+                guard var stretch = landmarks.stretch(frame: frame, at: index) else { return nil }
+                if frame == .all { stretch.range = 0...Double(max(0, configuration.points.count - 1)) }
+                return (frame, HistoryRulerFraming.fit(stretch, axis: landmarks.rulerAxis, detents: coarseDetents,
+                                                      width: bounds.width, pointCount: configuration.points.count, interval: ticks.interval))
+            }
+            let actions = [
+                UIAccessibilityCustomAction(name: "Finer Scale", target: self, selector: #selector(finerScale)),
+                UIAccessibilityCustomAction(name: "Coarser Scale", target: self, selector: #selector(coarserScale))
+            ]
+            scrollView.accessibilityCustomActions = actions + landmarks.rulerFrames.map { frame in
+                UIAccessibilityCustomAction(name: "Fit \(frame.rawValue)") { [weak self] _ in self?.fitFrame(frame) ?? false }
+            }
+        }
+        let selected = HistoryRulerFraming.nearestFrame(to: ticks.scale.pointsPerTick, fits: frameFits)
+        for (frame, button) in frameButtons {
+            let selects = frame == selected
+            guard button.isSelected != selects || button.accessibilityValue == nil else { continue }
+            button.isSelected = selects
+            button.accessibilityValue = selects ? "Nearest frame" : ""
+            if selects { button.accessibilityTraits.insert(.selected) }
+            else { button.accessibilityTraits.remove(.selected) }
+            var style = button.configuration
+            style?.baseForegroundColor = selects ? .label : .secondaryLabel
+            style?.background.backgroundColor = selects ? .tertiarySystemFill : .clear
+            button.configuration = style
+        }
+    }
+
+    @discardableResult
+    func fitFrame(_ frame: HistoryRulerFrame) -> Bool {
+        // Freeze at the displayed needle before calculating its calendar frame, including during a coast.
+        cancelMotion()
+        guard let configuration, configuration.active,
+              let stretch = configuration.landmarks.stretch(frame: frame, at: Double(ticks.tickCount) - position) else { return false }
+        configuration.onFit(stretch)
+        return true
+    }
+
+    @objc private func labelTapped(_ gesture: UITapGestureRecognizer) {
+        guard gesture.state == .ended else { return }
+        _ = fitLabel(at: gesture.location(in: ticks))
+    }
+
+    @discardableResult
+    func fitLabel(at point: CGPoint) -> Bool {
+        guard let target = HistoryRulerHitTarget.pick(at: point, in: ticks.hitTargets, bounds: ticks.bounds),
+              let configuration, configuration.active else { return false }
+        cancelMotion()
+        configuration.onFit(target.stretch)
+        return true
+    }
+
+    private func updateStretchAccessibility() {
+        var seen: [HistoryRulerStretch] = []
+        let targets = UIAccessibility.isVoiceOverRunning ? ticks.hitTargets.filter {
+            guard !seen.contains($0.stretch) else { return false }
+            seen.append($0.stretch)
+            return true
+        } : []
+        stretchElements = targets.map { target in
+            let element = HistoryRulerStretchElement(accessibilityContainer: self)
+            element.accessibilityLabel = target.stretch.accessibility
+            element.accessibilityHint = "Fits this stretch on the ruler and map."
+            element.accessibilityTraits = .button
+            element.accessibilityFrameInContainerSpace = ticks.convert(target.touchFrame(in: ticks.bounds), to: self)
+            element.activate = { [weak self] in
+                guard let self, let configuration = self.configuration, configuration.active else { return false }
+                self.cancelMotion()
+                configuration.onFit(target.stretch)
+                return true
+            }
+            return element
+        }
+        let buttons = HistoryRulerFrame.allCases.compactMap { frameButtons[$0] }
+        var elements: [Any] = buttons
+        elements.append(scrollView)
+#if targetEnvironment(simulator)
+        elements.append(motionElement)
+#endif
+        elements.append(contentsOf: stretchElements)
+        accessibilityElements = elements
+    }
+
+    @objc private func accessibilityStatusChanged() { updateStretchAccessibility() }
 
     private func setScale(_ scale: HistoryRulerCoarseDrag.Scale, animated: Bool) {
         scaleLink?.invalidate()
@@ -2300,7 +2567,8 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
         updateGeometry(at: anchor)
         redraw()
         if reportsContinuousScale {
-            configuration?.onContinuousScale(.init(pointsPerBar: value, detents: coarseDetents, width: bounds.width))
+            configuration?.onContinuousScale(.init(pointsPerBar: value, detents: coarseDetents, width: bounds.width,
+                                                   axis: ticks.landmarks?.rulerAxis, interval: ticks.interval))
         }
     }
 
@@ -2322,15 +2590,20 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
 
     var displayedPointsPerBar: Double { ticks.scale.pointsPerTick }
     var anchoredPosition: Double { position }
+    var visibleStretchTargets: [HistoryRulerHitTarget] { ticks.hitTargets }
+    var displayedAxis: HistoryRulerAxis? { ticks.landmarks?.rulerAxis }
 
     // UIView's own method and the delegate's share this selector; both reach here for the ruler's recognizers.
     override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
         if gestureRecognizer === pinch {
             return configuration?.active == true && !coarseDragging && !coarseGestureCancelled
+                && pinch.location(in: self).y >= frameStrip.frame.maxY
         }
         if gestureRecognizer === coarsePress {
             return configuration?.active == true && !pinching && !dragging && coarsePress.numberOfTouches == 1
+                && coarsePress.location(in: self).y >= frameStrip.frame.maxY
         }
+        if gestureRecognizer === labelTap { return configuration?.active == true && !held }
         return super.gestureRecognizerShouldBegin(gestureRecognizer)
     }
 
@@ -2483,7 +2756,8 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
         let target = stopSnap.move(position: min(Double(ticks.tickCount), max(0, position)),
                                    translation: Double(translation), finger: Double(finger),
                                    pointsPerBar: ticks.scale.pointsPerTick, spacing: Double(ticks.scale.spacing),
-                                   pointCount: configuration.points.count, landmarks: configuration.landmarks)
+                                   pointCount: configuration.points.count,
+                                   landmarks: ticks.landmarks ?? configuration.landmarks, mapping: ticks.mapping)
         if stopSnap.boundary != nil && stopSnap.boundary != previousSnap {
             selectionFeedback.selectionChanged()
             selectionFeedback.prepare()
@@ -2495,7 +2769,8 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
     private func setCoarsePosition(_ target: Double) {
         let bounded = min(Double(ticks.tickCount), max(0, target))
         suppressScroll = true
-        scrollView.setContentOffset(CGPoint(x: ticks.scale.contentOffset(at: bounded, tickCount: ticks.tickCount), y: 0), animated: false)
+        scrollView.setContentOffset(CGPoint(x: ticks.scale.contentOffset(at: ticks.mapping.reverseCoordinate(at: bounded),
+                                                                         tickCount: ticks.tickCount), y: 0), animated: false)
         setExactPosition(bounded)
         suppressScroll = false
         redraw()
@@ -2527,7 +2802,8 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
     }
 
     private func updateAccessibility() {
-        let stop = position > 0 ? configuration?.landmarks.stop(containing: Double(ticks.tickCount) - position, pointCount: configuration?.points.count) : nil
+        let stop = position > 0 ? ticks.landmarks?.stop(containing: Double(ticks.tickCount) - position,
+                                                       pointCount: configuration?.points.count) : nil
         let value = currentValue + (stop.map { ", \($0.accessibility)" } ?? "")
         scrollView.accessibilityValue = "\(value), \(scaleLabel.accessibility)"
         scrollView.accessibilityHint = held
@@ -2654,6 +2930,11 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
         return value
     }
 #endif
+}
+
+private final class HistoryRulerStretchElement: UIAccessibilityElement {
+    var activate: () -> Bool = { false }
+    override func accessibilityActivate() -> Bool { activate() }
 }
 
 @MainActor

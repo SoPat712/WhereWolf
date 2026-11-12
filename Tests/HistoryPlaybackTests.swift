@@ -436,16 +436,19 @@ final class HistoryPlaybackTests: XCTestCase {
         for entry in entries {
             XCTAssertEqual(detents.menuEntries(interval: 30, current: entry.step).filter(\.selected).map(\.step), [entry.step])
         }
+        XCTAssertEqual(detents.menuEntries(interval: 30, current: 14.2).filter(\.selected).count, 1,
+                       "A fractional frame fit still checks the closest menu entry")
     }
 
     func testRulerMenuDropsStepsAlreadyUsedByEarlierEntries() {
         let detents = HistoryRulerCoarseDrag.Detents(tickCount: 20_000, rulerWidth: 350)
         let entries = detents.menuEntries(interval: 3_600, current: 5)
-        XCTAssertEqual(entries.map(\.title), ["Every point", "6 hours", "Whole history"])
-        XCTAssertEqual(entries.map(\.step), [1, 5, 2_000])
+        XCTAssertEqual(entries.map(\.title), ["Every point", "6 hours", "1 day", "1 week", "1 month", "Whole history"])
+        XCTAssertEqual(entries.map(\.step), [1, 5, 20, 200, 1_000, 2_000])
         XCTAssertEqual(entries.filter(\.selected).map(\.title), ["6 hours"])
         let short = HistoryRulerCoarseDrag.Detents(tickCount: 50, rulerWidth: 350)
         XCTAssertEqual(short.menuEntries(interval: 30, current: 5).map(\.title), ["Every point", "1 minute", "5 minutes"])
+        XCTAssertEqual(short.menuEntries(interval: 30, current: 5).filter(\.selected).map(\.title), ["5 minutes"])
         let single = HistoryRulerCoarseDrag.Detents(tickCount: 1, rulerWidth: 350)
         XCTAssertEqual(single.menuEntries(interval: 30, current: 1), [.init(title: "Every point", step: 1, selected: true)])
     }
@@ -500,6 +503,86 @@ final class HistoryPlaybackTests: XCTestCase {
         XCTAssertNil(model.selectedIndex)
         XCTAssertNil(model.renderPose)
         XCTAssertNil(model.rulerHold)
+    }
+
+    @MainActor func testFrameCommandCommitsAnExactStretchAndFractionalScaleUntilNextInteraction() throws {
+        let start = Date(timeIntervalSince1970: 1_000_000)
+        let points = (0...1_000).map {
+            RecordedLocation(id: Int64($0 + 1), timestamp: start.addingTimeInterval(Double($0) * 600),
+                             latitude: 45 + Double($0) * 0.001, longitude: -122)
+        }
+        let model = HistoryPlaybackModel(pointLoader: { _, completion in completion(points) },
+            payloadLoader: { _, completion in completion([:]) }, retentionDuration: { 168 * 3_600 }, places: { [] },
+            landmarkBuilder: immediateLandmarks, clock: { points.last!.timestamp })
+        model.setConsumerActive(true)
+        let stretch = try XCTUnwrap(model.landmarks.stretch(frame: .day, at: 500))
+        let expected = HistoryRulerFraming.fit(stretch, axis: model.landmarks.rulerAxis, detents: model.rulerDetents, width: 350)
+        model.fitRuler(stretch)
+        XCTAssertTrue(model.isBrowsing)
+        XCTAssertFalse(model.isPlaying)
+        XCTAssertFalse(model.isRulerInteracting)
+        XCTAssertNil(model.rulerHold)
+        XCTAssertEqual(model.rulerStep, expected.step)
+        XCTAssertEqual(model.rulerPosition ?? -1, expected.position, accuracy: 1e-8)
+        XCTAssertEqual(model.rulerZoom?.frameRange, stretch.range)
+        XCTAssertTrue(model.rulerZoom?.axis === model.landmarks.rulerAxis)
+        let revision = model.rulerFrameRevision
+        model.fitRuler(stretch)
+        XCTAssertEqual(model.rulerFrameRevision, revision + 1, "Repeated taps must recapture a freed map too")
+        model.beginRulerInteraction()
+        XCTAssertNil(model.rulerFrameRange)
+        model.setRulerStep(expected.step, snapping: false)
+        XCTAssertEqual(model.rulerStep, expected.step, "A UIKit handoff keeps a fractional frame scale")
+        model.endRulerInteraction()
+        model.returnToLive()
+        XCTAssertEqual(model.rulerStep, 1)
+        XCTAssertNil(model.rulerZoom)
+    }
+
+    @MainActor func testFrameCommandResolvesDatesAgainstPendingAppendsWithoutBlockingTheDial() throws {
+        let start = Date(timeIntervalSince1970: 1_000_000)
+        var points = (0..<100).map {
+            RecordedLocation(id: Int64($0 + 1), timestamp: start.addingTimeInterval(Double($0) * 60),
+                             latitude: 45 + Double($0) * 0.001, longitude: -122)
+        }
+        let model = HistoryPlaybackModel(pointLoader: { after, completion in completion(points.filter { $0.id > after }) },
+            payloadLoader: { _, completion in completion([:]) }, places: { [] }, landmarkBuilder: immediateLandmarks,
+            landmarkClock: { 0 }, clock: { points.last!.timestamp })
+        model.setConsumerActive(true)
+        let all = try XCTUnwrap(model.landmarks.stretch(frame: .all, at: 50))
+        let axis = model.landmarks.rulerAxis
+        points.append(RecordedLocation(id: 101, timestamp: start.addingTimeInterval(6_000), latitude: 46, longitude: -122))
+        model.reload()
+        XCTAssertTrue(model.landmarks.rulerAxis === axis)
+        XCTAssertEqual(model.points.count, 101)
+        model.fitRuler(all)
+        XCTAssertEqual(model.rulerFrameRange, 0...100)
+        XCTAssertNotNil(model.rulerZoom)
+        model.returnToLive()
+        model.setConsumerActive(false)
+    }
+
+    @MainActor func testCompletedBlendCachePublishesOnlyAfterRulerRelease() throws {
+        let points = (0..<100).map {
+            RecordedLocation(id: Int64($0 + 1), timestamp: Date(timeIntervalSince1970: Double($0) * 60),
+                             latitude: 45 + Double($0) * 0.001, longitude: -122)
+        }
+        var finishBuild: (() -> Void)?
+        let model = HistoryPlaybackModel(pointLoader: { _, completion in completion(points) },
+            payloadLoader: { _, completion in completion([:]) }, places: { [] },
+            landmarkBuilder: { points, timeline, places, calendar, locale, completion in
+                let result = HistoryLandmarks(points: points, timeline: timeline, places: places, calendar: calendar, locale: locale)
+                finishBuild = { completion(result) }
+            }, clock: { points.last!.timestamp })
+        model.setConsumerActive(true)
+        let previous = model.landmarks
+        model.beginRulerInteraction()
+        try XCTUnwrap(finishBuild)()
+        XCTAssertTrue(model.landmarks === previous)
+        model.endRulerInteraction(cancelled: false)
+        XCTAssertFalse(model.landmarks === previous)
+        XCTAssertEqual(model.landmarks.rulerAxis.count, points.count)
+        model.setConsumerActive(false)
     }
 
     @MainActor func testRulerScalePersistsAcrossTabChangesPlaybackAndCancellationUntilReturningToLive() {
@@ -2039,6 +2122,143 @@ final class HistoryPlaybackTests: XCTestCase {
 final class HistoryRulerContinuousScaleTests: XCTestCase {
     private let detents = HistoryRulerCoarseDrag.Detents(tickCount: 20_000, rulerWidth: 350)
 
+    private func blendPoints() -> [RecordedLocation] {
+        (0...1_008).map { (index: Int) -> RecordedLocation in
+            let gap: Double = index >= 500 ? 250_000 : 0
+            let seconds: Double = Double(index) * 300 + gap
+            let latitude: Double = 45 + Double(index) * 0.0001
+            return RecordedLocation(id: Int64(index + 1), timestamp: Date(timeIntervalSince1970: seconds),
+                                    latitude: latitude, longitude: -122)
+        }
+    }
+
+    @MainActor func testBlendPinchSettleAndMenuKeepTheSameNeedleIncludingLive() throws {
+        for position in [0.0, 0.5, 200.25, 509.5] {
+            for releaseScale in [8.0, 10] {
+                let harness = RulerScaleHarness(position: position, points: blendPoints())
+                defer { harness.ruler.cancelMotion() }
+                harness.ruler.beginPinch()
+                for scale in [0.2, 0.7, 1, 3, releaseScale] {
+                    harness.ruler.updatePinch(scale: scale)
+                    XCTAssertEqual(harness.ruler.anchoredPosition, position, accuracy: 1e-8)
+                    XCTAssertTrue(harness.frames.last.flatMap { $0 }?.axis === harness.configuration.landmarks.rulerAxis)
+                }
+                harness.ruler.endPinch(scale: releaseScale)
+                if releaseScale == 10 {
+                    // 20 / 10 is already the 2-point detent; an unchanged scale commits immediately.
+                    XCTAssertNil(harness.ruler.scaleEase)
+                } else {
+                    let ease = try XCTUnwrap(harness.ruler.scaleEase)
+                    XCTAssertEqual(ease.from, 2.5)
+                    XCTAssertEqual(ease.to, 2)
+                    harness.ruler.advanceScale(at: ease.start + 0.11)
+                    XCTAssertEqual(harness.ruler.anchoredPosition, position, accuracy: 1e-8)
+                    harness.ruler.advanceScale(at: ease.start + 1)
+                }
+                XCTAssertEqual(harness.commits, [2])
+                XCTAssertEqual(harness.ruler.displayedPointsPerBar, 2)
+                XCTAssertEqual(harness.ruler.anchoredPosition, position, accuracy: 1e-8)
+                harness.configuration.step = 50
+                harness.ruler.configure(harness.configuration)
+                let menuEase = try XCTUnwrap(harness.ruler.scaleEase)
+                harness.ruler.advanceScale(at: menuEase.start + 1)
+                XCTAssertEqual(harness.ruler.anchoredPosition, position, accuracy: 1e-8)
+            }
+        }
+    }
+
+    @MainActor func testBlendScrollMovesTheAxisOneToOneAndMenuStopsTheCoastAtItsNeedle() throws {
+        let harness = RulerScaleHarness(position: 400, points: blendPoints())
+        defer { harness.ruler.cancelMotion() }
+        let scroll = try XCTUnwrap(harness.ruler.subviews.compactMap { $0 as? UIScrollView }.first)
+        let mapping = harness.configuration.landmarks.rulerAxis.mapping(pointsPerBar: 20, pointCount: harness.configuration.points.count)
+        let scale = HistoryRulerCoarseDrag.scale(step: 20, coarsest: harness.configuration.detents.steps[0])
+        let from = mapping.reverseCoordinate(at: harness.ruler.anchoredPosition)
+        harness.ruler.scrollViewWillBeginDragging(scroll)
+        scroll.contentOffset.x -= 48
+        let to = mapping.reverseCoordinate(at: harness.ruler.anchoredPosition)
+        XCTAssertEqual((to - from) / 20 * Double(scale.spacing), 48, accuracy: 1)
+        var target = CGPoint(x: scroll.contentOffset.x - 100, y: 0)
+        harness.ruler.scrollViewWillEndDragging(scroll, withVelocity: CGPoint(x: -1, y: 0), targetContentOffset: &target)
+        harness.ruler.scrollViewDidEndDragging(scroll, willDecelerate: true)
+        let needle = harness.ruler.anchoredPosition
+        let coastingAxis = harness.ruler.displayedAxis
+        harness.configuration.landmarks = HistoryLandmarks(points: harness.configuration.points,
+            timeline: ReplayTimeline(points: harness.configuration.points), places: [])
+        harness.ruler.configure(harness.configuration)
+        XCTAssertTrue(harness.ruler.displayedAxis === coastingAxis, "Cache publication must not reset a coast")
+        harness.configuration.position = needle
+        harness.configuration.step = 50
+        harness.ruler.configure(harness.configuration)
+        XCTAssertTrue(harness.ruler.displayedAxis === harness.configuration.landmarks.rulerAxis)
+        let ease = try XCTUnwrap(harness.ruler.scaleEase)
+        harness.ruler.advanceScale(at: ease.start + 1)
+        XCTAssertEqual(harness.ruler.anchoredPosition, needle, accuracy: 1e-8)
+    }
+
+    @MainActor func testFrameButtonsFollowPinchesInUIKitAndKeepTheirHeightAndVoiceOverActions() throws {
+        let harness = RulerScaleHarness(position: 200, points: blendPoints(), showsFrames: true)
+        defer { harness.ruler.cancelMotion() }
+        let strip = try XCTUnwrap(harness.ruler.subviews.compactMap { $0 as? UIStackView }.first)
+        let buttons = strip.arrangedSubviews.compactMap { $0 as? UIButton }
+        harness.ruler.layoutIfNeeded()
+        XCTAssertEqual(buttons.map { $0.configuration?.title }, ["Day", "Week", "All"])
+        XCTAssertTrue(buttons.allSatisfy { $0.bounds.height >= 44 && $0.bounds.width >= 44 })
+        let height = harness.ruler.bounds.height
+        harness.ruler.beginPinch()
+        harness.ruler.updatePinch(scale: 10)
+        XCTAssertEqual(buttons.first { $0.isSelected }?.configuration?.title, "Day")
+        harness.ruler.updatePinch(scale: 0.2)
+        XCTAssertEqual(buttons.first { $0.isSelected }?.configuration?.title, "All")
+        XCTAssertEqual(buttons.first { $0.isSelected }?.accessibilityValue, "Nearest frame")
+        XCTAssertEqual(harness.ruler.bounds.height, height)
+        XCTAssertTrue(harness.commits.isEmpty, "Frame selection must not publish scale changes during a pinch")
+        let scroll = try XCTUnwrap(harness.ruler.subviews.compactMap { $0 as? UIScrollView }.first)
+        let names = scroll.accessibilityCustomActions?.map(\.name) ?? []
+        for name in ["Finer Scale", "Coarser Scale", "Fit Day", "Fit Week", "Fit All"] { XCTAssertTrue(names.contains(name)) }
+        XCTAssertTrue(scroll.accessibilityValue?.contains("1 bar about") == true)
+    }
+
+    @MainActor func testRenderedDayGapAndTripTargetsSendTheirExactFitCommand() throws {
+        // A parked silence belongs to its stop. Move beyond the stay box and 100 m departure allowance
+        // across this gap so the fixture actually contains missing data between different places.
+        let points = blendPoints().map { (point: RecordedLocation) -> RecordedLocation in
+            let latitude = point.latitude + (point.id >= 501 ? 0.002 : 0)
+            return RecordedLocation(id: point.id, timestamp: point.timestamp, latitude: latitude, longitude: point.longitude)
+        }
+        let harness = RulerScaleHarness(position: 505, reduceMotion: true, points: points, showsFrames: true)
+        defer { harness.ruler.cancelMotion() }
+        XCTAssertEqual(harness.configuration.landmarks.gaps.map(\.index), [500])
+        harness.configuration.step = 50
+        harness.configuration.highlight = 400...700
+        var fitted: [HistoryRulerStretch] = []
+        harness.configuration.onFit = { fitted.append($0) }
+        harness.ruler.configure(harness.configuration)
+        harness.ruler.layoutIfNeeded()
+        for view in harness.ruler.subviews { view.layer.displayIfNeeded() }
+        _ = UIGraphicsImageRenderer(size: harness.ruler.bounds.size).image { context in
+            harness.ruler.layer.render(in: context.cgContext)
+        }
+        let targets = harness.ruler.visibleStretchTargets
+        XCTAssertTrue(targets.contains { $0.stretch.frame == .day })
+        let gap = try XCTUnwrap(targets.first { $0.stretch.title.hasPrefix("No data") })
+        XCTAssertEqual(gap.stretch.range, 499...500)
+        XCTAssertEqual(gap.stretch.timeRange, points[499].timestamp...points[500].timestamp)
+        let trip = try XCTUnwrap(targets.first { $0.stretch.title == "trip" })
+        XCTAssertEqual(trip.stretch.range, 400...700)
+        // The hit resolver chooses among overlapping 44-point targets, just as a tap does.
+        for target in targets {
+            let point = CGPoint(x: max(0, min(349, target.frame.midX)), y: min(55, target.frame.midY))
+            let expected = HistoryRulerHitTarget.pick(at: point, in: targets,
+                bounds: CGRect(x: 0, y: 0, width: 350, height: 56))
+            XCTAssertTrue(harness.ruler.fitLabel(at: point))
+            XCTAssertEqual(fitted.last, expected?.stretch)
+        }
+        XCTAssertTrue(harness.ruler.fitFrame(.day))
+        XCTAssertEqual(fitted.last?.frame, .day)
+        XCTAssertNil(harness.ruler.scaleEase)
+    }
+
     func testPinchTracksFingersAndRubberBandsOnlyBeyondTheLadder() {
         for scale in [0.02, 0.25, 0.7, 1, 1.3, 4, 20] {
             XCTAssertEqual(HistoryRulerCoarseDrag.continuous(start: 20, pinchScale: scale, coarsest: 2_000),
@@ -2370,13 +2590,16 @@ private final class RulerScaleHarness {
     var frames: [RulerScaleChannel.Frame?] = []
     var events: [String] = []
 
-    init(position: Double = 5_123.5, reduceMotion: Bool = false) {
+    init(position: Double = 5_123.5, reduceMotion: Bool = false,
+         points: [RecordedLocation] = [], showsFrames: Bool = false) {
+        let count = points.isEmpty ? 20_000 : points.count
+        if showsFrames { window.frame.size.height = 100 }
         window.addSubview(ruler)
         ruler.frame = window.bounds
-        configuration = HistoryRulerSurface(position: position, tickCount: 20_000, step: 20,
-            detents: .init(tickCount: 20_000, rulerWidth: 350), revision: 0, active: true,
-            reduceMotion: true, value: "Recorded point", points: [],
-            landmarks: HistoryLandmarks(points: [], timeline: ReplayTimeline(points: []), places: []),
+        configuration = HistoryRulerSurface(position: position, tickCount: count, step: 20,
+            detents: .init(tickCount: count, rulerWidth: 350), revision: 0, active: true,
+            reduceMotion: true, value: "Recorded point", points: points,
+            landmarks: HistoryLandmarks(points: points, timeline: ReplayTimeline(points: points), places: []),
             retentionInterval: 86_400, onBegin: { [weak self] in self?.events.append("begin"); return Date() },
             onMove: { _ in 0 }, onEnd: { [weak self] _ in self?.events.append("end") }, onCancel: {},
             onHold: { _ in }, onScale: { [weak self] step in
@@ -2385,7 +2608,7 @@ private final class RulerScaleHarness {
             }, onContinuousScale: { [weak self] frame in
                 self?.frames.append(frame)
                 if frame == nil { self?.events.append("channelEnd") }
-            }, onAdjust: { _ in })
+            }, onAdjust: { _ in }, showsFrames: showsFrames)
         ruler.configure(configuration)
         configuration.reduceMotion = reduceMotion
         ruler.configure(configuration)
@@ -2393,6 +2616,85 @@ private final class RulerScaleHarness {
 }
 
 final class HistoryRulerZoomTests: XCTestCase {
+    func testBlendCameraWindowAndRefitThresholdUseTheMappedAxis() {
+        let axis = HistoryRulerAxis(timestamps: (0...1_000).map {
+            Date(timeIntervalSince1970: Double($0) * 60 + ($0 >= 500 ? 80_000 : 0))
+        })
+        let zoom = ReplayRulerHold(pointsPerBar: 20, visibleBars: 20, coarseness: 0.8, axis: axis)
+        let mapping = axis.mapping(pointsPerBar: 20, pointCount: axis.count)
+        let center = mapping.coordinate(at: 499.5)
+        let window = zoom.window(at: 499.5, count: axis.count)
+        XCTAssertEqual(window.lowerBound, max(0, Int(ceil(mapping.index(at: center - zoom.halfWindow)))))
+        XCTAssertEqual(window.upperBound, min(axis.count, Int(floor(mapping.index(at: center + zoom.halfWindow))) + 1))
+        for distance in [zoom.halfWindow * 0.9, zoom.halfWindow * 1.1] {
+            let position = mapping.index(at: mapping.coordinate(at: 200) + distance)
+            XCTAssertEqual(zoom.needsFit(at: position, since: 200), distance > zoom.halfWindow)
+        }
+        let fine = ReplayRulerHold(pointsPerBar: 2, visibleBars: 20, axis: axis)
+        let old = ReplayRulerHold(pointsPerBar: 2, visibleBars: 20)
+        XCTAssertEqual(fine.window(at: 499.5, count: axis.count), old.window(at: 499.5, count: axis.count))
+        XCTAssertEqual(fine.needsFit(at: 200, since: 190), old.needsFit(at: 200, since: 190))
+    }
+
+    func testFrameCameraFitsFractionalEndpointsEvenAtEveryPointWithoutChangingItsBase() {
+        let zoom = ReplayRulerHold(pointsPerBar: 1, visibleBars: 20, frameRange: 10.5...90.25)
+        XCTAssertEqual(zoom.window(at: 50, count: 101), 10..<92)
+        XCTAssertEqual(ReplayHoldZoom.distance(base: 2_000, pointsPerBar: 1, fitted: 8_000,
+                                               frameRange: zoom.frameRange), 8_000)
+        XCTAssertEqual(ReplayHoldZoom.distance(base: 2_000, pointsPerBar: 1, fitted: 8_000), 2_000)
+        XCTAssertEqual(ReplayHoldZoom.distance(base: 2_000, pointsPerBar: 1, fitted: 500,
+                                               frameRange: zoom.frameRange), 2_000)
+    }
+
+    @MainActor func testBlendContinuousCameraFitsEachCachedNeighborOnlyOnce() {
+        var (surface, coordinator, map) = nativeReplay()
+        defer { tearDown(coordinator, map: map) }
+        let points = replayPoints()
+        let axis = HistoryRulerAxis(timestamps: points.indices.map {
+            Date(timeIntervalSince1970: Double($0) * 60 + ($0 >= 50 ? 80_000 : 0))
+        })
+        let detents = HistoryRulerCoarseDrag.Detents(tickCount: points.count, rulerWidth: 350)
+        let channel = RulerScaleChannel()
+        surface.rulerScaleChannel = channel
+        coordinator.update(surface, animated: false)
+        for _ in 0..<3 {
+            for step in [2.0, 3, 5, 7, 10] {
+                channel.send(.init(pointsPerBar: step, detents: detents, width: 350, axis: axis))
+            }
+        }
+        XCTAssertFalse(coordinator.rulerScaleFitCounts.isEmpty)
+        XCTAssertTrue(coordinator.rulerScaleFitCounts.values.allSatisfy { $0 == 1 })
+        XCTAssertEqual(coordinator.parent.replayFollowDistance, 2_000)
+    }
+
+    @MainActor func testExactFrameCameraFitsAtEveryPointAndPreservesSavedFollowZoom() {
+        var (surface, coordinator, map) = nativeReplay()
+        defer { tearDown(coordinator, map: map) }
+        surface.rulerZoom = ReplayRulerHold(pointsPerBar: 1, visibleBars: 20, frameRange: 10...90)
+        coordinator.update(surface, animated: false)
+        coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude)
+        XCTAssertGreaterThan(map.camera.centerCoordinateDistance, 2_000)
+        XCTAssertEqual(coordinator.parent.replayFollowDistance, 2_000)
+    }
+
+    @MainActor func testBlendCachePublicationAndAverageIntervalUpdatesDoNotRefitEveryLiveAppend() {
+        var (surface, coordinator, map) = nativeLive()
+        defer { tearDown(coordinator, map: map) }
+        for newest in 100...110 {
+            let points = (0...newest).map {
+                RecordedLocation(id: Int64($0), timestamp: Date(timeIntervalSince1970: Double($0) * 60 + ($0 >= 50 ? 80_000 : 0)),
+                                 latitude: 45 + Double($0) * 0.001, longitude: -122)
+            }
+            let axis = HistoryRulerAxis(timestamps: points.map(\.timestamp))
+            surface.liveRulerGeometry = LiveRulerGeometry(points: points)
+            surface.rulerZoom = ReplayRulerHold(pointsPerBar: 5, visibleBars: 20, axis: axis, interval: axis.interval)
+            coordinator.update(surface, animated: false)
+            XCTAssertEqual(coordinator.rulerLiveFitID, 100)
+            if newest == 100 { coordinator.advanceRulerZoom(at: .greatestFiniteMagnitude) }
+            else { XCTAssertNil(coordinator.rulerDistanceEase) }
+        }
+    }
+
     @MainActor func testLiveCoordinatesAreCachedAcrossFramesAndDoNotCreateAReplayRoute() {
         let points = replayPoints()
         let model = HistoryPlaybackModel(pointLoader: { _, completion in completion(points) },

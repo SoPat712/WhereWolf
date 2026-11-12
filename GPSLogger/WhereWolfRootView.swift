@@ -110,6 +110,12 @@ struct WhereWolfRootView: View {
             // Starting a gesture recaptures the camera; changing the persistent scale alone must not.
             if holding, selection == 0, !replayOverview { replayCameraFree = false }
         }
+        .onChange(of: history.rulerFrameRevision) { _, _ in
+            guard selection == 0 else { return }
+            replayCameraFree = false
+            replayOverview = false
+            replayCameraAction &+= 1
+        }
         .onChange(of: bridge.tripInProgress) { _, _ in
             tripRevision = nil
             trip = TripMapState()

@@ -3,6 +3,193 @@ import MapKit
 @testable import WhereWolf
 
 final class HistoryLandmarkTests: XCTestCase {
+    func testBlendWeightUsesTheApprovedLogSmoothstepCurve() {
+        for (seconds, expected) in [(0.0, 0.0), (300, 0), (900, 0.09830489329104258),
+                                    (3_600, 0.40865833517072364), (21_600, 0.8495588384125756),
+                                    (86_400, 1), (604_800, 1)] {
+            XCTAssertEqual(HistoryRulerAxis.weight(secondsPerBar: seconds), expected, accuracy: 1e-12)
+        }
+        XCTAssertEqual(HistoryRulerAxis.weight(secondsPerBar: .nan), 0)
+        XCTAssertEqual(HistoryRulerAxis.weight(secondsPerBar: .infinity), 1)
+        XCTAssertLessThan(HistoryRulerAxis.weight(secondsPerBar: 300.001), 1e-10)
+        XCTAssertLessThan(1 - HistoryRulerAxis.weight(secondsPerBar: 86_399.99), 1e-10)
+    }
+
+    func testBlendFineScalesKeepTheExactPointAxisIncludingLive() {
+        let timestamps = [0.0, 1, 2, 3, 240].map { Date(timeIntervalSince1970: $0) }
+        let axis = HistoryRulerAxis(timestamps: timestamps)
+        for step in [1.0, 1.3, 2, 4, 5] {
+            let mapping = axis.mapping(pointsPerBar: step, pointCount: timestamps.count)
+            XCTAssertEqual(mapping.weight, 0)
+            for index in stride(from: 0.0, through: 5, by: 0.125) {
+                XCTAssertEqual(mapping.coordinate(at: index), index)
+                XCTAssertEqual(mapping.index(at: index), index)
+                XCTAssertEqual(mapping.reverseCoordinate(at: index), index)
+            }
+        }
+    }
+
+    func testBlendCumulativeWidthsAreMonotoneAndInvertEveryPointAndEndpoint() {
+        let timestamps = [0.0, 5, 5, 10, 310, 610, 86_400, 86_405].map { Date(timeIntervalSince1970: $0) }
+        let axis = HistoryRulerAxis(timestamps: timestamps)
+        for weight in stride(from: 0.0, through: 1, by: 0.025) {
+            let mapping = axis.mapping(weight: weight, pointCount: timestamps.count)
+            XCTAssertEqual(mapping.coordinate(at: 0), 0)
+            XCTAssertEqual(mapping.coordinate(at: 7), 7)
+            XCTAssertEqual(mapping.coordinate(at: 8), 8, "Live keeps its own endpoint")
+            var previous = -Double.infinity
+            for index in stride(from: 0.0, through: 8, by: 0.25) {
+                let coordinate = mapping.coordinate(at: index)
+                XCTAssertGreaterThan(coordinate, previous)
+                // Duplicate timestamps retain tiny positive width even at pure time.
+                XCTAssertEqual(mapping.index(at: coordinate), index, accuracy: 0.000_1)
+                previous = coordinate
+            }
+        }
+    }
+
+    func testBlendHalfWeightUsesSquareRootPacingAndInterpolatesCachedNeighbors() {
+        let axis = HistoryRulerAxis(timestamps: [0.0, 1, 101, 105].map { Date(timeIntervalSince1970: $0) })
+        let half = axis.mapping(weight: 0.5, pointCount: 4)
+        XCTAssertEqual((half.coordinate(at: 2) - half.coordinate(at: 1)) / half.coordinate(at: 1), 10, accuracy: 1e-10)
+        let lower = axis.mapping(weight: 0.3, pointCount: 4)
+        let upper = axis.mapping(weight: 0.4, pointCount: 4)
+        let middle = axis.mapping(weight: 0.35, pointCount: 4)
+        for index in [0.0, 0.5, 1, 1.5, 2, 3, 4] {
+            XCTAssertEqual(middle.coordinate(at: index), (lower.coordinate(at: index) + upper.coordinate(at: index)) / 2,
+                           accuracy: 1e-10)
+        }
+    }
+
+    func testBlendPendingAppendAndPrunedCachesStayMonotoneWithoutRebuilding() {
+        let axis = HistoryRulerAxis(timestamps: [0.0, 1, 10, 1_000, 1_010].map { Date(timeIntervalSince1970: $0) })
+        for count in [0, 1, 3, 5, 8] {
+            let mapping = axis.mapping(weight: 0.85, pointCount: count)
+            XCTAssertEqual(mapping.coordinate(at: Double(count)), Double(count))
+            var previous = -Double.infinity
+            for index in stride(from: 0.0, through: Double(count), by: 0.25) {
+                let coordinate = mapping.coordinate(at: index)
+                XCTAssertGreaterThan(coordinate, previous)
+                XCTAssertEqual(mapping.index(at: coordinate), index, accuracy: 1e-8)
+                previous = coordinate
+            }
+        }
+    }
+
+    func testBlendEveryPointStaysLiteralForSparseOrEqualTimestampHistory() {
+        for offsets in [[0.0, 0, 0], [0, 86_400, 86_401]] {
+            let axis = HistoryRulerAxis(timestamps: offsets.map { Date(timeIntervalSince1970: $0) })
+            XCTAssertEqual(axis.mapping(pointsPerBar: 1, pointCount: 3).weight, 0)
+            XCTAssertEqual(axis.mapping(pointsPerBar: 1.000_001, pointCount: 3).coordinate(at: 1), 1, accuracy: 1e-9)
+        }
+    }
+
+    func testBlendPureTimeGivesSilencesAndEveryDayTheirTimeShare() throws {
+        let points = [0.0, 60, 120, 172_800].enumerated().map {
+            fix($0.offset, at: date("2026-06-01T04:00:00Z").addingTimeInterval($0.element), north: Double($0.offset) * 1_000)
+        }
+        let landmarks = makeLandmarks(points)
+        let mapping = landmarks.rulerAxis.mapping(weight: 1, pointCount: points.count)
+        let gap = try XCTUnwrap(landmarks.gaps.first)
+        XCTAssertEqual(mapping.coordinate(at: Double(gap.index)) - mapping.coordinate(at: Double(gap.index - 1)),
+                       gap.duration / 172_800 * 3, accuracy: 1e-10)
+        let days = landmarks.days.map { mapping.coordinate(at: landmarks.markPosition($0, mapping: mapping)) }
+        XCTAssertEqual(days.count, 3)
+        XCTAssertEqual(days[1] - days[0], days[2] - days[1], accuracy: 1e-10)
+        XCTAssertEqual(landmarks.markPosition(landmarks.days[1], mapping: nil), 3,
+                       "Fine labels still belong to the first fix after the boundary")
+    }
+
+    func testFrameAvailabilityUsesLoadedCalendarDaysAndKeepsServerFramesHiddenOnPhone() {
+        let start = date("2026-06-01T04:00:00Z")
+        XCTAssertEqual(makeLandmarks([]).rulerFrames, [])
+        XCTAssertEqual(makeLandmarks(route(count: 25, start: start, every: 3_600, metersPerPoint: 100)).rulerFrames, [.day, .all])
+        XCTAssertEqual(makeLandmarks(route(count: 168, start: start, every: 3_600, metersPerPoint: 100)).rulerFrames,
+                       [.day, .week, .all])
+    }
+
+    func testDayAndWeekFramesUseCalendarBoundsIncludingDSTAndMondayWeeks() throws {
+        for (time, hours) in [("2026-03-08T12:00:00Z", 23.0), ("2026-11-01T12:00:00Z", 25.0)] {
+            let interval = try XCTUnwrap(HistoryRulerFrame.day.interval(containing: date(time), calendar: calendar))
+            XCTAssertEqual(interval.duration, hours * 3_600)
+        }
+        let week = try XCTUnwrap(HistoryRulerFrame.week.interval(containing: date("2026-06-04T18:00:00Z"), calendar: calendar))
+        XCTAssertEqual(week.start, date("2026-06-01T04:00:00Z"))
+        XCTAssertEqual(week.end, date("2026-06-08T04:00:00Z"))
+        let leap = try XCTUnwrap(HistoryRulerFrame.year.interval(containing: date("2024-06-01T12:00:00Z"), calendar: calendar))
+        XCTAssertEqual(calendar.dateComponents([.day], from: leap.start, to: leap.end).day, 366)
+    }
+
+    func testFrameFitUsesNinetyTwoPercentAndCentersTheBlendedStretch() throws {
+        let points = route(count: 1_009, every: 600, metersPerPoint: 100)
+        let landmarks = makeLandmarks(points)
+        let day = try XCTUnwrap(landmarks.stretch(frame: .day, at: 500))
+        let detents = HistoryRulerCoarseDrag.Detents(tickCount: points.count, rulerWidth: 350)
+        for stretch in [day, HistoryRulerStretch(range: 50...800, title: "trip"),
+                        HistoryRulerStretch(range: 10...20, title: "No data")] {
+            let fit = HistoryRulerFraming.fit(stretch, axis: landmarks.rulerAxis, detents: detents, width: 350)
+            let mapping = landmarks.rulerAxis.mapping(pointsPerBar: fit.step, pointCount: points.count)
+            let a = mapping.coordinate(at: stretch.range.lowerBound), b = mapping.coordinate(at: stretch.range.upperBound)
+            let scale = HistoryRulerCoarseDrag.scale(step: fit.step, coarsest: detents.steps[0])
+            let size = (b - a) / fit.step * Double(scale.spacing)
+            XCTAssertLessThanOrEqual(size, 350 * 0.92 + 1e-7)
+            if fit.step > 1 { XCTAssertEqual(size, 350 * 0.92, accuracy: 1e-6) }
+            XCTAssertEqual(mapping.coordinate(at: Double(points.count) - fit.position), (a + b) / 2, accuracy: 1e-8)
+            XCTAssertEqual(fit.stretch.range, stretch.range)
+        }
+    }
+
+    func testDayLabelAndGapHitsFitTheirExactStretchWithFortyFourPointTargets() throws {
+        let points = route(count: 49, every: 3_600, metersPerPoint: 100)
+        let landmarks = makeLandmarks(points)
+        let day = try XCTUnwrap(landmarks.stretch(frame: .day, at: 30))
+        XCTAssertEqual(day.range, 24...48)
+        let dayHit = HistoryRulerHitTarget(frame: CGRect(x: 20, y: 0, width: 18, height: 16), stretch: day)
+        let gap = HistoryRulerStretch(range: 2...3, title: "No data")
+        let gapHit = HistoryRulerHitTarget(frame: CGRect(x: 120, y: 18, width: 4, height: 36), stretch: gap, priority: 3)
+        let bounds = CGRect(x: 0, y: 0, width: 350, height: 56)
+        for target in [dayHit, gapHit] {
+            XCTAssertGreaterThanOrEqual(target.touchFrame(in: bounds).width, 44)
+            XCTAssertGreaterThanOrEqual(target.touchFrame(in: bounds).height, 44)
+            XCTAssertEqual(HistoryRulerHitTarget.pick(at: CGPoint(x: target.frame.midX, y: 40),
+                in: [dayHit, gapHit], bounds: bounds)?.stretch, target.stretch)
+        }
+        XCTAssertTrue(day.accessibility.hasPrefix("Fit Day, "))
+        XCTAssertEqual(gap.accessibility, "Fit No data")
+        XCTAssertNil(HistoryRulerHitTarget.pick(at: CGPoint(x: 300, y: 30), in: [dayHit, gapHit], bounds: bounds))
+    }
+
+    func testSparseSilenceFramingSearchesTheBlendDialInsteadOfCollapsingToEveryPoint() {
+        let axis = HistoryRulerAxis(timestamps: (0...1_000).map { index in
+            Date(timeIntervalSince1970: Double(index) * 5 + (index >= 500 ? 172_800 : 0))
+        })
+        let detents = HistoryRulerCoarseDrag.Detents(tickCount: axis.count, rulerWidth: 350)
+        let fit = HistoryRulerFraming.fit(.init(range: 499...500, title: "No data"), axis: axis,
+                                         detents: detents, width: 350)
+        XCTAssertGreaterThan(fit.step, 1)
+        let mapping = axis.mapping(pointsPerBar: fit.step, pointCount: axis.count)
+        let scale = HistoryRulerCoarseDrag.scale(step: fit.step, coarsest: detents.steps[0])
+        XCTAssertGreaterThan((mapping.coordinate(at: 500) - mapping.coordinate(at: 499))
+            / fit.step * Double(scale.spacing), 12)
+        XCTAssertEqual(fit.stretch.range, 499...500)
+    }
+
+    func testBlendHeldStopSnapsUseScreenDistanceAndRebaseAfterEscape() throws {
+        let (points, places) = twoStops()
+        let landmarks = makeLandmarks(points, places: places)
+        let mapping = landmarks.rulerAxis.mapping(weight: 0.7, pointCount: points.count)
+        let boundary = try XCTUnwrap(landmarks.boundaries.first { $0.index == 5 })
+        let reversed = Double(points.count - boundary.index)
+        let position = mapping.reversePosition(at: mapping.reverseCoordinate(at: reversed) + 5 * 2 / 12)
+        var snap = HistoryStopSnap()
+        XCTAssertEqual(snap.move(position: position, translation: 0, finger: 100, pointsPerBar: 2, spacing: 12,
+            pointCount: points.count, landmarks: landmarks, mapping: mapping), reversed)
+        XCTAssertEqual(snap.boundary?.index, boundary.index)
+        XCTAssertEqual(snap.move(position: reversed, translation: 20, finger: 111, pointsPerBar: 2, spacing: 12,
+            pointCount: points.count, landmarks: landmarks, mapping: mapping), reversed)
+        XCTAssertNil(snap.boundary)
+    }
+
     func testTimeLevelsKeepNeighboringMarksAtLeastSixtyScreenPointsApart() {
         let points = route(count: 8_641, every: 10, metersPerPoint: 10)
         let landmarks = makeLandmarks(points)

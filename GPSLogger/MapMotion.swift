@@ -143,6 +143,8 @@ final class RulerScaleChannel {
         let pointsPerBar: Double
         let detents: HistoryRulerCoarseDrag.Detents
         let width: CGFloat
+        var axis: HistoryRulerAxis? = nil
+        var interval: TimeInterval? = nil
     }
 
     private(set) var frame: Frame?
@@ -192,6 +194,16 @@ struct ReplayRulerHold: Equatable {
     let pointsPerBar: Double
     let visibleBars: Double
     var coarseness: Double = 1
+    var axis: HistoryRulerAxis? = nil
+    var frameRange: ClosedRange<Double>? = nil
+    var interval: TimeInterval? = nil
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.pointsPerBar == rhs.pointsPerBar && lhs.visibleBars == rhs.visibleBars
+            && lhs.coarseness == rhs.coarseness && lhs.axis === rhs.axis
+            && lhs.frameRange == rhs.frameRange
+            && lhs.interval == rhs.interval
+    }
 
     // Mid detents fit only the bars near the needle, so the map stays close until the coarsest steps.
     var halfWindow: Double {
@@ -203,13 +215,33 @@ struct ReplayRulerHold: Equatable {
 
     func window(at position: Double, count: Int) -> Range<Int> {
         guard count > 0 else { return 0..<0 }
+        if let frameRange {
+            let lower = min(count - 1, max(0, Int(floor(frameRange.lowerBound))))
+            let upper = min(count, max(lower + 1, Int(ceil(frameRange.upperBound)) + 1))
+            return lower..<upper
+        }
+        if let axis {
+            let mapping = axis.mapping(pointsPerBar: pointsPerBar, pointCount: count, interval: interval)
+            if mapping.weight > 0 {
+                let needle = mapping.coordinate(at: position)
+                let lower = min(count - 1, max(0, Int(ceil(mapping.index(at: needle - halfWindow)))))
+                let upper = min(count, max(lower + 1, Int(floor(mapping.index(at: needle + halfWindow))) + 1))
+                return lower..<upper
+            }
+        }
         let lower = min(count - 1, max(0, Int(ceil(position - halfWindow))))
         let upper = min(count, max(lower + 1, Int(floor(position + halfWindow)) + 1))
         return lower..<upper
     }
 
-    func needsFit(at position: Double, since previous: Double?) -> Bool {
+    func needsFit(at position: Double, since previous: Double?, count: Int? = nil) -> Bool {
         guard let previous else { return true }
+        if let axis {
+            let mapping = axis.mapping(pointsPerBar: pointsPerBar, pointCount: count ?? axis.count, interval: interval)
+            if mapping.weight > 0 {
+                return abs(mapping.coordinate(at: position) - mapping.coordinate(at: previous)) > halfWindow
+            }
+        }
         return abs(position - previous) > halfWindow
     }
 }
@@ -235,9 +267,9 @@ struct ReplayHoldDistanceEase {
 
 enum ReplayHoldZoom {
     static func distance(base: CLLocationDistance, pointsPerBar: Double,
-                         fitted: CLLocationDistance?) -> CLLocationDistance {
+                         fitted: CLLocationDistance?, frameRange: ClosedRange<Double>? = nil) -> CLLocationDistance {
         let base = min(MapZoom.maximumDistance, max(MapZoom.minimumDistance, base))
-        guard pointsPerBar > 1, let fitted, fitted.isFinite else { return base }
+        guard pointsPerBar > 1 || frameRange != nil, let fitted, fitted.isFinite else { return base }
         return min(MapZoom.maximumDistance, max(base, fitted))
     }
 

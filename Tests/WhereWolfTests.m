@@ -59,6 +59,24 @@
 - (void)setForTestingWithEnabled:(BOOL)enabled expensive:(NSNumber *)expensive;
 @end
 
+// Removing a persistent domain leaves its empty plist behind, so each run's UUID suites
+// (WhereWolf.<Tests>.<UUID>) piled up in the shared simulator's container. Sweep them at load.
+@interface TestPreferenceSuiteSweep : NSObject
+@end
+@implementation TestPreferenceSuiteSweep
++ (void)load {
+    NSString *library = NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES).firstObject;
+    NSString *directory = [library stringByAppendingPathComponent:@"Preferences"];
+    NSRegularExpression *suite = [NSRegularExpression regularExpressionWithPattern:
+        @"^WhereWolf\\.[A-Za-z]+\\.[0-9A-F]{8}(-[0-9A-F]{4}){3}-[0-9A-F]{12}\\.plist$"
+        options:NSRegularExpressionCaseInsensitive error:nil];
+    for(NSString *name in [NSFileManager.defaultManager contentsOfDirectoryAtPath:directory error:nil]) {
+        if(![suite firstMatchInString:name options:0 range:NSMakeRange(0, name.length)]) continue;
+        [NSFileManager.defaultManager removeItemAtPath:[directory stringByAppendingPathComponent:name] error:nil];
+    }
+}
+@end
+
 @interface TestUploadManager : GLManager
 @property NSTimeInterval scheduledUploadDelay;
 @end

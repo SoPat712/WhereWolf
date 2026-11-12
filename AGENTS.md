@@ -302,7 +302,11 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   height and align its intrinsic controls to the top while measurement is pending;
   otherwise SwiftUI centers the changed content inside the previous host height.
   Details uses one labeled capsule in both modes.
-  The history ruler is 56 points high, with a 16-point top label lane. Its glass panel is not interactive:
+  The history ruler's tick surface is 56 points high, with a 16-point top label lane. A fixed 44-point
+  frame row above it offers Day, Week, Month, Year and All as loaded calendar days permit; phone history
+  offers Day, Week where applicable and All. Frame, day-label, trip-band and No-data-band taps fit their
+  clipped stretch toward 92% of the ruler within its scale limits and fit the same route on the map, recapturing its camera. Nearest-frame
+  selection follows pinches in UIKit. Its glass panel is not interactive:
   interactive glass follows touches across the whole window and took presses from menus open above it. Cached
   `HistoryLandmarks` point-index metadata builds on a utility queue, coalescing new
   points to at most once per 30 seconds and promptly rebuilding for snapshots, expiry,
@@ -316,13 +320,19 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   labels; time marks coarsen through 1/5/15 minutes, 1 hour and 6 hours to keep at least
   60 points between labels. Stop capsules use the nearest Wi-Fi Place within
   `GLWifiPlaceMatchDistance` of the stay center, otherwise gray `mappin` and a duration.
-  The ruler spaces fixes evenly, so scrolling moves through what was recorded at a steady rate; a stop with
-  few fixes is narrow. Its tint widens with its length, from 6 points at 5 minutes to 22 from an hour, so the
+  Blend spaces fixes evenly through five minutes per bar and at Every point. Coarser scales use cumulative
+  interval^w widths, normalized to the point count: w = smoothstep(clamp(log(seconds per bar / 300) / log(288))).
+  Eleven prefix sums (w = 0, 0.1, …, 1) build with landmarks off the main thread; gestures interpolate
+  cached neighbours, with inverse lookup for scrolling, holds, labels and camera windows. Publish completed
+  caches after ruler interaction ends so they cannot reset momentum. For sparse history
+  averaging over five minutes per point, a smoothstep over the first 1–2 points/bar opens w from zero so
+  Every point stays literal. Silences get the same time share as other intervals; retain every point.
+  A stop's tint widens with its length, from 6 points at 5 minutes to 22 from an hour, so the
   needle never hides a long stop, but only halfway toward a neighbor, so stops never overlap. Back-to-back
   stops at the same Wi-Fi Place, or touching unnamed ones, less than Coverage's gap apart show as one. A stop's
   label centers on it even when its fixes are narrower than the text, falling back to the symbol alone where
   labels collide. A silence of at least Coverage's 10-minute gap between stored fixes outside a stop gets a red
-  band and a red "No data" label with its length, since even spacing cannot show it; a stop explains its own
+  band and a red "No data" label with its length, including at fine scales; a stop explains its own
   silences, since a phone that logs only when it moves goes quiet while parked. Keep every stored point.
   The buttons beside Play jump to the previous/next arrival or departure through the
   existing selection path; disable at the ends and name the target for VoiceOver.
@@ -359,7 +369,8 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   above the ruler if absent. The capsule, bubble and menu derive a bar's time from the history's average
   time per point, oldest to newest fix, so they change only with the scale (≈, since a bar on a drive is
   shorter and one across a stop longer), or from retention time before points load. Remove the window
-  bubble on release or cancellation without changing drawer height. Reaching Live clamps at zero
+  bubble on release or cancellation without changing drawer height. The normalized Blend axis keeps that
+  average estimate; at pure time it is exact between stored fixes. Reaching Live clamps at zero
   without ending a drag or hold; return to Live when the finger lifts there, or as soon as
   momentum aimed at the Live edge arrives, stopping there without its bounce. Momentum and
   bounces settle on whole pixels, so an end within a pixel of the Live edge counts as Live.
@@ -373,9 +384,10 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   Ordinary drags, inertia and pinches never snap. The 18-point row under the ruler
   keeps the time (and at Live the hint "Pinch for scale; hold to scrub"), a scale capsule
   styled like the Go To time, and Live; the capsule opens a native Menu headed One bar covers: Every point,
-  1 minute, 5 minutes, 15 minutes, 1 hour, 6 hours and Whole history. Map durations
+  1 minute, 5 minutes, 15 minutes, 1 hour, 6 hours, then 1 day, 1 week and 1 month where the ladder reaches them,
+  and Whole history. Frame fits may use a continuous scale between detents. Map durations
   to the nearest step in log space using the bubble's estimate, drop later duplicate
-  steps and check the current entry. Menu changes anchor the needle; the capsule stays usable while the
+  steps and check the nearest entry. Menu changes anchor the needle; the capsule stays usable while the
   ruler moves, and a choice made during a drag or coast stops the ruler where it is first. VoiceOver's
   value names a containing stop and its arrival; keep its
   one-point increment/decrement, add Finer Scale and Coarser Scale actions, and
@@ -385,7 +397,7 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   overview mode. Tracker point following uses the persistent ruler scale at Live and during
   browsing, scrubbing, momentum and playback, with heading mode on or off. One point per
   bar uses that mode's saved follow distance D0; coarser detents fit the route within ±(2 + (half the visible bars − 2) × coarseness²)
-  bars of the needle into the overview's clear map area, never closer than D0, so mid
+  bars of the blended axis around the needle into the overview's clear map area, never closer than D0, so mid
   detents stay close and only the coarsest fit the whole visible ruler. Compute the
   box when scale zoom starts, the scale changes or the needle moves greater than
   half a window, never per frame. At Live the window ends at the newest loaded point and

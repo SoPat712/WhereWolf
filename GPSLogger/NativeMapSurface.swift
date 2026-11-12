@@ -552,6 +552,8 @@ struct NativeMapSurface: UIViewRepresentable {
         private var rulerScalePendingCommit: RulerScaleChannel.Frame?
         private struct RulerScaleFitContext: Equatable {
             let route: ObjectIdentifier
+            let axis: ObjectIdentifier?
+            let interval: TimeInterval?
             let position: Double
             let latitude: Double
             let longitude: Double
@@ -1151,15 +1153,17 @@ struct NativeMapSurface: UIViewRepresentable {
                   rulerFollowing, !hasMapContact, var source = rulerFitSource(on: map) else { return }
             let bracket = frame.detents.bracket(at: frame.pointsPerBar)
             let step = min(bracket.upper, max(bracket.lower, frame.pointsPerBar))
-            let zoom = frame.detents.zoom(step: step, width: frame.width)
+            let zoom = frame.detents.zoom(step: step, width: frame.width, axis: frame.axis, interval: frame.interval)
             beginRulerZoom(on: map)
             scaledRuler = zoom
             // Freeze the live fit's anchor for the gesture; live motion still centers the dot every frame.
-            if !parent.replayActive, let context = rulerScaleFitContext, context.route == source.identity {
+            let axis = frame.axis.map(ObjectIdentifier.init)
+            if !parent.replayActive, let context = rulerScaleFitContext, context.route == source.identity,
+               context.axis == axis {
                 source.coordinate = CLLocationCoordinate2D(latitude: context.latitude, longitude: context.longitude)
             }
             rulerCoordinate = source.coordinate
-            let context = RulerScaleFitContext(route: source.identity, position: source.position,
+            let context = RulerScaleFitContext(route: source.identity, axis: axis, interval: frame.interval, position: source.position,
                 latitude: source.coordinate.latitude, longitude: source.coordinate.longitude,
                 steps: frame.detents.steps, width: frame.width, base: rulerBaseDistance, pitch: rulerPitch)
             if rulerScaleFitContext != context {
@@ -1170,7 +1174,7 @@ struct NativeMapSurface: UIViewRepresentable {
             rulerLiveFitID = parent.replayActive ? nil : parent.liveRulerGeometry?.pointIDs.last
             func distance(at step: Double) -> CLLocationDistance? {
                 if let distance = rulerScaleDistances[step] { return distance }
-                let zoom = frame.detents.zoom(step: step, width: frame.width)
+                let zoom = frame.detents.zoom(step: step, width: frame.width, axis: frame.axis, interval: frame.interval)
                 guard let distance = rulerZoomDistance(zoom, on: map, source: source) else { return nil }
                 rulerScaleDistances[step] = distance
                 rulerScaleZooms[step] = zoom
@@ -1208,7 +1212,7 @@ struct NativeMapSurface: UIViewRepresentable {
                                        source supplied: RulerFitSource? = nil) -> CLLocationDistance? {
             guard let source = supplied ?? rulerFitSource(on: map), let base = rulerBaseDistance else { return nil }
             let coordinate = source.coordinate
-            if zoom.pointsPerBar <= 1 {
+            if zoom.pointsPerBar <= 1, zoom.frameRange == nil {
                 return ReplayHoldZoom.distance(base: base, pointsPerBar: zoom.pointsPerBar, fitted: nil)
             }
             var fit: CLLocationDistance?
@@ -1218,11 +1222,14 @@ struct NativeMapSurface: UIViewRepresentable {
                     clearRect: NativeMapSurface.replayClearRect(on: map), anchorPoint: NativeMapSurface.visibleCenter(on: map),
                     pitch: rulerPitch, projection: rulerProjection)
             }
-            return ReplayHoldZoom.distance(base: base, pointsPerBar: zoom.pointsPerBar, fitted: fit)
+            return ReplayHoldZoom.distance(base: base, pointsPerBar: zoom.pointsPerBar,
+                                           fitted: fit, frameRange: zoom.frameRange)
         }
 
         private func cachedRulerScaleDistance(for zoom: ReplayRulerHold, source: RulerFitSource) -> CLLocationDistance? {
             guard let context = rulerScaleFitContext, context.route == source.identity,
+                  context.axis == zoom.axis.map(ObjectIdentifier.init),
+                  context.interval == zoom.interval,
                   context.position == source.position,
                   (!parent.replayActive || (context.latitude == source.coordinate.latitude
                     && context.longitude == source.coordinate.longitude)), context.base == rulerBaseDistance,
@@ -1231,7 +1238,8 @@ struct NativeMapSurface: UIViewRepresentable {
         }
 
         private func rulerScaleCommitIsCurrent(_ frame: RulerScaleChannel.Frame) -> Bool {
-            (parent.rulerZoom?.pointsPerBar ?? 1) == frame.detents.nearestStep(to: frame.pointsPerBar)
+            let step = parent.rulerZoom?.pointsPerBar ?? 1
+            return step == frame.pointsPerBar || step == frame.detents.nearestStep(to: frame.pointsPerBar)
         }
 
         private func updateRulerZoom(on map: MKMapView, wasVisible: Bool, liveFlight: Bool = false) -> Bool {
@@ -1293,19 +1301,24 @@ struct NativeMapSurface: UIViewRepresentable {
             let starting = scaledRuler == nil
             let immediate = starting && (rulerZoomWasSuspended || !wasVisible || liveFlight)
             beginRulerZoom(on: map)
-            if scaledRuler != zoom {
+            // Cache publication and a changing average interval are data updates, not new scale requests.
+            // Keep the anchored fit until the needle/newest end travels half a blended window.
+            if scaledRuler?.pointsPerBar != zoom.pointsPerBar || scaledRuler?.visibleBars != zoom.visibleBars
+                || scaledRuler?.coarseness != zoom.coarseness || scaledRuler?.frameRange != zoom.frameRange {
                 rulerFitPosition = nil
                 rulerLiveFitID = nil
-                scaledRuler = zoom
             }
+            scaledRuler = zoom
             guard let source else { return false }
             rulerCoordinate = source.coordinate
             guard !hasMapContact else { return false }
             if parent.replayActive {
-                guard zoom.needsFit(at: source.position, since: rulerFitPosition) else { return false }
+                guard zoom.needsFit(at: source.position, since: rulerFitPosition,
+                                    count: source.coordinates.count) else { return false }
             } else if rulerFitPosition != nil, let id = rulerLiveFitID,
                       let previous = parent.liveRulerGeometry?.pointIDs.firstIndex(of: id) {
-                guard source.position - Double(previous) > zoom.halfWindow else { return false }
+                guard zoom.needsFit(at: source.position, since: Double(previous),
+                                    count: source.coordinates.count) else { return false }
             }
             rulerFitPosition = source.position
             rulerLiveFitID = parent.replayActive ? nil : parent.liveRulerGeometry?.pointIDs.last
