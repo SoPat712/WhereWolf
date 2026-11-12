@@ -20,6 +20,43 @@ import UIKit
     private var requestPending = false
     private var revision = 0
     private var updateTask: Task<Void, Never>?
+    private struct IntentRequest {
+        let id: UUID
+        var allowance: TripLiveActivityRequestPolicy.IntentStart?
+        let completion: CheckedContinuation<Void, Never>
+    }
+    private var intentRequest: IntentRequest?
+    private var intentTimeout: Task<Void, Never>?
+
+    // Only LiveActivityIntent.perform() may lend background-start permission to the reconciler.
+    func requestFromIntent(tripStart: Date?) async {
+        guard let tripStart, trip?.start == tripStart, !Task.isCancelled else { return }
+        let id = UUID()
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { completion in
+                guard !Task.isCancelled else { completion.resume(); return }
+                if let previous = intentRequest { finishIntentRequest(id: previous.id) }
+                intentRequest = IntentRequest(id: id,
+                    allowance: .init(tripStart: tripStart, now: ProcessInfo.processInfo.systemUptime),
+                    completion: completion)
+                intentTimeout = Task { [weak self] in
+                    do { try await Task.sleep(for: .seconds(TripLiveActivityRequestPolicy.intentTimeout)) } catch { return }
+                    self?.finishIntentRequest(id: id)
+                }
+                refresh(force: true)
+            }
+        } onCancel: {
+            Task { @MainActor [weak self] in self?.finishIntentRequest(id: id) }
+        }
+    }
+
+    private func finishIntentRequest(id: UUID) {
+        guard let request = intentRequest, request.id == id else { return }
+        intentRequest = nil
+        intentTimeout?.cancel()
+        intentTimeout = nil
+        request.completion.resume()
+    }
 
     @objc(startTripAt:mode:distance:speed:)
     func startTrip(at start: Date, mode: String, distance: Double, speed: Double) {
@@ -60,8 +97,12 @@ import UIKit
             guard let self else { return }
             while !Task.isCancelled {
                 let current = revision
+                let intentID = intentRequest?.id
                 await updateActivity()
-                if current == revision { break }
+                if current == revision {
+                    if let intentID { finishIntentRequest(id: intentID) }
+                    break
+                }
             }
             updateTask = nil
         }
@@ -101,17 +142,31 @@ import UIKit
             await existing.update(nextContent)
             return
         }
-        guard requestPending || action == .restore else { return }
-        guard UIApplication.shared.applicationState == .active || action == .restore else { return }
+        let manager = GLManager.shared()!
+        let decision = TripLiveActivityRequestPolicy.decision(tripStart: trip.start,
+            enabled: manager.tripLiveActivityEnabled && manager.trackingEnabled,
+            authorized: ActivityAuthorizationInfo().areActivitiesEnabled, requestPending: requestPending,
+            isActive: UIApplication.shared.applicationState == .active, audioAction: action,
+            intentStart: intentRequest?.allowance, now: ProcessInfo.processInfo.systemUptime)
+        guard decision != .deferRequest else { return }
+        intentRequest?.allowance = nil
         requestPending = false
         forceUpdate = false
         if action == .restore { runtime.willRestoreAfterAudio(.trip) }
         do {
-            currentActivity = try Activity.request(attributes: TripActivityAttributes(tripStart: trip.start),
-                                                   content: nextContent, pushType: nil)
+            let activity = try Activity.request(attributes: TripActivityAttributes(tripStart: trip.start),
+                                                content: nextContent, pushType: nil)
+            currentActivity = activity
             lastUpdate = Date()
             runtime.restoredAfterAudio(.trip)
             GLManager.shared().updateLocationEngine()
+            // A missing custom sound can fall back to the system sound. Omit the alert in that case.
+            if decision == .requestAndAlert,
+               Bundle.main.url(forResource: TripLiveActivityRequestPolicy.silentSoundName, withExtension: nil) != nil {
+                await activity.update(nextContent, alertConfiguration: AlertConfiguration(
+                    title: "Trip started", body: "WhereWolf is recording your trip.",
+                    sound: .named(TripLiveActivityRequestPolicy.silentSoundName)))
+            }
         } catch {
             if action == .restore { runtime.restoreAfterAudioFailed() }
             if action != .restore { NSLog("Couldn't start the trip Live Activity: %@", error.localizedDescription) }
@@ -121,7 +176,7 @@ import UIKit
     private func content(mode: String, distance: Double, speed: Double) -> ActivityContent<TripActivityAttributes.ContentState> {
         let state = TripActivityAttributes.ContentState(mode: mode, distance: distance.isFinite ? max(distance, 0) : 0,
                                                         speed: speed.isFinite ? max(speed, 0) : 0)
-        return ActivityContent(state: state, staleDate: nil, relevanceScore: 0)
+        return ActivityContent(state: state, staleDate: nil, relevanceScore: TripLiveActivityRequestPolicy.relevanceScore)
     }
 
     private func endActivities(content: ActivityContent<TripActivityAttributes.ContentState>?) async {

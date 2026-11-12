@@ -94,6 +94,7 @@ struct StartTripIntent: AppIntent {
                           userInfo: [NSLocalizedDescriptionKey: "The trip could not start. Open WhereWolf to check its status."])
         }
         SharedStateObserver.shared.tripChanged(inProgress: true)
+        await TripLiveActivityController.shared.requestFromIntent(tripStart: manager.currentTripStart())
         #endif
         return .result()
     }
@@ -161,6 +162,7 @@ struct ToggleTripIntent: SetValueIntent, LiveActivityIntent {
         }
         let manager: GLManager = GLManager.shared()
         if value {
+            let wasInProgress = manager.tripInProgress()
             guard ["Always", "When in Use"].contains(manager.authorizationStatusAsString()) else {
                 throw NSError(domain: "WhereWolf.Trip", code: 1,
                               userInfo: [NSLocalizedDescriptionKey: "Allow location access in WhereWolf before starting a trip."])
@@ -169,6 +171,9 @@ struct ToggleTripIntent: SetValueIntent, LiveActivityIntent {
             guard manager.tripInProgress() else {
                 throw NSError(domain: "WhereWolf.Trip", code: 2,
                               userInfo: [NSLocalizedDescriptionKey: "The trip could not start. Open WhereWolf to check its status."])
+            }
+            if !wasInProgress {
+                await TripLiveActivityController.shared.requestFromIntent(tripStart: manager.currentTripStart())
             }
         } else {
             GLTripActions.endTripRestoringTracking()

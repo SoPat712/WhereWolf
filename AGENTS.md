@@ -194,8 +194,9 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   Shortcuts actions succeed without a dialog: Shortcuts shows a result dialog as a banner and finishes the
   action only once it's dismissed, so a CarPlay automation on a locked phone timed out after four minutes.
   Failures throw. Get Tracking Status keeps its dialog. Start Trip, End Trip and Send Now are also
-  LiveActivityIntents for the widgets' buttons, so Shortcuts waits up to three seconds after each for a
-  Live Activity that background trip starts don't request.
+  LiveActivityIntents for the widgets' buttons. Start Trip and Toggle Trip await the enabled trip
+  Live Activity for at most two seconds inside `perform()`, allowing background intent starts while
+  preserving audio hiding; other background starts still require foreground or an audio restore.
   `INAlternativeAppNames` in the phone's Info.plist supplies "Werewolf" and
   "Where Wolf" for the App Shortcuts' application-name token. Keep the display
   name WhereWolf and the token in every phrase.
@@ -810,7 +811,8 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   reminder deadlines update immediately. Observe queue, send, trip and engine
   events without requiring a scene. End and recover both types; replace the type
   when appearance or card selection requires it.
-  Relevance remains zero. It ranks WhereWolf's own activities, not other apps;
+  Trip relevance is 100; tracking remains zero. Background intent starts expand the trip once with a
+  bundled silent alert sound; later updates never alert. Relevance ranks WhereWolf's own activities, not other apps;
   iOS controls which activity occupies the main Island or a detached bubble.
   Hide While Audio Plays defaults off. Two other-audio readings
   at least 15 seconds apart hide Status, Minimal, Blank and separate trip activities,
