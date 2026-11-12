@@ -91,7 +91,7 @@ struct StatusWidgetView: View {
                 if state.tripInProgress {
                     TripModeIcon(mode: state.tripMode)
                         .frame(width: 22, height: 22)
-                    Text(TripFormat.modeName(state.tripMode))
+                    Text(TripActivityFormat.modeName(state.tripMode))
                         .font(.headline)
                         .lineLimit(1)
                 } else {
@@ -108,7 +108,7 @@ struct StatusWidgetView: View {
                 ElapsedTime(start: start)
                     .font(.title2.bold())
                     .multilineTextAlignment(.leading)
-                TripStat(value: TripFormat.distance(state.tripDistance), unit: TripFormat.distanceUnit)
+                TripStat(value: TripActivityFormat.distance(state.tripDistance), unit: TripActivityFormat.distanceUnit)
             }
             Spacer(minLength: 0)
             // The small widget doesn't have room for these alongside a trip and its button
@@ -139,11 +139,11 @@ struct StatusWidgetView: View {
     private var rectangular: some View {
         VStack(alignment: .leading, spacing: 1) {
             if let start = state.tripStart {
-                Label { Text(TripFormat.modeName(state.tripMode)) } icon: { Image(tripMode: state.tripMode) }
+                Label { Text(TripActivityFormat.modeName(state.tripMode)) } icon: { Image(tripMode: state.tripMode) }
                     .font(.headline)
                 ElapsedTime(start: start)
                     .multilineTextAlignment(.leading)
-                Text("\(TripFormat.distance(state.tripDistance)) \(TripFormat.distanceUnit)")
+                Text("\(TripActivityFormat.distance(state.tripDistance)) \(TripActivityFormat.distanceUnit)")
             } else {
                 Label(state.trackingEnabled ? "Tracking" : "Not Tracking",
                       systemImage: state.trackingEnabled ? "location.fill" : "location.slash")

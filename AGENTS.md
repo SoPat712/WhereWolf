@@ -826,6 +826,9 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   Trip relevance is 100; tracking remains zero. Background intent starts expand the trip once with a
   bundled silent alert sound; later updates never alert. Relevance ranks WhereWolf's own activities, not other apps;
   iOS controls which activity occupies the main Island or a detached bubble.
+  The trip activity's Trail look pairs distance, average/pace and top speed with a north-up blue route sketch.
+  Its 15-second updates carry at most 48 quantized shape points, without coordinates, from the ordered trip-stats stream;
+  non-App Store `-WhereWolfTripActivityPreview car|walk|short` renders the shared views with invented data.
   Hide While Audio Plays defaults off. Two other-audio readings
   at least 15 seconds apart hide Status, Minimal, Blank and separate trip activities,
   only with Always location access. Sample on existing lifecycle/activity/audio

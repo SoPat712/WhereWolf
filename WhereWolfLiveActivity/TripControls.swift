@@ -37,7 +37,7 @@ struct TripControl: ControlWidget {
             ControlWidgetToggle(isOn: value.tripInProgress, action: ToggleTripIntent()) {
                 Label { Text("Trip") } icon: { Image(tripMode: value.mode) }
             } valueLabel: { isOn in
-                Text(isOn ? "\(TripFormat.modeName(value.mode)) Trip" : "Start \(TripFormat.modeName(value.mode))")
+                Text(isOn ? "\(TripActivityFormat.modeName(value.mode)) Trip" : "Start \(TripActivityFormat.modeName(value.mode))")
             }
             .tint(.green)
         }

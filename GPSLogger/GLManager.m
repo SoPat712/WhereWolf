@@ -2536,6 +2536,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     [self syncTripLiveActivity];
 }
 - (void)syncTripLiveActivity {
+    [TripLiveActivityController shared].tripStats = self.tripInProgress ? [self loadedTripStats] : nil;
     [[TripLiveActivityController shared] syncWithTripStart:(self.tripLiveActivityEnabled && self.trackingEnabled ? self.currentTripStart : nil)
         mode:self.currentTripMode distance:self.currentTripDistance speed:self.lastLocation.speed];
 }
@@ -2606,7 +2607,8 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
          @(loc.speed), @(loc.speedAccuracy), @(loc.altitude), @(loc.verticalAccuracy)]) return NO;
     if(!self.lastTripLocation || [loc.timestamp compare:self.lastTripLocation.timestamp] != NSOrderedAscending) {
         if(self.tripStatsLoaded) [self.tripStats addWithSpeed:loc.speed speedAccuracy:loc.speedAccuracy
-                                                     altitude:loc.altitude verticalAccuracy:loc.verticalAccuracy];
+                                                     altitude:loc.altitude verticalAccuracy:loc.verticalAccuracy
+                                                     latitude:loc.coordinate.latitude longitude:loc.coordinate.longitude];
         if(self.lastTripLocation) self.tripDistanceCached += [self.lastTripLocation distanceFromLocation:loc];
         self.lastTripLocation = loc;
         return YES;
@@ -2642,14 +2644,15 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     if(self.tripStatsLoaded || !self.tripdb.isOpen) return self.tripStats;
     [self ensureTripStatsColumns];
     [self.tripStats reset];
-    FMResultSet *rows = [self.tripdb executeQuery:@"SELECT speed, speed_accuracy, altitude, vertical_accuracy FROM trips ORDER BY timestamp, id"];
+    FMResultSet *rows = [self.tripdb executeQuery:@"SELECT speed, speed_accuracy, altitude, vertical_accuracy, latitude, longitude FROM trips ORDER BY timestamp, id"];
     while([rows next]) {
         BOOL speed = ![rows columnIndexIsNull:0] && ![rows columnIndexIsNull:1];
         BOOL altitude = ![rows columnIndexIsNull:2] && ![rows columnIndexIsNull:3];
         [self.tripStats addWithSpeed:speed ? [rows doubleForColumnIndex:0] : -1
                        speedAccuracy:speed ? [rows doubleForColumnIndex:1] : -1
                             altitude:altitude ? [rows doubleForColumnIndex:2] : 0
-                    verticalAccuracy:altitude ? [rows doubleForColumnIndex:3] : -1];
+                    verticalAccuracy:altitude ? [rows doubleForColumnIndex:3] : -1
+                            latitude:[rows doubleForColumnIndex:4] longitude:[rows doubleForColumnIndex:5]];
     }
     [rows close];
     self.tripStatsLoaded = rows != nil;
@@ -3931,6 +3934,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
 
     if(didAddData) {
         if(self.tripLiveActivityEnabled && self.tripInProgress && self.trackingEnabled) {
+            [TripLiveActivityController shared].tripStats = [self loadedTripStats];
             [[TripLiveActivityController shared] updateWithMode:self.currentTripMode distance:self.currentTripDistance
                 speed:self.lastLocation.speed force:NO];
         }
@@ -4494,6 +4498,8 @@ static NSDictionary *GLNormalizedCurrentWifiInfo(id ssid) {
 
 - (void)clearTripDB {
     [self.tripdb executeUpdate:@"DELETE FROM trips"];
+    [self.tripStats reset];
+    self.tripStatsLoaded = NO;
 }
 
 

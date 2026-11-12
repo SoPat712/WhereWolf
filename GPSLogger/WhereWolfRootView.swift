@@ -547,7 +547,12 @@ struct WhereWolfRootView: View {
 
 final class WhereWolfRootHosting: NSObject {
     @objc static func makeRoot() -> UIViewController {
-        WhereWolfHostingController()
+#if !WHEREWOLF_APP_STORE
+        if let preview = TripActivityPreview.fixture() {
+            return UIHostingController(rootView: preview)
+        }
+#endif
+        return WhereWolfHostingController()
     }
 }
 

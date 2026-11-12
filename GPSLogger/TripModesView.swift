@@ -130,7 +130,7 @@ struct TripModesView: View {
                         editor = Editor(mode: mode)
                     } label: {
                         HStack(spacing: 12) {
-                            TripModeIcon(symbol: mode.symbol)
+                            TripModeSymbolIcon(symbol: mode.symbol)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(mode.name)
                                     .foregroundStyle(.primary)
@@ -231,7 +231,7 @@ struct TripModesView: View {
     }
 }
 
-private struct TripModeIcon: View {
+private struct TripModeSymbolIcon: View {
     let symbol: String
 
     var body: some View {
@@ -306,7 +306,7 @@ private struct TripModeEditor: View {
                 }
 
                 Section {
-                    TripModeIcon(symbol: symbol)
+                    TripModeSymbolIcon(symbol: symbol)
                         .frame(maxWidth: .infinity, minHeight: 42)
 
                     Picker("App Icon", selection: $symbol) {

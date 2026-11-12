@@ -58,19 +58,19 @@ struct TodayWidgetView: View {
         } else {
             switch family {
             case .accessoryInline:
-                Text("\(TripFormat.distance(state.todayDistance)) \(TripFormat.distanceUnit) today")
+                Text("\(TripActivityFormat.distance(state.todayDistance)) \(TripActivityFormat.distanceUnit) today")
                     .lineLimit(1)
                     .minimumScaleFactor(0.1)
             case .accessoryCircular:
                 ZStack {
                     AccessoryWidgetBackground()
                     VStack(spacing: 1) {
-                        Text(TripFormat.distance(state.todayDistance))
+                        Text(TripActivityFormat.distance(state.todayDistance))
                             .font(.caption.bold())
                             .monospacedDigit()
                             .lineLimit(1)
                             .minimumScaleFactor(0.1)
-                        Text(TripFormat.distanceUnit)
+                        Text(TripActivityFormat.distanceUnit)
                             .font(.caption2)
                     }
                     .padding(4)
@@ -113,8 +113,8 @@ struct TodayWidgetView: View {
     }
 
     private var distance: some View {
-        (Text(TripFormat.distance(state.todayDistance))
-         + Text(" \(TripFormat.distanceUnit)").font(.caption))
+        (Text(TripActivityFormat.distance(state.todayDistance))
+         + Text(" \(TripActivityFormat.distanceUnit)").font(.caption))
             .monospacedDigit()
             .lineLimit(1)
             .minimumScaleFactor(0.1)

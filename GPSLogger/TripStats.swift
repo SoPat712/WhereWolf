@@ -11,11 +11,30 @@ import Foundation
     @objc private(set) var topSpeed: Double = -1
     @objc private(set) var climb: Double = 0
     private var anchor: Double?
+    private var route = TripRouteSketchBuilder()
+    private var cachedRoute: TripRouteSketch?
+
+    func routeSketch() -> TripRouteSketch {
+        if let cachedRoute { return cachedRoute }
+        let sketch = route.sketch()
+        cachedRoute = sketch
+        return sketch
+    }
 
     @objc func reset() {
         topSpeed = -1
         climb = 0
         anchor = nil
+        route.reset()
+        cachedRoute = nil
+    }
+
+    // The live append and ordered database replay feed both accumulators together.
+    @objc func add(speed: Double, speedAccuracy: Double, altitude: Double, verticalAccuracy: Double,
+                   latitude: Double, longitude: Double) {
+        add(speed: speed, speedAccuracy: speedAccuracy, altitude: altitude, verticalAccuracy: verticalAccuracy)
+        route.add(latitude: latitude, longitude: longitude)
+        cachedRoute = nil
     }
 
     // Negative values mean unknown, as in Core Location.

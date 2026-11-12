@@ -13,6 +13,7 @@ import UIKit
     }
 
     private var trip: Trip?
+    @objc var tripStats: TripStatsAccumulator?
     private var endingTripStart: Date?
     private var currentActivity: Activity<TripActivityAttributes>?
     private var activityObserver: Task<Void, Never>?
@@ -97,8 +98,9 @@ import UIKit
     @objc(endTripWithMode:distance:speed:)
     func endTrip(mode: String, distance: Double, speed: Double) {
         endingTripStart = trip?.start
-        trip = nil
         finalContent = content(mode: mode, distance: distance, speed: speed)
+        trip = nil
+        tripStats = nil
         refresh(force: true)
     }
 
@@ -168,10 +170,10 @@ import UIKit
             activityObserver = nil
             currentActivity = nil
         }
-        let nextContent = content(mode: trip.mode, distance: trip.distance, speed: trip.speed)
         if let existing {
             // Location callbacks can arrive every second; the elapsed-time display ticks on its own.
             guard forceUpdate || Date().timeIntervalSince(lastUpdate) >= 15 else { return }
+            let nextContent = content(mode: trip.mode, distance: trip.distance, speed: trip.speed)
             forceUpdate = false
             lastUpdate = Date()
             await existing.update(nextContent)
@@ -185,6 +187,7 @@ import UIKit
             intentStart: intentRequest?.operation == .start ? intentRequest?.allowance : nil,
             now: ProcessInfo.processInfo.systemUptime)
         guard decision != .deferRequest else { return }
+        let nextContent = content(mode: trip.mode, distance: trip.distance, speed: trip.speed)
         if intentRequest?.operation == .start { intentRequest?.allowance = nil }
         requestPending = false
         forceUpdate = false
@@ -209,8 +212,15 @@ import UIKit
     }
 
     private func content(mode: String, distance: Double, speed: Double) -> ActivityContent<TripActivityAttributes.ContentState> {
-        let state = TripActivityAttributes.ContentState(mode: mode, distance: distance.isFinite ? max(distance, 0) : 0,
-                                                        speed: speed.isFinite ? max(speed, 0) : 0)
+        let distance = distance.isFinite ? max(distance, 0) : 0
+        let duration = trip.map { Date().timeIntervalSince($0.start) } ?? 0
+        let topSpeed = tripStats?.topSpeed
+        let climb = tripStats?.climb
+        let state = TripActivityState(mode: mode, distance: distance,
+            speed: speed.isFinite ? max(speed, 0) : 0,
+            topSpeed: topSpeed?.isFinite == true ? topSpeed : nil,
+            climb: climb?.isFinite == true ? climb : nil,
+            averageSpeed: duration >= 1 ? distance / duration : nil, route: tripStats?.routeSketch())
         return ActivityContent(state: state, staleDate: nil, relevanceScore: TripLiveActivityRequestPolicy.relevanceScore)
     }
 

@@ -7,6 +7,16 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A13C00000000000000000002 /* TripRouteSketch.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13C00000000000000000001 /* TripRouteSketch.swift */; };
+		A13C00000000000000000003 /* TripRouteSketch.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13C00000000000000000001 /* TripRouteSketch.swift */; };
+		A13C00000000000000000005 /* TripActivityState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13C00000000000000000004 /* TripActivityState.swift */; };
+		A13C00000000000000000006 /* TripActivityState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13C00000000000000000004 /* TripActivityState.swift */; };
+		A13C00000000000000000008 /* TripFormat.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13C00000000000000000007 /* TripFormat.swift */; };
+		A13C00000000000000000009 /* TripFormat.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13C00000000000000000007 /* TripFormat.swift */; };
+		A13C0000000000000000000B /* TripActivityPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13C0000000000000000000A /* TripActivityPreview.swift */; };
+		A13C0000000000000000000D /* TripRouteSketchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13C0000000000000000000C /* TripRouteSketchTests.swift */; };
+		A13C0000000000000000000F /* TripActivityStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13C0000000000000000000E /* TripActivityStateTests.swift */; };
+		A13C00000000000000000010 /* TripActivityViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C77E117660C6B9CD7E2F223 /* TripActivityViews.swift */; };
 		A13B00000000000000000002 /* TrackingActivityHandoffPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13B00000000000000000001 /* TrackingActivityHandoffPolicy.swift */; };
 		A13B00000000000000000004 /* TrackingActivityHandoffPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13B00000000000000000003 /* TrackingActivityHandoffPolicyTests.swift */; };
 		A13A00000000000000000002 /* TripLiveActivityRequestPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13A00000000000000000001 /* TripLiveActivityRequestPolicy.swift */; };
@@ -60,7 +70,7 @@
 		5BB8EF3C5CA85922D301E133 /* SharedStateObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E3B58A80A63E1DB5824D0A8 /* SharedStateObserver.swift */; };
 		5BCCF5411243A9657CF7A3D8 /* TripIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 295482F7E6DD4724A74C675E /* TripIntents.swift */; };
 		6274D5A2AACD43BBB319630D /* TripActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8F54F73CE518F85F9D383BF /* TripActivityAttributes.swift */; };
-		6DF9B422ECD5F9A3CFCBECCB /* TripViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C77E117660C6B9CD7E2F223 /* TripViews.swift */; };
+		6DF9B422ECD5F9A3CFCBECCB /* TripActivityViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C77E117660C6B9CD7E2F223 /* TripActivityViews.swift */; };
 		788FDA6C23567608ADD200DD /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 4B4C34C503F74BA4B4862F77 /* PrivacyInfo.xcprivacy */; };
 		7F1C3DEE5DAA991A0D1F7C95 /* TripModeIcons.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36D2A80EB7610335ABC4A8B1 /* TripModeIcons.swift */; };
 		80437EB826C8A904ACDF70BB /* TripLiveActivityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CA9E95D988A1EFBA8532E4D /* TripLiveActivityController.swift */; };
@@ -227,6 +237,12 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		A13C00000000000000000001 /* TripRouteSketch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/LiveActivity/TripRouteSketch.swift; sourceTree = SOURCE_ROOT; };
+		A13C00000000000000000004 /* TripActivityState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/LiveActivity/TripActivityState.swift; sourceTree = SOURCE_ROOT; };
+		A13C00000000000000000007 /* TripFormat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/Shared/TripFormat.swift; sourceTree = SOURCE_ROOT; };
+		A13C0000000000000000000A /* TripActivityPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/LiveActivity/TripActivityPreview.swift; sourceTree = SOURCE_ROOT; };
+		A13C0000000000000000000C /* TripRouteSketchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/TripRouteSketchTests.swift; sourceTree = SOURCE_ROOT; };
+		A13C0000000000000000000E /* TripActivityStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/TripActivityStateTests.swift; sourceTree = SOURCE_ROOT; };
 		A13B00000000000000000001 /* TrackingActivityHandoffPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/LiveActivity/TrackingActivityHandoffPolicy.swift; sourceTree = SOURCE_ROOT; };
 		A13B00000000000000000003 /* TrackingActivityHandoffPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/TrackingActivityHandoffPolicyTests.swift; sourceTree = SOURCE_ROOT; };
 		A13A00000000000000000001 /* TripLiveActivityRequestPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/LiveActivity/TripLiveActivityRequestPolicy.swift; sourceTree = SOURCE_ROOT; };
@@ -291,7 +307,7 @@
 		36D2A80EB7610335ABC4A8B1 /* TripModeIcons.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripModeIcons.swift; path = GPSLogger/TripModeIcons.swift; sourceTree = "<group>"; };
 		3E3B58A80A63E1DB5824D0A8 /* SharedStateObserver.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SharedStateObserver.swift; path = GPSLogger/Integrations/SharedStateObserver.swift; sourceTree = "<group>"; };
 		4B4C34C503F74BA4B4862F77 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; name = PrivacyInfo.xcprivacy; path = GPSLogger/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
-		4C77E117660C6B9CD7E2F223 /* TripViews.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripViews.swift; path = WhereWolfLiveActivity/TripViews.swift; sourceTree = "<group>"; };
+		4C77E117660C6B9CD7E2F223 /* TripActivityViews.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripActivityViews.swift; path = GPSLogger/LiveActivity/TripActivityViews.swift; sourceTree = "<group>"; };
 		4CA9E95D988A1EFBA8532E4D /* TripLiveActivityController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripLiveActivityController.swift; path = GPSLogger/LiveActivity/TripLiveActivityController.swift; sourceTree = "<group>"; };
 		5114B6E23CBCB270BB8375EC /* TripModes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripModes.swift; path = GPSLogger/Shared/TripModes.swift; sourceTree = "<group>"; };
 		62560F97D22E55B44438F518 /* HealthTripRecorderTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = HealthTripRecorderTests.swift; path = Tests/HealthTripRecorderTests.swift; sourceTree = "<group>"; };
@@ -533,10 +549,16 @@
 				C0DA10000000000000000031 /* TodayWidgetTests.swift */,
 				295482F7E6DD4724A74C675E /* TripIntents.swift */,
 				D8F54F73CE518F85F9D383BF /* TripActivityAttributes.swift */,
+				A13C00000000000000000001 /* TripRouteSketch.swift */,
+				A13C00000000000000000004 /* TripActivityState.swift */,
+				A13C00000000000000000007 /* TripFormat.swift */,
+				A13C0000000000000000000A /* TripActivityPreview.swift */,
+				A13C0000000000000000000C /* TripRouteSketchTests.swift */,
+				A13C0000000000000000000E /* TripActivityStateTests.swift */,
 				243C8AE0F0527309356468D1 /* StatusWidget.swift */,
 				C215F1FD102A461140930DC1 /* TripControls.swift */,
 				9C6721F8E565CC51192716BC /* TripLiveActivityWidget.swift */,
-				4C77E117660C6B9CD7E2F223 /* TripViews.swift */,
+				4C77E117660C6B9CD7E2F223 /* TripActivityViews.swift */,
 				C25B528FB613DCB4FBF7D384 /* TripModes.xcassets */,
 				4B4C34C503F74BA4B4862F77 /* PrivacyInfo.xcprivacy */,
 				83ED4065498A6D4B6567B48C /* TripModeTests.swift */,
@@ -1004,6 +1026,11 @@
 				C0DA10000000000000000012 /* TodayHistorySummary.swift in Sources */,
 				5BCCF5411243A9657CF7A3D8 /* TripIntents.swift in Sources */,
 				6274D5A2AACD43BBB319630D /* TripActivityAttributes.swift in Sources */,
+				A13C00000000000000000002 /* TripRouteSketch.swift in Sources */,
+				A13C00000000000000000005 /* TripActivityState.swift in Sources */,
+				A13C00000000000000000008 /* TripFormat.swift in Sources */,
+				A13C0000000000000000000B /* TripActivityPreview.swift in Sources */,
+				A13C00000000000000000010 /* TripActivityViews.swift in Sources */,
 				5B0A8C122B2744B820E0C1AC /* HistorySettingsView.swift in Sources */,
 				E8AD7EB7542A54DC56C21BA0 /* WorkoutRouteImport.swift in Sources */,
 				33F38E25406E8CD8616FA6D9 /* WorkoutImportView.swift in Sources */,
@@ -1041,6 +1068,8 @@
 				A0EE00000000000000000002 /* DrawerLayoutTests.swift in Sources */,
 				A0BC00000000000000000012 /* ReplayRouteRendererTests.swift in Sources */,
 				956A11CCD2A4977C19C16C7E /* TripModeTests.swift in Sources */,
+				A13C0000000000000000000D /* TripRouteSketchTests.swift in Sources */,
+				A13C0000000000000000000F /* TripActivityStateTests.swift in Sources */,
 				06E1F7368FAE37CA1EFFE6A5 /* HealthTripRecorderTests.swift in Sources */,
 				8906128EBAE97CD9E2B23394 /* UpstreamIntegrationTests.m in Sources */,
 				FD8716D075FB5292BFD3C574 /* HistoryRetentionTests.swift in Sources */,
@@ -1063,10 +1092,13 @@
 				C0DA10000000000000000022 /* TodayWidget.swift in Sources */,
 				FAC841E01F195F27EE270BD0 /* TripIntents.swift in Sources */,
 				AF7619AB633D818AD53D1C15 /* TripActivityAttributes.swift in Sources */,
+				A13C00000000000000000003 /* TripRouteSketch.swift in Sources */,
+				A13C00000000000000000006 /* TripActivityState.swift in Sources */,
+				A13C00000000000000000009 /* TripFormat.swift in Sources */,
 				04F242940BB39DD7583C928B /* StatusWidget.swift in Sources */,
 				FFFD07EC57EDFD9A3BF5CB30 /* TripControls.swift in Sources */,
 				1A56581BB05354349FAD0DC4 /* TripLiveActivityWidget.swift in Sources */,
-				6DF9B422ECD5F9A3CFCBECCB /* TripViews.swift in Sources */,
+				6DF9B422ECD5F9A3CFCBECCB /* TripActivityViews.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

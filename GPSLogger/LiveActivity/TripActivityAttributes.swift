@@ -10,14 +10,7 @@ import Foundation
 
 @available(iOS 16.1, *)
 struct TripActivityAttributes: ActivityAttributes {
-    struct ContentState: Codable, Hashable {
-        // Trip mode ID, see TripModeStore
-        var mode: String
-        // Meters
-        var distance: Double
-        // Meters per second, never negative
-        var speed: Double
-    }
+    typealias ContentState = TripActivityState
 
     var tripStart: Date
 }

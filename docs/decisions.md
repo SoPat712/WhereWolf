@@ -360,6 +360,12 @@ This log lists the decisions agents made on their own while working on WhereWolf
 - **Decided:** the tracking activity ends once the trip activity is active or stale and returns when the trip ends. The trip activity counts as background-location support. The tracking activity is requested before the trip activity ends, in the foreground or within End Trip / Toggle Trip's intent run (at most seven seconds, including the summary's pedometer wait). Other background ends use the engine's normal fallback until the app opens. The expanded Island's mode and speed sit 8 points in and 6 down from its top corners, like the buttons' inset.
 - **Undo:** `git revert 0490492`.
 
+## 2026-11-12: the trip Live Activity's Trail look
+
+- **Asked for:** "add more personality from the app to this activity". Of three mocked directions (Trip card, Speedometer, Trail), the owner picked Trail.
+- **Decided:** the Island and Lock Screen show the mode in a green badge with a still red recording dot (Live Activities can't loop an animation), the time, distance with average speed (pace on foot) and top speed, climb on the Lock Screen, and a north-up sketch of the trip so far in the map's blue, ending at a ringed marker. The sketch is at most 48 quantized shape points with no coordinates, built from the same ordered trip fixes as top speed and climb, from a buffer of at most 384 fixes, and sent with the existing 15-second updates. Compact shows the icon with a red dot and the time; minimal rings the icon in red. The views are shared with the app so a non-App Store launch argument renders them on the simulator with invented data. A map behind the Island's sketch is next (Island only, at the owner's choice).
+- **Undo:** revert the commit.
+
 ## Deferred for the owner
 
 - **Watch complication for Today:** it needs a new watch widget extension and bundle identifier, which is an Apple developer account change.
