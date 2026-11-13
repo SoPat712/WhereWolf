@@ -179,6 +179,7 @@ final class ServerHistoryModelTests: XCTestCase {
         model.setRulerStep(5)
         model.beginRulerInteraction()
         let position = model.rulerPosition, revision = model.rulerInteractionRevision
+        let cameraIntent = model.cameraIntentRevision, cameraCenter = model.cameraCenter
         let seconds = model.rulerSecondsPerBar, originalCount = model.rulerPointCount
         var loaded = snapshot(state: .loaded)
         loaded.points[first] = [0.0, 3_600, 7_200].enumerated().map {
@@ -193,10 +194,62 @@ final class ServerHistoryModelTests: XCTestCase {
         XCTAssertEqual(model.rulerInteractionRevision, revision)
         XCTAssertEqual(model.rulerSecondsPerBar, seconds, accuracy: 0.001)
         XCTAssertEqual(model.selectedPoint?.id, -2)
+        XCTAssertEqual(model.cameraIntentRevision, cameraIntent)
+        XCTAssertEqual(model.cameraCenter, cameraCenter, "A newly available marker is not a camera request")
+        XCTAssertNotNil(model.renderPose)
         XCTAssertEqual(model.points.count, phone.count + 3)
         let ruler = try XCTUnwrap(model.serverRuler)
         XCTAssertEqual(ruler.time(at: Double(model.rulerPointCount) - model.rulerPlaybackPosition), needle)
         model.setConsumerActive(false)
+    }
+
+    func testServerPublicationRefreshesFrameBoundsWithoutCameraIntentDuringOrAfterAFrameFit() async throws {
+        for waitForFrame in [false, true] {
+            let queue = OperationQueue()
+            queue.maxConcurrentOperationCount = 1
+            let phone = phone, now = now
+            let model = HistoryPlaybackModel(pointLoader: { _, done in done(phone) },
+                payloadLoader: { _, done in done([:]) }, places: { [] }, clock: { now },
+                queueLoader: { $0([]) }, serverProjectionQueue: queue)
+            model.setConsumerActive(true)
+            defer { model.setConsumerActive(false) }
+            var loaded = snapshot(state: .loaded)
+            loaded.points[first] = [point(-1, first), point(-2, first.addingTimeInterval(7_200))]
+                .map { ServerHistoryPoint(location: $0) }
+            await apply(loaded, to: model)
+            queue.isSuspended = true
+            model.fitRuler(HistoryRulerStretch(range: 0...0, title: "All", frame: .all))
+            let needle = model.rulerTime, seconds = model.rulerSecondsPerBar
+            let intent = model.cameraIntentRevision, frameRevision = model.rulerFrameRevision
+            let focus = model.cameraCenter
+            let drain = {
+                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                    queue.addOperation { DispatchQueue.main.async { continuation.resume() } }
+                }
+            }
+            if waitForFrame { queue.isSuspended = false; await drain() }
+            let previousFrame = model.replayFrame
+            let nextDay = calendar.date(byAdding: .day, value: 1, to: first)!
+            loaded.points[nextDay] = [ServerHistoryPoint(location: RecordedLocation(id: -3,
+                timestamp: nextDay, latitude: -20, longitude: 140))]
+            let published = expectation(description: "Server publication completes")
+            model.applyServerHistory(loaded) { published.fulfill() }
+            queue.isSuspended = false
+            await fulfillment(of: [published], timeout: 2)
+            await drain()
+            XCTAssertEqual(model.rulerTime, needle)
+            XCTAssertEqual(model.rulerSecondsPerBar, seconds, accuracy: 0.001)
+            XCTAssertEqual(model.cameraCenter, focus)
+            XCTAssertEqual(model.cameraIntentRevision, intent)
+            XCTAssertEqual(model.rulerFrameRevision, frameRevision)
+            let frame = try XCTUnwrap(model.replayFrame)
+            if let previousFrame { XCTAssertFalse(frame === previousFrame) }
+            XCTAssertTrue(frame.coordinates.contains { $0.latitude < 0 },
+                          "Latest bounds are available for the next explicit fit without issuing one on publication")
+            let ruler = try XCTUnwrap(model.serverRuler)
+            XCTAssertEqual(ruler.time(at: Double(model.rulerPointCount) - model.rulerPlaybackPosition), needle)
+            XCTAssertEqual(model.serverRouteDays, [first, nextDay])
+        }
     }
 
     func testScrubbingNewestServerRulerPointDuringPhoneExpiryKeepsTheMatchingFix() async throws {

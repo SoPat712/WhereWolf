@@ -309,6 +309,8 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   do not shift after the drawer. The hosting root must accept a zero minimum
   height and align its intrinsic controls to the top while measurement is pending;
   otherwise SwiftUI centers the changed content inside the previous host height.
+  Measure the controls' natural height independently of the pinned host proposal; closing Details must
+  retarget the existing spring, including after deferred ruler or server publication.
   Details uses one labeled capsule in both modes.
   The history ruler's tick surface is 56 points high, with a 16-point top label lane. A fixed 44-point
   frame row above it offers Day, Week, Month, Year and All as loaded calendar days permit; phone history
@@ -519,6 +521,9 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   real fixes for camera windows and playback. Utility-built projections publish after interaction,
   preserving needle time and seconds per bar; year/month labels outrank days. Missing days show
   Loading/Not downloaded, never phone No data. Day-scale playback drops to Every point.
+  Arriving days draw from their start over 0.8 seconds in foreground layers, then hand off after MapKit
+  confirms a render begun after installation; loading bars fade in over 0.22 seconds. Reduce Motion appears
+  immediately. Publication preserves the needle and camera: only explicit navigation fits newly arrived geometry.
   `CombinedHistoryDaySummaryProvider` gives Go To phone totals inside its window and server totals
   outside, including unknown days. Calendar month/day and navigation requests have separate scopes;
   `HistoryNavigationRequest` waits for its server days before applying and cancels on manual navigation.

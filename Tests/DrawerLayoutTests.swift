@@ -118,6 +118,69 @@ final class DrawerLayoutTests: XCTestCase {
         }
     }
 
+    func testDetailsCloseShrinksAfterBrowsingFrameFitAndHistoryPublication() async throws {
+        try await withDrawer(controls: { AnyView(DrawerBrowsingControls(state: $0)) }) { panel, state in
+            state.browsing = true
+            state.historyFrame = "Week"
+            try await self.waitForBrowsingLayout(panel, state: state)
+            let compactTop = panel.currentGeometry().top
+            let controlsInset = state.visibleMarker.convert(state.visibleMarker.bounds, to: panel.view).minY - compactTop
+
+            state.expanded = true
+            try await self.waitForBrowsingLayout(panel, state: state)
+            let detailsTop = panel.currentGeometry().top
+            XCTAssertLessThan(detailsTop, compactTop - 100)
+
+            // A frame fit can end a coast and publish queued server history while the Details
+            // view disappears. Keep the presentation frozen until that interaction releases it.
+            panel.setContentInteracting(true)
+            state.expanded = false
+            state.historyFrame = "Month"
+            state.publication += 1
+            try await self.waitForFrames("The collapsed controls rendered the pending history") {
+                state.visibleMarker.accessibilityValue == "false"
+                    && state.visibleMarker.accessibilityHint == state.renderedRevision
+            }
+            XCTAssertEqual(panel.currentGeometry().top, detailsTop, accuracy: 0.5)
+            XCTAssertEqual(state.visibleMarker.convert(state.visibleMarker.bounds, to: panel.view).minY - detailsTop,
+                           controlsInset, accuracy: 0.5)
+
+            panel.setContentInteracting(false)
+            state.publication += 1
+            try await self.waitForBrowsingLayout(panel, state: state)
+            XCTAssertEqual(panel.currentGeometry().top, compactTop, accuracy: 0.5)
+            try self.assertCompactControls(panel, state: state)
+
+            state.historyFrame = "Year"
+            state.publication += 1
+            try await self.waitForBrowsingLayout(panel, state: state)
+            XCTAssertEqual(panel.currentGeometry().top, compactTop, accuracy: 0.5)
+            try self.assertCompactControls(panel, state: state)
+        }
+    }
+
+    func testNaturalDetailsCloseRetargetsExpansionAcrossBrowsingChange() async throws {
+        try await withDrawer(controls: { AnyView(DrawerBrowsingControls(state: $0)) }) { panel, state in
+            let compactTop = panel.currentGeometry().top
+            state.expanded = true
+            try await self.waitForFrames("The natural Details content has begun opening") {
+                panel.currentGeometry().top < compactTop - 1 && !panel.isLayoutSettled
+            }
+            let openingTop = panel.currentGeometry().top
+
+            state.expanded = false
+            state.browsing = true
+            state.historyFrame = "Week"
+            state.publication += 1
+            try await self.waitForFrames("The pending expansion is retargeted to the compact browsing controls") {
+                panel.currentGeometry().top > openingTop + 1
+            }
+            try await self.waitForBrowsingLayout(panel, state: state)
+            XCTAssertEqual(panel.currentGeometry().top, compactTop, accuracy: 0.5)
+            try self.assertCompactControls(panel, state: state)
+        }
+    }
+
     func testTabReplacementReleasesPreviousInteractionAndKeepsFittingContentFlat() async throws {
         try await withDrawer { panel, _ in
             let previousTop = panel.currentGeometry().top
@@ -257,12 +320,13 @@ final class DrawerLayoutTests: XCTestCase {
     }
 
     private func withDrawer(tabs: AnyView = AnyView(Text("Tabs").frame(height: 60)),
+                            controls: ((DrawerLayoutState) -> AnyView)? = nil,
                             _ run: (MapControlPanelController, DrawerLayoutState) async throws -> Void) async throws {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.first as? UIWindowScene)
         let previous = scene.windows.first(where: \.isKeyWindow)
         let state = DrawerLayoutState()
         let panel = MapControlPanelController(
-            controls: AnyView(DrawerLayoutControls(state: state, marker: state.marker)),
+            controls: controls?(state) ?? AnyView(DrawerLayoutControls(state: state, marker: state.marker)),
             tabs: tabs
         )
         let clock = DrawerAnimationClock()
@@ -284,6 +348,31 @@ final class DrawerLayoutTests: XCTestCase {
         try await waitForFrames("Drawer content measurement and spring completed") {
             panel.isLayoutSettled && (state.map { $0.marker.accessibilityValue == String($0.expanded) } ?? true)
         }
+    }
+
+    private func waitForBrowsingLayout(_ panel: MapControlPanelController, state: DrawerLayoutState) async throws {
+        try await waitForFrames("Browsing content and drawer sizing agree") {
+            guard panel.isLayoutSettled, state.visibleMarker.accessibilityValue == String(state.expanded),
+                  state.visibleMarker.accessibilityHint == state.renderedRevision else { return false }
+            guard !state.expanded,
+                  let tabs = self.findView(in: panel.view, identifier: "wherewolf.panel.tabs") else { return true }
+            let controlsBottom = state.visibleMarker.convert(state.visibleMarker.bounds, to: panel.view).maxY
+            return abs(tabs.convert(tabs.bounds, to: panel.view).minY - controlsBottom - 6) < 1
+        }
+    }
+
+    private func assertCompactControls(_ panel: MapControlPanelController, state: DrawerLayoutState,
+                                       file: StaticString = #filePath, line: UInt = #line) throws {
+        let tabs = try XCTUnwrap(findView(in: panel.view, identifier: "wherewolf.panel.tabs"), file: file, line: line)
+        let scroll = try XCTUnwrap(contentScroll(in: panel.view), file: file, line: line)
+        let controlsBottom = state.visibleMarker.convert(state.visibleMarker.bounds, to: panel.view).maxY
+        let tabsTop = tabs.convert(tabs.bounds, to: panel.view).minY
+        XCTAssertEqual(tabsTop - controlsBottom, 6, accuracy: 1,
+                       "Only the drawer's bottom content padding remains below the collapsed Details row.",
+                       file: file, line: line)
+        XCTAssertFalse(scroll.isScrollEnabled, file: file, line: line)
+        XCTAssertFalse(scroll.bounces, file: file, line: line)
+        XCTAssertEqual(scroll.contentOffset, .zero, file: file, line: line)
     }
 
     private func waitForFrames(_ description: String, until predicate: @escaping () -> Bool) async throws {
@@ -341,7 +430,14 @@ private final class SheetOpacityRecorder: NSObject {
 @Observable @MainActor
 private final class DrawerLayoutState {
     var expanded = false
+    var browsing = false
+    var historyFrame = "Day"
+    var publication = 0
     let marker = UIView()
+    let browsingMarker = UIView()
+
+    var renderedRevision: String { "\(browsing)-\(historyFrame)-\(publication)" }
+    var visibleMarker: UIView { browsing ? browsingMarker : marker }
 }
 
 private struct DrawerLayoutControls: View {
@@ -367,9 +463,67 @@ private struct DrawerLayoutControls: View {
 private struct DrawerLayoutMarker: UIViewRepresentable {
     let view: UIView
     let expanded: Bool
+    var revision: String? = nil
 
     func makeUIView(context: Context) -> UIView { view }
-    func updateUIView(_ view: UIView, context: Context) { view.accessibilityValue = String(expanded) }
+    func updateUIView(_ view: UIView, context: Context) {
+        view.accessibilityValue = String(expanded)
+        view.accessibilityHint = revision
+    }
+}
+
+// Match the drawer's natural VStack/Spacer sizing and live-to-browsing replacement. The
+// Details card has no fixed height: wrapping and incoming record data determine its size.
+private struct DrawerBrowsingControls: View {
+    @Bindable var state: DrawerLayoutState
+
+    var body: some View {
+        VStack(spacing: 8) {
+            VStack(spacing: 0) {
+                Text("Day · \(state.historyFrame) · All").frame(height: 44)
+                Text("History ruler").frame(height: 56)
+                Text("October 19 at 5:45 AM").font(.caption).frame(height: 18)
+            }
+            if state.browsing {
+                controls(title: "Play", subject: "point", marker: state.browsingMarker)
+                    .transition(.opacity.combined(with: .offset(y: 8)))
+            } else {
+                controls(title: "Tracking", subject: "location", marker: state.marker)
+                    .transition(.opacity.combined(with: .offset(y: 8)))
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .animation(.easeInOut(duration: 0.3), value: state.browsing)
+    }
+
+    private func controls(title: String, subject: String, marker: UIView) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(title)
+                Spacer(minLength: 0)
+                DrawerDetailsButton(expanded: $state.expanded, subject: subject)
+            }
+            .frame(minHeight: 44)
+            .background(DrawerLayoutMarker(view: marker, expanded: state.expanded,
+                                           revision: state.renderedRevision))
+            .padding(.horizontal, 16)
+            if state.expanded {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Location details").font(.headline)
+                    Text("A retained location with its original time, coordinates and recorded accuracies.")
+                        .fixedSize(horizontal: false, vertical: true)
+                    ForEach(["Speed", "Altitude", "Accuracy", "Device"], id: \.self) { name in
+                        HStack {
+                            Text(name)
+                            Spacer(minLength: 0)
+                            Text("Record \(state.publication + 1)").monospacedDigit()
+                        }
+                    }
+                }
+                .padding(16)
+            }
+        }
+    }
 }
 
 @MainActor

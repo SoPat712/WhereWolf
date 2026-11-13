@@ -383,18 +383,19 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
         controlsRevision += 1
         let revision = controlsRevision
         controlsHost.rootView = AnyView(
-            controls
-                .fixedSize(horizontal: false, vertical: true)
-                .onGeometryChange(for: CGFloat.self) { proxy in
-                    ceil(proxy.size.height)
-                } action: { [weak self] height in
-                    guard let self, revision == controlsRevision, height.isFinite, height > 0,
-                          abs(height - controlsContentHeight) > 0.5 else { return }
-                    controlsContentHeight = height
-                    scheduleMeasurement()
-                }
-                // Keep the controls at the top even before UIKit adopts their new height.
-                .frame(maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .top)
+            DrawerControlsLayout(revision: revision, didMeasure: { [weak self] size in
+                // Ignore a replaced page or the width used before a rotation. The scheduled
+                // measurement lets layout finish before UIKit changes the pinned host height.
+                guard let self, revision == controlsRevision,
+                      let controlsWidthConstraint, abs(size.width - controlsWidthConstraint.constant) < 0.5 else { return }
+                let height = ceil(size.height)
+                guard height.isFinite, height >= 0,
+                      abs(height - controlsContentHeight) > 0.5 else { return }
+                controlsContentHeight = height
+                scheduleMeasurement()
+            }) {
+                controls
+            }
         )
     }
 
@@ -1221,6 +1222,41 @@ final class MapControlPanelController: UIViewController, UIGestureRecognizerDele
         gestureRecognizer === drawerPan
             && (otherGestureRecognizer === scrollView.panGestureRecognizer
                 || otherGestureRecognizer.view?.isDescendant(of: tabsHost.view) == true)
+    }
+}
+
+// The host stays pinned while the drawer resizes or the ruler is moving. Measure the child
+// with an unspecified height on every content layout; its allocated geometry can still be
+// the old, taller host after Details closes. Accept the host's full proposal (including zero)
+// and place the naturally sized child at its top so a deferred shrink never centers it.
+private struct DrawerControlsLayout: Layout {
+    let revision: Int
+    let didMeasure: (CGSize) -> Void
+
+    struct Cache {
+        var revision = -1
+        var reportedSize: CGSize?
+    }
+
+    func makeCache(subviews: Subviews) -> Cache { Cache() }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache) -> CGSize {
+        guard let controls = subviews.first else { return .zero }
+        let size = controls.sizeThatFits(ProposedViewSize(width: proposal.width, height: nil))
+        return CGSize(width: proposal.width ?? size.width, height: proposal.height ?? size.height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache) {
+        guard let controls = subviews.first else { return }
+        let proposal = ProposedViewSize(width: bounds.width, height: nil)
+        let size = controls.sizeThatFits(proposal)
+        controls.place(at: bounds.origin, anchor: .topLeading,
+                       proposal: ProposedViewSize(width: bounds.width, height: size.height))
+        let measured = CGSize(width: bounds.width, height: size.height)
+        guard cache.revision != revision || cache.reportedSize != measured else { return }
+        cache.revision = revision
+        cache.reportedSize = measured
+        didMeasure(measured)
     }
 }
 

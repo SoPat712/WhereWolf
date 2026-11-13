@@ -311,6 +311,9 @@ struct NativeMapSurface: UIViewRepresentable {
     var replayPosition: Double
     var replayAccuracy: CLLocationAccuracy? = nil
     var replayDayTracks: ReplayDayTracks? = nil
+    var replayServerDays: Set<Date> = []
+    var replayPublicationRevision = 0
+    var replayCameraIntent = 0
     // An explicit settled interval can also drive day tracks whose raw points are not loaded.
     var replaySecondsPerBar: TimeInterval? = nil
     var replayFrame: ReplayHistoryFrame? = nil
@@ -453,6 +456,7 @@ struct NativeMapSurface: UIViewRepresentable {
         coordinator.stopLiveMotion()
         coordinator.stopReplayHeading()
         coordinator.stopReplayCoverageExpiry()
+        coordinator.stopReplayArrivals()
         coordinator.stopHeadingMode()
         coordinator.clearMapContact()
         map.showsUserLocation = false
@@ -464,7 +468,7 @@ struct NativeMapSurface: UIViewRepresentable {
         private enum Request: Equatable {
             case camera(MapCamera)
             case region(Double, Double, Double, Double)
-            case overview(ObjectIdentifier, ClosedRange<Int>?)
+            case overview(ObjectIdentifier?)
             case follow
             case automatic
         }
@@ -485,7 +489,6 @@ struct NativeMapSurface: UIViewRepresentable {
         private var tripCoordinates: [CLLocationCoordinate2D] = []
         private var tripLine: MKPolyline?
         private var replayRoute: ReplayRouteGeometry?
-        private var unmarkedReplayLine: MKPolyline?
         private var replayPresentation: ReplayRoutePresentation?
         private var replayDisplay: ReplayRouteDisplay?
         private let replayDayCache = ReplayDayRouteCache()
@@ -514,6 +517,16 @@ struct NativeMapSurface: UIViewRepresentable {
         private var overviewFit: (route: ObjectIdentifier, highlight: ClosedRange<Int>?, bounds: CGRect, clear: CGRect,
                                   heading: CLLocationDirection, pitch: CGFloat, type: MKMapType, camera: MapCamera)?
         private var overviewViewport: (bounds: CGRect, safeArea: UIEdgeInsets)?
+        private(set) var holdsCameraForPublication = false
+        private var publicationCameraCoordinate: CLLocationCoordinate2D?
+        private var cameraFollowCoordinate: CLLocationCoordinate2D? {
+            holdsCameraForPublication ? publicationCameraCoordinate : parent.selected
+        }
+        private var arrivals = ReplayArrivalSchedule()
+        private var arrivalLayers: [Date: ReplayArrivalLayer] = [:]
+        private var fineArrivalDays: [Date: [ClosedRange<Int>]] = [:]
+        private var arrivalWork: DispatchWorkItem?
+        private var arrivalDeadline: TimeInterval?
 #if targetEnvironment(simulator)
         var displayedTrailCoordinate: CLLocationCoordinate2D? { replayTrailLayer.coordinate }
         var replayAuditValues: [String: Double] {
@@ -621,6 +634,7 @@ struct NativeMapSurface: UIViewRepresentable {
             self.parent = parent
             self.liveHeading = liveHeading
             super.init()
+            arrivals.observe(parent.replayServerDays, active: false, reduceMotion: false)
             liveHeading.onHeading = { [weak self] in self?.receiveDeviceHeading($0) }
             liveHeading.onNeedsDisplay = { [weak self] in
                 guard let self, let map = self.map else { return }
@@ -635,6 +649,23 @@ struct NativeMapSurface: UIViewRepresentable {
             let replayModeChanged = parent.replayActive != self.parent.replayActive
             let cameraAction = parent.replayCameraAction != self.parent.replayCameraAction
                 || parent.recenterAction != self.parent.recenterAction
+            let publication = parent.replayPublicationRevision != self.parent.replayPublicationRevision
+            let navigation = cameraAction || replayModeChanged
+                || parent.replayCameraIntent != self.parent.replayCameraIntent
+                || parent.scenePhase != self.parent.scenePhase || parent.pageActive != self.parent.pageActive
+                || parent.rulerZoomActive != self.parent.rulerZoomActive
+                || (!publication && (parent.replayPosition != self.parent.replayPosition
+                    || parent.replayFollowing != self.parent.replayFollowing
+                    || (!holdsCameraForPublication && parent.replayOverview != self.parent.replayOverview)
+                    || (!parent.replayActive && parent.liveRulerGeometry !== self.parent.liveRulerGeometry)))
+            if navigation { holdsCameraForPublication = false; publicationCameraCoordinate = nil }
+            else if publication {
+                if !holdsCameraForPublication { publicationCameraCoordinate = self.parent.selected }
+                holdsCameraForPublication = true
+            }
+            arrivals.observe(parent.replayServerDays,
+                active: wasVisible && parent.sceneVisible && parent.pageActive && parent.replayActive && !replayModeChanged,
+                reduceMotion: UIAccessibility.isReduceMotionEnabled)
             if parent.replayActive && !self.parent.replayActive, let map {
                 replayLiveDistance = liveRulerBaseDistance ?? (cameraZooming || cameraFlight
                     ? cameraDestination?.distance ?? map.camera.centerCoordinateDistance
@@ -710,8 +741,17 @@ struct NativeMapSurface: UIViewRepresentable {
             updateOverlays(map)
             updateSelection(map)
             observeGestures(in: map)
-            let restoredRuler = updateRulerZoom(on: map, wasVisible: wasRulerVisible, liveFlight: liveFlight)
-            if !restoredRuler {
+            if publication, !navigation {
+                // The same time has new source indices and a new points-per-bar normalization.
+                // Adopt those anchors without treating either change as a scale gesture.
+                if scaledRuler != nil { scaledRuler = parent.rulerZoom }
+                rulerFitPosition = parent.replayPosition
+                rulerLiveFitID = parent.liveRulerGeometry?.pointIDs.last
+                resetRulerScaleFits()
+            }
+            let restoredRuler = holdsCameraForPublication ? false
+                : updateRulerZoom(on: map, wasVisible: wasRulerVisible, liveFlight: liveFlight)
+            if !restoredRuler && !holdsCameraForPublication {
                 if cameraAction {
                     applyPosition(map, animated: scaledRuler == nil && visible && !UIAccessibility.isReduceMotionEnabled, force: true)
                 } else if !cameraActionAnimating && !interacting && !hasMapContact {
@@ -741,7 +781,17 @@ struct NativeMapSurface: UIViewRepresentable {
                 overviewFit = nil
                 invalidateReplayDetail()
                 replayRoute = parent.replayRoute
+                fineArrivalDays = [:]
                 if let route = replayRoute {
+                    for day in parent.replayServerDays {
+                        let end = Calendar.current.date(byAdding: .day, value: 1, to: day)!
+                        let first = HistoryLandmarks.lowerBound(route.timestamps.count) { route.timestamps[$0] >= day }
+                        let last = HistoryLandmarks.lowerBound(route.timestamps.count) { route.timestamps[$0] >= end }
+                        if first < last {
+                            // Include the new day's joins without exposing them underneath its reveal.
+                            fineArrivalDays[day] = [max(0, first - 1)...min(route.timestamps.count - 1, last)]
+                        }
+                    }
                     if let display = replayDisplay {
                         display.reload(coordinates: route.coordinates, ids: route.pointIDs,
                                        position: parent.replayPosition).apply(to: map)
@@ -759,6 +809,8 @@ struct NativeMapSurface: UIViewRepresentable {
                     replayRenderCamera = nil
                 }
             }
+            replayDisplay?.setArrivalDays(fineArrivalDays, concealed: arrivals.concealed(at: CACurrentMediaTime())).apply(to: map)
+            replayDisplay?.setUnmarked(parent.selected == nil).apply(to: map)
             replayDisplay?.updatePosition(parent.replayPosition).apply(to: map)
             scheduleReplayCoverageExpiry()
             if !sameCoordinates(tripCoordinates, parent.coordinates) {
@@ -874,6 +926,61 @@ struct NativeMapSurface: UIViewRepresentable {
             }
         }
 
+        func stopReplayArrivals() {
+            arrivalWork?.cancel(); arrivalWork = nil; arrivalDeadline = nil
+            for layer in arrivalLayers.values { layer.removeFromSuperlayer() }
+            arrivalLayers.removeAll()
+            arrivals.observe(parent.replayServerDays, active: false, reduceMotion: false)
+        }
+
+        private func updateReplayArrivals(on map: MKMapView) {
+            let now = CACurrentMediaTime()
+            if UIAccessibility.isReduceMotionEnabled {
+                arrivals.observe(parent.replayServerDays, active: true, reduceMotion: true)
+            }
+            guard let display = replayDisplay else { stopReplayArrivals(); return }
+            display.setArrivalDays(fineArrivalDays, concealed: arrivals.concealed(at: now), now: now).apply(to: map)
+            let marker = selectedPoint.flatMap { map.view(for: $0) }
+            let projection = arrivals.days.isEmpty ? nil : ReplayScreenProjection(map: map, container: marker?.superview ?? map)
+            for day in arrivals.days.sorted() {
+                guard let projection, let value = display.arrival(on: day, position: parent.replayPosition,
+                    hiding: parent.replayHighlight) else { continue }
+                let layer = arrivalLayers[day] ?? ReplayArrivalLayer()
+                arrivalLayers[day] = layer
+                layer.update(route: value.route, ranges: value.ranges,
+                    position: parent.selected == nil ? nil : value.position, coordinate: parent.selected,
+                    projection: projection, on: map, below: marker)
+                if !layer.visible {
+                    arrivals.finish(day)
+                    continue
+                }
+                arrivals.start(day, at: now)
+                if !layer.began { layer.reveal(animated: !UIAccessibility.isReduceMotionEnabled) }
+                if let start = arrivals.started[day], now >= start + ReplayArrivalSchedule.duration,
+                   display.arrivalsRendered {
+                    arrivals.finish(day)
+                }
+            }
+            // Removal and overlay installation share this transaction; stale render callbacks cannot end coverage.
+            display.setArrivalDays(fineArrivalDays, concealed: arrivals.concealed(at: now), now: now).apply(to: map)
+            for day in Array(arrivalLayers.keys) where !arrivals.days.contains(day) {
+                arrivalLayers.removeValue(forKey: day)?.removeFromSuperlayer()
+            }
+            let deadline = arrivals.nextDeadline(after: now)
+            if deadline != arrivalDeadline {
+                arrivalWork?.cancel(); arrivalWork = nil; arrivalDeadline = deadline
+                if let deadline {
+                    let work = DispatchWorkItem { [weak self] in
+                        guard let self, let map = self.map else { return }
+                        self.arrivalDeadline = nil; self.arrivalWork = nil
+                        self.alignMarkers(on: map)
+                    }
+                    arrivalWork = work
+                    DispatchQueue.main.asyncAfter(deadline: .now() + max(0, deadline - now), execute: work)
+                }
+            }
+        }
+
         func alignMarkers(on map: MKMapView) {
             guard parent.sceneVisible, parent.pageActive else {
                 stopReplayCoverageExpiry()
@@ -882,17 +989,14 @@ struct NativeMapSurface: UIViewRepresentable {
                 replayFutureLayer.hide()
                 replayHighlightLayer.hide()
                 replayAccuracyLayer.hide()
+                stopReplayArrivals()
                 return
             }
-            if replayDetailSettled { replayDisplay?.finishHandoff().apply(to: map) }
-            let unmarked = parent.selected == nil ? replayDisplay?.presentation : nil
-            let line = unmarked.flatMap { $0.sections.indices.contains($0.activeIndex) ? $0.sections[$0.activeIndex].polyline : nil }
-            if unmarkedReplayLine !== line {
-                if let unmarkedReplayLine, replayDisplay?.presentation.contains(unmarkedReplayLine) != true {
-                    map.removeOverlay(unmarkedReplayLine)
-                }
-                unmarkedReplayLine = line
-                if let line { map.addOverlay(line, level: .aboveRoads) }
+            updateReplayArrivals(on: map)
+            if replayDetailSettled {
+                let wasSwitching = replayDisplay?.isSwitching == true
+                replayDisplay?.finishHandoff().apply(to: map)
+                if wasSwitching, replayDisplay?.isSwitching == false { updateReplayArrivals(on: map) }
             }
             if cameraZooming && zoomKeepsCentering, let coordinate = zoomAnchor(on: map) {
                 if anchorCoordinate?.latitude != coordinate.latitude || anchorCoordinate?.longitude != coordinate.longitude {
@@ -1068,9 +1172,9 @@ struct NativeMapSurface: UIViewRepresentable {
 
         private func applyPosition(_ map: MKMapView, animated: Bool, force: Bool = false) {
             let next: Request
-            if parent.replayOverview, let route = parent.replayRoute {
-                next = .overview(parent.replayFrame.map(ObjectIdentifier.init) ?? ObjectIdentifier(route), parent.replayFitRange)
-            } else if parent.replayFollowing, parent.replayRoute != nil, let coordinate = parent.selected {
+            if parent.replayOverview, parent.replayRoute != nil {
+                next = .overview(parent.replayFrame.map(ObjectIdentifier.init))
+            } else if parent.replayFollowing, parent.replayRoute != nil, let coordinate = cameraFollowCoordinate {
                 next = .camera(MapCamera(centerCoordinate: coordinate,
                     distance: rulerDistance ?? parent.replayFollowDistance ?? parent.position.camera?.distance ?? 2_000,
                     heading: map.camera.heading, pitch: rulerPitch ?? Double(map.camera.pitch)))
@@ -1100,7 +1204,7 @@ struct NativeMapSurface: UIViewRepresentable {
                 if let destination {
                     // An opened trip can be far away, so the map flies out and back in to show it.
                     var trip = false
-                    if case .overview(_, let highlight) = next { trip = highlight != nil }
+                    if case .overview = next { trip = parent.replayFitRange != nil }
                     startCameraTransition(to: destination, on: map, flight: trip, clockOnFirstFrame: trip)
                     if trip, let origin = markerOrigin, let selectedPoint {
                         markerGlide = (origin.coordinate, origin.live, origin.live ? 0 : 1)
@@ -1181,6 +1285,7 @@ struct NativeMapSurface: UIViewRepresentable {
         }
 
         private func receiveRulerScale(_ frame: RulerScaleChannel.Frame?) {
+            if frame != nil { holdsCameraForPublication = false }
             guard let frame else {
                 if let previous = rulerScaleFrame { rulerScalePendingCommit = previous }
                 rulerScaleFrame = nil
@@ -1557,7 +1662,7 @@ struct NativeMapSurface: UIViewRepresentable {
         }
 
         private func zoomAnchor(on map: MKMapView) -> CLLocationCoordinate2D? {
-            if parent.replayActive { return parent.replayFollowing ? parent.selected : nil }
+            if parent.replayActive { return parent.replayFollowing ? cameraFollowCoordinate : nil }
             if parent.position.followsUserLocation {
                 return displayedLiveCoordinate ?? map.userLocation.location?.coordinate
             }
@@ -1617,7 +1722,7 @@ struct NativeMapSurface: UIViewRepresentable {
             let focusCoordinate = cameraZooming || (cameraFlight && !parent.replayOverview) ? zoomAnchor(on: map) : nil
             if let focusCoordinate {
                 destination.centerCoordinate = focusCoordinate
-            } else if !cameraZooming, !replayDetached, !parent.replayOverview, let coordinate = parent.selected {
+            } else if !cameraZooming, !replayDetached, !parent.replayOverview, let coordinate = cameraFollowCoordinate {
                 destination.centerCoordinate = coordinate
             }
             if let heading = followedHeading { destination.heading = heading }
@@ -1722,7 +1827,7 @@ struct NativeMapSurface: UIViewRepresentable {
                 map.setCamera(MKMapCamera(camera), animated: animated)
                 return
             }
-            let center = parent.selected ?? camera.centerCoordinate
+            let center = cameraFollowCoordinate ?? camera.centerCoordinate
             anchorCoordinate = center
             correctionsRemaining = 6
             hasInitialCamera = true
@@ -2141,7 +2246,7 @@ struct NativeMapSurface: UIViewRepresentable {
         func mapView(_ mapView: MKMapView, rendererFor overlay: any MKOverlay) -> MKOverlayRenderer {
             if let renderer = replayDisplay?.renderer(for: overlay) { return renderer }
             // A deferred renderer request for a removed replay line must not fall back to blue.
-            guard let line = overlay as? MKPolyline, line === tripLine || line === unmarkedReplayLine else {
+            guard let line = overlay as? MKPolyline, line === tripLine else {
                 return MKOverlayRenderer(overlay: overlay)
             }
             let renderer = MKPolylineRenderer(polyline: line)

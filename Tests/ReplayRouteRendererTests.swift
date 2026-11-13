@@ -5,6 +5,176 @@ import SwiftUI
 
 @MainActor
 final class ReplayRouteRendererTests: XCTestCase {
+    func testArrivalsStartWhenGeometryIsReadyAndDoNotRestartForPointOrZoomReplacement() {
+        let first = Date(timeIntervalSince1970: 0), second = Date(timeIntervalSince1970: 86_400)
+        var schedule = ReplayArrivalSchedule()
+        schedule.observe([], active: true, reduceMotion: false)
+        schedule.observe([first], active: true, reduceMotion: false)
+        XCTAssertEqual(schedule.concealed(at: 10), [first])
+        XCTAssertNil(schedule.nextDeadline(after: 10), "A track may still be simplifying off-main")
+        schedule.start(first, at: 10)
+        schedule.observe([first, second], active: true, reduceMotion: false)
+        schedule.start(second, at: 10.3)
+        schedule.observe([first, second], active: true, reduceMotion: false)
+        schedule.start(first, at: 10.5)
+        XCTAssertEqual(schedule.started[first], 10)
+        XCTAssertEqual(schedule.concealed(at: 10.81), [second])
+        XCTAssertEqual(schedule.nextDeadline(after: 10.81)!, 11.1, accuracy: 0.001)
+        XCTAssertEqual(schedule.days, [first, second], "Completed strokes stay covered until their overlays render")
+        schedule.finish(first)
+        schedule.observe([second], active: true, reduceMotion: false)
+        XCTAssertEqual(schedule.days, [second])
+    }
+
+    func testArrivalsSkipInitialSnapshotsHiddenScenesAndReduceMotion() {
+        let day = Date(timeIntervalSince1970: 0)
+        var schedule = ReplayArrivalSchedule()
+        schedule.observe([day], active: true, reduceMotion: false)
+        XCTAssertTrue(schedule.days.isEmpty)
+        schedule.observe([], active: true, reduceMotion: false)
+        schedule.observe([day], active: false, reduceMotion: false)
+        schedule.observe([day], active: true, reduceMotion: false)
+        XCTAssertTrue(schedule.days.isEmpty)
+        schedule.observe([], active: true, reduceMotion: false)
+        schedule.observe([day], active: true, reduceMotion: false)
+        schedule.start(day, at: 10)
+        schedule.observe([day], active: true, reduceMotion: true)
+        XCTAssertTrue(schedule.concealed(at: 10.1).isEmpty)
+        XCTAssertNil(schedule.nextDeadline(after: 10.1))
+        schedule.observe([day], active: true, reduceMotion: false)
+        XCTAssertTrue(schedule.days.isEmpty)
+    }
+
+    func testArrivalMasksOnlyNewSegmentsAndWaitsForRenderAfterUnmasking() {
+        let route = ReplayRoutePresentation(coordinates: coordinates(count: 4_000), position: 1_500, now: 10)
+        let display = ReplayRouteDisplay(route)
+        let day = Date(timeIntervalSince1970: 0), hidden = 800...2_400
+        _ = display.setArrivalDays([day: [hidden]], concealed: [day], now: 10)
+        XCTAssertEqual(route.position, 1_500)
+        for future in [false, true] {
+            for span in route.layerCoverage(future: future, now: 10) {
+                XCTAssertTrue(span.end <= hidden.lowerBound || span.start >= hidden.upperBound)
+            }
+        }
+        // Both boundary sections retain their already visible pieces, using native vector renderers.
+        for overlay in route.overlays {
+            let line = overlay as! MKPolyline
+            for index in 0..<line.pointCount {
+                let point = line.points()[index]
+                let hiddenPoints = route.fullRoute.points()
+                XCTAssertFalse(point.x > hiddenPoints[hidden.lowerBound].x && point.x < hiddenPoints[hidden.upperBound].x)
+            }
+            XCTAssertTrue(type(of: route.renderer(for: overlay)!) == MKPolylineRenderer.self)
+        }
+        display.renderingBegan()
+        _ = display.setArrivalDays([day: [hidden]], concealed: [], now: 11)
+        display.renderingFinished(fullyRendered: true)
+        XCTAssertFalse(display.arrivalsRendered, "An in-flight render cannot dismiss the entrance layer")
+        route.expireCoverage(now: 20)
+        XCTAssertFalse(display.arrivalsRendered, "The ordinary coverage timeout is not a render confirmation")
+        display.renderingBegan()
+        display.renderingFinished(fullyRendered: true)
+        XCTAssertTrue(display.arrivalsRendered)
+        XCTAssertEqual(route.position, 1_500)
+    }
+
+    func testSimplifiedTrackArrivalKeepsItsSpansAndMasksTheUnmarkedSection() throws {
+        let input = dailyRoute(days: 1, count: 30)
+        let day = input.calendar.date(byAdding: .day, value: -1, to: input.dates[0])!
+        let lines = [Array(input.points[0..<5]), Array(input.points[10..<15])]
+        var builder = ReplayDayRouteBuilder()
+        let geometry = builder.build(points: input.points, ids: input.ids, dates: input.dates,
+            tracks: ReplayDayTracks(segments: [day: lines]), calendar: input.calendar, bucket: 4, highlight: nil)
+        XCTAssertEqual(geometry.days[day]?.count, 2)
+        let fine = ReplayRoutePresentation(coordinates: input.points.map(\.coordinate), pointIDs: input.ids)
+        let display = ReplayRouteDisplay(fine)
+        _ = display.setUnmarked(true)
+        _ = display.setArrivalDays([:], concealed: [day])
+        _ = display.stage(geometry, position: 0)
+        let arriving = try XCTUnwrap(display.arrival(on: day, position: 0))
+        XCTAssertEqual(arriving.ranges, geometry.days[day])
+        XCTAssertEqual(arriving.route.concealed, arriving.ranges)
+        XCTAssertEqual(arriving.position, geometry.position(for: 0))
+        display.renderingBegan(); display.renderingFinished(fullyRendered: true)
+        _ = display.finishHandoff()
+        XCTAssertTrue(display.isSimplified)
+        XCTAssertEqual(display.presentation.concealed, arriving.ranges)
+        _ = display.setArrivalDays([:], concealed: [])
+        XCTAssertFalse(display.arrivalsRendered)
+        display.renderingBegan(); display.renderingFinished(fullyRendered: true)
+        XCTAssertTrue(display.arrivalsRendered)
+    }
+
+    func testArrivalLayerDrawsForwardWithoutMovingTheCameraAndHonorsReduceMotion() throws {
+        let values = coordinates(count: 300)
+        let route = ReplayRoutePresentation(coordinates: values, position: 150.5)
+        let map = MKMapView(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        map.region = MKCoordinateRegion(center: values[150], latitudinalMeters: 2_000, longitudinalMeters: 2_000)
+        let camera = MapCamera(map.camera)
+        let layer = ReplayArrivalLayer()
+        layer.update(route: route, ranges: [50...250], position: 150.5,
+            coordinate: interpolated(values, at: 150.5), projection: ReplayScreenProjection(map: map, container: map),
+            on: map, below: nil)
+        let mask = try XCTUnwrap(layer.mask as? CAShapeLayer)
+        var first: CGPoint?
+        mask.path?.applyWithBlock { element in if first == nil { first = element.pointee.points[0] } }
+        let start = map.convert(values[50], toPointTo: map)
+        XCTAssertEqual(try XCTUnwrap(first).x, start.x, accuracy: 0.5)
+        XCTAssertEqual(try XCTUnwrap(first).y, start.y, accuracy: 0.5)
+        layer.reveal(animated: true)
+        XCTAssertEqual(mask.animation(forKey: "arrival")?.duration, 0.8)
+        layer.reveal(animated: false)
+        XCTAssertFalse(layer.isRevealing)
+        XCTAssertEqual(mask.strokeEnd, 1)
+        XCTAssertEqual(MapCamera(map.camera), camera)
+        layer.removeFromSuperlayer()
+    }
+
+    func testServerPublicationPreservesOverviewFollowingAndFreedCamerasUntilExplicitNavigation() {
+        let values = coordinates(count: 50), start = Date(timeIntervalSince1970: 1_700_000_000)
+        let points = values.enumerated().map {
+            RecordedLocation(id: Int64($0.offset), timestamp: start.addingTimeInterval(Double($0.offset)),
+                latitude: $0.element.latitude, longitude: $0.element.longitude)
+        }
+        let older = (0..<100).map {
+            RecordedLocation(id: -Int64($0 + 1), timestamp: start.addingTimeInterval(Double($0 - 200)),
+                latitude: 30 + Double($0) / 100, longitude: -90)
+        }
+        for mode in 0..<4 {
+            var surface = NativeMapSurface(position: .camera(MapCamera(centerCoordinate: values[25], distance: 4_000)),
+                mapType: .standard, coordinates: [], replayRoute: ReplayRouteGeometry(points: points), replayPosition: 25,
+                replayActive: true, replayFollowing: mode != 2, replayOverview: mode == 0,
+                rulerZoom: mode == 1 ? ReplayRulerHold(pointsPerBar: 5, visibleBars: 20) : nil,
+                selected: mode == 3 ? nil : values[25], selectedTitle: "Recorded point", scenePhase: .active, pageActive: true,
+                onCameraChange: { _, _ in }, onInteraction: {})
+            let coordinator = NativeMapSurface.Coordinator(surface)
+            let map = MKMapView(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+            coordinator.map = map
+            coordinator.update(surface, animated: false)
+            coordinator.advanceRulerZoom(at: CACurrentMediaTime() + 5)
+            let before = MapCamera(map.camera)
+            surface.replayRoute = ReplayRouteGeometry(points: older + points)
+            surface.replayPosition += Double(older.count)
+            if mode == 3 { surface.selected = older[0].coordinate; surface.replayPosition = 0 }
+            surface.replayPublicationRevision += 1
+            if mode == 1 { surface.rulerZoom = ReplayRulerHold(pointsPerBar: 12, visibleBars: 20) }
+            coordinator.update(surface, animated: true)
+            XCTAssertTrue(coordinator.holdsCameraForPublication)
+            XCTAssertEqual(MapCamera(map.camera), before, "Mode \(mode)")
+            // An unrelated SwiftUI update or a later frame object must not consume the rebased indices as navigation.
+            surface.replayFrame = ReplayHistoryFrame(points: older + points, tracks: nil,
+                range: older[0].timestamp...points.last!.timestamp, calendar: .current)
+            if mode == 1 || mode == 3 { surface.replayOverview = true }
+            coordinator.update(surface, animated: false)
+            coordinator.advanceRulerZoom(at: CACurrentMediaTime() + 5)
+            XCTAssertEqual(MapCamera(map.camera), before)
+            surface.replayCameraAction += 1
+            coordinator.update(surface, animated: false)
+            XCTAssertFalse(coordinator.holdsCameraForPublication)
+            NativeMapSurface.dismantleUIView(map, coordinator: coordinator)
+        }
+    }
+
     func testDaySimplificationPreservesEndpointsAndBoundsEveryOriginalPoint() {
         let points = (0..<8_000).map { index in
             MKMapPoint(x: Double(index) * 2, y: sin(Double(index) * 0.017) * 100)

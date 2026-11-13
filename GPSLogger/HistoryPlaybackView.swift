@@ -6,7 +6,7 @@ import UIKit
 @MainActor
 final class HistoryPlaybackModel {
     private(set) var points: [RecordedLocation] = [] {
-        didSet { serverRulerPointsRevision = nil; clampRulerStep() }
+        didSet { serverRulerPointsRevision = nil; if !publishingServerResult { clampRulerStep() } }
     }
     // Phone reads advance independently; downloaded points and their geometry publish as one projection.
     @ObservationIgnored private var phonePoints: [RecordedLocation] = [] {
@@ -18,6 +18,13 @@ final class HistoryPlaybackModel {
     private(set) var serverRulerLandmarks: HistoryLandmarks?
     private(set) var replayDayTracks: ReplayDayTracks?
     private(set) var replayFrame: ReplayHistoryFrame?
+    private(set) var serverRouteDays: Set<Date> = []
+    private(set) var serverPublicationRevision = 0
+    private(set) var cameraIntentRevision = 0
+    @ObservationIgnored private var publishingServerResult = false
+    @ObservationIgnored private var requestedCameraCenter: ReplayCoordinate?
+    @ObservationIgnored private var serverSnapshotRevision = 0
+    @ObservationIgnored private var publishedServerSnapshotRevision = 0
     @ObservationIgnored private var replayFrameGeneration = 0
     private(set) var combinedDaySummaries: CombinedHistoryDaySummaryProvider?
     @ObservationIgnored private let serverHistory: ServerHistoryStore?
@@ -55,6 +62,8 @@ final class HistoryPlaybackModel {
         let payloads: [Int64: RecordedPayload]
         let summaries: CombinedHistoryDaySummaryProvider?
         let tracks: ReplayDayTracks?
+        let routeDays: Set<Date>
+        let snapshotRevision: Int
         let stopNames: DawarichStopNames
     }
     private(set) var selectedIndex: Int?
@@ -68,7 +77,12 @@ final class HistoryPlaybackModel {
     }
     private(set) var renderPose: ReplayPose? {
         get { access(keyPath: \.renderPose); return storedRenderPose }
-        set { publish(\.renderPose) { storedRenderPose = newValue } }
+        set {
+            publish(\.renderPose) {
+                storedRenderPose = newValue
+                if !publishingServerResult { requestedCameraCenter = newValue?.coordinate }
+            }
+        }
     }
     private(set) var rulerTime: Date? {
         get { access(keyPath: \.rulerTime); return storedRulerTime }
@@ -139,6 +153,7 @@ final class HistoryPlaybackModel {
         let step = snapping ? rulerDetents.nearestStep(to: step) : min(rulerDetents.steps[0], max(1, step))
         rulerFrameRange = nil
         guard rulerStep != step else { return }
+        cameraIntentRevision &+= 1
         rulerStep = step
         refreshReplayFrame()
         requestServerDays()
@@ -361,6 +376,7 @@ final class HistoryPlaybackModel {
         if serverSnapshot.firstDay == nil, snapshot.firstDay != nil, navigationRequest != nil { navigationPending = true }
         let changedSource = serverSnapshot.firstDay != nil || snapshot.firstDay != nil || serverRuler != nil
         serverSnapshot = snapshot
+        serverSnapshotRevision &+= 1
         if consumerActive { requestPhoneStopNames() }
         guard changedSource, consumerActive else { completion?(); return }
         if snapshot.firstDay == nil { interruptRuler(); stopPlayback(); pendingPlay = false }
@@ -395,6 +411,7 @@ final class HistoryPlaybackModel {
         let generation = serverGeneration
         let phone = phonePoints
         let snapshot = serverSnapshot
+        let snapshotRevision = serverSnapshotRevision
         let queued = queuedPoints
         let places = placesProvider()
         let now = clock(), cutoff = clock().addingTimeInterval(-retentionInterval)
@@ -433,7 +450,10 @@ final class HistoryPlaybackModel {
                 geometry: ReplayRouteGeometry(points: merged, stays: timeline.stays),
                 liveGeometry: LiveRulerGeometry(points: merged), ruler: ruler,
                 rulerLandmarks: rulerLandmarks, payloads: payloads, summaries: summaries,
-                tracks: snapshot.firstDay == nil ? nil : ReplayDayTracks(segments: tracks), stopNames: snapshot.stopNames)
+                tracks: snapshot.firstDay == nil ? nil : ReplayDayTracks(segments: tracks),
+                routeDays: snapshot.firstDay == nil ? [] : Set(tracks.keys).union(snapshot.points.compactMap {
+                    $0.key < phoneDay && !$0.value.isEmpty ? $0.key : nil
+                }), snapshotRevision: snapshotRevision, stopNames: snapshot.stopNames)
             DispatchQueue.main.async { [weak self] in
                 guard let self, generation == self.serverGeneration else { return }
                 if self.isRulerInteracting || self.isPlaying || !self.consumerActive { self.pendingServerResult = result }
@@ -444,6 +464,7 @@ final class HistoryPlaybackModel {
     }
 
     private func publishServerResult(_ result: ServerResult) {
+        publishingServerResult = true
         let time = rulerTime
         let seconds = rulerSecondsPerBar
         let wasFine = rulerStep == 1
@@ -456,6 +477,7 @@ final class HistoryPlaybackModel {
         serverRulerLandmarks = result.rulerLandmarks
         combinedDaySummaries = result.summaries
         replayDayTracks = result.tracks
+        serverRouteDays = result.routeDays
         points = result.points
         landmarks = result.landmarks
         serverPayloads = result.payloads
@@ -483,7 +505,13 @@ final class HistoryPlaybackModel {
         if let oldRange, let ruler = result.ruler {
             rulerFrameRange = ruler.index(at: oldRange.lowerBound)...ruler.index(at: oldRange.upperBound)
         }
+        if result.snapshotRevision != publishedServerSnapshotRevision {
+            serverPublicationRevision &+= 1
+            publishedServerSnapshotRevision = result.snapshotRevision
+        }
+        publishingServerResult = false
         if navigationPending { _ = applyNavigationRequest() }
+        // Keep bounds ready for the next explicit fit; the publication revision keeps this data-only.
         refreshReplayFrame()
         if pendingPlay, selectedPoint != nil {
             pendingPlay = false
@@ -574,7 +602,7 @@ final class HistoryPlaybackModel {
 
     var playbackCoordinate: ReplayCoordinate? { renderPose?.coordinate }
 
-    var cameraCenter: ReplayCoordinate? { renderPose?.coordinate }
+    var cameraCenter: ReplayCoordinate? { _ = renderPose; return requestedCameraCenter }
 
     var playbackAccuracy: CLLocationAccuracy? {
         _ = payloadRevision
@@ -1000,6 +1028,7 @@ final class HistoryPlaybackModel {
     }
 
     func scrub(to time: Date) {
+        if !publishingServerResult { cameraIntentRevision &+= 1 }
         cancelNavigationRequest()
         if let ruler = serverRuler {
             interruptRuler(); pause(); isBrowsing = true
@@ -1027,6 +1056,7 @@ final class HistoryPlaybackModel {
     }
 
     func beginRulerInteraction() {
+        cameraIntentRevision &+= 1
         cancelNavigationRequest()
         rulerFrameRange = nil
         replayFrameGeneration &+= 1
@@ -1164,6 +1194,7 @@ final class HistoryPlaybackModel {
     }
 
     func select(_ index: Int) {
+        if !publishingServerResult { cameraIntentRevision &+= 1 }
         cancelNavigationRequest()
         interruptRuler()
         pause()
@@ -1811,7 +1842,8 @@ struct HistoryRuler: View {
                     history.scrub(pointAt: history.points.count - target)
                 }
             }, highlight: history.rulerHighlightedRange, poseChannel: history.poseChannel,
-               showsFrames: true, onFit: { history.fitRuler($0) }, rulerTimeline: history.serverRuler, rulerSourcePositions: history.serverRuler?.sourcePositions)
+               showsFrames: true, onFit: { history.fitRuler($0) }, rulerTimeline: history.serverRuler,
+               rulerSourcePositions: history.serverRuler?.sourcePositions, loadedServerDays: history.serverRouteDays)
             .frame(height: 100)
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { history.setRulerWidth($0) }
             HStack {
@@ -2202,6 +2234,7 @@ struct HistoryRulerSurface: UIViewRepresentable {
     var onFit: (HistoryRulerStretch) -> Void = { _ in }
     var rulerTimeline: ServerHistoryRuler? = nil
     var rulerSourcePositions: [Int]? = nil
+    var loadedServerDays: Set<Date> = []
     var rulerPointCount: Int { rulerTimeline?.count ?? points.count }
     func timestamp(at index: Int) -> Date { rulerTimeline?.timestamp(at: index) ?? points[index].timestamp }
 
@@ -2227,6 +2260,33 @@ private final class HistoryRulerScrollView: UIScrollView {
 }
 
 private final class HistoryRulerTicks: UIView {
+    private var knownServerDays: Set<Date>?
+    private var fadingDays: Set<Date> = []
+    private var fadeStart: TimeInterval = 0
+    private var fadeLayers: [CAShapeLayer] = []
+    private var fadeWork: DispatchWorkItem?
+    static let arrivalFadeDuration: TimeInterval = 0.22
+
+    func prepareArrivals(_ days: Set<Date>, active: Bool, reduceMotion: Bool) {
+        let added = knownServerDays.map { days.subtracting($0) } ?? []
+        knownServerDays = days
+        guard active, !reduceMotion else { finishArrivalFade(); return }
+        guard !added.isEmpty else { return }
+        fadingDays.formUnion(added)
+        fadeStart = CACurrentMediaTime()
+        fadeWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.finishArrivalFade() }
+        fadeWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.arrivalFadeDuration, execute: work)
+    }
+
+    private func finishArrivalFade() {
+        fadeWork?.cancel(); fadeWork = nil
+        guard !fadingDays.isEmpty || !fadeLayers.isEmpty else { return }
+        fadingDays.removeAll()
+        fadeLayers.forEach { $0.removeFromSuperlayer() }; fadeLayers.removeAll()
+        setNeedsDisplay()
+    }
     var tickCount = 0
     var pointCount = 0
     var position: Double = 0
@@ -2335,6 +2395,7 @@ private final class HistoryRulerTicks: UIView {
         let axisPosition = mapping.reverseCoordinate(at: position)
         let firstBar = min(Double(tickCount), max(0, axisPosition - halfWindow))
         let barRange = firstBar...min(Double(tickCount), max(firstBar, axisPosition + halfWindow))
+        var arrivingBars: [(CGPath, UIColor)] = []
         for bar in detents.bracket(at: scale.pointsPerTick).bars(in: barRange) {
             let x = center + scale.screenOffset(of: bar.position, at: axisPosition)
             let stop = landmarks?.stop(containing: mapping.index(at: Double(tickCount) - bar.position), pointCount: pointCount)
@@ -2347,12 +2408,36 @@ private final class HistoryRulerTicks: UIView {
                 : max(minorAlpha * bar.alpha, 2 * minorAlpha * bar.majorAlpha)
             let major = CGFloat(bar.majorAlpha / bar.alpha)
             let height = scale.minorHeight + (scale.majorHeight - scale.minorHeight) * major
+            if !fadingDays.isEmpty, abs(x - center) > 3, pointCount > 0, let landmarks {
+                let index = min(pointCount - 1, max(0, Int(mapping.index(at: Double(tickCount) - bar.position))))
+                if fadingDays.contains(Calendar.current.startOfDay(for: landmarks.rulerTimestamp(at: index))) {
+                    let path = CGMutablePath()
+                    path.move(to: CGPoint(x: x, y: 22 + scale.bottom - height))
+                    path.addLine(to: CGPoint(x: x, y: 22 + scale.bottom))
+                    arrivingBars.append((path, color.withAlphaComponent(CGFloat(alpha))))
+                    continue
+                }
+            }
             context.setStrokeColor(color.withAlphaComponent(CGFloat(alpha)).cgColor)
             context.setLineWidth(scale.lineWidth)
             context.move(to: CGPoint(x: x, y: 22 + scale.bottom - height))
             context.addLine(to: CGPoint(x: x, y: 22 + scale.bottom))
             context.strokePath()
         }
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        fadeLayers.forEach { $0.removeFromSuperlayer() }; fadeLayers.removeAll(keepingCapacity: true)
+        for (path, color) in arrivingBars {
+            let line = CAShapeLayer()
+            line.frame = bounds; line.path = path; line.fillColor = nil
+            line.strokeColor = color.resolvedColor(with: traitCollection).cgColor
+            line.lineWidth = scale.lineWidth; line.contentsScale = traitCollection.displayScale
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.fromValue = 0; fade.toValue = 1; fade.duration = Self.arrivalFadeDuration
+            fade.beginTime = line.convertTime(fadeStart, from: nil)
+            layer.addSublayer(line); line.add(fade, forKey: "arrival")
+            fadeLayers.append(line)
+        }
+        CATransaction.commit()
         drawLabels(in: range, stops: visibleStops, gaps: visibleGaps, context: context, targets: &targets)
         if hitTargets != targets { hitTargets = targets; onHitTargetsChanged?() }
         context.setShadow(offset: .zero, blur: 3, color: UIColor.systemBlue.withAlphaComponent(0.35).cgColor)
@@ -2789,6 +2874,9 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
             // An incoming menu choice follows the interrupted gesture's commit.
             configuration.onScale(configuration.step)
         }
+        let publication = self.configuration.map { $0.rulerTimeline !== configuration.rulerTimeline } ?? false
+        ticks.prepareArrivals(configuration.loadedServerDays, active: configuration.active && !moving,
+                              reduceMotion: configuration.reduceMotion)
         self.configuration = configuration
         attachPoseChannel(configuration.poseChannel)
         let previousMapping = ticks.mapping
@@ -2809,7 +2897,7 @@ final class HistoryRulerContainer: UIView, UIScrollViewDelegate, UIGestureRecogn
             let step = (interrupted || scaleChanged) && !externalStep ? completingStep ?? configuration.step : configuration.step
             coarseLevel = coarseDetents.index(nearest: step)
             let scale = HistoryRulerCoarseDrag.scale(step: step, coarsest: coarseDetents.steps[0])
-            if scale != scaleTo { setScale(scale, animated: configuration.active && !configuration.reduceMotion) }
+            if scale != scaleTo { setScale(scale, animated: configuration.active && !configuration.reduceMotion && !publication) }
         }
         scrollView.isScrollEnabled = configuration.active && !held
         if configuration.active && !wasActive { coarseGestureCancelled = false }

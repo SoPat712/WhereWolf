@@ -106,6 +106,7 @@ struct ReplayDayGeometry {
     let sourceIndices: [Int]
     let renderedIndices: [Int]
     var sourceIDs: [Int64] = []
+    var days: [Date: [ClosedRange<Int>]] = [:]
 
     func rebased(to ids: [Int64]) -> ReplayDayGeometry? {
         guard sourceIDs.count == renderedIndices.count else { return nil }
@@ -121,7 +122,7 @@ struct ReplayDayGeometry {
         guard let shift else { return nil }
         // Retain the outgoing anchor just before the new first point, for its fractional split.
         return ReplayDayGeometry(points: points, spans: spans, sourceIndices: sourceIndices.map { $0 + shift },
-                                 renderedIndices: renderedIndices, sourceIDs: sourceIDs)
+                                 renderedIndices: renderedIndices, sourceIDs: sourceIDs, days: days)
     }
 
     func position(for source: Double) -> Double {
@@ -208,7 +209,9 @@ struct ReplayDayRouteBuilder {
         }
         entries = entries.filter { sources[$0.key] != nil }
         var output: [MKMapPoint] = [], spans: [ClosedRange<Int>] = [], sourceIndices: [Int] = [], renderedIndices: [Int] = []
+        var dayRanges: [Date: [ClosedRange<Int>]] = [:]
         for day in sources.keys.sorted() {
+            let firstSpan = spans.count
             let source = sources[day]!
             var entry = entries[day].flatMap { $0.source.matches(source) ? $0 : nil } ?? Entry(source: source)
             let indices: [Int]
@@ -249,9 +252,10 @@ struct ReplayDayRouteBuilder {
                 output.append(source.points[index])
             }
             if start < output.count { spans.append(start...(output.count - 1)) }
+            dayRanges[day] = Array(spans.dropFirst(firstSpan))
         }
         return ReplayDayGeometry(points: output, spans: spans, sourceIndices: sourceIndices,
-                                 renderedIndices: renderedIndices, sourceIDs: sourceIndices.map { ids[$0] })
+                                 renderedIndices: renderedIndices, sourceIDs: sourceIndices.map { ids[$0] }, days: dayRanges)
     }
 }
 
@@ -276,6 +280,143 @@ enum ReplayRouteStyle {
     static let futureColor = UIColor.systemTeal.withAlphaComponent(0.55)
     // Wider than blue so an opened trip covers its own blue and dots completely.
     static let highlightWidth: CGFloat = 4
+}
+
+// A day gets one entrance, even when its track is later replaced by full points or a new zoom bucket.
+struct ReplayArrivalSchedule {
+    static let duration: TimeInterval = 0.8
+    private var known: Set<Date>?
+    private(set) var waiting: Set<Date> = []
+    private(set) var started: [Date: TimeInterval] = [:]
+
+    var days: Set<Date> { waiting.union(started.keys) }
+
+    mutating func observe(_ days: Set<Date>, active: Bool, reduceMotion: Bool) {
+        defer { known = days }
+        guard active, !reduceMotion, let known else {
+            waiting.removeAll(); started.removeAll(); return
+        }
+        waiting.formUnion(days.subtracting(known))
+        waiting.formIntersection(days)
+        started = started.filter { days.contains($0.key) }
+    }
+
+    mutating func start(_ day: Date, at time: TimeInterval) {
+        if waiting.remove(day) != nil { started[day] = time }
+    }
+
+    func concealed(at time: TimeInterval) -> Set<Date> {
+        waiting.union(started.compactMap { time < $0.value + Self.duration ? $0.key : nil })
+    }
+
+    func nextDeadline(after time: TimeInterval) -> TimeInterval? {
+        started.values.map { $0 + Self.duration }.filter { $0 > time }.min()
+    }
+
+    mutating func finish(_ day: Date) { waiting.remove(day); started.removeValue(forKey: day) }
+}
+
+// The mask follows the day from start to end; the blue/dotted split remains at the unchanged needle.
+// Core Animation owns the reveal. Projection work runs only when geometry, pose or camera changes.
+@MainActor
+final class ReplayArrivalLayer: CALayer {
+    private let past = CAShapeLayer(), future = CAShapeLayer(), ink = CAShapeLayer()
+    private struct Projection: Equatable {
+        let route: ObjectIdentifier
+        let ranges: [ClosedRange<Int>]
+        let position: Double?
+        let coordinate: ReplayCoordinate?
+        let samples: [CGPoint]
+        let bounds: CGRect
+        let appearance: UIUserInterfaceStyle
+    }
+    private var projection: Projection?
+    private(set) var began = false
+    private(set) var visible = false
+
+    override init() {
+        super.init()
+        for shape in [past, future, ink] {
+            shape.fillColor = nil; shape.lineCap = .round; shape.lineJoin = .round
+            shape.actions = ["path": NSNull(), "strokeEnd": NSNull(), "strokeColor": NSNull()]
+        }
+        past.lineWidth = ReplayRouteStyle.pastWidth
+        future.lineWidth = ReplayRouteStyle.futureWidth
+        future.lineDashPattern = [1, 5]
+        ink.lineWidth = ReplayRouteStyle.pastWidth + 2
+        ink.strokeColor = UIColor.black.cgColor
+        addSublayer(future); addSublayer(past); mask = ink
+    }
+
+    override init(layer: Any) { super.init(layer: layer) }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    func reveal(animated: Bool, elapsed: TimeInterval = 0) {
+        began = true
+        ink.removeAnimation(forKey: "arrival")
+        ink.strokeEnd = 1
+        guard animated, elapsed < ReplayArrivalSchedule.duration else { return }
+        let animation = CABasicAnimation(keyPath: "strokeEnd")
+        animation.fromValue = 0; animation.toValue = 1
+        animation.duration = ReplayArrivalSchedule.duration
+        animation.beginTime = ink.convertTime(CACurrentMediaTime(), from: nil) - elapsed
+        animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        ink.add(animation, forKey: "arrival")
+    }
+
+    var isRevealing: Bool { ink.animation(forKey: "arrival") != nil }
+
+    func update(route: ReplayRoutePresentation, ranges: [ClosedRange<Int>], position: Double?,
+                coordinate: CLLocationCoordinate2D?, projection screen: ReplayScreenProjection,
+                on map: MKMapView, below marker: MKAnnotationView?) {
+        let container = marker?.superview ?? map
+        let next = Projection(route: ObjectIdentifier(route.fullRoute), ranges: ranges, position: position,
+            coordinate: coordinate.map(ReplayCoordinate.init), samples: screen.samples, bounds: container.bounds,
+            appearance: map.traitCollection.userInterfaceStyle)
+        guard next != projection || superlayer !== container.layer else { return }
+        let blue = CGMutablePath(), dots = CGMutablePath(), maskPath = CGMutablePath()
+        let points = route.fullRoute.points()
+        let endpoint = coordinate.map { screen.direct(MKMapPoint($0)) }
+        func append(_ values: [CGPoint], to path: CGMutablePath) {
+            guard let first = values.first else { return }
+            path.move(to: first)
+            for point in values.dropFirst() { path.addLine(to: point) }
+        }
+        for section in route.sections {
+            let bounds = section.polyline.boundingMapRect
+            guard screen.isVisible(CGRect(x: bounds.minX, y: bounds.minY, width: bounds.width, height: bounds.height)) else { continue }
+            for range in ranges {
+                let first = max(section.start, range.lowerBound), last = min(section.end, range.upperBound)
+                guard first < last else { continue }
+                let fast = screen.canProject(route.fullRoute, start: first, end: last)
+                let projected = (first...last).map { screen.point(points[$0], fast: fast) }
+                guard projected.allSatisfy({ $0.x.isFinite && $0.y.isFinite }) else { continue }
+                append(projected, to: maskPath)
+                guard let position, let endpoint else { append(projected, to: blue); continue }
+                if position >= Double(last) { append(projected, to: blue) }
+                else if position <= Double(first) { append(Array(projected.reversed()), to: dots) }
+                else {
+                    let split = Int(position) - first
+                    append(Array(projected.prefix(split + 1)) + [endpoint], to: blue)
+                    append(Array(projected.dropFirst(split + 1).reversed()) + [endpoint], to: dots)
+                }
+            }
+        }
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        if superlayer !== container.layer {
+            if let marker, marker.superview === container { container.layer.insertSublayer(self, below: marker.layer) }
+            else { container.layer.addSublayer(self) }
+        }
+        frame = container.bounds
+        for shape in [past, future, ink] { shape.frame = bounds; shape.contentsScale = map.traitCollection.displayScale }
+        past.strokeColor = UIColor.systemBlue.resolvedColor(with: map.traitCollection).cgColor
+        future.strokeColor = ReplayRouteStyle.futureColor.resolvedColor(with: map.traitCollection).cgColor
+        past.path = blue; future.path = dots; ink.path = maskPath
+        visible = !maskPath.isEmpty
+        isHidden = !visible
+        CATransaction.commit()
+        projection = next
+    }
 }
 
 @MainActor
@@ -347,6 +488,9 @@ final class ReplayRoutePresentation {
     private(set) var highlightOverlays: [MKOverlay] = []
     private var reds = Set<ObjectIdentifier>()
     private var highlightKey: (range: ClosedRange<Int>, first: MKMapPoint, last: MKMapPoint)?
+    private(set) var concealed: [ClosedRange<Int>] = []
+    private var visibleSections: [Int: [Section]] = [:]
+    private var unmarked = false
 
     var futureSections: [MKPolyline] { sections.map(\.future) }
     var nextCoverageDeadline: TimeInterval? { pending.values.min() }
@@ -471,6 +615,7 @@ final class ReplayRoutePresentation {
         trails = Set(sections.map { ObjectIdentifier($0.polyline) })
         self.position = clamped(position)
         activeIndex = sectionIndex(containing: Int(self.position))
+        rebuildVisibleSections()
         return reconcile(previous: previous, previousDots: previousDots, now: now)
     }
 
@@ -539,8 +684,10 @@ final class ReplayRoutePresentation {
     }
 
     private func reconcile(previous: [MKOverlay], previousDots: Set<ObjectIdentifier>, now: TimeInterval) -> OverlayChange {
-        overlays = sections.indices.filter { $0 > activeIndex }.map { sections[$0].future as MKOverlay }
-            + sections.indices.filter { $0 < activeIndex }.map { sections[$0].polyline as MKOverlay }
+        func pieces(_ index: Int) -> [Section] { visibleSections[index] ?? [sections[index]] }
+        overlays = sections.indices.filter { $0 > activeIndex }.flatMap { pieces($0).map { $0.future as MKOverlay } }
+            + sections.indices.filter { $0 < activeIndex || (unmarked && $0 == activeIndex) }
+                .flatMap { pieces($0).map { $0.polyline as MKOverlay } }
         let old = installed
         let next = Set(overlays.map { ObjectIdentifier($0) })
         installed = next.union(reds)
@@ -559,6 +706,57 @@ final class ReplayRoutePresentation {
         unrendered.formIntersection(next)
         rendering.formIntersection(installed)
         return change
+    }
+
+    // Mask only the arriving segments. A section can straddle a day boundary, so retain its other pieces.
+    static func visibleRanges(_ range: ClosedRange<Int>, excluding hidden: [ClosedRange<Int>]) -> [ClosedRange<Int>] {
+        var start = range.lowerBound
+        var result: [ClosedRange<Int>] = []
+        for cut in hidden.sorted(by: { $0.lowerBound < $1.lowerBound }) {
+            guard cut.upperBound > start, cut.lowerBound < range.upperBound else { continue }
+            if cut.lowerBound > start { result.append(start...min(cut.lowerBound, range.upperBound)) }
+            start = max(start, cut.upperBound)
+        }
+        if start < range.upperBound { result.append(start...range.upperBound) }
+        return result
+    }
+
+    private func rebuildVisibleSections() {
+        visibleSections.removeAll(keepingCapacity: true)
+        dots = Set(sections.map { ObjectIdentifier($0.future) })
+        trails = Set(sections.map { ObjectIdentifier($0.polyline) })
+        guard !concealed.isEmpty else { return }
+        let points = fullRoute.points()
+        for (index, section) in sections.enumerated() {
+            let range = section.start...section.end
+            let ranges = Self.visibleRanges(range, excluding: concealed)
+            guard ranges != [range] else { continue }
+            let pieces = ranges.map { span -> Section in
+                let values = Array(UnsafeBufferPointer(start: points + span.lowerBound, count: span.count))
+                let reversed = Array(values.reversed())
+                return Section(start: span.lowerBound, end: span.upperBound, prefix: 0,
+                    polyline: MKPolyline(points: values, count: values.count),
+                    future: MKPolyline(points: reversed, count: reversed.count))
+            }
+            visibleSections[index] = pieces
+            dots.formUnion(pieces.map { ObjectIdentifier($0.future) })
+            trails.formUnion(pieces.map { ObjectIdentifier($0.polyline) })
+        }
+    }
+
+    func conceal(_ ranges: [ClosedRange<Int>], now: TimeInterval = CACurrentMediaTime()) -> OverlayChange {
+        let ranges = ranges.sorted { $0.lowerBound < $1.lowerBound }
+        guard ranges != concealed else { return .init() }
+        let previousDots = dots
+        concealed = ranges
+        rebuildVisibleSections()
+        return reconcile(previous: overlays, previousDots: previousDots, now: now)
+    }
+
+    func setUnmarked(_ value: Bool) -> OverlayChange {
+        guard value != unmarked else { return .init() }
+        unmarked = value
+        return reconcile(previous: overlays, previousDots: dots, now: CACurrentMediaTime())
     }
 
     // An opened trip draws as MapKit overlays, sectioned like the blue, so it moves with the map itself.
@@ -649,9 +847,11 @@ final class ReplayRoutePresentation {
         if !pending.isEmpty {
             for (index, section) in sections.enumerated() {
                 guard future ? index > activeIndex : index < activeIndex else { continue }
-                let line = future ? section.future : section.polyline
-                guard pending[ObjectIdentifier(line)] != nil else { continue }
-                result.append(coverage(section, future: future, marker: false))
+                for piece in visibleSections[index] ?? [section] {
+                    let line = future ? piece.future : piece.polyline
+                    guard pending[ObjectIdentifier(line)] != nil else { continue }
+                    result.append(coverage(piece, future: future, marker: false))
+                }
             }
         }
         if !sections.isEmpty {
@@ -660,7 +860,19 @@ final class ReplayRoutePresentation {
                 result.append(coverage(section, future: future, marker: true))
             }
         }
-        return result
+        guard !concealed.isEmpty else { return result }
+        return result.flatMap { span -> [Coverage] in
+            let start = span.marker && future ? max(span.start, Int(position)) : span.start
+            let end = span.marker && !future ? min(span.end, Int(ceil(position))) : span.end
+            guard start <= end else { return [] }
+            return Self.visibleRanges(start...end, excluding: concealed).map { range in
+                Coverage(start: range.lowerBound, end: range.upperBound,
+                    prefix: span.prefix && range.lowerBound == span.start
+                        && !concealed.contains(where: { $0.contains(span.start - 1) && $0.contains(span.start) }),
+                    marker: span.marker && Double(range.lowerBound) <= position && position <= Double(range.upperBound),
+                    bounds: span.bounds)
+            }
+        }
     }
 
     private func coverage(_ section: Section, future: Bool, marker: Bool) -> Coverage {
@@ -717,6 +929,9 @@ final class ReplayRouteDisplay {
     private let original: Variant
     private var current: Variant
     private var incoming: Variant?
+    private var fineDays: [Date: [ClosedRange<Int>]] = [:]
+    private var concealedDays: Set<Date> = []
+    private var unmarked = false
 
     init(_ fine: ReplayRoutePresentation) {
         self.fine = fine
@@ -736,6 +951,43 @@ final class ReplayRouteDisplay {
 
     func position(_ source: Double) -> Double { current.position(source) }
     func range(_ source: ClosedRange<Int>) -> ClosedRange<Int> { current.geometry?.range(for: source) ?? source }
+
+    func setArrivalDays(_ days: [Date: [ClosedRange<Int>]], concealed: Set<Date>,
+                        now: TimeInterval = CACurrentMediaTime()) -> ReplayRoutePresentation.OverlayChange {
+        fineDays = days
+        concealedDays = concealed
+        var change = ReplayRoutePresentation.OverlayChange()
+        for variant in [current, incoming].compactMap({ $0 }) {
+            let ranges = variant.geometry?.days ?? fineDays
+            change.append(variant.presentation.conceal(concealed.flatMap { ranges[$0] ?? [] }, now: now))
+        }
+        return change
+    }
+
+    func setUnmarked(_ value: Bool) -> ReplayRoutePresentation.OverlayChange {
+        unmarked = value
+        var change = ReplayRoutePresentation.OverlayChange()
+        for variant in [current, incoming].compactMap({ $0 }) {
+            change.append(variant.presentation.setUnmarked(value))
+        }
+        return change
+    }
+
+    func arrival(on day: Date, position: Double, hiding sourceRange: ClosedRange<Int>? = nil)
+        -> (route: ReplayRoutePresentation, ranges: [ClosedRange<Int>], position: Double)? {
+        for variant in [incoming, current].compactMap({ $0 }) {
+            if let ranges = (variant.geometry?.days ?? fineDays)[day], !ranges.isEmpty {
+                let hidden = sourceRange.map { variant.geometry?.range(for: $0) ?? $0 }
+                let visible = hidden.map { hidden in ranges.flatMap {
+                    ReplayRoutePresentation.visibleRanges($0, excluding: [hidden])
+                } } ?? ranges
+                return (variant.presentation, visible, variant.position(position))
+            }
+        }
+        return nil
+    }
+
+    var arrivalsRendered: Bool { incoming == nil && current.presentation.readyForHandoff }
 
     func updatePosition(_ source: Double, now: TimeInterval = CACurrentMediaTime()) -> ReplayRoutePresentation.OverlayChange {
         if current === original, incoming == nil { return fine.updatePosition(source, now: now) }
@@ -779,6 +1031,8 @@ final class ReplayRouteDisplay {
         let next = geometry.map {
             Variant(ReplayRoutePresentation(dayGeometry: $0, position: position, now: now), geometry: $0)
         } ?? original
+        _ = next.presentation.conceal(concealedDays.flatMap { (next.geometry?.days ?? fineDays)[$0] ?? [] }, now: now)
+        _ = next.presentation.setUnmarked(unmarked)
         _ = next.presentation.updatePosition(next.position(position), now: now)
         incoming = next
         change.append(next.presentation.prepareForDisplay(ceiling: fine.highlightOverlays.first, now: now))

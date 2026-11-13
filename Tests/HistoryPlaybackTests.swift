@@ -2219,6 +2219,34 @@ final class HistoryRulerContinuousScaleTests: XCTestCase {
         XCTAssertTrue(scroll.accessibilityValue?.contains("1 bar about") == true)
     }
 
+    @MainActor func testServerBarFadeLeavesNeedleAndControlsFixedAndSkipsReduceMotion() throws {
+        let points = blendPoints()
+        let harness = RulerScaleHarness(position: 400, points: points, showsFrames: true)
+        defer { harness.ruler.cancelMotion() }
+        let needle = harness.ruler.anchoredPosition, height = harness.ruler.bounds.height
+        let days = Set(points.map { Calendar.current.startOfDay(for: $0.timestamp) })
+        harness.configuration.loadedServerDays = days
+        harness.ruler.configure(harness.configuration)
+        harness.ruler.layoutIfNeeded()
+        func arrivalAnimations() -> [CAAnimation] {
+            for view in harness.ruler.subviews { view.layer.displayIfNeeded() }
+            func collect(_ layer: CALayer) -> [CAAnimation] {
+                [layer.animation(forKey: "arrival")].compactMap { $0 } + (layer.sublayers ?? []).flatMap(collect)
+            }
+            return collect(harness.ruler.layer)
+        }
+        let fades = arrivalAnimations()
+        XCTAssertFalse(fades.isEmpty)
+        XCTAssertTrue(fades.allSatisfy { $0.duration == 0.22 })
+        XCTAssertEqual(harness.ruler.anchoredPosition, needle, accuracy: 1e-8)
+        XCTAssertEqual(harness.ruler.bounds.height, height)
+        XCTAssertTrue(harness.commits.isEmpty)
+        harness.configuration.reduceMotion = true
+        harness.ruler.configure(harness.configuration)
+        XCTAssertTrue(arrivalAnimations().isEmpty)
+        XCTAssertEqual(harness.ruler.anchoredPosition, needle, accuracy: 1e-8)
+    }
+
     @MainActor func testRenderedDayGapAndTripTargetsSendTheirExactFitCommand() throws {
         // A parked silence belongs to its stop. Move beyond the stay box and 100 m departure allowance
         // across this gap so the fixture actually contains missing data between different places.
