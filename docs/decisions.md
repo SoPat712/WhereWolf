@@ -394,6 +394,25 @@ This log lists the decisions agents made on their own while working on WhereWolf
 - **Also in this commit:** the trip Live Activity's map now works with the phone locked. MapKit delivers snapshots only to a foreground app, so trips started by CarPlay automations never got one; the app now keeps five dark map levels (8 to 648 km) of the area around you, rendered while it is open, and crops the activity's maps from them in the background every 15 seconds. The trip activity and the Trip tab's Start Trip button turned blue like the rest of the app, the red ring left the minimal Island, and a Dawarich QR scan shows an original pin badge naming Dawarich, without its logo.
 - **Undo:** `git revert d1dca96`.
 
+## 2026-11-12: Send Now during a retry wait, and the waiting points after setup (a9dd827)
+
+- **Asked for:** "app was open, 6000 points were there, but pressing send now didn't start or show anything ... it was in retry wait".
+- **Decided:** a send the user starts skips a transport backoff or Retry-After for that one attempt, keeping the failure count so automatic retries still back off, and never starts a second request. Sending and the Tracker say "Waiting to retry" with the reason and offer Retry Now, and show progress while a drain runs. The Send Now intent waits up to 20 seconds for its first batch so iOS doesn't suspend it mid-request; the Live Activities' Send Now shows a waiting-points badge and sending, sent or failed. Replay reads the queue in 256-row chunks, only after it changes. After a server review or save with points waiting, a glass confirmation says how many will go to the new server and their time range. Stop names keep custom Dawarich visit names, name stops from a visit's own center, and rank overlaps per visit across days.
+- **Undo:** `git revert a9dd827`.
+
+## 2026-11-12: Insights loads section by section (70f19d3)
+
+- **Asked for:** Insights stuck on "Loading Insights…" on the phone, and "make it beautiful! dawarich theming style is fine too!"
+- **Decided:** each section publishes on its own with a 15-second deadline and an inline Retry, so one slow request can't hold the page; HTTP capability probes replace version floors, unsupported sections hide, and an empty page names what was missing. The page became a blue and teal dashboard with a selectable monthly chart that opens the Tracker. The owner still found it unattractive on the phone, so a design page with several directions comes next.
+- **Undo:** `git revert 70f19d3`.
+
+## 2026-11-12: the drawer shrinks after Details, and server days draw in (4f7abe5)
+
+- **Asked for:** "closed details but still expanding to that height", and Dawarich routes that appear all at once and zoom the map out.
+- **Decided:** the drawer measures its controls' natural height apart from the pinned host, so closing Details retargets the existing spring even after a deferred ruler or server update. Arriving server days no longer count as camera navigation; only explicit actions fit the map. Each day draws in from its start over 0.8 seconds before MapKit takes over, and its loading bars fade in; Reduce Motion shows them at once.
+- **Also:** the screen audit that taps the drawer tabs failed on these three commits because the shared simulator's tap tool now lands taps at the wrong place (a tap on Settings' General row opened Apple Account), not because of the app. All 1,036 tests passed twice.
+- **Undo:** `git revert 4f7abe5`.
+
 ## Deferred for the owner
 
 - **Watch complication for Today:** it needs a new watch widget extension and bundle identifier, which is an Apple developer account change.
