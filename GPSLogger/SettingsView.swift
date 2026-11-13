@@ -409,17 +409,21 @@ struct SendingSettingsView: View {
 
             Section {
                 LabeledContent("Upload Queue", value: bridge.queueCount > 0 ? "\(bridge.queueCount) queued" : "Empty")
-                if bridge.uploadsBlocked {
-                    Text("Uploads are blocked until you retry. Server authentication errors are not retried automatically.")
+                if bridge.uploadPresentation.showsStatus {
+                    Text(bridge.uploadPresentation.statusText)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
-                    Button("Retry Uploads") { bridge.retryPendingUpload() }
-                        .disabled(bridge.queueCount == 0 || !bridge.endpointSet || bridge.sending)
-                } else if let retryDate = bridge.uploadRetryDate {
-                    LabeledContent("Next Retry") {
-                        Text(retryDate, style: .relative)
+                        .accessibilityIdentifier("wherewolf.sending.status")
+                }
+                Button { bridge.retryPendingUpload() } label: {
+                    HStack {
+                        Text(bridge.uploadPresentation.buttonTitle)
+                        Spacer()
+                        Text("\(bridge.queueCount.formatted()) waiting").foregroundStyle(.secondary)
                     }
                 }
+                .disabled(!bridge.uploadPresentation.canSend)
+                .accessibilityIdentifier("wherewolf.sending.send-now")
                 LabeledContent("Upload Scheduler", value: bridge.uploadSchedulerStatus)
                 Button("Delete Pending Uploads…", role: .destructive) {
                     confirmingDelete = true

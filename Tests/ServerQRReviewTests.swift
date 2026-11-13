@@ -296,7 +296,257 @@ final class ServerQRReviewTests: XCTestCase {
         }
     }
 
+    private var waiting: ServerPendingQueue {
+        let first = Date(timeIntervalSince1970: 1_700_000_000)
+        return ServerPendingQueue(count: 6_133, importedCount: 10, oldest: first, newest: first.addingTimeInterval(86_400))
+    }
+
+    func testPendingConfirmationSkipsEmptyQueueAndUnchangedServer() async {
+        for changed in [false, true] {
+            let confirmation = ServerChangeConfirmation()
+            var reads = 0
+            var saves = 0
+            var values = current
+            if changed { values.endpoint = "https://wherewolf.test/new" }
+            let result = await confirmation.request(values, current: current, load: {
+                reads += 1
+                return changed ? .empty : self.waiting
+            }, save: { saves += 1; return true })
+            XCTAssertEqual(result, true)
+            XCTAssertEqual(reads, changed ? 1 : 0)
+            XCTAssertEqual(saves, 1)
+            XCTAssertNil(confirmation.pending)
+        }
+    }
+
+    func testServerIdentityIncludesAccountAndHeadersButNotDeviceOptions() {
+        var same = current
+        same.endpoint = " HTTPS://WHEREWOLF.TEST:443/old#ignored "
+        same.headers = ["x-existing": "existing value"]
+        same.deviceId = "another-device"
+        same.uniqueId.toggle()
+        same.acceptHTTP.toggle()
+        XCTAssertFalse(same.changesServer(from: current))
+        for field in ["endpoint", "token", "headers"] {
+            var changed = current
+            switch field {
+            case "endpoint": changed.endpoint += "/other"
+            case "token": changed.token = "another-account"
+            default: changed.headers = ["X-Existing": "another-account"]
+            }
+            XCTAssertTrue(changed.changesServer(from: current))
+        }
+        var firstConnection = current
+        firstConnection.endpoint = ""
+        XCTAssertTrue(current.changesServer(from: firstConnection))
+    }
+
+    func testPendingBackReturnsToEachReviewWithoutSaving() async throws {
+        for code in [try accountCode(), try parsed(setupURL()), try parsed(endpoint(path: "/upload"))] {
+            let review = ServerQRReview(code: code, current: current, ownTracks: false)
+            let confirmation = ServerChangeConfirmation()
+            let read = expectation(description: "Queue metadata read")
+            var saves = 0
+            let request = Task {
+                await confirmation.request(review.values, current: current, load: {
+                    read.fulfill()
+                    return self.waiting
+                }, save: { saves += 1; return true })
+            }
+            await fulfillment(of: [read], timeout: 1)
+            XCTAssertEqual(confirmation.pending, waiting)
+            XCTAssertEqual(confirmation.host, "wherewolf.test")
+            XCTAssertEqual(saves, 0)
+            confirmation.back()
+            let result = await request.value
+            XCTAssertNil(result)
+            XCTAssertNil(confirmation.pending)
+            XCTAssertNil(confirmation.error)
+            await confirmation.confirm()
+            XCTAssertEqual(saves, 0)
+        }
+    }
+
+    func testPendingUseSavesExactlyOnceDespiteRepeatedTaps() async {
+        let confirmation = ServerChangeConfirmation()
+        var proposed = current
+        proposed.endpoint = "https://fixture-user:fixture-password@new.wherewolf.test/upload?api_key=secret#private"
+        let values = proposed
+        let read = expectation(description: "Queue metadata read")
+        let saving = expectation(description: "Save started")
+        var finishSave: CheckedContinuation<Bool, Never>?
+        var saves = 0
+        let request = Task {
+            await confirmation.request(values, current: current, load: {
+                read.fulfill()
+                return self.waiting
+            }, save: {
+                saves += 1
+                return await withCheckedContinuation {
+                    finishSave = $0
+                    saving.fulfill()
+                }
+            })
+        }
+        await fulfillment(of: [read], timeout: 1)
+        XCTAssertEqual(confirmation.host, "new.wherewolf.test")
+        XCTAssertEqual(saves, 0)
+        let use = Task { await confirmation.confirm() }
+        await fulfillment(of: [saving], timeout: 1)
+        await confirmation.confirm()
+        confirmation.back()
+        XCTAssertNotNil(confirmation.pending)
+        XCTAssertEqual(saves, 1)
+        finishSave?.resume(returning: true)
+        await use.value
+        let result = await request.value
+        XCTAssertEqual(result, true)
+        await confirmation.confirm()
+        XCTAssertEqual(saves, 1)
+        XCTAssertNil(confirmation.pending)
+    }
+
+    func testFailedMetadataReadNeverSavesAndCanBeRetried() async {
+        let confirmation = ServerChangeConfirmation()
+        var values = current
+        values.endpoint += "/new"
+        var saves = 0
+        let failed = await confirmation.request(values, current: current, load: { nil }, save: { saves += 1; return true })
+        XCTAssertEqual(failed, false)
+        XCTAssertNotNil(confirmation.error)
+        XCTAssertEqual(saves, 0)
+        let retried = await confirmation.request(values, current: current, load: { .empty }, save: { saves += 1; return true })
+        XCTAssertEqual(retried, true)
+        XCTAssertNil(confirmation.error)
+        XCTAssertEqual(saves, 1)
+    }
+
+    func testImportedOnlyQueueStillConfirmsAndFailedSaveKeepsTheStep() async {
+        let confirmation = ServerChangeConfirmation()
+        var proposed = current
+        proposed.endpoint += "/new"
+        let values = proposed
+        let imported = ServerPendingQueue(count: 1, importedCount: 1, oldest: waiting.oldest, newest: waiting.oldest)
+        let read = expectation(description: "Imported queue metadata read")
+        var attempts = 0
+        let request = Task {
+            await confirmation.request(values, current: current, load: {
+                read.fulfill()
+                return imported
+            }, save: { attempts += 1; return attempts > 1 })
+        }
+        await fulfillment(of: [read], timeout: 1)
+        XCTAssertEqual(confirmation.pending, imported)
+        await confirmation.confirm()
+        XCTAssertEqual(confirmation.pending, imported)
+        XCTAssertNotNil(confirmation.error)
+        XCTAssertFalse(confirmation.busy)
+        await confirmation.confirm()
+        let result = await request.value
+        XCTAssertEqual(result, true)
+        XCTAssertEqual(attempts, 2)
+        XCTAssertNil(confirmation.pending)
+        XCTAssertNil(confirmation.error)
+    }
+
+    func testClosingDuringMetadataReadDoesNotSaveWhenReadCompletes() async {
+        let confirmation = ServerChangeConfirmation()
+        var proposed = current
+        proposed.endpoint += "/new"
+        let values = proposed
+        let reading = expectation(description: "Read started")
+        var finishRead: CheckedContinuation<ServerPendingQueue?, Never>?
+        var saves = 0
+        let request = Task {
+            await confirmation.request(values, current: current, load: {
+                await withCheckedContinuation {
+                    finishRead = $0
+                    reading.fulfill()
+                }
+            }, save: { saves += 1; return true })
+        }
+        await fulfillment(of: [reading], timeout: 1)
+        confirmation.cancel()
+        finishRead?.resume(returning: .empty)
+        let result = await request.value
+        XCTAssertNil(result)
+        XCTAssertEqual(saves, 0)
+        XCTAssertNil(confirmation.pending)
+    }
+
+    func testPendingCountTextSeparatesImportedWorkoutsAndHandlesOnePoint() {
+        let locale = Locale(identifier: "en_US")
+        XCTAssertEqual(waiting.countText(locale: locale), "6,123 points waiting")
+        XCTAssertEqual(waiting.importedText(locale: locale), "and 10 imported workout points")
+        let single = ServerPendingQueue(count: 1, importedCount: 0, oldest: waiting.oldest, newest: waiting.oldest)
+        XCTAssertEqual(single.countText(locale: locale), "1 point waiting")
+        XCTAssertNil(single.importedText(locale: locale))
+        let imported = ServerPendingQueue(count: 1, importedCount: 1, oldest: waiting.oldest, newest: waiting.oldest)
+        XCTAssertEqual(imported.countText(locale: locale), "1 imported workout point waiting")
+        XCTAssertNil(imported.importedText(locale: locale))
+        let mixed = ServerPendingQueue(count: 2, importedCount: 1, oldest: waiting.oldest, newest: waiting.newest)
+        XCTAssertEqual(mixed.countText(locale: locale), "1 point waiting")
+        XCTAssertEqual(mixed.importedText(locale: locale), "and 1 imported workout point")
+        XCTAssertEqual(waiting.countText(locale: Locale(identifier: "de_DE")), "6.123 points waiting")
+    }
+
+    func testPendingRangeUsesLocalDatesAndDistinguishesRepeatedDSTHour() throws {
+        let formatter = ISO8601DateFormatter()
+        let first = try XCTUnwrap(formatter.date(from: "2026-11-01T05:30:00Z"))
+        let last = try XCTUnwrap(formatter.date(from: "2026-11-01T06:30:00Z"))
+        let summary = ServerPendingQueue(count: 2, importedCount: 0, oldest: first, newest: last)
+        let locale = Locale(identifier: "en_US")
+        let eastern = summary.rangeText(locale: locale, timeZone: try XCTUnwrap(TimeZone(identifier: "America/New_York")))
+        XCTAssertTrue(eastern.contains("Nov 1, 2026"))
+        XCTAssertTrue(eastern.contains("EDT"))
+        XCTAssertTrue(eastern.contains("EST"))
+        XCTAssertTrue(eastern.contains(" – "))
+        let pacific = summary.rangeText(locale: locale, timeZone: try XCTUnwrap(TimeZone(identifier: "America/Los_Angeles")))
+        XCTAssertTrue(pacific.contains("Oct 31, 2026"))
+        XCTAssertTrue(pacific.contains("PDT"))
+        XCTAssertNotEqual(eastern, pacific)
+        let single = ServerPendingQueue(count: 1, importedCount: 0, oldest: first, newest: first)
+        XCTAssertFalse(single.rangeText(locale: locale).contains(" – "))
+        XCTAssertEqual(ServerPendingQueue.empty.rangeText(), "Recorded dates unavailable")
+    }
+
+    func testGuidePendingReviewResolvesTheSameSavedDestination() throws {
+        let setup = setupURL(headers: ["X-Scanned": "scanned value"])
+        let values = try XCTUnwrap(ServerQRValues.onboarding(.setupLink(setup.absoluteString), current: current))
+        let review = ServerQRReview(code: try parsed(setup), current: current, ownTracks: false)
+        XCTAssertEqual(values, review.values)
+        let manual = try XCTUnwrap(ServerQRValues.onboarding(.server(endpoint: " https://wherewolf.test/manual ", token: "manual", ownTracks: true), current: current))
+        XCTAssertEqual(manual.endpoint, "https://wherewolf.test/manual")
+        XCTAssertEqual(manual.token, "manual")
+        XCTAssertEqual(manual.headers, current.headers)
+        XCTAssertNil(ServerQRValues.onboarding(.setupLink("invalid"), current: current))
+        XCTAssertNil(ServerQRValues.onboarding(.server(endpoint: "file:///fixture", token: "", ownTracks: false), current: current))
+    }
+
     #if !WHEREWOLF_APP_STORE
+    func testPendingPreviewParsesPositiveCountsInEitherArgumentOrder() throws {
+        for kind in ["dawarich", "setup", "url"] {
+            for arguments in [
+                ["-WhereWolfQRReviewPreview", kind, "-WhereWolfQRPendingPreview", "6123"],
+                ["-WhereWolfQRPendingPreview", "6123", "-WhereWolfQRReviewPreview", kind]
+            ] {
+                let review = try XCTUnwrap(ServerQRReview.preview(arguments: arguments))
+                let pending = try XCTUnwrap(review.previewPendingQueue)
+                XCTAssertEqual(pending.count, 6_123)
+                XCTAssertEqual(pending.importedCount, 0)
+                XCTAssertEqual(pending.newest?.timeIntervalSince(pending.oldest!), 3 * 86_400)
+                XCTAssertNotNil(review.previewStatus)
+            }
+        }
+        let one = try XCTUnwrap(ServerQRReview.preview(arguments: ["-WhereWolfQRReviewPreview", "url", "-WhereWolfQRPendingPreview", "1"])?.previewPendingQueue)
+        XCTAssertEqual(one.oldest, one.newest)
+        for count in ["0", "-1", "1.5", "garbage", "1000000001", "99999999999999999999999999"] {
+            XCTAssertNil(ServerQRReview.preview(arguments: ["-WhereWolfQRReviewPreview", "url", "-WhereWolfQRPendingPreview", count])?.previewPendingQueue)
+        }
+        XCTAssertNil(ServerQRReview.preview(arguments: ["-WhereWolfQRReviewPreview", "url", "-WhereWolfQRPendingPreview"])?.previewPendingQueue)
+        XCTAssertNil(ServerQRReview.preview(arguments: ["-WhereWolfQRPendingPreview", "6123"]))
+    }
+
     func testScanPreviewFixturesCoverEveryCodeKindWithoutProbing() throws {
         let expected: [(String, ServerQRReview.Kind, Bool)] = [
             ("dawarich", .dawarich, true), ("setup", .setup, true), ("url", .url, true), ("other", .url, false)

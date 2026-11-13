@@ -71,8 +71,16 @@ struct TrackingLockScreenCard: View {
 
     @ViewBuilder private var actions: some View {
         HStack(spacing: 6) {
-            Button(intent: SendNowIntent()) { Text("Send Now") }
-                .buttonStyle(.bordered)
+            Button(intent: SendNowIntent()) {
+                HStack(spacing: 4) {
+                    if let feedback = state.sendFeedback { Image(systemName: feedback.symbol) }
+                    Text(state.sendFeedback?.title ?? "Send Now")
+                    ActivityQueueBadge(count: state.queuedCount ?? 0)
+                }
+            }
+            .buttonStyle(.bordered)
+            .accessibilityLabel(state.sendFeedback?.title ?? "Send Now")
+            .accessibilityValue("\(state.queuedCount ?? 0) points waiting")
             if state.isTrip {
                 Button(intent: EndTripIntent()) { Text("End Trip") }
                     .buttonStyle(.bordered).tint(.red)
@@ -81,5 +89,18 @@ struct TrackingLockScreenCard: View {
         .font(.caption.weight(.semibold))
         .controlSize(.small)
         .disabled(preview)
+    }
+}
+
+struct ActivityQueueBadge: View {
+    let count: Int
+
+    var body: some View {
+        Text(ActivitySendFeedback.badge(count))
+            .font(.system(size: 9, weight: .bold).monospacedDigit())
+            .padding(.horizontal, 4)
+            .padding(.vertical, 2)
+            .background(.blue.opacity(0.2), in: Capsule())
+            .accessibilityHidden(true)
     }
 }

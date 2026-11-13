@@ -194,6 +194,8 @@
 		D0DA0000000000000000000A /* ServerQRReview.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0DA00000000000000000009 /* ServerQRReview.swift */; };
 		D0DA0000000000000000000C /* ServerQRReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0DA0000000000000000000B /* ServerQRReviewView.swift */; };
 		D0DA0000000000000000000E /* ServerQRReviewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0DA0000000000000000000D /* ServerQRReviewTests.swift */; };
+		D0DA00000000000000000020 /* ServerPendingQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0DA0000000000000000001F /* ServerPendingQueue.swift */; };
+		D0DA00000000000000000022 /* ServerPendingQueueView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0DA00000000000000000021 /* ServerPendingQueueView.swift */; };
 		2FD66BFF189E6E2531810794 /* DawarichInsightsData.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADB98CEB0DA8F5C2931F7633 /* DawarichInsightsData.swift */; };
 		3E0C546C00749998B5FF00B0 /* DawarichInsightsCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 187A3CE37C03707820AAC12B /* DawarichInsightsCache.swift */; };
 		0387653317BBB73588C60951 /* DawarichInsightsClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9B188607C76F01C4C1F7388 /* DawarichInsightsClient.swift */; };
@@ -457,6 +459,8 @@
 		D0DA00000000000000000009 /* ServerQRReview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/ServerQRReview.swift; sourceTree = SOURCE_ROOT; };
 		D0DA0000000000000000000B /* ServerQRReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/ServerQRReviewView.swift; sourceTree = SOURCE_ROOT; };
 		D0DA0000000000000000000D /* ServerQRReviewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/ServerQRReviewTests.swift; sourceTree = SOURCE_ROOT; };
+		D0DA0000000000000000001F /* ServerPendingQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/ServerPendingQueue.swift; sourceTree = SOURCE_ROOT; };
+		D0DA00000000000000000021 /* ServerPendingQueueView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/ServerPendingQueueView.swift; sourceTree = SOURCE_ROOT; };
 		ADB98CEB0DA8F5C2931F7633 /* DawarichInsightsData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/DawarichInsightsData.swift; sourceTree = SOURCE_ROOT; };
 		187A3CE37C03707820AAC12B /* DawarichInsightsCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/DawarichInsightsCache.swift; sourceTree = SOURCE_ROOT; };
 		B9B188607C76F01C4C1F7388 /* DawarichInsightsClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPSLogger/DawarichInsightsClient.swift; sourceTree = SOURCE_ROOT; };
@@ -683,6 +687,8 @@
 				D0DA00000000000000000005 /* ServerQRCodeScanner.swift */,
 				D0DA0000000000000000000B /* ServerQRReviewView.swift */,
 				D0DA00000000000000000009 /* ServerQRReview.swift */,
+				D0DA0000000000000000001F /* ServerPendingQueue.swift */,
+				D0DA00000000000000000021 /* ServerPendingQueueView.swift */,
 				D0DA00000000000000000003 /* DawarichStatusRow.swift */,
 				D0DA00000000000000000001 /* DawarichServer.swift */,
 				A7AD66F6C430A060F2D32B29 /* HistoryNavigationRequest.swift */,
@@ -1045,6 +1051,8 @@
 				D0DA00000000000000000006 /* ServerQRCodeScanner.swift in Sources */,
 				D0DA0000000000000000000C /* ServerQRReviewView.swift in Sources */,
 				D0DA0000000000000000000A /* ServerQRReview.swift in Sources */,
+				D0DA00000000000000000020 /* ServerPendingQueue.swift in Sources */,
+				D0DA00000000000000000022 /* ServerPendingQueueView.swift in Sources */,
 				D0DA00000000000000000004 /* DawarichStatusRow.swift in Sources */,
 				D0DA00000000000000000002 /* DawarichServer.swift in Sources */,
 				D52CA31AEA8144BE728BC5C3 /* HistoryNavigationRequest.swift in Sources */,

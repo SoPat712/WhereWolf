@@ -10,6 +10,7 @@ struct EndpointView: View {
     @State private var acceptHTTP = false
     @State private var headers: [HeaderField] = []
     @State private var bridge = GLManagerBridge.shared
+    @State private var serverConfirmation = ServerChangeConfirmation()
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var configured: Bool { bridge.endpointSet }
@@ -128,24 +129,20 @@ struct EndpointView: View {
                 Text("Enable for OwnTracks or servers that return an empty response. Otherwise, the server must acknowledge the upload with a JSON result of ok.")
             }
 
-            ConnectionTestSection(enabled: validURL && headersValid) {
-                saved = serverValues.save(using: bridge)
-                saveFailed = !saved
-                return saved
-            }
+            ConnectionTestSection(enabled: validURL && headersValid && !serverConfirmation.busy, prepare: saveServer)
 
             Section {
                 Button("Save") {
-                    saved = serverValues.save(using: bridge)
-                    saveFailed = !saved
+                    Task { _ = await saveServer() }
                 }
-                .disabled(!validURL || !headersValid)
+                .disabled(!validURL || !headersValid || serverConfirmation.busy)
                 .frame(maxWidth: .infinity)
                 Button("Clear Server URL", role: .destructive) {
                     saved = bridge.clearServer()
                     saveFailed = !saved
                     if saved { url = ""; token = "" }
                 }
+                .disabled(serverConfirmation.busy)
                 .frame(maxWidth: .infinity)
             }
             if saveFailed { Section { Text("Couldn’t save the server credential. Unlock this iPhone and try again.").foregroundStyle(.orange) } }
@@ -153,9 +150,11 @@ struct EndpointView: View {
                 Section { Text("Saved").foregroundStyle(.secondary) }
             }
         }
+        .disabled(serverConfirmation.busy)
         .navigationTitle("Destination")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
+        .modifier(ServerPendingQueuePresentation(confirmation: serverConfirmation))
         .onChange(of: url) { _, _ in saved = false }
         .onChange(of: token) { _, _ in saved = false }
         .onChange(of: deviceId) { _, _ in saved = false }
@@ -173,6 +172,15 @@ struct EndpointView: View {
         ServerQRValues(endpoint: url, token: token, deviceId: deviceId, uniqueId: uniqueId,
                        acceptHTTP: acceptHTTP,
                        headers: Dictionary(headers.map { ($0.name, $0.value) }, uniquingKeysWith: { _, last in last }))
+    }
+
+    private func saveServer() async -> Bool? {
+        let values = serverValues
+        return await serverConfirmation.request(values, current: .saved) {
+            saved = values.save(using: bridge)
+            saveFailed = !saved
+            return saved
+        }
     }
 
     private func scan(_ review: ServerQRReview) async -> Bool {

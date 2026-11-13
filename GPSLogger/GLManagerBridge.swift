@@ -10,6 +10,46 @@ struct SendStatusEntry: Identifiable, Equatable {
     let kind: Kind
 }
 
+struct UploadPresentation {
+    var sending = false
+    var retryDate: Date?
+    var blocked = false
+    var failureReason: String?
+    var queued = 0
+    var batchesCompleted = 0
+    var savesToCloud = false
+    var destinationSet = true
+    var waitingForWifi = false
+    var now = Date()
+
+    var waitingToRetry: Bool { !sending && retryDate.map { $0 > now } == true }
+    var canSend: Bool { destinationSet && queued > 0 && !sending }
+    var buttonTitle: String {
+        if sending { return savesToCloud ? "Saving" : "Sending" }
+        if waitingToRetry || blocked { return "Retry Now" }
+        return savesToCloud ? "Save Now" : "Send Now"
+    }
+    var showsStatus: Bool { queued > 0 && (sending || waitingToRetry || blocked || waitingForWifi || failureReason != nil) }
+    var statusText: String {
+        if sending {
+            let completed = savesToCloud ? "saved" : "sent"
+            return "\(buttonTitle) · \(batchesCompleted.formatted()) batch\(batchesCompleted == 1 ? "" : "es") \(completed) · \(queued.formatted()) points left"
+        }
+        var status: String
+        if waitingToRetry, let retryDate {
+            status = "Waiting to retry, next attempt at \(retryDate.formatted(date: .abbreviated, time: .shortened))"
+        } else if blocked {
+            status = "Waiting for you to retry"
+        } else if waitingForWifi && !savesToCloud {
+            status = "Waiting for Wi-Fi to send"
+        } else {
+            status = "\(queued.formatted()) points waiting"
+        }
+        if let failureReason { status += ". \(failureReason)" }
+        return status
+    }
+}
+
 // Notifications refresh SwiftUI's view of the Objective-C manager.
 // Settings use its setters to preserve persistence and tracking changes.
 @Observable
@@ -167,7 +207,18 @@ final class GLManagerBridge {
     private(set) var pendingUploads = false
     private(set) var uploadsBlocked = false
     private(set) var uploadRetryDate: Date?
+    private(set) var uploadFailureReason: String?
+    private(set) var uploadBatchesCompleted = 0
+    private(set) var uploadDraining = false
     private(set) var waitingForWifi = false
+
+    var uploadPresentation: UploadPresentation {
+        UploadPresentation(sending: sending || uploadDraining, retryDate: uploadRetryDate,
+                           blocked: uploadsBlocked, failureReason: uploadFailureReason,
+                           queued: queueCount, batchesCompleted: uploadBatchesCompleted,
+                           savesToCloud: savesToICloudDrive, destinationSet: destinationSet,
+                           waitingForWifi: waitingForWifi)
+    }
 
     @ObservationIgnored private var timer: Timer?
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
@@ -277,6 +328,9 @@ final class GLManagerBridge {
         pendingUploads = gl.pendingUploads
         uploadsBlocked = gl.uploadsBlocked
         uploadRetryDate = gl.uploadRetryDate
+        uploadFailureReason = gl.uploadFailureReason
+        uploadBatchesCompleted = Int(gl.uploadBatchesCompleted)
+        uploadDraining = gl.uploadDraining
         waitingForWifi = gl.waitingForWifi
 
         refreshClock()

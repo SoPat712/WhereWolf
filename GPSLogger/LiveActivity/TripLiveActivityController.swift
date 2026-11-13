@@ -31,6 +31,8 @@ import UIKit
         return controller
     }()
     private var newDataObserver: NSObjectProtocol?
+    private var uploadObservers: [NSObjectProtocol] = []
+    private var delayedUploadUpdate: Task<Void, Never>?
     private var lastFixAtlasPrepare = Date.distantPast
 
     override init() {
@@ -44,6 +46,33 @@ import UIKit
                       Date().timeIntervalSince(self.lastFixAtlasPrepare) >= 60 else { return }
                 self.lastFixAtlasPrepare = Date()
                 self.prepareMapAtlas()
+            }
+        }
+        for name in [GLNewDataNotification, GLSendingStartedNotification, GLSendingFinishedNotification,
+                     GLUserSendFeedbackChangedNotification] {
+            uploadObservers.append(NotificationCenter.default.addObserver(forName: Notification.Name(name),
+                object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.uploadChanged(immediate: name == GLUserSendFeedbackChangedNotification
+                        && GLManager.shared().userSendFeedback != nil)
+                }
+            })
+        }
+    }
+
+    private func uploadChanged(immediate: Bool) {
+        guard trip != nil else { return }
+        let delay = max(0, 15 - Date().timeIntervalSince(lastUpdate))
+        if immediate || delay == 0 {
+            delayedUploadUpdate?.cancel()
+            delayedUploadUpdate = nil
+            refresh(force: immediate)
+        } else if delayedUploadUpdate == nil {
+            delayedUploadUpdate = Task { [weak self] in
+                do { try await Task.sleep(for: .seconds(delay)) } catch { return }
+                guard let self else { return }
+                delayedUploadUpdate = nil
+                uploadChanged(immediate: false)
             }
         }
     }
@@ -122,6 +151,8 @@ import UIKit
 
     @objc(endTripWithMode:distance:speed:)
     func endTrip(mode: String, distance: Double, speed: Double) {
+        delayedUploadUpdate?.cancel()
+        delayedUploadUpdate = nil
         endingTripStart = trip?.start
         finalContent = content(mode: mode, distance: distance, speed: speed)
         mapController.reset()
@@ -288,7 +319,8 @@ import UIKit
             averageSpeed: duration >= 1 ? distance / duration : nil, route: tripStats?.routeSketch(),
             map: tripStats.flatMap { stats in
                 mapController.map(for: stats.routeMapPoints) { stats.routeSketch(in: $0) }
-            })
+            }, queuedCount: max(0, Int(GLManager.shared().currentPointsInQueue)),
+            sendFeedback: GLManager.shared().userSendFeedback.flatMap(ActivitySendFeedback.init(rawValue:)))
         return ActivityContent(state: state, staleDate: nil, relevanceScore: TripLiveActivityRequestPolicy.relevanceScore)
     }
 

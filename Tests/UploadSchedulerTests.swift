@@ -5,6 +5,38 @@ import XCTest
 
 @MainActor
 final class UploadSchedulerTests: XCTestCase {
+    func testSendIntentAwaitsFirstBatchResult() async throws {
+        let started = expectation(description: "Send started")
+        var complete: ((Error?) -> Void)?
+        var returned = false
+        let task = Task {
+            try await SendNowIntent.awaitFirstBatch { callback in
+                complete = callback
+                started.fulfill()
+            }
+            returned = true
+        }
+        await fulfillment(of: [started], timeout: 2)
+        XCTAssertFalse(returned)
+        let callback = try XCTUnwrap(complete)
+        callback(nil)
+        try await task.value
+        XCTAssertTrue(returned)
+    }
+
+    func testSendIntentThrowsDestinationTimeoutAndBatchErrors() async {
+        for code in [1, 2, 3] {
+            let failure = NSError(domain: "WhereWolf.Send", code: code,
+                                userInfo: [NSLocalizedDescriptionKey: "Send could not finish"])
+            do {
+                try await SendNowIntent.awaitFirstBatch { $0(failure) }
+                XCTFail("The intent must report a send error")
+            } catch {
+                XCTAssertEqual(error as NSError, failure)
+            }
+        }
+    }
+
     private func settle() async {
         await Task.yield()
         await Task.yield()

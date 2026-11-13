@@ -13,17 +13,17 @@ struct TrackerView: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            if let error = bridge.latestSendError {
+            if bridge.uploadPresentation.showsStatus {
+                Text(bridge.uploadPresentation.statusText)
+                    .font(.caption)
+                    .foregroundStyle(bridge.uploadPresentation.waitingToRetry || bridge.uploadsBlocked ? Color.orange : Color.secondary)
+                    .accessibilityIdentifier("wherewolf.tracker.sending-status")
+            } else if let error = bridge.latestSendError {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
                     .foregroundStyle(.orange)
                     .lineLimit(2)
                     .accessibilityLabel("Last send failed: \(error)")
-            } else if bridge.waitingForWifi && bridge.queueCount > 0 {
-                Label("Waiting for Wi-Fi to send", systemImage: "wifi")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
             }
             HistoryRuler(history: history, onLive: onLive)
             if history.isBrowsing {
@@ -34,11 +34,15 @@ struct TrackerView: View {
                     HStack(spacing: 8) {
                         trackingButton
                         DrawerDetailsButton(expanded: $showingDetails, subject: "location")
-                        DrawerCircleButton(symbol: bridge.sending ? "arrow.up.circle" : "paperplane.fill",
-                                           label: bridge.sending ? (bridge.savesToICloudDrive ? "Saving" : "Sending") : (bridge.savesToICloudDrive ? "Save Now" : "Send Now"), contentSize: 32) {
-                            GLManager.shared().sendQueueNow()
+                        Button { bridge.retryPendingUpload() } label: {
+                            Text(bridge.uploadPresentation.buttonTitle)
+                                .font(.caption.weight(.semibold))
+                                .frame(minHeight: 32)
                         }
-                        .disabled(!bridge.destinationSet || bridge.queueCount == 0)
+                        .glassButtonStyle()
+                        .buttonBorderShape(.capsule)
+                        .disabled(!bridge.uploadPresentation.canSend)
+                        .accessibilityValue("\(bridge.queueCount) points waiting")
                     }
                     .controlSize(.small)
                     .frame(minHeight: 44)
@@ -183,8 +187,7 @@ struct TrackerView: View {
     }
 
     private var uploadSummary: String {
-        if bridge.sending { return "Sending" }
-        if bridge.uploadsBlocked { return "Blocked" }
+        if bridge.uploadPresentation.showsStatus { return bridge.uploadPresentation.statusText }
         if bridge.waitingForWifi && bridge.queueCount > 0 { return "Waiting for Wi-Fi" }
         if bridge.pendingUploads { return "Pending" }
         return "Up to date"

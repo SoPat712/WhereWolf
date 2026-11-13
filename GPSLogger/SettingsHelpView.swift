@@ -669,7 +669,7 @@ enum SettingsHelpTopic: String {
                       source: .implementation),
                 .init("Upload Queue and Retries", "Counts records waiting for your destination.",
                       notes: ["Failed sends keep their records",
-                              "Authentication errors wait for Retry Uploads"],
+                              "Authentication errors wait for Retry Now"],
                       source: .implementation),
                 .init("Delete Pending Uploads", "Permanently deletes every record waiting to be sent.",
                       cons: ["Can’t be undone; includes trip summaries"],

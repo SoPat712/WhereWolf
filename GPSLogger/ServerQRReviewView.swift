@@ -5,23 +5,45 @@ struct ServerQRReviewView: View {
     let onUse: () async -> Bool
     let onScanAgain: () -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var check = ServerQRReviewCheck()
-    @State private var saving = false
-    @State private var saveFailed = false
+    @State private var confirmation = ServerChangeConfirmation()
+    @State private var saved = false
+    @State private var previewStarted = false
     @AccessibilityFocusState private var cardFocused: Bool
 
     var body: some View {
+        ZStack {
+            if confirmation.pending != nil {
+                ServerPendingQueueView(confirmation: confirmation)
+                    .transition(.opacity)
+            } else {
+                reviewContent.transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: reduceMotion ? 0.12 : 0.2), value: confirmation.pending != nil)
+        .onAppear {
+            if review.kind == .dawarich { check.start(review) }
+            cardFocused = true
+        }
+        .onChange(of: confirmation.pending == nil) { _, reviewing in
+            cardFocused = reviewing
+        }
+        .task {
+            guard review.previewPendingQueue != nil, !previewStarted else { return }
+            previewStarted = true
+            await useServer()
+        }
+        .onDisappear { check.cancel(); confirmation.cancel() }
+    }
+
+    private var reviewContent: some View {
         ScrollView {
             VStack(spacing: 24) {
                 card
                 VStack(spacing: 12) {
                     Button {
-                        guard !saving else { return }
-                        saving = true
-                        Task { @MainActor in
-                            saveFailed = !(await onUse())
-                            saving = false
-                        }
+                        Task { await useServer() }
                     } label: {
                         Text("Use This Server")
                             .fontWeight(.semibold)
@@ -36,9 +58,10 @@ struct ServerQRReviewView: View {
                     .accessibilityIdentifier("wherewolf.scanQRCode.again")
                 }
                 .buttonBorderShape(.capsule)
-                .disabled(saving)
-                if saveFailed {
-                    Text("Couldn’t save the server credential. Unlock this iPhone and try again.")
+                .disabled(confirmation.busy || saved)
+                if confirmation.busy { ProgressView("Checking waiting points…") }
+                if let error = confirmation.error {
+                    Text(error)
                         .foregroundStyle(.orange)
                         .accessibilityIdentifier("wherewolf.scanQRCode.saveError")
                 }
@@ -49,20 +72,22 @@ struct ServerQRReviewView: View {
         }
         .scrollBounceBehavior(.basedOnSize)
         .background { if #unavailable(iOS 26) { Color(uiColor: .systemGroupedBackground).ignoresSafeArea() } }
-        .onAppear {
-            if review.kind == .dawarich { check.start(review) }
-            cardFocused = true
-        }
-        .onDisappear { check.cancel() }
     }
 
-    @ViewBuilder private var card: some View {
-        if #available(iOS 26, *) {
-            // On the glass sheet the card is a tertiary-fill group, as in the setup guide: glass on glass frosts to white.
-            cardContent.background(Color(uiColor: .tertiarySystemFill), in: .rect(cornerRadius: 22))
-        } else {
-            cardContent.background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22))
-        }
+    private func useServer() async {
+        guard !saved else { return }
+        // Render fixtures must never inspect the owner's real queue or credentials.
+        let current = review.previewStatus == nil ? ServerQRValues.saved
+            : ServerQRValues(endpoint: "", token: "", deviceId: "", uniqueId: false, acceptHTTP: false, headers: [:])
+        let result = await confirmation.request(review.values, current: current, load: {
+            if review.previewStatus != nil { return review.previewPendingQueue ?? .empty }
+            return await ServerPendingQueue.load()
+        }, save: onUse)
+        if result == true { saved = true }
+    }
+
+    private var card: some View {
+        cardContent.modifier(ServerReviewCardStyle())
     }
 
     private var cardContent: some View {

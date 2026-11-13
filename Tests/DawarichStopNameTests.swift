@@ -74,6 +74,65 @@ final class DawarichStopNameTests: XCTestCase {
         XCTAssertEqual(own.stops.first?.end, named.stops.first?.end)
     }
 
+    func testCustomVisitNameSurvivesPersistenceAndClippingAndBeatsRefreshedPlace() throws {
+        var value = row()
+        value["custom_name"] = " Dentist \n"
+        value["display_name"] = "Dentist"
+        value["place"] = ["id": 4, "name": "Medical Centre", "latitude": 40, "longitude": -73]
+        let decoded = try XCTUnwrap(DawarichStopDecoder.visit(value))
+        XCTAssertEqual(decoded.customName, "Dentist")
+        let restored = try JSONDecoder().decode(DawarichStopVisit.self, from: JSONEncoder().encode(decoded))
+        let clipped = try XCTUnwrap(restored.clipped(from: day.addingTimeInterval(60), to: day.addingTimeInterval(540)))
+        let refreshed = place("Renamed Medical Centre")
+        let named = landmarks([clipped], places: [refreshed])
+        XCTAssertEqual(named.stops.first?.name, "Dentist")
+        XCTAssertEqual(named.journey.first?.rows.first?.title, "Dentist")
+        let wifi = WifiPlace(name: "My Name", latitude: 40, longitude: -73)
+        XCTAssertEqual(landmarks([clipped], wifi: [wifi], places: [refreshed]).stops.first?.name, "My Name")
+        for absent in [NSNull(), " \n"] as [Any] {
+            value["custom_name"] = absent
+            let ordinary = try XCTUnwrap(DawarichStopDecoder.visit(value))
+            XCTAssertEqual(landmarks([ordinary], places: [refreshed]).stops.first?.name, "Renamed Medical Centre")
+        }
+    }
+
+    func testVisibleVisitCenterNamesStopsWithoutAPlaceAndMaskedCentersStayUnnamed() throws {
+        var value = row()
+        value["place"] = NSNull()
+        value["place_id"] = NSNull()
+        value["name"] = "Riverside"
+        value["display_name"] = "Riverside Park"
+        value["center"] = ["latitude": 40, "longitude": -73]
+        let decoded = try XCTUnwrap(DawarichStopDecoder.visit(value))
+        XCTAssertNil(decoded.place)
+        XCTAssertEqual(decoded.center?.latitude, 40)
+        XCTAssertEqual(decoded.center?.longitude, -73)
+        let restored = try JSONDecoder().decode(DawarichStopVisit.self, from: JSONEncoder().encode(decoded))
+        let clipped = try XCTUnwrap(restored.clipped(from: day.addingTimeInterval(60), to: day.addingTimeInterval(540)))
+        XCTAssertEqual(landmarks([clipped], places: [place()]).stops.first?.name, "Riverside Park")
+        let wifi = WifiPlace(name: "My Name", latitude: 40, longitude: -73)
+        XCTAssertEqual(landmarks([clipped], wifi: [wifi]).stops.first?.name, "My Name")
+        value["display_name"] = NSNull()
+        XCTAssertEqual(landmarks([try XCTUnwrap(DawarichStopDecoder.visit(value))]).stops.first?.name, "Riverside")
+        value["custom_name"] = "Picnic"
+        XCTAssertEqual(landmarks([try XCTUnwrap(DawarichStopDecoder.visit(value))]).stops.first?.name, "Picnic")
+        for status in ["suggested", "declined"] {
+            var unconfirmed = value
+            unconfirmed["status"] = status
+            XCTAssertNil(landmarks([try XCTUnwrap(DawarichStopDecoder.visit(unconfirmed))]).stops.first?.name)
+        }
+        value["center"] = ["latitude": place(north: 301).latitude, "longitude": -73]
+        XCTAssertNil(landmarks([try XCTUnwrap(DawarichStopDecoder.visit(value))]).stops.first?.name)
+        value["place_id"] = 4
+        for hidden in [NSNull(), ["latitude": NSNull(), "longitude": -73],
+                       ["latitude": true, "longitude": -73], ["latitude": 91, "longitude": -73]] as [Any] {
+            value["center"] = hidden
+            let masked = try XCTUnwrap(DawarichStopDecoder.visit(value))
+            XCTAssertNil(masked.center)
+            XCTAssertNil(landmarks([masked], places: [place()]).stops.first?.name)
+        }
+    }
+
     func testSuggestionsDeclinedAndUnknownStatusesCannotSupplyNames() {
         for status in ["suggested", "declined", "unconfirmed", "", "new_status"] {
             let value = landmarks([visit(status: status)], places: [place("Home")])
@@ -369,6 +428,38 @@ final class DawarichStopNameTests: XCTestCase {
         XCTAssertNil(namer.name(at: place().location, from: next, to: next.addingTimeInterval(600)))
         XCTAssertEqual(namer.name(at: place().location, from: day, to: day.addingTimeInterval(600))?.title, "Home")
         for task in names.reset() { await task.value }
+        try await cache.clear()
+    }
+
+    @MainActor func testVisitOverlapAggregatesAcrossDaysWithoutRestoringRefreshedEmptyDays() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = ServerHistoryCache(directoryURL: directory)
+        let identity = String(repeating: "a", count: 64), next = day.addingTimeInterval(86_400)
+        let overnight = visit(id: 1, start: 86_400 - 1_200, end: 86_400 + 1_200, place: place("Across Midnight", id: 1))
+        let evening = visit(id: 2, start: 86_400 - 1_800, end: 86_400 - 300, place: place("Before Midnight", id: 2))
+        try await cache.selectSource(identity)
+        try await cache.storeStopVisits([overnight, evening], on: day)
+        let names = ServerHistoryNames(cache: cache)
+        StopNamesProtocol.handler = { _ in XCTFail("Offline metadata stays offline") }
+        for empty in [false, true] {
+            try await cache.storeStopVisits(empty ? [] : [overnight], on: next)
+            let loaded = expectation(description: "Both visit days loaded, second day empty: \(empty)")
+            names.changed = {
+                if names.snapshot.days.count == 2 { names.changed = nil; loaded.fulfill() }
+            }
+            names.configure(client: nil, identity: identity, calendar: calendar, after: nil)
+            names.request(day...next, source: .calendar)
+            await fulfillment(of: [loaded], timeout: 2)
+            XCTAssertEqual(names.snapshot.visits.filter { $0.id == overnight.id }.count, empty ? 1 : 2)
+            let namer = HistoryStopNamer(wifi: [], names: names.snapshot, distance: 300)
+            XCTAssertEqual(namer.name(at: place().location, from: next.addingTimeInterval(-1_800),
+                                      to: next.addingTimeInterval(1_800))?.title,
+                           empty ? "Before Midnight" : "Across Midnight")
+            XCTAssertEqual(namer.name(at: place().location, from: next, to: next.addingTimeInterval(1_800))?.title,
+                           empty ? nil : "Across Midnight")
+            for task in names.reset() { await task.value }
+        }
         try await cache.clear()
     }
 

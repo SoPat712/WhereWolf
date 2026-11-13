@@ -69,6 +69,12 @@ const NSTimeInterval GLWifiPlaceHeartbeatInterval = 300;
 
 @property (strong, nonatomic) LOLDatabase *db;
 @property (strong, nonatomic) FMDatabase *tripdb;
+@property (strong, nonatomic) dispatch_queue_t queuedReplayReadQueue;
+@property (strong, nonatomic) NSMutableArray *queuedReplayCompletions;
+@property (nonatomic) BOOL queuedReplayReadInProgress;
+@property (weak, nonatomic) LOLDatabase *queuedReplayDatabase;
+@property (copy, nonatomic) NSArray<NSDictionary *> *queuedReplayRecords;
+@property (nonatomic) uint64_t queuedReplayRevision;
 
 @property (strong, nonatomic) NSDate *lastScheduledNotificationDate;
 @property NSUInteger reminderRevision;
@@ -101,6 +107,11 @@ const NSTimeInterval GLWifiPlaceHeartbeatInterval = 300;
 @property (strong, nonatomic) NSTimer *uploadTimer;
 @property NSUInteger uploadFailures;
 @property NSUInteger drainRequests;
+@property NSUInteger uploadBatchesCompleted;
+@property (copy, nonatomic) NSString *uploadFailureReason;
+@property (copy, nonatomic) NSString *userSendFeedback;
+@property NSUInteger userSendFeedbackRevision;
+@property (strong, nonatomic) NSMutableDictionary<NSUUID *, void (^)(NSError *)> *sendWaiters;
 @property BOOL uploadBlocked;
 @property BOOL uploadPending;
 @property BOOL drainAll;
@@ -1193,13 +1204,70 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
 }
 
 - (void)sendQueueNow {
+    if(!NSThread.isMainThread) {
+        dispatch_async(dispatch_get_main_queue(), ^{ [self sendQueueNow]; });
+        return;
+    }
+    // A user may override this wait once; the next failure still uses the existing failure count.
+    [self.uploadTimer invalidate];
+    self.uploadTimer = nil;
+    self.nextUploadDate = nil;
+    self.waitingForNetwork = NO;
+    if(!self.uploadPending || self.uploadBlocked) self.uploadBatchesCompleted = 0;
     self.userDrain = YES;
+    [self setUserSendFeedbackState:@"sending"];
     [self flushQueue];
+}
+
+- (void)sendQueueNowWithCompletion:(void (^)(NSError *))completion {
+    [self sendQueueNowWithTimeout:20 completion:completion];
+}
+
+- (void)sendQueueNowWithTimeout:(NSTimeInterval)timeout completion:(void (^)(NSError *))completion {
+    if(!NSThread.isMainThread) {
+        dispatch_async(dispatch_get_main_queue(), ^{ [self sendQueueNowWithTimeout:timeout completion:completion]; });
+        return;
+    }
+    NSUUID *identifier = NSUUID.UUID;
+    if(!self.sendWaiters) self.sendWaiters = [NSMutableDictionary dictionary];
+    self.sendWaiters[identifier] = [completion copy];
+    __weak typeof(self) weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(MAX(0, timeout) * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        typeof(self) self = weakSelf;
+        void (^waiting)(NSError *) = self.sendWaiters[identifier];
+        if(!waiting) return;
+        [self.sendWaiters removeObjectForKey:identifier];
+        waiting([NSError errorWithDomain:@"WhereWolf.Send" code:2 userInfo:@{NSLocalizedDescriptionKey:
+            @"The first batch did not finish in time. WhereWolf will keep trying; the upload may still finish."}]);
+    });
+    // Joining a running batch never starts a second request.
+    [self sendQueueNow];
+}
+
+- (void)completeSendWaiters:(NSError *)error {
+    NSArray *waiters = self.sendWaiters.allValues;
+    [self.sendWaiters removeAllObjects];
+    // Finish unwinding the batch before a caller can request another send.
+    dispatch_async(dispatch_get_main_queue(), ^{
+        for(void (^completion)(NSError *) in waiters) completion(error);
+    });
+}
+
+- (void)setUserSendFeedbackState:(NSString *)state {
+    self.userSendFeedback = state;
+    NSUInteger revision = ++self.userSendFeedbackRevision;
+    [[NSNotificationCenter defaultCenter] postNotificationName:GLUserSendFeedbackChangedNotification object:self];
+    if(!state || [state isEqual:@"sending"]) return;
+    __weak typeof(self) weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 15 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        if(weakSelf.userSendFeedbackRevision == revision) [weakSelf setUserSendFeedbackState:nil];
+    });
 }
 
 // Trip boundaries and pauses flush the queue too. While sending waits for Wi-Fi, the flush intent
 // persists and goes out on the first Wi-Fi path.
 - (void)flushQueue {
+    if(!self.uploadPending) self.uploadBatchesCompleted = 0;
     self.drainAll = YES;
     self.uploadPending = YES;
     self.uploadBlocked = NO;
@@ -1227,6 +1295,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     }
     [self.uploadTimer invalidate];
     self.uploadTimer = nil;
+    if(!self.uploadPending) self.uploadBatchesCompleted = 0;
 
     NSMutableArray *syncedUpdates = [NSMutableArray array];
     NSMutableArray *locationUpdates = [NSMutableArray array];
@@ -1235,6 +1304,10 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     
     if(!self.savesToICloudDrive && ![GLManager isValidEndpoint:endpoint]) {
         NSLog(@"No API endpoint is set, not sending data");
+        self.userDrain = NO;
+        if(self.userSendFeedback) [self setUserSendFeedbackState:@"failed"];
+        [self completeSendWaiters:[NSError errorWithDomain:@"WhereWolf.Send" code:1 userInfo:@{NSLocalizedDescriptionKey:
+            @"WhereWolf doesn't have anywhere to send data yet. Set a server URL or choose iCloud Drive in WhereWolf's settings."}]];
         [self endSendBackgroundTask];
         return;
     }
@@ -1275,13 +1348,18 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     NSDictionary *postData;
 
     if(locationUpdates.count == 0) {
+        _currentPointsInQueue = 0;
         self.batchInProgress = NO;
         self.uploadPending = NO;
         self.drainAll = NO;
+        self.userDrain = NO;
         [self persistUploadState];
+        if([self.userSendFeedback isEqual:@"sending"]) [self setUserSendFeedbackState:@"sent"];
+        [self completeSendWaiters:nil];
         [self endSendBackgroundTask];
         return;
     }
+    _currentPointsInQueue = _numInQueue;
 
     if(owntracks) {
         postData = locationUpdates[0];
@@ -1423,6 +1501,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     }
 
     _currentPointsInQueue = remaining;
+    self.uploadBatchesCompleted++;
     self.batchInProgress = remaining >= batchSize || (remaining > 0 && (owntracks || segmentEnded));
 
     self.uploadFailures = 0;
@@ -1430,6 +1509,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     self.nextUploadDate = nil;
     self.uploadBlocked = NO;
     self.lastUploadErrorNotification = nil;
+    self.uploadFailureReason = nil;
     self.uploadPending = _currentPointsInQueue > 0 && (self.drainAll || self.batchInProgress);
     if(!self.uploadPending) {
         self.drainAll = NO;
@@ -1437,6 +1517,8 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     }
     [self persistUploadState];
     [self sendingFinished];
+    if(!self.uploadPending && [self.userSendFeedback isEqual:@"sending"]) [self setUserSendFeedbackState:@"sent"];
+    [self completeSendWaiters:nil];
     [self updateSettingsFromResponse:response];
     if(self.uploadPending) [self scheduleUploadAfter:self.drainRequests >= 20 ? 1 : 0];
 }
@@ -1532,6 +1614,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     NSMutableDictionary *state = [@{@"pending": @(self.uploadPending), @"flush": @(self.drainAll),
         @"blocked": @(self.uploadBlocked), @"failures": @(self.uploadFailures), @"network": @(self.waitingForNetwork)} mutableCopy];
     if(self.nextUploadDate) state[@"retry"] = self.nextUploadDate;
+    if(self.uploadFailureReason) state[@"reason"] = self.uploadFailureReason;
     [NSUserDefaults.standardUserDefaults setObject:state forKey:GLUploadRetryStateDefaultsName];
     [[NSNotificationCenter defaultCenter] postNotificationName:GLUploadStateChangedNotification object:self];
 }
@@ -1543,6 +1626,10 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
 
 - (BOOL)uploadsBlocked { return self.uploadBlocked; }
 - (NSDate *)uploadRetryDate { return self.nextUploadDate; }
+- (BOOL)uploadDraining {
+    return self.uploadPending && self.drainAll && !self.uploadBlocked && self.hasDestination
+        && self.nextUploadDate.timeIntervalSinceNow <= 0 && (!self.waitingForWifi || self.userDrain);
+}
 
 - (void)resumeUploadAfterConnectivity {
     if(![self.advancedTrackingOptions[@"connectivity_retry"] boolValue] || !self.waitingForNetwork
@@ -1558,6 +1645,8 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     self.uploadTimer = nil;
     self.nextUploadDate = nil;
     self.uploadFailures = 0;
+    self.uploadFailureReason = nil;
+    self.uploadBatchesCompleted = 0;
     self.uploadBlocked = NO;
     self.waitingForNetwork = NO;
     self.drainRequests = 0;
@@ -1615,6 +1704,21 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     if(!transient) self.userDrain = NO;
     self.uploadFailures = MIN(self.uploadFailures + 1, 32);
     self.drainRequests = 0;
+    // Keep persisted status free of server bodies, endpoint URLs and credentials.
+    if(certificate) self.uploadFailureReason = @"The server address or secure connection could not be verified.";
+    else if(status == 401 || status == 403) self.uploadFailureReason = @"The server refused access. Check the access token and server settings.";
+    else if(status == 429) self.uploadFailureReason = @"The server is limiting uploads. It asked WhereWolf to wait.";
+    else if(status == 503) self.uploadFailureReason = @"The server is temporarily unavailable.";
+    else if(status == 408) self.uploadFailureReason = @"The server took too long to receive the upload.";
+    else if(status >= 500) self.uploadFailureReason = @"The server had a problem receiving the data.";
+    else if(status >= 400) self.uploadFailureReason = @"The server rejected the upload. Check the destination settings.";
+    else if([error.domain isEqual:@"LOLDatabase"]) self.uploadFailureReason = @"The upload queue could not be read or updated. Your points are kept.";
+    else if([error.domain isEqual:@"WhereWolfCloud"]) self.uploadFailureReason = @"iCloud Drive could not save the data. Your points are kept.";
+    else if(error.code == NSURLErrorNotConnectedToInternet) self.uploadFailureReason = @"There is no internet connection.";
+    else if(error.code == NSURLErrorTimedOut) self.uploadFailureReason = @"The server took too long to respond.";
+    else if(error) self.uploadFailureReason = @"The connection to the server failed.";
+    else self.uploadFailureReason = @"The server did not confirm that it received the data.";
+    self.nextUploadDate = nil;
     if(transient) {
         NSTimeInterval delay = [GLManager uploadBackoffForFailure:self.uploadFailures jitter:(double)arc4random_uniform(10001) / 10000];
         if(status == 429 || status == 503) {
@@ -1625,6 +1729,9 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
         [self scheduleUploadAfter:delay];
     }
     [self persistUploadState];
+    if([self.userSendFeedback isEqual:@"sending"]) [self setUserSendFeedbackState:@"failed"];
+    [self completeSendWaiters:[NSError errorWithDomain:@"WhereWolf.Send" code:3
+        userInfo:@{NSLocalizedDescriptionKey: self.uploadFailureReason}]];
 }
 
 - (void)notifyUploadError:(NSString *)message title:(NSString *)title {
@@ -2126,16 +2233,44 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
 
 - (void)loadQueuedReplayLocations:(void (^)(NSArray<NSDictionary *> *records))completion {
     LOLDatabase *database = self.db;
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
-        NSMutableArray *records = [NSMutableArray array];
-        [database accessCollection:GLLocationQueueName withBlock:^(id<LOLDatabaseAccessor> accessor) {
-            [accessor enumerateKeysAndObjectsUsingBlock:^BOOL(NSString *key, NSDictionary *record) {
-                if(![record isKindOfClass:NSDictionary.class] || [key hasPrefix:@"healthkit:"]) return NO;
-                if([self queuedLocationDate:record]) [records addObject:@{@"key": key, @"record": record}];
-                return NO;
-            }];
-        }];
-        dispatch_async(dispatch_get_main_queue(), ^{ completion(records); });
+    dispatch_queue_t queue;
+    @synchronized(self) {
+        if(!self.queuedReplayReadQueue) {
+            dispatch_queue_attr_t attributes = dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_UTILITY, 0);
+            self.queuedReplayReadQueue = dispatch_queue_create("me.joshpatra.WhereWolf.queued-replay", attributes);
+        }
+        if(!self.queuedReplayCompletions) self.queuedReplayCompletions = [NSMutableArray array];
+        [self.queuedReplayCompletions addObject:[completion copy]];
+        if(self.queuedReplayReadInProgress) return;
+        self.queuedReplayReadInProgress = YES;
+        queue = self.queuedReplayReadQueue;
+    }
+    dispatch_async(queue, ^{
+        uint64_t revision = [database revisionForCollection:GLLocationQueueName];
+        NSArray<NSDictionary *> *snapshot = self.queuedReplayRecords;
+        if(!snapshot || self.queuedReplayDatabase != database || self.queuedReplayRevision != revision) {
+            NSMutableArray<NSDictionary *> *records = [NSMutableArray array];
+            BOOL unchanged = [database readCollection:GLLocationQueueName inChunksOfSize:256
+                usingBlock:^(NSArray<NSDictionary *> *chunk) {
+                    for(NSDictionary *entry in chunk) {
+                        if([entry[@"key"] hasPrefix:@"healthkit:"]) continue;
+                        if([self queuedLocationDate:entry[@"record"]]) [records addObject:entry];
+                    }
+                } revision:&revision];
+            snapshot = records.copy;
+            self.queuedReplayDatabase = database;
+            self.queuedReplayRecords = unchanged ? snapshot : nil;
+            self.queuedReplayRevision = revision;
+        }
+        NSArray *callbacks;
+        @synchronized(self) {
+            callbacks = self.queuedReplayCompletions.copy;
+            [self.queuedReplayCompletions removeAllObjects];
+            self.queuedReplayReadInProgress = NO;
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            for(void (^callback)(NSArray<NSDictionary *> *) in callbacks) callback(snapshot);
+        });
     });
 }
 
@@ -2146,6 +2281,24 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
             callback(num);
         }];
     }];
+}
+
+- (void)loadPendingServerQueueSummary:(void (^)(NSDictionary<NSString *, NSNumber *> *))completion {
+    LOLDatabase *database = self.db;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        NSMutableDictionary *summary = nil;
+        // Use the existing queue count, holding the same lock through the timestamp aggregate
+        // so uploads cannot remove a batch between the count and range reads.
+        @synchronized(database) {
+            __block long count = -1;
+            [self numberOfLocationsInQueue:^(long num) { count = num; }];
+            if(count >= 0 && !database.lastError) {
+                summary = [[database queuedTimestampSummaryForCollection:GLLocationQueueName] mutableCopy];
+                summary[@"count"] = @(count);
+            }
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{ completion(summary); });
+    });
 }
 
 - (void)numberOfObjectsInQueue:(void(^)(long locations, long trips, long stats))callback {
@@ -2194,6 +2347,11 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     self.uploadTimer = nil;
     self.sendGeneration++;
     [self.sendTask cancel];
+    if(self.sendInProgress) {
+        if([self.userSendFeedback isEqual:@"sending"]) [self setUserSendFeedbackState:@"failed"];
+        [self completeSendWaiters:[NSError errorWithDomain:@"WhereWolf.Send" code:4 userInfo:@{NSLocalizedDescriptionKey:
+            @"The destination changed before the upload finished. Retry with the new settings."}]];
+    }
     if(self.sendInProgress) [self sendingFinished];
     [self endSendBackgroundTask];
     self.batchInProgress = NO;
@@ -2209,6 +2367,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     self.waitingForNetwork = [state[@"network"] boolValue];
     self.uploadFailures = [state[@"failures"] unsignedIntegerValue];
     self.nextUploadDate = [state[@"retry"] isKindOfClass:NSDate.class] ? state[@"retry"] : nil;
+    self.uploadFailureReason = [state[@"reason"] isKindOfClass:NSString.class] ? state[@"reason"] : nil;
     if(self.uploadPending && !self.uploadBlocked) [self scheduleUploadAfter:MAX(0, self.nextUploadDate.timeIntervalSinceNow)];
     [[NSNotificationCenter defaultCenter] postNotificationName:GLSettingsChangedNotification object:self];
 }
@@ -3625,6 +3784,7 @@ static NSDictionary *GLUsageProfileSettings(NSInteger profile) {
     self.drainAll = NO;
     self.userDrain = NO;
     [self resetUploadRetry];
+    if(self.userSendFeedback) [self setUserSendFeedbackState:nil];
     [self endSendBackgroundTask];
     [self numberOfLocationsInQueue:^(long num) {}];
     [[NSNotificationCenter defaultCenter] postNotificationName:GLNewDataNotification object:self];

@@ -200,7 +200,8 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   Shortcuts actions succeed without a dialog: Shortcuts shows a result dialog as a banner and finishes the
   action only once it's dismissed, so a CarPlay automation on a locked phone timed out after four minutes.
   Failures throw. Get Tracking Status keeps its dialog. Start Trip, End Trip and Send Now are also
-  LiveActivityIntents for the widgets' buttons. Start Trip and Toggle Trip await the enabled trip
+  LiveActivityIntents for the widgets' buttons. Send Now awaits its first committed batch or failure for at most
+  20 seconds; a timeout leaves the request and queue intact. Start Trip and Toggle Trip await the enabled trip
   Live Activity for at most two seconds inside `perform()`. End Trip and Toggle Trip likewise await
   tracking-activity restoration after the summary commits, bounded to seven seconds including its
   five-second pedometer wait. These allowances preserve audio hiding; other background starts require
@@ -502,7 +503,7 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   tightens, pulses and draws a check on recognition (Dawarich adds an original SF Symbol/text badge), then turns off
   before a glass review card shows the host/prefix, format and key presence. Dawarich checks use the scanned values;
   Use This Server saves through the form's existing path, while Scan Again remounts the camera. Reduce Motion uses a quick fade. Camera access is asked only on tap;
-  frames are never stored.
+  frames are never stored; changing servers confirms queued counts/dates (imports separately) before saving.
 - **Dawarich reads**: `DawarichServer.request`, `DawarichVersion` and `DawarichTransport` share
   authenticated GET construction, session policy and sanitized errors. History keeps its 1.20–1.x
   stable-release gate, two-request limit, coalescing, cancellation and Retry-After; Insights keeps
@@ -513,6 +514,7 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   Protected, backup-excluded `ServerHistoryCache` keeps 90 most recently viewed point days,
   persistent summaries and first date; identity includes credentials, headers and timezone.
   Phone/queued timestamps win; imported Health routes never enter replay queue reads.
+  Queue replay reads cache committed revisions and release the database lock between bounded chunks.
   Sparse ruler positions never index route geometry: `ServerHistoryRuler.sourcePositions` maps
   real fixes for camera windows and playback. Utility-built projections publish after interaction,
   preserving needle time and seconds per bar; year/month labels outrank days. Missing days show
@@ -861,7 +863,9 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   interval sends, pause and trip flushes, retries and background tasks, which count as
   blocked. It keeps the flush intent and resumes on the first Wi-Fi path. An unknown path
   waits. Send Now, intents, widgets, controls, the Live Activity and the watch always send,
-  and a user's drain continues through every batch. Its monitor runs only while it is on.
+  clearing retry timers/deadlines (including Retry-After) without resetting failures; a user's drain continues
+  through every batch. Queue and Tracker show Retry Now, the deadline/reason and drain progress.
+  Its monitor runs only while it is on.
   Optional iOS 18 `CLServiceSession` (Keep Always Access Active) retains already-Always authorization intent;
   invalidate it on Stop, option-off or lost authorization.
 - **Background helpers**: `WhereWolfBackgroundRuntime` controls the ActivityKit
@@ -875,7 +879,9 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   empty Island views. Minimal and Status always include the card; Live Activities shows
   its toggle on and disabled, and hides it when tracking activities are off.
   The shared `TrackingLockScreenCard` shows status, last fix/send, queue count and
-  Send Now. Without a separate trip activity, a trip adds mode, distance, live duration and End Trip.
+  Send Now. Both activity buttons show waiting counts and brief sending/sent/failed feedback;
+  user-send feedback updates immediately, otherwise keep the existing activity cadence.
+  Without a separate trip activity, a trip adds mode, distance, live duration and End Trip.
   Fix, distance and queue growth changes coalesce to 60 seconds; sends, queue drains, trip/status changes and
   reminder deadlines update immediately. Observe queue, send, trip and engine
   events without requiring a scene. End and recover both types; replace the type
@@ -989,7 +995,8 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
 - LOLDatabase returns transaction success; accepted-fix and trip-finalization
   state may advance only after the queue commit. Replay is not an acknowledgment.
 - Uploads keep one request in flight, yield after 20 drain requests, persist
-  retry/flush intent, and retain records on failure. GeoJSON and OwnTracks keep
+  retry/flush intent and failure reasons, and retain records on failure. Manual sends skip waits once;
+  subsequent failures back off again and automatic sends retain Wi-Fi/retry rules. GeoJSON and OwnTracks keep
   their existing request shapes. See `docs/tracking-improvements.md` for sources.
 
 ## Distribution builds

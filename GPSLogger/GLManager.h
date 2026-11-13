@@ -19,6 +19,7 @@ static NSString *const GLNewActivityNotification = @"GLNewActivityNotification";
 static NSString *const GLAuthorizationStatusChangedNotification = @"GLAuthorizationStatusChangedNotification";
 static NSString *const GLSendingStartedNotification = @"GLSendingStartedNotification";
 static NSString *const GLSendingFinishedNotification = @"GLSendingFinishedNotification";
+static NSString *const GLUserSendFeedbackChangedNotification = @"GLUserSendFeedbackChangedNotification";
 static NSString *const GLSettingsChangedNotification = @"GLSettingsChangedNotification";
 static NSString *const GLUploadStateChangedNotification = @"GLUploadStateChangedNotification";
 
@@ -187,6 +188,10 @@ typedef void (^CaseBlock)(void);
 @property (nonatomic, readonly) BOOL uploadsBlocked;
 @property (nonatomic, readonly) BOOL waitingForWifi;
 @property (nonatomic, readonly) NSDate *uploadRetryDate;
+@property (nonatomic, readonly) NSString *uploadFailureReason;
+@property (nonatomic, readonly) NSUInteger uploadBatchesCompleted;
+@property (nonatomic, readonly) BOOL uploadDraining;
+@property (nonatomic, readonly) NSString *userSendFeedback;
 - (void)setAdvancedTrackingOption:(NSNumber *)value forKey:(NSString *)key;
 - (void)requestMotionPermission;
 - (void)reconcileTracking;
@@ -259,6 +264,8 @@ typedef void (^CaseBlock)(void);
 
 - (void)logAction:(NSString *)action;
 - (void)sendQueueNow;
+// Completes on the main queue after the first batch commits, fails, or exceeds 20 seconds.
+- (void)sendQueueNowWithCompletion:(void (^)(NSError * _Nullable error))completion NS_SWIFT_NAME(sendQueueNow(completion:));
 - (void)notify:(NSString *)message withTitle:(NSString *)title;
 - (void)askToEndTrip;
 
@@ -272,6 +279,8 @@ typedef NS_ENUM(NSInteger, GLSendStatus) {
 - (NSArray *)recentSendResults;
 
 - (void)numberOfLocationsInQueue:(void(^)(long num))callback;
+// Metadata read on a utility queue; completion on main, nil on failure.
+- (void)loadPendingServerQueueSummary:(void (^)(NSDictionary<NSString *, NSNumber *> * _Nullable summary))completion;
 - (void)numberOfObjectsInQueue:(void(^)(long locations, long trips, long stats))callback;
 - (void)loadQueuedReplayLocations:(void (^)(NSArray<NSDictionary *> *records))completion;
 - (void)accountInfo:(void(^)(NSString *name))block;

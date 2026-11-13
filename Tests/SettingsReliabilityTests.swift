@@ -2,6 +2,54 @@ import XCTest
 @testable import WhereWolf
 
 final class SettingsReliabilityTests: XCTestCase {
+    func testRetryStatusIncludesDeadlineReasonAndEnabledRetryNow() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let status = UploadPresentation(retryDate: now.addingTimeInterval(3600),
+                                       failureReason: "There is no internet connection.", queued: 6000,
+                                       waitingForWifi: true, now: now)
+        XCTAssertTrue(status.waitingToRetry)
+        XCTAssertTrue(status.showsStatus)
+        XCTAssertTrue(status.canSend)
+        XCTAssertEqual(status.buttonTitle, "Retry Now")
+        XCTAssertTrue(status.statusText.hasPrefix("Waiting to retry, next attempt at "))
+        XCTAssertTrue(status.statusText.contains(status.retryDate!.formatted(date: .abbreviated, time: .shortened)))
+        XCTAssertTrue(status.statusText.contains("There is no internet connection."))
+    }
+
+    func testSendPresentationShowsDrainProgressAndCloudSaveAction() {
+        var status = UploadPresentation(queued: 6000)
+        XCTAssertEqual(status.buttonTitle, "Send Now")
+        XCTAssertTrue(status.canSend)
+        status.savesToCloud = true
+        XCTAssertEqual(status.buttonTitle, "Save Now")
+        status.sending = true
+        status.batchesCompleted = 3
+        XCTAssertEqual(status.buttonTitle, "Saving")
+        XCTAssertFalse(status.canSend)
+        XCTAssertTrue(status.statusText.contains("3 batches saved"))
+        XCTAssertTrue(status.statusText.contains("\(6000.formatted()) points left"))
+        status.sending = false
+        status.blocked = true
+        XCTAssertEqual(status.buttonTitle, "Retry Now")
+        XCTAssertTrue(status.canSend)
+        status.destinationSet = false
+        XCTAssertFalse(status.canSend)
+        status.destinationSet = true
+        status.queued = 0
+        XCTAssertFalse(status.canSend)
+    }
+
+    func testExpiredRetryDoesNotKeepRetryActionOrHideAnActiveSend() {
+        let now = Date()
+        var status = UploadPresentation(retryDate: now.addingTimeInterval(-1), queued: 1, now: now)
+        XCTAssertFalse(status.waitingToRetry)
+        XCTAssertEqual(status.buttonTitle, "Send Now")
+        status.retryDate = now.addingTimeInterval(3600)
+        status.sending = true
+        XCTAssertFalse(status.waitingToRetry)
+        XCTAssertEqual(status.buttonTitle, "Sending")
+    }
+
     func testWifiNetworksUseExactSSIDAndUTF8Limit() throws {
         XCTAssertNotNil(WifiObservedNetwork(name: "Home"))
         XCTAssertNotNil(WifiObservedNetwork(name: " Home "))

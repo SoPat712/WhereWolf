@@ -2,18 +2,25 @@ import SwiftUI
 
 struct ConnectionTestSection: View {
     var enabled = true
-    var prepare: () -> Bool = { true }
+    var prepare: () async -> Bool? = { true }
     @State private var preparationFailed = false
+    @State private var preparing = false
     @State private var test = ConnectionTestModel()
 
     var body: some View {
         Section {
             Button("Test Connection") {
-                preparationFailed = !prepare()
-                guard !preparationFailed else { return }
-                Task { await test.run() }
+                guard !preparing else { return }
+                preparing = true
+                Task {
+                    let prepared = await prepare()
+                    preparing = false
+                    preparationFailed = prepared == false
+                    guard prepared == true else { return }
+                    await test.run()
+                }
             }
-            .disabled(!enabled || test.busy)
+            .disabled(!enabled || test.busy || preparing)
             .accessibilityLabel("Test Connection")
             .accessibilityIdentifier("wherewolf.testConnection")
             if preparationFailed { Text("Couldn’t save server edits. Check the URL, headers and Keychain access, then try again.").foregroundStyle(.orange) }

@@ -10,6 +10,7 @@ struct OnboardingView: View {
     @State private var token = ""
     @State private var ownTracks = false
     @State private var useSetupLink = false
+    @State private var serverConfirmation = ServerChangeConfirmation()
     @State private var presetRowHeights: [Int: CGFloat] = [:]
     @State private var settledStep: OnboardingStep?
     @Environment(\.scenePhase) private var scenePhase
@@ -665,11 +666,10 @@ struct OnboardingView: View {
                 Button(editor == .server ? "Save" : "Done") {
                     if editor == .server {
                         Task {
-                            await model.chooseDestination(useSetupLink ? .setupLink(setupLink) : .server(endpoint: endpoint, token: token, ownTracks: ownTracks))
-                            if model.error == nil { loadDestination(); sheet = nil }
+                            if await saveServer() == true { loadDestination(); sheet = nil }
                         }
                     } else { sheet = nil; Task { await model.refresh() } }
-                }.disabled(model.busy)
+                }.disabled(model.busy || serverConfirmation.busy)
             } }
         }
         .modifier(SetupSheetStyle())
@@ -698,15 +698,31 @@ struct OnboardingView: View {
                      : "OwnTracks uses a Base64-encoded username:password token. More options are in Settings → Destination.")
             }
             .settingsRowBackground()
-            ConnectionTestSection(enabled: useSetupLink ? !setupLink.isEmpty : GLManager.isValidEndpoint(endpoint)) {
-                bridge.applyOnboardingDestination(useSetupLink ? .setupLink(setupLink) : .server(endpoint: endpoint, token: token, ownTracks: ownTracks))
-            }
+            ConnectionTestSection(enabled: !serverConfirmation.busy && (useSetupLink ? !setupLink.isEmpty : GLManager.isValidEndpoint(endpoint)),
+                                  prepare: saveServer)
             .settingsRowBackground()
             if let error = model.error { Text(error).foregroundStyle(.red).settingsRowBackground() }
         }
         .settingsFormStyle()
+        .disabled(serverConfirmation.busy)
         .navigationTitle(useSetupLink ? "Paste Setup Link" : "Your Server")
+        .modifier(ServerPendingQueuePresentation(confirmation: serverConfirmation))
         .onAppear { bridge.refreshDawarich() }
+    }
+
+    private func saveServer() async -> Bool? {
+        guard model.loaded, model.isPresented, !model.busy else { return nil }
+        let destination: OnboardingDestination = useSetupLink ? .setupLink(setupLink)
+            : .server(endpoint: endpoint, token: token, ownTracks: ownTracks)
+        let current = ServerQRValues.saved
+        guard let values = ServerQRValues.onboarding(destination, current: current) else {
+            await model.chooseDestination(destination)
+            return false
+        }
+        return await serverConfirmation.request(values, current: current) {
+            await model.chooseDestination(destination)
+            return model.error == nil
+        }
     }
 
     private var qrValues: ServerQRValues {

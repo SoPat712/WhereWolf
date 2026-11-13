@@ -1,6 +1,26 @@
 import ActivityKit
 import Foundation
 
+enum ActivitySendFeedback: String, Codable {
+    case sending, sent, failed
+
+    var title: String {
+        switch self {
+        case .sending: "Sending"
+        case .sent: "Sent"
+        case .failed: "Failed"
+        }
+    }
+    var symbol: String {
+        switch self {
+        case .sending: "arrow.up.circle"
+        case .sent: "checkmark"
+        case .failed: "exclamationmark"
+        }
+    }
+    static func badge(_ count: Int) -> String { count > 9999 ? "9k+" : String(max(0, count)) }
+}
+
 struct TrackingActivityAttributes: ActivityAttributes {
     struct ContentState: Codable, Hashable {
         var isTrip: Bool
@@ -15,6 +35,7 @@ struct TrackingActivityAttributes: ActivityAttributes {
         var tripStart: Date? = nil
         var tripDistance: Double? = nil
         var separateTripActivity: Bool? = nil
+        var sendFeedback: ActivitySendFeedback? = nil
 
         var showsTrip: Bool { isTrip && separateTripActivity != true && tripStart != nil }
 
@@ -23,6 +44,7 @@ struct TrackingActivityAttributes: ActivityAttributes {
                 || reminderDeadline != old.reminderDeadline || tripStart != old.tripStart
                 || separateTripActivity != old.separateTripActivity || tripModeName != old.tripModeName
                 || lastSent != old.lastSent || (queuedCount ?? 0) < (old.queuedCount ?? 0)
+                || sendFeedback != old.sendFeedback
         }
 
         func updateDelay(from old: Self, elapsed: TimeInterval) -> TimeInterval? {

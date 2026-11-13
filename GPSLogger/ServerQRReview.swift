@@ -9,6 +9,51 @@ struct ServerQRValues: Equatable {
     var acceptHTTP: Bool
     var headers: [String: String]
 
+    static var saved: Self {
+        let gl = GLManager.shared()!
+        return Self(endpoint: gl.apiEndpointURL() ?? "", token: gl.apiAccessToken() ?? "",
+                    deviceId: gl.deviceId() ?? "", uniqueId: UserDefaults.standard.bool(forKey: GLIncludeUniqueIdDefaultsName),
+                    acceptHTTP: UserDefaults.standard.bool(forKey: GLConsiderHTTP200SuccessDefaultsName),
+                    headers: gl.customHTTPHeaders ?? [:])
+    }
+
+    var host: String { URLComponents(string: endpoint)?.host ?? "this server" }
+
+    func changesServer(from saved: Self) -> Bool {
+        Self.serverURL(endpoint) != Self.serverURL(saved.endpoint) || token != saved.token
+            || Self.headerIdentity(headers) != Self.headerIdentity(saved.headers)
+    }
+
+    private static func serverURL(_ text: String) -> String {
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard var parts = URLComponents(string: text) else { return text }
+        parts.scheme = parts.scheme?.lowercased()
+        parts.host = parts.host?.lowercased()
+        parts.fragment = nil
+        if (parts.scheme == "https" && parts.port == 443) || (parts.scheme == "http" && parts.port == 80) { parts.port = nil }
+        if parts.path.isEmpty { parts.path = "/" }
+        return parts.string ?? text
+    }
+
+    private static func headerIdentity(_ headers: [String: String]) -> [String: String] {
+        Dictionary(headers.map { ($0.key.lowercased(), $0.value) }, uniquingKeysWith: { _, last in last })
+    }
+
+    static func onboarding(_ destination: OnboardingDestination, current: Self) -> Self? {
+        switch destination {
+        case .setupLink(let text):
+            guard let url = URL(string: text.trimmingCharacters(in: .whitespacesAndNewlines)),
+                  let setup = ServerSetup.parse(url) else { return nil }
+            return ServerQRReview(code: .setupLink(url, setup), current: current, ownTracks: false).values
+        case .server(let endpoint, let token, _):
+            var values = current
+            values.endpoint = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+            values.token = token
+            return GLManager.isValidEndpoint(values.endpoint) ? values : nil
+        case .device, .iCloud: return nil
+        }
+    }
+
     // Manual Save and QR confirmation use the same bridge call and validation.
     func save(using bridge: GLManagerBridge) -> Bool {
         bridge.saveServer(url: endpoint, token: token, deviceId: deviceId, uniqueId: uniqueId,
@@ -30,6 +75,7 @@ struct ServerQRReview: Identifiable {
     private let setupURL: URL?
     // Only render fixtures supply this; real scans always check the scanned server.
     var previewStatus: DawarichReviewStatus?
+    var previewPendingQueue: ServerPendingQueue?
 
     init(code: ServerSetupCode, current: ServerQRValues, ownTracks: Bool) {
         var values = current
@@ -185,6 +231,13 @@ extension ServerQRReview {
               let code = DawarichServer.parseQRCode(fixture.text, ownTracks: false) else { return nil }
         var review = ServerQRReview(code: code, current: ServerQRPreviewFixture.current, ownTracks: false)
         review.previewStatus = fixture.status
+        if let index = arguments.firstIndex(of: "-WhereWolfQRPendingPreview"),
+           arguments.indices.contains(index + 1), let count = Int(arguments[index + 1]),
+           (1...1_000_000_000).contains(count) {
+            let newest = Date(timeIntervalSince1970: 1_794_484_800) // Invented, fixed UTC dates.
+            review.previewPendingQueue = ServerPendingQueue(count: count, importedCount: 0,
+                oldest: count == 1 ? newest : newest.addingTimeInterval(-3 * 86_400), newest: newest)
+        }
         return review
     }
 }

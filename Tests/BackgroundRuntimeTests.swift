@@ -68,11 +68,14 @@ final class BackgroundRuntimeTests: XCTestCase {
         let date = Date(timeIntervalSince1970: 1_700_000_000)
         let state = TrackingActivityAttributes.ContentState(isTrip: true, lastSent: date, appearance: .blank,
             reminderDeadline: date.addingTimeInterval(120), lastFix: date.addingTimeInterval(10), queuedCount: 12,
-            trackingStatus: .paused, tripModeName: "Walk", tripStart: date, tripDistance: 1234, separateTripActivity: false)
+            trackingStatus: .paused, tripModeName: "Walk", tripStart: date, tripDistance: 1234,
+            separateTripActivity: false, sendFeedback: .sent)
         XCTAssertEqual(try JSONDecoder().decode(TrackingActivityAttributes.ContentState.self, from: JSONEncoder().encode(state)), state)
+        XCTAssertLessThan(try JSONEncoder().encode(state).count, 4096)
         let old = Data(#"{"isTrip":false,"appearance":"minimal"}"#.utf8)
         let decoded = try JSONDecoder().decode(TrackingActivityAttributes.ContentState.self, from: old)
         XCTAssertNil(decoded.lastFix); XCTAssertNil(decoded.queuedCount); XCTAssertNil(decoded.tripStart)
+        XCTAssertNil(decoded.sendFeedback)
         XCTAssertFalse(decoded.showsTrip)
         XCTAssertTrue(state.showsTrip)
         var duplicate = state; duplicate.separateTripActivity = true
@@ -100,6 +103,12 @@ final class BackgroundRuntimeTests: XCTestCase {
         XCTAssertEqual(reminder.updateDelay(from: old, elapsed: 1), 0)
         var paused = old; paused.trackingStatus = .paused
         XCTAssertEqual(paused.updateDelay(from: old, elapsed: 1), 0)
+        var feedback = old
+        for value in [ActivitySendFeedback.sending, .sent, .failed] {
+            feedback.sendFeedback = value
+            XCTAssertEqual(feedback.updateDelay(from: old, elapsed: 0), 0)
+        }
+        XCTAssertEqual(old.updateDelay(from: feedback, elapsed: 15), 0)
     }
 
     @MainActor func testBlankCardSwitchReplacesActivityAndRestoresLiveUpdateSupport() async throws {

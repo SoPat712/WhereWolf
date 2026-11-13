@@ -25,6 +25,7 @@
 - (void)sendQueueIfTimeElapsed;
 - (void)sendQueueIfNotInProgress;
 - (void)sendTimeExpired;
+- (void)sendQueueNowWithTimeout:(NSTimeInterval)timeout completion:(void (^)(NSError *))completion;
 - (void)processLocations:(NSArray *)locations;
 - (void)updateSettingsFromResponse:(id)response;
 - (NSDictionary *)owntracksDictionaryFromLocation:(CLLocation *)location;
@@ -84,6 +85,16 @@
 - (void)scheduleUploadAfter:(NSTimeInterval)delay {
     self.scheduledUploadDelay = delay;
     [super scheduleUploadAfter:delay];
+}
+@end
+
+@interface TestQueueSummaryDatabase : LOLDatabase
+@property BOOL summaryReadOnMainThread;
+@end
+@implementation TestQueueSummaryDatabase
+- (NSDictionary<NSString *, NSNumber *> *)queuedTimestampSummaryForCollection:(NSString *)collection {
+    self.summaryReadOnMainThread = NSThread.isMainThread;
+    return [super queuedTimestampSummaryForCollection:collection];
 }
 @end
 
@@ -347,6 +358,76 @@ static int denyCommit(void *context, int action, const char *first, const char *
     [self.manager numberOfLocationsInQueue:^(long num) { count = num; }];
     return count;
 }
+- (NSDictionary<NSString *, NSNumber *> *)pendingServerSummary {
+    XCTestExpectation *done = [self expectationWithDescription:@"Pending server queue metadata"];
+    __block NSDictionary *summary;
+    [self.manager loadPendingServerQueueSummary:^(NSDictionary *metadata) {
+        XCTAssertTrue(NSThread.isMainThread);
+        summary = metadata;
+        [done fulfill];
+    }];
+    [self waitForExpectationsWithTimeout:5 handler:nil];
+    return summary;
+}
+- (void)testPendingServerSummaryReadsOnlyMetadataOffMainAndPreservesImportReceipts {
+    TestQueueSummaryDatabase *database = [[TestQueueSummaryDatabase alloc] initWithPath:@":memory:"];
+    database.serializer = self.db.serializer;
+    database.deserializer = ^id(NSData *data) { XCTFail(@"The summary must not decode records or coordinates"); return nil; };
+    database.summaryReadOnMainThread = YES;
+    self.db = database;
+    [self.manager setValue:database forKey:@"db"];
+    NSDictionary *ordinary = @{@"type": @"Feature", @"geometry": @{@"type": @"Point", @"coordinates": @[@45, @(-122)]},
+                              @"properties": @{@"timestamp": @"2026-11-01T01:30:00-04:00"}};
+    NSDictionary *workout = @{@"type": @"Feature", @"geometry": ordinary[@"geometry"],
+                             @"properties": @{@"source": @"healthkit", @"timestamp": @"2026-10-31T23:45:00.250-07:00"}};
+    NSDate *first = [[NSISO8601DateFormatter new] dateFromString:@"2026-11-01T05:30:00Z"];
+    NSDate *last = [[NSISO8601DateFormatter new] dateFromString:@"2026-11-01T06:45:00Z"];
+    [self queue:ordinary key:@"ordinary"];
+    [self queue:@{@"_type": @"location", @"tst": @(first.timeIntervalSince1970 + 60), @"lat": @45, @"lon": @(-122)} key:@"owntracks"];
+    NSUInteger inserted = 0;
+    XCTAssertTrue([database importRecords:@[workout] keys:@[@"healthkit:fixture"] intoCollection:@"GLLocationQueue" insertedCount:&inserted]);
+    XCTAssertEqual(inserted, 1);
+
+    NSDictionary *summary = [self pendingServerSummary];
+
+    XCTAssertFalse(database.summaryReadOnMainThread);
+    XCTAssertEqualObjects(summary[@"count"], @3);
+    XCTAssertEqualObjects(summary[@"importedCount"], @1);
+    XCTAssertEqualWithAccuracy([summary[@"oldest"] doubleValue], first.timeIntervalSince1970, 0.001);
+    XCTAssertEqualWithAccuracy([summary[@"newest"] doubleValue], last.timeIntervalSince1970 + 0.25, 0.001);
+    XCTAssertEqualObjects([NSSet setWithArray:summary.allKeys], ([NSSet setWithArray:@[@"count", @"importedCount", @"oldest", @"newest"]]));
+    XCTAssertEqual(self.count, 3);
+    XCTAssertTrue([database importRecords:@[workout] keys:@[@"healthkit:fixture"] intoCollection:@"GLLocationQueue" insertedCount:&inserted]);
+    XCTAssertEqual(inserted, 0);
+    database.deserializer = ^id(NSData *data) { return [NSJSONSerialization JSONObjectWithData:data options:0 error:nil]; };
+    XCTAssertEqualObjects([self queued:@"ordinary"], ordinary);
+    XCTAssertEqualObjects([self queued:@"healthkit:fixture"], workout);
+}
+- (void)testPendingServerSummaryHandlesEmptyQueueOnePointAndMissingTimestamps {
+    NSDictionary *empty = [self pendingServerSummary];
+    XCTAssertEqualObjects(empty[@"count"], @0);
+    XCTAssertEqualObjects(empty[@"importedCount"], @0);
+    XCTAssertNil(empty[@"oldest"]);
+    XCTAssertNil(empty[@"newest"]);
+    [self queue:@{@"_type": @"location", @"tst": @1700000000} key:@"one"];
+    NSDictionary *one = [self pendingServerSummary];
+    XCTAssertEqualObjects(one[@"count"], @1);
+    XCTAssertEqualObjects(one[@"oldest"], @1700000000);
+    XCTAssertEqualObjects(one[@"newest"], one[@"oldest"]);
+    [self queue:@{@"properties": @{@"timestamp": @"invalid"}} key:@"missing-date"];
+    NSDictionary *mixed = [self pendingServerSummary];
+    XCTAssertEqualObjects(mixed[@"count"], @2);
+    XCTAssertEqualObjects(mixed[@"oldest"], one[@"oldest"]);
+    XCTAssertEqualObjects(mixed[@"newest"], one[@"newest"]);
+}
+- (void)testPendingServerSummaryReportsFailureInsteadOfAnEmptyQueue {
+    [self queue:@{@"_type": @"location", @"tst": @1700000000} key:@"kept"];
+    [self failCommits:YES];
+    XCTAssertNil([self pendingServerSummary]);
+    [self failCommits:NO];
+    XCTAssertEqual(self.count, 1);
+    XCTAssertNotNil([self queued:@"kept"]);
+}
 - (CLLocation *)location:(double)latitude time:(NSTimeInterval)time {
     return [[CLLocation alloc] initWithCoordinate:CLLocationCoordinate2DMake(latitude, -122.67) altitude:10 horizontalAccuracy:5 verticalAccuracy:5 course:0 speed:2 timestamp:[NSDate dateWithTimeIntervalSince1970:time]];
 }
@@ -598,6 +679,266 @@ static int denyCommit(void *context, int action, const char *first, const char *
     XCTAssertEqual(self.manager.lastLocation, second);
     XCTAssertEqual(self.count, 2);
 }
+- (NSArray<NSDictionary *> *)queuedReplaySnapshotForTesting {
+    XCTestExpectation *loaded = [self expectationWithDescription:@"Queued replay loaded"];
+    __block NSArray<NSDictionary *> *snapshot;
+    __block BOOL returned = NO;
+    [self.manager loadQueuedReplayLocations:^(NSArray<NSDictionary *> *records) {
+        XCTAssertTrue(NSThread.isMainThread);
+        XCTAssertTrue(returned);
+        snapshot = records;
+        [loaded fulfill];
+    }];
+    returned = YES;
+    [self waitForExpectationsWithTimeout:5 handler:nil];
+    return snapshot;
+}
+
+- (void)testQueuedReplaySnapshotCachesUnchangedReads {
+    [self.db accessCollection:@"GLLocationQueue" withBlock:^(id<LOLDatabaseAccessor> accessor) {
+        for(NSUInteger i = 0; i < 513; i++) {
+            [accessor setDictionary:@{@"_type": @"location", @"tst": @(1000 + i)}
+                forKey:[NSString stringWithFormat:@"point-%lu", (unsigned long)i]];
+        }
+        [accessor setDictionary:@{@"_type": @"location", @"tst": @1000} forKey:@"healthkit:excluded"];
+        [accessor setDictionary:@{@"properties": @{@"action": @"stats"}} forKey:@"stats"];
+    }];
+    __block NSUInteger decoded = 0;
+    id (^deserialize)(NSData *) = self.db.deserializer;
+    self.db.deserializer = ^id(NSData *data) { decoded++; return deserialize(data); };
+
+    NSArray *first = [self queuedReplaySnapshotForTesting];
+    XCTAssertEqual(first.count, 513);
+    XCTAssertEqual(decoded, 515);
+    XCTAssertEqualObjects(first.firstObject[@"key"], @"point-0");
+    XCTAssertEqualObjects(first.lastObject[@"key"], @"point-512");
+    XCTAssertEqual([self queuedReplaySnapshotForTesting], first);
+    XCTAssertEqual(decoded, 515);
+
+    uint64_t revision = [self.db revisionForCollection:@"GLLocationQueue"];
+    [self.db accessCollection:@"UnrelatedData" withBlock:^(id<LOLDatabaseAccessor> accessor) {
+        [accessor setDictionary:@{@"other": @YES} forKey:@"separate"];
+    }];
+    [self.db accessCollection:@"GLLocationQueue" withBlock:^(id<LOLDatabaseAccessor> accessor) {
+        [accessor removeDictionaryForKey:@"missing"];
+        [accessor countObjectsUsingBlock:^(long count) { XCTAssertEqual(count, 515); }];
+    }];
+    XCTAssertEqual([self.db revisionForCollection:@"GLLocationQueue"], revision);
+    XCTAssertEqual([self queuedReplaySnapshotForTesting], first);
+    XCTAssertEqual(decoded, 515);
+}
+
+- (void)testQueuedReplaySnapshotInvalidatesForCommittedQueueChanges {
+    [self queue:@{@"_type": @"location", @"tst": @1000} key:@"one"];
+    NSArray *snapshot = [self queuedReplaySnapshotForTesting];
+    XCTAssertEqual(snapshot.count, 1);
+    uint64_t revision = [self.db revisionForCollection:@"GLLocationQueue"];
+
+    [self queue:@{@"_type": @"location", @"tst": @1001} key:@"two"];
+    revision++;
+    XCTAssertEqual([self.db revisionForCollection:@"GLLocationQueue"], revision);
+    snapshot = [self queuedReplaySnapshotForTesting];
+    XCTAssertEqual(snapshot.count, 2);
+
+    // Replacement must invalidate even when the queue count does not change.
+    [self queue:@{@"_type": @"location", @"tst": @2000} key:@"two"];
+    revision++;
+    XCTAssertEqual([self.db revisionForCollection:@"GLLocationQueue"], revision);
+    snapshot = [self queuedReplaySnapshotForTesting];
+    XCTAssertEqual(snapshot.count, 2);
+    XCTAssertEqualObjects(snapshot.lastObject[@"record"][@"tst"], @2000);
+
+    [self.db accessCollection:@"GLLocationQueue" withBlock:^(id<LOLDatabaseAccessor> accessor) {
+        [accessor removeDictionaryForKey:@"one"];
+    }];
+    revision++;
+    XCTAssertEqual([self.db revisionForCollection:@"GLLocationQueue"], revision);
+    snapshot = [self queuedReplaySnapshotForTesting];
+    XCTAssertEqual(snapshot.count, 1);
+    XCTAssertEqualObjects(snapshot.firstObject[@"key"], @"two");
+
+    NSUInteger inserted = 0;
+    NSArray *records = @[@{@"_type": @"location", @"tst": @3000}];
+    XCTAssertTrue(([self.db importRecords:records keys:@[@"imported"]
+        intoCollection:@"GLLocationQueue" insertedCount:&inserted]));
+    XCTAssertEqual(inserted, 1);
+    revision++;
+    XCTAssertEqual([self.db revisionForCollection:@"GLLocationQueue"], revision);
+    snapshot = [self queuedReplaySnapshotForTesting];
+    XCTAssertEqual(snapshot.count, 2);
+    XCTAssertEqualObjects(snapshot.lastObject[@"key"], @"imported");
+
+    XCTAssertTrue(([self.db importRecords:records keys:@[@"imported"]
+        intoCollection:@"GLLocationQueue" insertedCount:&inserted]));
+    XCTAssertEqual(inserted, 0);
+    XCTAssertEqual([self.db revisionForCollection:@"GLLocationQueue"], revision);
+    XCTAssertEqual([self queuedReplaySnapshotForTesting], snapshot);
+
+    [self.db accessCollection:@"GLLocationQueue" withBlock:^(id<LOLDatabaseAccessor> accessor) {
+        [accessor deleteAllData];
+    }];
+    revision++;
+    XCTAssertEqual([self.db revisionForCollection:@"GLLocationQueue"], revision);
+    XCTAssertEqual([self queuedReplaySnapshotForTesting].count, 0);
+    [self.db accessCollection:@"GLLocationQueue" withBlock:^(id<LOLDatabaseAccessor> accessor) {
+        [accessor deleteAllData];
+    }];
+    XCTAssertEqual([self.db revisionForCollection:@"GLLocationQueue"], revision);
+}
+
+- (void)testQueuedReplaySnapshotSurvivesRolledBackQueueChanges {
+    [self queue:@{@"_type": @"location", @"tst": @1000} key:@"kept"];
+    __block NSUInteger decoded = 0;
+    id (^deserialize)(NSData *) = self.db.deserializer;
+    self.db.deserializer = ^id(NSData *data) { decoded++; return deserialize(data); };
+    NSArray *snapshot = [self queuedReplaySnapshotForTesting];
+    uint64_t revision = [self.db revisionForCollection:@"GLLocationQueue"];
+    [self failCommits:YES];
+    BOOL committed = [self.db accessCollection:@"GLLocationQueue" withBlock:^(id<LOLDatabaseAccessor> accessor) {
+        [accessor deleteAllData];
+        [accessor setDictionary:@{@"_type": @"location", @"tst": @2000} forKey:@"lost"];
+    }];
+    [self failCommits:NO];
+    XCTAssertFalse(committed);
+    XCTAssertEqual([self.db revisionForCollection:@"GLLocationQueue"], revision);
+    XCTAssertEqual([self queuedReplaySnapshotForTesting], snapshot);
+    XCTAssertEqual(decoded, 1);
+
+    [self failCommits:YES];
+    NSUInteger inserted = 99;
+    committed = [self.db importRecords:@[@{@"_type": @"location", @"tst": @3000}]
+        keys:@[@"import-rollback"] intoCollection:@"GLLocationQueue" insertedCount:&inserted];
+    [self failCommits:NO];
+    XCTAssertFalse(committed);
+    XCTAssertEqual(inserted, 0);
+    XCTAssertEqual([self.db revisionForCollection:@"GLLocationQueue"], revision);
+    XCTAssertEqual([self queuedReplaySnapshotForTesting], snapshot);
+    XCTAssertEqual(decoded, 1);
+
+    committed = [self.db accessCollection:@"GLLocationQueue" withBlock:^(id<LOLDatabaseAccessor> accessor) {
+        [accessor deleteAllData];
+        [accessor setDictionary:@{@"bad": NSDate.date} forKey:@"invalid"];
+    }];
+    XCTAssertFalse(committed);
+    XCTAssertEqual([self.db revisionForCollection:@"GLLocationQueue"], revision);
+    XCTAssertEqual([self queuedReplaySnapshotForTesting], snapshot);
+    XCTAssertEqual(decoded, 1);
+
+    @try {
+        [self.db accessCollection:@"GLLocationQueue" withBlock:^(id<LOLDatabaseAccessor> accessor) {
+            [accessor deleteAllData];
+            @throw [NSException exceptionWithName:@"ReplayRollback" reason:nil userInfo:nil];
+        }];
+        XCTFail(@"The fixture exception should propagate");
+    } @catch(NSException *exception) {
+        XCTAssertEqualObjects(exception.name, @"ReplayRollback");
+    }
+    XCTAssertEqual([self.db revisionForCollection:@"GLLocationQueue"], revision);
+    XCTAssertEqual([self queuedReplaySnapshotForTesting], snapshot);
+    XCTAssertEqual(decoded, 1);
+
+    // A rolled-back import receipt must not prevent the later committed import.
+    XCTAssertTrue(([self.db importRecords:@[@{@"_type": @"location", @"tst": @3000}]
+        keys:@[@"import-rollback"] intoCollection:@"GLLocationQueue" insertedCount:&inserted]));
+    XCTAssertEqual(inserted, 1);
+    XCTAssertEqual([self queuedReplaySnapshotForTesting].count, 2);
+}
+
+- (void)testChunkedQueueReadReleasesLockBeforeDecodingAndBoundsItsPass {
+    [self.db accessCollection:@"GLLocationQueue" withBlock:^(id<LOLDatabaseAccessor> accessor) {
+        for(NSUInteger i = 0; i < 7; i++) {
+            [accessor setDictionary:@{@"_type": @"location", @"tst": @(1000 + i)}
+                forKey:[NSString stringWithFormat:@"point-%lu", (unsigned long)i]];
+        }
+    }];
+    __block NSUInteger decoded = 0;
+    __weak LOLDatabase *database = self.db;
+    id (^deserialize)(NSData *) = self.db.deserializer;
+    dispatch_semaphore_t written = dispatch_semaphore_create(0);
+    XCTestExpectation *writeFinished = [self expectationWithDescription:@"Writer ran during decoding"];
+    self.db.deserializer = ^id(NSData *data) {
+        if(++decoded == 1) {
+            dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+                XCTAssertTrue(([database accessCollection:@"GLLocationQueue" withBlock:^(id<LOLDatabaseAccessor> accessor) {
+                    [accessor setDictionary:@{@"_type": @"location", @"tst": @3000} forKey:@"late"];
+                }]));
+                dispatch_semaphore_signal(written);
+                [writeFinished fulfill];
+            });
+            XCTAssertEqual(dispatch_semaphore_wait(written, dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC)), 0);
+        }
+        return deserialize(data);
+    };
+    uint64_t initialRevision = [self.db revisionForCollection:@"GLLocationQueue"], readRevision = 0;
+    NSMutableArray *sizes = [NSMutableArray array];
+    NSMutableArray *rows = [NSMutableArray array];
+    BOOL unchanged = [self.db readCollection:@"GLLocationQueue" inChunksOfSize:2
+        usingBlock:^(NSArray<NSDictionary *> *records) {
+            [sizes addObject:@(records.count)];
+            [rows addObjectsFromArray:records];
+        } revision:&readRevision];
+    [self waitForExpectationsWithTimeout:5 handler:nil];
+    XCTAssertFalse(unchanged);
+    XCTAssertEqual(readRevision, initialRevision);
+    XCTAssertEqualObjects(sizes, (@[@2, @2, @2, @1]));
+    XCTAssertEqual(rows.count, 7);
+    XCTAssertEqual(decoded, 7);
+    XCTAssertFalse([[rows valueForKey:@"key"] containsObject:@"late"]);
+    XCTAssertEqual([self.db revisionForCollection:@"GLLocationQueue"], initialRevision + 1);
+}
+
+- (void)testQueuedReplaySnapshotCoalescesMixedReadWithoutCachingIt {
+    [self queue:@{@"_type": @"location", @"tst": @1000} key:@"one"];
+    [self queue:@{@"_type": @"location", @"tst": @1001} key:@"two"];
+    dispatch_semaphore_t decoding = dispatch_semaphore_create(0);
+    dispatch_semaphore_t resume = dispatch_semaphore_create(0);
+    __block NSUInteger decoded = 0;
+    id (^deserialize)(NSData *) = self.db.deserializer;
+    self.db.deserializer = ^id(NSData *data) {
+        if(++decoded == 1) {
+            dispatch_semaphore_signal(decoding);
+            XCTAssertEqual(dispatch_semaphore_wait(resume, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC)), 0);
+        }
+        return deserialize(data);
+    };
+    XCTestExpectation *firstDone = [self expectationWithDescription:@"First mixed read"];
+    XCTestExpectation *secondDone = [self expectationWithDescription:@"Coalesced mixed read"];
+    __block NSArray *first, *second;
+    [self.manager loadQueuedReplayLocations:^(NSArray<NSDictionary *> *records) {
+        XCTAssertTrue(NSThread.isMainThread);
+        first = records;
+        [firstDone fulfill];
+    }];
+    XCTAssertEqual(dispatch_semaphore_wait(decoding, dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC)), 0);
+    dispatch_semaphore_t written = dispatch_semaphore_create(0);
+    XCTestExpectation *writeFinished = [self expectationWithDescription:@"Mutation during mixed read"];
+    LOLDatabase *database = self.db;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        XCTAssertTrue(([database accessCollection:@"GLLocationQueue" withBlock:^(id<LOLDatabaseAccessor> accessor) {
+            [accessor setDictionary:@{@"_type": @"location", @"tst": @1002} forKey:@"three"];
+        }]));
+        dispatch_semaphore_signal(written);
+        [writeFinished fulfill];
+    });
+    XCTAssertEqual(dispatch_semaphore_wait(written, dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC)), 0);
+    [self.manager loadQueuedReplayLocations:^(NSArray<NSDictionary *> *records) {
+        XCTAssertTrue(NSThread.isMainThread);
+        second = records;
+        [secondDone fulfill];
+    }];
+    dispatch_semaphore_signal(resume);
+    [self waitForExpectationsWithTimeout:5 handler:nil];
+    XCTAssertEqual(first, second);
+    XCTAssertEqual(first.count, 2);
+    XCTAssertEqual(decoded, 2);
+
+    NSArray *fresh = [self queuedReplaySnapshotForTesting];
+    XCTAssertEqual(fresh.count, 3);
+    XCTAssertEqual(decoded, 5);
+    XCTAssertEqual([self queuedReplaySnapshotForTesting], fresh);
+    XCTAssertEqual(decoded, 5);
+}
+
 - (void)testFailedQueueReadKeepsTheUploadPending {
     [self queue:@{@"properties": @{}} key:@"one"];
     [self.manager saveNewAPIEndpoint:@"https://wherewolf.test/" andAccessToken:nil];
@@ -1574,24 +1915,77 @@ static int denyCommit(void *context, int action, const char *first, const char *
     XCTAssertEqual([GLManager retryAfter:@"garbage" now:now], 0);
     XCTAssertEqual([GLManager retryAfter:@"-1" now:now], 0);
 }
-- (void)testRetryAfterPreventsAutomaticAndManualEarlyRetry {
+- (void)assertManualSendOverridesRetryAfter:(NSInteger)status {
     [self queue:@{@"properties": @{}} key:@"one"];
     [self.manager saveNewAPIEndpoint:@"https://wherewolf.test/" andAccessToken:nil];
     self.manager.sendingInterval = @1;
     __block int requests = 0;
     requestHandler = ^(WhereWolfTestProtocol *request) {
         requests++;
-        [request respond:@"busy" status:429 headers:@{@"Retry-After": @"120"}];
+        [request respond:@"busy" status:status headers:@{@"Retry-After": @"120"}];
     };
     [self.manager sendQueueNow];
     [self waitForSend];
     NSDate *deadline = [self.manager valueForKey:@"nextUploadDate"];
     XCTAssertGreaterThan(deadline.timeIntervalSinceNow, 115);
+    NSTimer *oldTimer = [self.manager valueForKey:@"uploadTimer"];
+    NSUInteger failures = [[self.manager valueForKey:@"uploadFailures"] unsignedIntegerValue];
     [self.manager sendQueueIfTimeElapsed];
-    [self.manager sendQueueNow];
+    [self.manager resumePendingUpload];
+    [self.manager sendQueueIfNotInProgress];
     XCTAssertFalse(self.manager.sendInProgress);
     XCTAssertEqual(requests, 1);
+    XCTAssertEqualObjects(self.manager.uploadRetryDate, deadline);
+
+    [self.manager sendQueueNow];
+    XCTAssertTrue(self.manager.sendInProgress);
+    XCTAssertNil(self.manager.uploadRetryDate);
+    XCTAssertFalse(oldTimer.valid);
+    XCTAssertEqual([[self.manager valueForKey:@"uploadFailures"] unsignedIntegerValue], failures);
+    [self waitForSend];
+    XCTAssertEqual(requests, 2);
+    XCTAssertGreaterThan(self.manager.uploadRetryDate.timeIntervalSinceNow, 115);
+    XCTAssertEqual([[self.manager valueForKey:@"uploadFailures"] unsignedIntegerValue], failures + 1);
     XCTAssertEqual(self.count, 1);
+    XCTAssertNotNil(self.manager.uploadFailureReason);
+    XCTAssertEqualObjects(self.manager.uploadFailureReason,
+        [NSUserDefaults.standardUserDefaults dictionaryForKey:@"GLUploadRetryState"][@"reason"]);
+}
+- (void)testUserSendOverrides429RetryAfterButAutomaticSendsWait {
+    [self assertManualSendOverridesRetryAfter:429];
+}
+- (void)testUserSendOverrides503RetryAfterButAutomaticSendsWait {
+    [self assertManualSendOverridesRetryAfter:503];
+}
+- (void)testUserSendSkipsTransportBackoffWithoutResettingFailures {
+    [self queue:@{@"properties": @{}} key:@"one"];
+    [self.manager saveNewAPIEndpoint:@"https://wherewolf.test/" andAccessToken:nil];
+    self.manager.sendingInterval = @0;
+    [self.manager setValue:@7 forKey:@"uploadFailures"];
+    [self.manager setValue:@YES forKey:@"uploadPending"];
+    NSError *offline = [NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorNotConnectedToInternet userInfo:nil];
+    [self.manager deferUploadForResponse:nil error:offline];
+    NSTimer *oldTimer = [self.manager valueForKey:@"uploadTimer"];
+    XCTAssertGreaterThan(self.manager.uploadRetryDate.timeIntervalSinceNow, 600);
+    [self.manager sendQueueIfTimeElapsed];
+    [self.manager resumePendingUpload];
+    XCTAssertFalse(self.manager.sendInProgress);
+    __block NSUInteger requests = 0;
+    requestHandler = ^(WhereWolfTestProtocol *request) {
+        requests++;
+        [request.client URLProtocol:request didFailWithError:offline];
+    };
+    [self.manager sendQueueNow];
+    XCTAssertTrue(self.manager.sendInProgress);
+    XCTAssertNil(self.manager.uploadRetryDate);
+    XCTAssertFalse(oldTimer.valid);
+    XCTAssertEqual([[self.manager valueForKey:@"uploadFailures"] integerValue], 8);
+    [self.manager sendQueueNow];
+    [self waitForSend];
+    XCTAssertEqual(requests, 1);
+    XCTAssertEqual([[self.manager valueForKey:@"uploadFailures"] integerValue], 9);
+    XCTAssertGreaterThan(self.manager.uploadRetryDate.timeIntervalSinceNow, 1200);
+    XCTAssertEqualObjects(self.manager.uploadFailureReason, @"There is no internet connection.");
 }
 - (void)testAuthFailureBlocksAutomaticRetries {
     [self queue:@{@"properties": @{}} key:@"one"];
@@ -2141,6 +2535,112 @@ static int denyCommit(void *context, int action, const char *first, const char *
     writer.finish = nil;
     XCTAssertFalse(self.manager.sendInProgress);
     XCTAssertEqual(self.count, 0);
+}
+- (void)testSendCompletionJoinsOneInFlightBatchAndWaitsForItsCommit {
+    TestCloudWriter *writer = [self cloudWriterWithQueuedPoint];
+    self.manager.pointsPerBatch = 1;
+    [self queue:@{@"properties": @{}} key:@"second"];
+    [self.manager sendQueueNow];
+    XCTAssertEqualObjects(self.manager.userSendFeedback, @"sending");
+    XCTestExpectation *first = [self expectationWithDescription:@"First batch committed"];
+    first.expectedFulfillmentCount = 2;
+    __block NSUInteger completions = 0;
+    void (^completion)(NSError *) = ^(NSError *error) {
+        XCTAssertNil(error);
+        XCTAssertEqual(self.count, 1);
+        XCTAssertEqual(self.manager.uploadBatchesCompleted, 1);
+        completions++;
+        [first fulfill];
+    };
+    [self.manager sendQueueNowWithCompletion:completion];
+    [self.manager sendQueueNowWithCompletion:completion];
+    XCTAssertEqual(completions, 0);
+    XCTAssertEqualObjects(writer.captured.firstObject[@"id"], @"cloud-point");
+    void (^finish)(NSString *) = writer.finish;
+    writer.finish = nil;
+    finish(nil);
+    [self waitForExpectationsWithTimeout:5 handler:nil];
+    XCTAssertEqual(completions, 2);
+    XCTAssertEqualObjects(self.manager.userSendFeedback, @"sending");
+    XCTAssertEqual([[self.manager valueForKey:@"sendWaiters"] count], 0);
+    [self expectationForPredicate:[NSPredicate predicateWithBlock:^BOOL(id object, NSDictionary *bindings) {
+        return writer.finish != nil;
+    }] evaluatedWithObject:writer handler:nil];
+    [self waitForExpectationsWithTimeout:5 handler:nil];
+    writer.finish(nil);
+    writer.finish = nil;
+    XCTAssertEqual(self.count, 0);
+    XCTAssertEqualObjects(self.manager.userSendFeedback, @"sent");
+}
+- (void)testSendCompletionTimeoutDoesNotCancelOrAcknowledgeTheRequest {
+    TestCloudWriter *writer = [self cloudWriterWithQueuedPoint];
+    XCTestExpectation *timeout = [self expectationWithDescription:@"Bounded wait"];
+    __block NSUInteger completions = 0;
+    [self.manager sendQueueNowWithTimeout:0 completion:^(NSError *error) {
+        XCTAssertEqualObjects(error.domain, @"WhereWolf.Send");
+        XCTAssertEqual(error.code, 2);
+        completions++;
+        [timeout fulfill];
+    }];
+    [self waitForExpectationsWithTimeout:5 handler:nil];
+    XCTAssertTrue(self.manager.sendInProgress);
+    XCTAssertEqual(self.count, 1);
+    XCTAssertEqual([[self.manager valueForKey:@"sendWaiters"] count], 0);
+    writer.finish(nil);
+    writer.finish = nil;
+    XCTestExpectation *late = [self expectationWithDescription:@"Late result handled"];
+    dispatch_async(dispatch_get_main_queue(), ^{ [late fulfill]; });
+    [self waitForExpectationsWithTimeout:5 handler:nil];
+    XCTAssertEqual(completions, 1);
+    XCTAssertEqual(self.count, 0);
+    XCTAssertEqualObjects(self.manager.userSendFeedback, @"sent");
+}
+- (void)testSendCompletionReportsFailureAndKeepsTheQueue {
+    TestCloudWriter *writer = [self cloudWriterWithQueuedPoint];
+    XCTestExpectation *failed = [self expectationWithDescription:@"Failure reported"];
+    [self.manager sendQueueNowWithCompletion:^(NSError *error) {
+        XCTAssertEqual(error.code, 3);
+        XCTAssertTrue([error.localizedDescription containsString:@"iCloud Drive"]);
+        [failed fulfill];
+    }];
+    writer.finish(@"Could not write");
+    writer.finish = nil;
+    [self waitForExpectationsWithTimeout:5 handler:nil];
+    XCTAssertEqual(self.count, 1);
+    XCTAssertEqualObjects(self.manager.userSendFeedback, @"failed");
+}
+- (void)testSendCompletionDoesNotReportSuccessIfAcknowledgementCannotCommit {
+    TestCloudWriter *writer = [self cloudWriterWithQueuedPoint];
+    XCTestExpectation *failed = [self expectationWithDescription:@"Commit failure reported"];
+    [self.manager sendQueueNowWithCompletion:^(NSError *error) {
+        XCTAssertNotNil(error);
+        [failed fulfill];
+    }];
+    [self failCommits:YES];
+    writer.finish(nil);
+    writer.finish = nil;
+    [self failCommits:NO];
+    [self waitForExpectationsWithTimeout:5 handler:nil];
+    XCTAssertEqual(self.count, 1);
+    XCTAssertEqual(self.manager.uploadBatchesCompleted, 0);
+}
+- (void)testSendCompletionRejectsMissingDestinationAndCompletesEmptyQueue {
+    XCTestExpectation *missing = [self expectationWithDescription:@"Missing destination"];
+    [self.manager sendQueueNowWithCompletion:^(NSError *error) {
+        XCTAssertEqual(error.code, 1);
+        XCTAssertTrue([error.localizedDescription containsString:@"destination"] || [error.localizedDescription containsString:@"server URL"]);
+        [missing fulfill];
+    }];
+    [self waitForExpectationsWithTimeout:5 handler:nil];
+    [self.manager saveNewAPIEndpoint:@"https://wherewolf.test/" andAccessToken:nil];
+    requestHandler = ^(WhereWolfTestProtocol *request) { XCTFail(@"An empty queue must not upload"); };
+    XCTestExpectation *empty = [self expectationWithDescription:@"Empty queue"];
+    [self.manager sendQueueNowWithCompletion:^(NSError *error) {
+        XCTAssertNil(error);
+        [empty fulfill];
+    }];
+    [self waitForExpectationsWithTimeout:5 handler:nil];
+    XCTAssertFalse(self.manager.sendInProgress);
 }
 - (void)testCloudExportFailureKeepsQueuedRecordsAndRetryIntent {
     TestCloudWriter *writer = [self cloudWriterWithQueuedPoint];

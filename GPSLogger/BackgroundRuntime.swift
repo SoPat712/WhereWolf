@@ -215,6 +215,7 @@ private enum TrackingActivityHandle {
         for name in [GLTrackingStateChangedNotification, GLSettingsChangedNotification,
                      GLAuthorizationStatusChangedNotification, GLSendingFinishedNotification,
                      GLNewDataNotification, GLNewActivityNotification, GLUploadStateChangedNotification,
+                     GLUserSendFeedbackChangedNotification,
                      "WhereWolfEngineStateChanged"] {
             observers.append(center.addObserver(forName: Notification.Name(name), object: nil, queue: .main) { [weak self] _ in
                 Task { @MainActor in self?.refresh() }
@@ -504,7 +505,8 @@ private enum TrackingActivityHandle {
                      trackingStatus: !gl.trackingEnabled ? .stopped : paused ? .paused : .tracking,
                      tripModeName: trip ? TripModeStore.name(gl.currentTripMode) : nil,
                      tripStart: gl.currentTripStart(), tripDistance: trip && distance.isFinite ? max(0, distance) : nil,
-                     separateTripActivity: Self.tripActivityState.supportsBackgroundLocation)
+                     separateTripActivity: Self.tripActivityState.supportsBackgroundLocation,
+                     sendFeedback: gl.userSendFeedback.flatMap(ActivitySendFeedback.init(rawValue:)))
     }
 
     func tripActivityChanged() { refresh() }

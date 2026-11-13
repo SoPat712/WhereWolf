@@ -27,6 +27,8 @@ final class TripActivityStateTests: XCTestCase {
         XCTAssertNil(state.averageSpeed)
         XCTAssertNil(state.route)
         XCTAssertNil(state.map)
+        XCTAssertNil(state.queuedCount)
+        XCTAssertNil(state.sendFeedback)
     }
 
     func testFullContentRoundTripsWellBelowActivityLimit() throws {
@@ -34,7 +36,8 @@ final class TripActivityStateTests: XCTestCase {
         let state = TripActivityState(mode: "car", distance: 123_456.789, speed: 20,
             topSpeed: 30, climb: 150, averageSpeed: 15, route: .init(points: points),
             map: .init(token: UUID().uuidString, routeInMapFrame: .init(points: points),
-                       lockScreenRouteInMapFrame: .init(points: points)))
+                       lockScreenRouteInMapFrame: .init(points: points)),
+            queuedCount: 6000, sendFeedback: .sending)
         let data = try JSONEncoder().encode(state)
         XCTAssertLessThan(data.count, 2_200)
         XCTAssertEqual(try JSONDecoder().decode(TripActivityState.self, from: data), state)
@@ -42,6 +45,21 @@ final class TripActivityStateTests: XCTestCase {
         let route = try XCTUnwrap(json["route"] as? [String: Any])
         let encodedPoints = try XCTUnwrap(route["points"] as? [[Int]])
         XCTAssertEqual(encodedPoints.last, [235, 20])
+    }
+
+    func testSendFeedbackAndQueueBadgeRoundTrip() throws {
+        for feedback in [ActivitySendFeedback.sending, .sent, .failed] {
+            let state = TripActivityState(mode: "car", distance: 12, speed: 0,
+                                          queuedCount: 6000, sendFeedback: feedback)
+            let data = try JSONEncoder().encode(state)
+            XCTAssertEqual(try JSONDecoder().decode(TripActivityState.self, from: data), state)
+            XCTAssertFalse(feedback.title.isEmpty)
+            XCTAssertFalse(feedback.symbol.isEmpty)
+        }
+        XCTAssertEqual(ActivitySendFeedback.badge(0), "0")
+        XCTAssertEqual(ActivitySendFeedback.badge(999), "999")
+        XCTAssertEqual(ActivitySendFeedback.badge(6000), "6000")
+        XCTAssertEqual(ActivitySendFeedback.badge(10000), "9k+")
     }
 
     func testOldTrailContentDecodesWithoutMap() throws {

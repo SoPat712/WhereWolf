@@ -13,19 +13,43 @@ struct DawarichStopPlace: Codable, Equatable, Hashable {
 }
 
 struct DawarichStopVisit: Codable, Equatable, Hashable {
+    struct Center: Codable, Equatable, Hashable {
+        let latitude: Double
+        let longitude: Double
+
+        var location: CLLocation { CLLocation(latitude: latitude, longitude: longitude) }
+    }
+
     let id: Int64
     let startedAt: Date
     let endedAt: Date
     let status: String
     let placeID: Int64?
     let place: DawarichStopPlace?
+    let customName: String?
+    let displayName: String?
+    let center: Center?
+
+    init(id: Int64, startedAt: Date, endedAt: Date, status: String, placeID: Int64?, place: DawarichStopPlace?,
+         customName: String? = nil, displayName: String? = nil, center: Center? = nil) {
+        self.id = id
+        self.startedAt = startedAt
+        self.endedAt = endedAt
+        self.status = status
+        self.placeID = placeID
+        self.place = place
+        self.customName = customName
+        self.displayName = displayName
+        self.center = center
+    }
 
     func overlaps(_ start: Date, _ end: Date) -> Bool { startedAt < end && endedAt > start }
 
     func clipped(from start: Date, to end: Date) -> Self? {
         guard overlaps(start, end) else { return nil }
         return Self(id: id, startedAt: max(start, startedAt), endedAt: min(end, endedAt),
-                    status: status, placeID: placeID, place: place)
+                    status: status, placeID: placeID, place: place,
+                    customName: customName, displayName: displayName, center: center)
     }
 }
 
@@ -44,7 +68,7 @@ struct HistoryStopNamer {
         let color: String
     }
     private let wifi: [WifiPlace]
-    private let visits: [(visit: DawarichStopVisit, place: DawarichStopPlace)]
+    private let visits: [(visit: DawarichStopVisit, name: Name, location: CLLocation)]
     private let latestEnds: [Date]
     private let distance: Double
 
@@ -53,11 +77,21 @@ struct HistoryStopNamer {
         self.distance = distance
         let places = Dictionary(names.places.compactMap { place in place.id.map { ($0, place) } },
                                 uniquingKeysWith: { _, new in new })
-        visits = names.visits.compactMap { visit -> (visit: DawarichStopVisit, place: DawarichStopPlace)? in
-            // A missing place coordinate can be a privacy mask. A cached join must not undo it.
-            guard visit.status == "confirmed", let visible = visit.place else { return nil }
-            let place = visit.placeID.flatMap({ places[$0] }) ?? visible
-            return (visit: visit, place: place)
+        visits = names.visits.compactMap { visit -> (visit: DawarichStopVisit, name: Name, location: CLLocation)? in
+            guard visit.status == "confirmed" else { return nil }
+            let title: String, identity: String, location: CLLocation
+            // Match only coordinates visible on the visit; a cached place must not undo a privacy mask.
+            if let visible = visit.place {
+                let place = visit.placeID.flatMap({ places[$0] }) ?? visible
+                title = visit.customName ?? place.name
+                identity = place.id.map { "dawarich:\($0)" } ?? "visit:\(visit.id)"
+                location = visible.location
+            } else if let center = visit.center, let name = visit.customName ?? visit.displayName {
+                title = name
+                identity = "visit:\(visit.id)"
+                location = center.location
+            } else { return nil }
+            return (visit, Name(identity: identity, title: title, symbol: WifiPlace.autoSymbol(for: title), color: "gray"), location)
         }.sorted { $0.visit.startedAt == $1.visit.startedAt ? $0.visit.id < $1.visit.id : $0.visit.startedAt < $1.visit.startedAt }
         var end = Date.distantPast
         latestEnds = visits.map { end = max(end, $0.visit.endedAt); return end }
@@ -71,17 +105,24 @@ struct HistoryStopNamer {
         let first = HistoryLandmarks.lowerBound(latestEnds.count) { latestEnds[$0] > start }
         let last = HistoryLandmarks.lowerBound(visits.count) { visits[$0].visit.startedAt >= end }
         guard first < last else { return nil }
-        var best: (visit: DawarichStopVisit, place: DawarichStopPlace, overlap: Double, meters: Double)?
+        var candidates: [Int64: (name: Name, overlap: Double, meters: Double)] = [:]
         for item in visits[first..<last] where item.visit.overlaps(start, end) {
-            let meters = center.distance(from: item.visit.place!.location)
+            let meters = center.distance(from: item.location)
             guard meters <= distance else { continue }
             let overlap = min(end, item.visit.endedAt).timeIntervalSince(max(start, item.visit.startedAt))
-            if let best, best.overlap > overlap || (best.overlap == overlap && best.meters <= meters) { continue }
-            best = (item.visit, item.place, overlap, meters)
+            // Sum the published day slices, never filling gaps excluded by refreshed empty days.
+            if let previous = candidates[item.visit.id] {
+                candidates[item.visit.id] = (meters < previous.meters ? item.name : previous.name,
+                                             previous.overlap + overlap, min(previous.meters, meters))
+            } else {
+                candidates[item.visit.id] = (item.name, overlap, meters)
+            }
         }
-        guard let best else { return nil }
-        let identity = best.place.id.map { "dawarich:\($0)" } ?? "visit:\(best.visit.id)"
-        return Name(identity: identity, title: best.place.name, symbol: best.place.symbol, color: "gray")
+        return candidates.min {
+            if $0.value.overlap != $1.value.overlap { return $0.value.overlap > $1.value.overlap }
+            if $0.value.meters != $1.value.meters { return $0.value.meters < $1.value.meters }
+            return $0.key < $1.key
+        }?.value.name
     }
 }
 
@@ -158,12 +199,10 @@ extension DawarichHistoryClient {
 
 enum DawarichStopDecoder {
     static func place(_ row: [String: Any], id: Int64? = nil, timeline: Bool = false) -> DawarichStopPlace? {
-        guard let raw = row["name"] as? String,
+        guard let name = name(row["name"]),
               let latitude = number(row[timeline ? "lat" : "latitude"]), (-90...90).contains(latitude),
               let longitude = number(row[timeline ? "lng" : "longitude"]), (-180...180).contains(longitude) else { return nil }
-        let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty else { return nil }
-        return DawarichStopPlace(id: id ?? integer(row["id"]), name: String(name.prefix(512)),
+        return DawarichStopPlace(id: id ?? integer(row["id"]), name: name,
                                  latitude: latitude, longitude: longitude)
     }
 
@@ -173,7 +212,21 @@ enum DawarichStopDecoder {
               let status = row["status"] as? String else { return nil }
         let placeID = integer(row["place_id"])
         return DawarichStopVisit(id: id, startedAt: start, endedAt: end, status: status, placeID: placeID,
-            place: (row["place"] as? [String: Any]).flatMap { place($0, id: placeID, timeline: timeline) })
+            place: (row["place"] as? [String: Any]).flatMap { place($0, id: placeID, timeline: timeline) },
+            customName: name(row["custom_name"]), displayName: name(row["display_name"]) ?? name(row["name"]),
+            center: (row["center"] as? [String: Any]).flatMap(center))
+    }
+
+    private static func center(_ row: [String: Any]) -> DawarichStopVisit.Center? {
+        guard let latitude = number(row["latitude"]), (-90...90).contains(latitude),
+              let longitude = number(row["longitude"]), (-180...180).contains(longitude) else { return nil }
+        return .init(latitude: latitude, longitude: longitude)
+    }
+
+    private static func name(_ value: Any?) -> String? {
+        guard let raw = value as? String else { return nil }
+        let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? nil : String(name.prefix(512))
     }
 
     private static func number(_ value: Any?) -> Double? {

@@ -136,13 +136,21 @@ struct SendNowIntent: AppIntent {
     func perform() async throws -> some IntentResult {
         #if WHEREWOLF_APP
         let manager: GLManager = GLManager.shared()
-        guard manager.hasDestination() else {
-            throw NSError(domain: "WhereWolf.Send", code: 1, userInfo: [NSLocalizedDescriptionKey:
-                "WhereWolf doesn't have anywhere to send data yet. Set a server URL or choose iCloud Drive in WhereWolf's settings."])
+        try await Self.awaitFirstBatch { completion in
+            manager.sendQueueNow(completion: completion)
         }
-        manager.sendQueueNow()
         #endif
         return .result()
+    }
+
+    @MainActor
+    static func awaitFirstBatch(start: (@escaping (Error?) -> Void) -> Void) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            start { error in
+                if let error { continuation.resume(throwing: error) }
+                else { continuation.resume() }
+            }
+        }
     }
 }
 

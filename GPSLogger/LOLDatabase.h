@@ -39,5 +39,16 @@
 - (BOOL)accessCollection:(NSString *)collection withBlock:(void (^)(id <LOLDatabaseAccessor>accessor))block;
 - (BOOL)importRecords:(NSArray<NSDictionary *> *)records keys:(NSArray<NSString *> *)keys
        intoCollection:(NSString *)collection insertedCount:(NSUInteger *)insertedCount;
+// Constant-size metadata only; nil on a failed or time-limited read. Does not deserialize records.
+- (nullable NSDictionary<NSString *, NSNumber *> *)queuedTimestampSummaryForCollection:(NSString *)collection;
+
+// Advances only after a transaction commits changes to this collection.
+- (uint64_t)revisionForCollection:(NSString *)collection;
+// Reads through the initial highest row ID, at most 256 rows per lock acquisition.
+// Deserialization and the block run outside the database lock. Returns YES only
+// when the read succeeded without a committed collection change; only then may
+// callers cache the result at revision. Each entry contains "key" and "record".
+- (BOOL)readCollection:(NSString *)collection inChunksOfSize:(NSUInteger)chunkSize
+            usingBlock:(void (^)(NSArray<NSDictionary *> *records))block revision:(uint64_t *)revision;
 
 @end

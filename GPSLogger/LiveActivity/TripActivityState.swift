@@ -10,6 +10,8 @@ struct TripActivityState: Codable, Hashable {
     var averageSpeed: Double? = nil // m/s, sampled at the activity update
     var route: TripRouteSketch? = nil
     var map: TripActivityMap? = nil
+    var queuedCount: Int? = nil
+    var sendFeedback: ActivitySendFeedback? = nil
 }
 
 enum TripActivityFormat {

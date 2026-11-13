@@ -185,7 +185,8 @@ private struct TripTrailRow: View {
                                 map: state.map, presentation: presentation, mapFiles: mapFiles)
                 .overlay(alignment: .topLeading) { TripSpeedBadge(speed: state.speed).padding(6) }
                 .frame(width: size.width, height: size.height)
-            TripActionButtons(diameter: lockScreen ? 40 : 36)
+            TripActionButtons(diameter: lockScreen ? 40 : 36,
+                              queuedCount: state.queuedCount ?? 0, feedback: state.sendFeedback)
         }
         .frame(height: size.height)
     }
@@ -262,18 +263,29 @@ struct TripLockScreenView: View {
 // Round buttons stacked beside the map, as in the system's timer activity.
 struct TripActionButtons: View {
     var diameter: CGFloat = 36
+    var queuedCount = 0
+    var feedback: ActivitySendFeedback? = nil
 
     var body: some View {
         VStack(spacing: 6) {
             Button(intent: SendNowIntent()) {
-                Image(systemName: "arrow.up")
-                    .font(.system(size: diameter * 0.42, weight: .bold))
-                    .frame(width: diameter, height: diameter)
-                    .background(.blue.opacity(0.22), in: Circle())
-                    .foregroundStyle(.blue)
+                VStack(spacing: 1) {
+                    Image(systemName: feedback?.symbol ?? "arrow.up")
+                        .font(.system(size: diameter * (feedback == nil ? 0.42 : 0.34), weight: .bold))
+                    if let feedback {
+                        Text(feedback.title).font(.system(size: 8, weight: .semibold))
+                    }
+                }
+                .frame(width: diameter, height: diameter)
+                .background(.blue.opacity(0.22), in: Circle())
+                .foregroundStyle(.blue)
+                .overlay(alignment: .topTrailing) {
+                    ActivityQueueBadge(count: queuedCount).offset(x: 5, y: -4)
+                }
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Send Now")
+            .accessibilityLabel(feedback?.title ?? "Send Now")
+            .accessibilityValue("\(queuedCount) points waiting")
 
             Button(intent: EndTripIntent()) {
                 Image(systemName: "stop.fill")

@@ -10,9 +10,14 @@
 
 #import "sqlite3.h"
 
+static int LOLSummaryDeadline(void *context) {
+    return NSProcessInfo.processInfo.systemUptime >= *(NSTimeInterval *)context;
+}
+
 @interface LOLDatabase ()
 @property (readwrite, strong, nonatomic) NSError *lastError;
 - (void)recordError;
+- (void)didCommitCollection:(NSString *)collection;
 @end
 
 @interface _LOLDatabaseAccessor : NSObject <LOLDatabaseAccessor>
@@ -25,6 +30,8 @@
 @implementation LOLDatabase {
 @public
     sqlite3 *db;
+@private
+    NSMutableDictionary<NSString *, NSNumber *> *_collectionRevisions;
 }
 @synthesize serializer;
 @synthesize deserializer;
@@ -88,6 +95,107 @@
         userInfo:@{NSLocalizedDescriptionKey: message}];
 }
 
+- (uint64_t)revisionForCollection:(NSString *)collection {
+    @synchronized(self) { return [_collectionRevisions[collection] unsignedLongLongValue]; }
+}
+
+- (void)didCommitCollection:(NSString *)collection {
+    if(!_collectionRevisions) _collectionRevisions = [NSMutableDictionary dictionary];
+    _collectionRevisions[collection] = @([_collectionRevisions[collection] unsignedLongLongValue] + 1);
+}
+
+- (BOOL)readCollection:(NSString *)collection inChunksOfSize:(NSUInteger)chunkSize
+            usingBlock:(void (^)(NSArray<NSDictionary *> *records))block revision:(uint64_t *)revision {
+    uint64_t initialRevision;
+    sqlite3_int64 lastRowID = 0, upperRowID = 0;
+    id (^decode)(NSData *);
+    @synchronized(self) {
+        if(![self accessCollection:collection withBlock:nil]) return NO;
+        initialRevision = [self revisionForCollection:collection];
+        if(revision) *revision = initialRevision;
+        decode = [self.deserializer copy];
+        sqlite3_stmt *statement = NULL;
+        NSString *query = [NSString stringWithFormat:@"SELECT MAX(rowid) FROM '%@';", collection];
+        BOOL success = sqlite3_prepare_v2(db, query.UTF8String, -1, &statement, NULL) == SQLITE_OK
+            && sqlite3_step(statement) == SQLITE_ROW;
+        if(success) upperRowID = sqlite3_column_int64(statement, 0);
+        else [self recordError];
+        if(statement && sqlite3_finalize(statement) != SQLITE_OK) { [self recordError]; success = NO; }
+        if(!success) return NO;
+    }
+    NSUInteger limit = MAX((NSUInteger)1, MIN(chunkSize, (NSUInteger)256));
+    while(lastRowID < upperRowID) {
+        @autoreleasepool {
+            NSMutableArray<NSDictionary *> *dataRows = [NSMutableArray arrayWithCapacity:limit];
+            BOOL foundRows = NO;
+            @synchronized(self) {
+                sqlite3_stmt *statement = NULL;
+                NSString *query = [NSString stringWithFormat:
+                    @"SELECT rowid,key,data FROM '%@' WHERE rowid > ? AND rowid <= ? ORDER BY rowid LIMIT ?;", collection];
+                BOOL success = sqlite3_prepare_v2(db, query.UTF8String, -1, &statement, NULL) == SQLITE_OK
+                    && sqlite3_bind_int64(statement, 1, lastRowID) == SQLITE_OK
+                    && sqlite3_bind_int64(statement, 2, upperRowID) == SQLITE_OK
+                    && sqlite3_bind_int64(statement, 3, (sqlite3_int64)limit) == SQLITE_OK;
+                int status = SQLITE_OK;
+                while(success && (status = sqlite3_step(statement)) == SQLITE_ROW) {
+                    foundRows = YES;
+                    lastRowID = sqlite3_column_int64(statement, 0);
+                    const char *keyBytes = (const char *)sqlite3_column_text(statement, 1);
+                    NSString *key = keyBytes ? [NSString stringWithUTF8String:keyBytes] : nil;
+                    NSData *data = [NSData dataWithBytes:sqlite3_column_blob(statement, 2)
+                        length:sqlite3_column_bytes(statement, 2)];
+                    if(key) [dataRows addObject:@{@"key": key, @"data": data}];
+                }
+                success = success && status == SQLITE_DONE;
+                if(!success) [self recordError];
+                if(statement && sqlite3_finalize(statement) != SQLITE_OK) { [self recordError]; success = NO; }
+                if(!success) return NO;
+            }
+            NSMutableArray<NSDictionary *> *records = [NSMutableArray arrayWithCapacity:dataRows.count];
+            for(NSDictionary *row in dataRows) {
+                id record = decode ? decode(row[@"data"]) : nil;
+                if([record isKindOfClass:NSDictionary.class]) [records addObject:@{@"key": row[@"key"], @"record": record}];
+            }
+            if(block && records.count) block(records.copy);
+            if(!foundRows) break;
+        }
+    }
+    // A mutation during decoding or between chunks makes this a one-off result,
+    // never a fresh cache entry. The fixed upper bound prevents chasing uploads.
+    return initialRevision == [self revisionForCollection:collection];
+}
+
+- (NSDictionary<NSString *, NSNumber *> *)queuedTimestampSummaryForCollection:(NSString *)collection {
+    @synchronized(self) {
+        self.lastError = nil;
+        // CAST handles the queue's JSON blobs on every supported SQLite version. Only scalar
+        // metadata crosses into the app; MIN/MAX compare instants, including timezone offsets.
+        NSString *table = [collection stringByReplacingOccurrencesOfString:@"'" withString:@"''"];
+        NSString *sql = [NSString stringWithFormat:
+            @"SELECT COALESCE(SUM(imported), 0), MIN(stamp), MAX(stamp) FROM ("
+             "SELECT key GLOB 'healthkit:*' AS imported, CASE WHEN json_valid(CAST(data AS TEXT)) THEN "
+             "CASE WHEN json_type(CAST(data AS TEXT), '$.tst') IN ('integer', 'real') "
+             "THEN json_extract(CAST(data AS TEXT), '$.tst') "
+             "ELSE ROUND((julianday(json_extract(CAST(data AS TEXT), '$.properties.timestamp')) - 2440587.5) * 86400.0, 3) END "
+             "END AS stamp FROM '%@')", table];
+        sqlite3_stmt *statement = NULL;
+        NSTimeInterval deadline = NSProcessInfo.processInfo.systemUptime + 2;
+        sqlite3_progress_handler(db, 1000, LOLSummaryDeadline, &deadline);
+        NSMutableDictionary *summary = nil;
+        if(sqlite3_prepare_v2(db, sql.UTF8String, -1, &statement, NULL) == SQLITE_OK
+           && sqlite3_step(statement) == SQLITE_ROW) {
+            summary = [@{@"importedCount": @(sqlite3_column_int64(statement, 0))} mutableCopy];
+            if(sqlite3_column_type(statement, 1) != SQLITE_NULL) summary[@"oldest"] = @(sqlite3_column_double(statement, 1));
+            if(sqlite3_column_type(statement, 2) != SQLITE_NULL) summary[@"newest"] = @(sqlite3_column_double(statement, 2));
+        } else {
+            [self recordError];
+        }
+        if(statement) sqlite3_finalize(statement);
+        sqlite3_progress_handler(db, 0, NULL, NULL);
+        return summary;
+    }
+}
+
 - (BOOL)importRecords:(NSArray<NSDictionary *> *)records keys:(NSArray<NSString *> *)keys
        intoCollection:(NSString *)collection insertedCount:(NSUInteger *)insertedCount {
     @synchronized(self) {
@@ -147,6 +255,7 @@
     sqlite3_stmt *deleteAllStatement;
     BOOL transactionOpen;
     BOOL transactionFailed;
+    BOOL collectionChanged;
 }
 
 - (id)initWithDatabase:(LOLDatabase *)db collection:(NSString *)collection;
@@ -155,6 +264,7 @@
     if (!self) return nil;
     
     _d = db;
+    _collection = [collection copy];
     
     NSString *q = nil;
     int status = SQLITE_OK;
@@ -247,6 +357,7 @@
         return NO;
     }
     transactionOpen = NO;
+    if(collectionChanged) [_d didCommitCollection:_collection];
     return YES;
 }
 
@@ -354,6 +465,8 @@
     if (status != SQLITE_DONE) {
         NSLog(@"error setting by key %d: %s", status, sqlite3_errmsg(_d->db));
         [self markTransactionFailed];
+    } else if(sqlite3_changes(_d->db) > 0) {
+        collectionChanged = YES;
     }
     int resetStatus = sqlite3_reset(setByKeyStatement);
     if (resetStatus != SQLITE_OK) {
@@ -402,6 +515,8 @@
     if (status != SQLITE_DONE) {
         NSLog(@"Error removing dictionary for key %@ : %s", key, sqlite3_errmsg(_d->db));
         [self markTransactionFailed];
+    } else if(sqlite3_changes(_d->db) > 0) {
+        collectionChanged = YES;
     }
     
     int resetStatus = sqlite3_reset(removeByKeyStatement);
@@ -421,6 +536,8 @@
     if (status != SQLITE_DONE) {
         NSLog(@"Error deleting all data : %s", sqlite3_errmsg(_d->db));
         [self markTransactionFailed];
+    } else if(sqlite3_changes(_d->db) > 0) {
+        collectionChanged = YES;
     }
     
     int resetStatus = sqlite3_reset(deleteAllStatement);
