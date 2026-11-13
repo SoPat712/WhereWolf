@@ -14,6 +14,7 @@ actor DawarichInsightsCache {
         let body: Data
         let updated: Date
         var unavailable = false
+        var unavailableStatus: Int?
         func isFresh(at now: Date) -> Bool {
             let age = now.timeIntervalSince(updated)
             return age >= 0 && age < DawarichInsightsCache.freshness

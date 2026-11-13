@@ -507,7 +507,7 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
 - **Dawarich reads**: `DawarichServer.request`, `DawarichVersion` and `DawarichTransport` share
   authenticated GET construction, session policy and sanitized errors. History keeps its 1.20–1.x
   stable-release gate, two-request limit, coalescing, cancellation and Retry-After; Insights keeps
-  endpoint version floors and unavailable/cache fallback behavior. Insights refuses redirects;
+  per-endpoint capability probes and saved-data fallback. Insights refuses redirects;
   history permits only the configured origin/path prefix. No request logs contain private data.
 - **Dawarich history**: `ServerHistoryStore` pages masked points by local day; timeline batches
   cover at most 30 days, with exact `/maps/statistics` totals and first/last point times.
@@ -532,11 +532,15 @@ Only capture when the owner requests it; `CAPTURE_SCREENSHOTS=1` writes to `Scre
   filter; lookback is capped at 31 days, with longer visits using visible timeline metadata. Names share the protected
   history cache (90 visit days), source invalidation and Clear. Landmark-only publication preserves axis, needle and
   geometry after interaction/playback; no visit/place writes reach the server.
-- **Insights**: native sections read only supported, nonempty endpoints and existing digests.
+- **Insights**: native dashboard with a year menu, tinted stats, selectable monthly chart, country chips,
+  places, photos and digest highlights; chart months/photos open Tracker. Each read publishes independently
+  with a 15-second deadline, redacted layout placeholders and inline Retry; HTTP capability probes replace
+  version floors. Unsupported/empty sections hide; an empty page explains the version and missing features.
+  Cancellation settles every section; year/source changes reject late results. Only existing digests are read.
   `DawarichInsightsCache` protects and excludes responses/thumbnails from backups and sync, with
   six-hour freshness and 32 MB/64 MB bounds. History & Replay has one Storage section with separate
   sizes and Clear actions for server history and Insights; neither affects the server or upload queue.
-  Non-App Store `-WhereWolfInsightsPreview` uses invented fixtures without requests or settings writes.
+  Non-App Store `-WhereWolfInsightsPreview [loading|partial]` uses invented fixtures without requests or settings writes.
 - **Connection test**: Settings → Destination and the guide's glass server sheet share one
   native section. Save edits through the bridge, then use a valid fix at most 30 seconds old
   or a separate one-shot location manager with a 15-second deadline. GLManager reuses

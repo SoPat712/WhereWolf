@@ -92,9 +92,9 @@ final class DawarichRequestTests: XCTestCase {
         let versions: [(String, Bool, Bool)] = [
             ("1.19.9", false, true), ("1.20.0", true, true), ("v1.22.0", true, true),
             ("1.22.0-rc.1", false, true), ("1.22.0+custom", false, true), ("2.0.0", false, true),
-            ("1.2.0-rc.1", false, false), ("1.2.0+custom", false, true), ("1.2.0+custom-build", false, false),
-            ("1.1.9", false, false), ("1.20", false, false), ("", false, false),
-            ("1.22.0-", false, true), ("1.22.0+", false, true), ("1.22.0.1", false, false)
+            ("1.2.0-rc.1", false, true), ("1.2.0+custom", false, true), ("1.2.0+custom-build", false, true),
+            ("1.1.9", false, true), ("1.20", false, true), ("", false, true),
+            ("1.22.0-", false, true), ("1.22.0+", false, true), ("1.22.0.1", false, true)
         ]
         for (version, historySupported, insightsSupported) in versions {
             let calls = SharedDawarichCounter()
@@ -118,10 +118,10 @@ final class DawarichRequestTests: XCTestCase {
 
     func testSharedHTTPClassificationPreservesErrorsAndUnavailableInsights() async throws {
         let statuses: [(Int, DawarichHistoryError, Bool)] = [
-            (302, .redirectRejected, false), (400, .httpStatus(400), true),
-            (401, .authentication, true), (403, .authentication, true),
-            (404, .unavailable, true), (405, .unavailable, true), (410, .unavailable, false),
-            (418, .httpStatus(418), false), (422, .httpStatus(422), true), (501, .httpStatus(501), true)
+            (302, .redirectRejected, false), (400, .httpStatus(400), false),
+            (401, .authentication, false), (403, .authentication, false),
+            (404, .unavailable, true), (405, .unavailable, true), (410, .unavailable, true),
+            (418, .httpStatus(418), false), (422, .httpStatus(422), false), (501, .httpStatus(501), true)
         ]
         for (status, historyError, insightsUnavailable) in statuses {
             let (history, insights) = try clients()

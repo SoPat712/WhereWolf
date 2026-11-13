@@ -1,6 +1,7 @@
 import XCTest
 import Foundation
 import SwiftUI
+import Observation
 @testable import WhereWolf
 
 final class DawarichInsightsTests: XCTestCase {
@@ -26,11 +27,12 @@ final class DawarichInsightsTests: XCTestCase {
     }
 
     private func client(version: String? = "1.22.0", cache: DawarichInsightsCache? = nil,
-                        clock: @escaping () -> Date = Date.init, headers: [String: String] = [:]) -> DawarichInsightsClient {
+                        clock: @escaping () -> Date = Date.init, headers: [String: String] = [:],
+                        timeout: TimeInterval = 15) -> DawarichInsightsClient {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [InsightsTestProtocol.self]
         return DawarichInsightsClient(connection: connection(version: version, headers: headers),
-                                      cache: cache ?? self.cache(), configuration: configuration, clock: clock)
+                                      cache: cache ?? self.cache(), configuration: configuration, clock: clock, timeout: timeout)
     }
 
     func testVisibilityAndStableSelection() {
@@ -73,23 +75,17 @@ final class DawarichInsightsTests: XCTestCase {
         }
     }
 
-    func testVersionGatesAtReleaseBoundariesAndUnknownVersions() {
-        let gates: [(DawarichInsightsEndpoint, String, String)] = [
-            (.trackedMonths, "0.19.9", "0.20.0"), (.photos(2025), "0.18.9", "0.19.0"),
-            (.overview(2025), "1.1.9", "1.2.0"), (.details(2025), "1.1.9", "1.2.0"),
-            (.digests, "1.1.9", "1.2.0"), (.digest(2025), "1.1.9", "1.2.0"),
-            (.places, "1.1.9", "1.2.0"), (.visits(2025), "1.1.9", "1.2.0"),
-            (.cities(2025), "1.1.9", "1.2.0"), (.residency(2025), "1.4.9", "1.5.0"),
-            (.countries(2025), "1.14.9", "1.15.0")]
-        for (endpoint, before, release) in gates {
-            XCTAssertFalse(endpoint.supports(nil))
-            XCTAssertFalse(endpoint.supports(""))
-            XCTAssertFalse(endpoint.supports("unknown"))
-            XCTAssertFalse(endpoint.supports(before))
-            XCTAssertFalse(endpoint.supports(release + "-rc1"))
-            XCTAssertTrue(endpoint.supports(release))
-            XCTAssertTrue(endpoint.supports("v" + release))
-            XCTAssertTrue(endpoint.supports("1.22.0+custom"))
+    func testUnknownOlderAndCustomVersionsProbeReadOnlyCapabilities() async {
+        let versions: [String?] = [nil, "", "unknown", "0.27.0", "1.1.9", "1.2.0-rc1", "1.22.0+custom"]
+        for version in versions {
+            InsightsTestProtocol.handler = { mock in
+                XCTAssertEqual(mock.request.httpMethod, "GET")
+                mock.respond(data: Data(#"{"year":2025,"totals":{"totalDistance":12}}"#.utf8))
+            }
+            let result = await client(version: version)
+                .read(.overview(2025), as: DawarichInsights.Overview.self, policy: .refresh(force: true))
+            XCTAssertEqual(result.value?.year, 2025)
+            XCTAssertEqual(result.outcome, .available)
         }
     }
 
@@ -128,16 +124,19 @@ final class DawarichInsightsTests: XCTestCase {
         XCTAssertFalse(result.offline)
     }
 
-    func testUnsupportedVersionNeverRequestsOrShowsOlderCache() async {
+    func testLegacyUnavailableCacheIsReprobedOnOlderServers() async {
         let cache = cache()
         let connection = connection(version: "1.1.0")
         let generation = await cache.generation
-        await cache.write(.init(body: Data(#"{"year":2025}"#.utf8), updated: Date()), scope: connection.id,
+        await cache.write(.init(body: Data(), updated: Date(), unavailable: true), scope: connection.id,
                           key: DawarichInsightsEndpoint.overview(2025).cacheKey, generation: generation)
-        InsightsTestProtocol.handler = { _ in XCTFail("Unsupported endpoint requested") }
+        InsightsTestProtocol.handler = { mock in
+            mock.respond(data: Data(#"{"year":2025,"totals":{"totalDistance":12}}"#.utf8))
+        }
         let result = await client(version: "1.1.0", cache: cache)
-            .read(.overview(2025), as: DawarichInsights.Overview.self, policy: .refresh(force: true))
-        XCTAssertNil(result.value)
+            .read(.overview(2025), as: DawarichInsights.Overview.self, policy: .refresh(force: false))
+        XCTAssertEqual(result.value?.year, 2025)
+        XCTAssertEqual(result.outcome, .available)
     }
 
     func testRedirectsAreRefusedEvenOnTheSameHost() {
@@ -202,9 +201,9 @@ final class DawarichInsightsTests: XCTestCase {
         XCTAssertNil(other.value)
     }
 
-    func testMissingForbiddenAndUnconfiguredEndpointsHideCachedSection() async {
+    func testMissingEndpointsHideCachedSectionAndRememberHTTPStatus() async {
         let client = client()
-        for status in [401, 403, 404, 405, 422, 501] {
+        for status in [404, 405, 410, 501] {
             InsightsTestProtocol.handler = { mock in mock.respond(data: Data(#"{"countries":[{"iso_a3":"DEU","name":"Germany"}]}"#.utf8)) }
             let loaded = await client.read(.countries(2025), as: DawarichInsights.Countries.self, policy: .refresh(force: true))
             XCTAssertNotNil(loaded.value)
@@ -212,9 +211,11 @@ final class DawarichInsightsTests: XCTestCase {
             let missing = await client.read(.countries(2025), as: DawarichInsights.Countries.self, policy: .refresh(force: true))
             XCTAssertNil(missing.value)
             XCTAssertFalse(missing.offline)
+            XCTAssertEqual(missing.outcome, .unsupported(status))
             InsightsTestProtocol.handler = { _ in XCTFail("Missing endpoint should be cached briefly") }
             let cached = await client.read(.countries(2025), as: DawarichInsights.Countries.self, policy: .refresh(force: false))
             XCTAssertNil(cached.value)
+            XCTAssertEqual(cached.outcome, .unsupported(status))
         }
     }
 
@@ -228,6 +229,198 @@ final class DawarichInsightsTests: XCTestCase {
             let cached = await client.read(.overview(2025), as: DawarichInsights.Overview.self, policy: .cacheOnly)
             XCTAssertNil(cached.value)
         }
+    }
+
+    func testValidationAuthenticationAndServerFailuresOfferRetryWithSavedData() async {
+        let client = client()
+        InsightsTestProtocol.handler = { $0.respond(data: Data(#"{"year":2025,"totals":{"totalDistance":12}}"#.utf8)) }
+        let first = await client.read(.overview(2025), as: DawarichInsights.Overview.self, policy: .refresh(force: true))
+        for status in [400, 401, 403, 422, 429, 500, 502, 503] {
+            InsightsTestProtocol.handler = { $0.respond(status: status, data: Data("private-server-error".utf8)) }
+            let result = await client.read(.overview(2025), as: DawarichInsights.Overview.self, policy: .refresh(force: true))
+            XCTAssertEqual(result.outcome, .failed(.http(status)))
+            XCTAssertEqual(result.value?.totals?.totalDistance, 12)
+            XCTAssertEqual(result.updated, first.updated)
+            XCTAssertTrue(result.offline)
+            XCTAssertFalse(DawarichInsightsFailure.http(status).message.contains("private-server-error"))
+        }
+    }
+
+    func testUnconfiguredPhotoIntegrationIsHiddenWithoutHidingAuthenticationErrors() async {
+        let client = client()
+        InsightsTestProtocol.handler = { $0.respond(status: 401) }
+        let photos = await client.read(.photos(2025), as: [DawarichInsights.Photo].self, policy: .refresh(force: true))
+        let overview = await client.read(.overview(2025), as: DawarichInsights.Overview.self, policy: .refresh(force: true))
+        XCTAssertEqual(photos.outcome, .unsupported(401))
+        XCTAssertEqual(overview.outcome, .failed(.http(401)))
+    }
+
+    func testDecodeFailureHasTerminalStateAndIsNotNegativelyCached() async {
+        let client = client()
+        InsightsTestProtocol.handler = { $0.respond(data: Data(#"{"year":"unexpected"}"#.utf8)) }
+        let broken = await client.read(.overview(2025), as: DawarichInsights.Overview.self, policy: .refresh(force: true))
+        XCTAssertEqual(broken.outcome, .failed(.decoding))
+        InsightsTestProtocol.handler = { $0.respond(data: Data(#"{"year":2025}"#.utf8)) }
+        let retried = await client.read(.overview(2025), as: DawarichInsights.Overview.self, policy: .refresh(force: false))
+        XCTAssertEqual(retried.outcome, .available)
+    }
+
+    func testAbsoluteDeadlineResolvesARequestThatNeverReplies() async {
+        let client = client(timeout: 0.05)
+        InsightsTestProtocol.handler = { _ in }
+        let result = await client.read(.overview(2025), as: DawarichInsights.Overview.self, policy: .refresh(force: true))
+        XCTAssertEqual(result.outcome, .failed(.timedOut))
+    }
+
+    func testClientCancellationResolvesAndDoesNotCacheFailure() async {
+        let client = client()
+        let started = expectation(description: "GET started")
+        InsightsTestProtocol.handler = { _ in started.fulfill() }
+        let task = Task { await client.read(.overview(2025), as: DawarichInsights.Overview.self, policy: .refresh(force: true)) }
+        await fulfillment(of: [started], timeout: 2)
+        task.cancel()
+        let result = await task.value
+        XCTAssertEqual(result.outcome, .failed(.cancelled))
+        let cached = await client.read(.overview(2025), as: DawarichInsights.Overview.self, policy: .cacheOnly)
+        XCTAssertEqual(cached.outcome, .notCached)
+    }
+
+    @MainActor func testSectionsPublishBeforeDiscoveryOrSlowSectionsFinish() async {
+        let client = client()
+        let model = DawarichInsightsModel(initialYear: 2025, clientFactory: { _ in client })
+        let published = expectation(description: "Year published while other GETs are held")
+        observeOverview(model, published: published)
+        InsightsTestProtocol.handler = { mock in
+            if mock.request.url?.path.hasSuffix("/insights") == true, mock.request.url?.query?.contains("year=2025") == true {
+                mock.respond(data: Data(#"{"year":2025,"totals":{"totalDistance":12}}"#.utf8))
+            }
+        }
+        let task = Task { await model.load(connection: connection()) }
+        await fulfillment(of: [published], timeout: 2)
+        XCTAssertEqual(model.snapshot.overview?.totals?.totalDistance, 12)
+        XCTAssertTrue(model.loading)
+        XCTAssertFalse(model.showEmptyState)
+        task.cancel()
+        await task.value
+        XCTAssertFalse(model.loading)
+        XCTAssertEqual(model.state(for: .photos), .failed(.cancelled))
+        XCTAssertEqual(model.state(for: .overview), .loaded)
+    }
+
+    @MainActor func testEveryFailurePathLeavesNoLoadingSections() async {
+        for failure in [DawarichInsightsFailure.http(422), .http(500), .decoding, .timedOut] {
+            let client = client(timeout: failure == .timedOut ? 0.05 : 15)
+            InsightsTestProtocol.handler = { mock in
+                switch failure {
+                case .http(let status): mock.respond(status: status)
+                case .decoding: mock.respond(data: Data("not-json".utf8))
+                default: break
+                }
+            }
+            let model = DawarichInsightsModel(initialYear: 2025, clientFactory: { _ in client })
+            await model.load(connection: connection())
+            XCTAssertFalse(model.loading, "\(failure)")
+            XCTAssertTrue(model.showEmptyState)
+            for section in DawarichInsightsSection.allCases {
+                XCTAssertEqual(model.state(for: section), .failed(failure))
+            }
+        }
+    }
+
+    @MainActor private func observeOverview(_ model: DawarichInsightsModel, published: XCTestExpectation) {
+        if model.snapshot.overview != nil { published.fulfill(); return }
+        withObservationTracking { _ = model.snapshot.overview } onChange: {
+            Task { @MainActor in self.observeOverview(model, published: published) }
+        }
+    }
+
+    @MainActor func testCancellationFinishesEverySectionAndNextAppearanceCanLoad() async {
+        let client = client()
+        let model = DawarichInsightsModel(initialYear: 2025, clientFactory: { _ in client })
+        let started = expectation(description: "First GET")
+        let count = InsightsRequestCounter()
+        InsightsTestProtocol.handler = { _ in if count.increment() == 1 { started.fulfill() } }
+        let task = Task { await model.load(connection: connection()) }
+        await fulfillment(of: [started], timeout: 2)
+        task.cancel()
+        await task.value
+        XCTAssertFalse(model.loading)
+        for section in DawarichInsightsSection.allCases {
+            XCTAssertEqual(model.state(for: section), .failed(.cancelled))
+        }
+        InsightsTestProtocol.handler = { $0.respond(status: 404) }
+        await model.load(connection: connection())
+        XCTAssertFalse(model.loading)
+        XCTAssertEqual(model.state(for: .overview), .unsupported(404))
+    }
+
+    @MainActor func testUnsupportedServerShowsOneInformativeEmptyState() async {
+        let client = client(version: "0.27.0")
+        InsightsTestProtocol.handler = { $0.respond(status: 404) }
+        let model = DawarichInsightsModel(initialYear: 2025, clientFactory: { _ in client })
+        await model.load(connection: connection(version: "0.27.0"))
+        XCTAssertTrue(model.showEmptyState)
+        XCTAssertTrue(model.snapshot.sections.isEmpty)
+        XCTAssertTrue(model.emptyMessage.contains("Dawarich 0.27.0"))
+        XCTAssertTrue(model.emptyMessage.contains("Countries (HTTP 404)"))
+        XCTAssertTrue(model.emptyMessage.contains("not saved for this year"))
+        for section in DawarichInsightsSection.allCases {
+            XCTAssertEqual(model.state(for: section), .unsupported(404))
+            XCTAssertNil(model.state(for: section).failure)
+            XCTAssertFalse(model.state(for: section).isLoading)
+        }
+    }
+
+    @MainActor func testMissingYearAndOlderResidencyWithoutYearBothResolve() async {
+        let client = client()
+        InsightsTestProtocol.handler = { mock in
+            if mock.request.url?.path.hasSuffix("/insights") == true, mock.request.url?.query?.contains("year=") == true {
+                mock.respond(data: Data(#"{"year":2024,"totals":{"totalDistance":12}}"#.utf8))
+            } else if mock.request.url?.path.hasSuffix("/residency") == true {
+                mock.respond(data: Data(#"{"countries":[{"country_name":"Germany","days":10}]}"#.utf8))
+            } else { mock.respond(status: 404) }
+        }
+        let model = DawarichInsightsModel(initialYear: 2025, clientFactory: { _ in client })
+        await model.load(connection: connection())
+        XCTAssertEqual(model.state(for: .overview), .failed(.missingYear))
+        XCTAssertNil(model.snapshot.overview)
+        XCTAssertEqual(model.state(for: .residency), .loaded)
+        XCTAssertTrue(model.snapshot.sections.contains("countries"))
+        XCTAssertFalse(model.loading)
+    }
+
+    @MainActor func testRetryOnlyRequestsItsSectionAndRecovers() async {
+        let client = client()
+        InsightsTestProtocol.handler = { $0.respond(status: 500) }
+        let model = DawarichInsightsModel(initialYear: 2025, clientFactory: { _ in client })
+        await model.load(connection: connection())
+        let count = InsightsRequestCounter()
+        InsightsTestProtocol.handler = { mock in
+            count.increment()
+            XCTAssertTrue(mock.request.url?.path.hasSuffix("/countries/visited") == true)
+            mock.respond(data: Data(#"{"countries":[{"iso_a3":"DEU","name":"Germany"}]}"#.utf8))
+        }
+        await model.retry(.countries)
+        XCTAssertEqual(count.value, 1)
+        XCTAssertEqual(model.state(for: .countries), .loaded)
+        XCTAssertEqual(model.state(for: .overview), .failed(.http(500)))
+        XCTAssertFalse(model.showEmptyState)
+        XCTAssertFalse(model.loading)
+    }
+
+    @MainActor func testClearingPresentationCancelsReadsAndRejectsLatePublication() async {
+        let client = client()
+        let model = DawarichInsightsModel(initialYear: 2025, clientFactory: { _ in client })
+        let started = expectation(description: "First GET")
+        let count = InsightsRequestCounter()
+        InsightsTestProtocol.handler = { _ in if count.increment() == 1 { started.fulfill() } }
+        let task = Task { await model.load(connection: connection()) }
+        await fulfillment(of: [started], timeout: 2)
+        model.clearPresentation()
+        await task.value
+        XCTAssertFalse(model.loading)
+        XCTAssertTrue(model.snapshot.sections.isEmpty)
+        XCTAssertTrue(model.showEmptyState)
     }
 
     func testCacheFilesAreProtectedExcludedAndOpaqueAndClearRejectsLateWrites() async throws {
@@ -274,6 +467,152 @@ final class DawarichInsightsTests: XCTestCase {
     }
 
 #if !WHEREWOLF_APP_STORE
+    @MainActor func testModelCacheRefreshAndIndependentRetryKeepPublishedSections() async {
+        let client = client()
+        let count = InsightsRequestCounter()
+        InsightsTestProtocol.handler = { mock in count.increment(); self.respondFixture(mock) }
+        let model = DawarichInsightsModel(initialYear: 2025, clientFactory: { _ in client })
+        await model.load(connection: connection())
+        let firstCount = count.value
+        XCTAssertEqual(model.snapshot.sections.count, 9)
+        XCTAssertFalse(model.loading)
+        await model.load(connection: connection())
+        XCTAssertEqual(count.value, firstCount)
+        await model.load(connection: connection(), force: true)
+        XCTAssertGreaterThan(count.value, firstCount)
+        let cached = model.snapshot.updated
+        InsightsTestProtocol.handler = { $0.fail(.notConnectedToInternet) }
+        await model.load(connection: connection(), force: true)
+        XCTAssertEqual(model.snapshot.sections.count, 9)
+        XCTAssertEqual(model.snapshot.updated, cached)
+        XCTAssertTrue(model.snapshot.offline)
+        XCTAssertFalse(model.loading)
+        XCTAssertEqual(model.state(for: .overview), .failed(.network))
+    }
+
+    @MainActor func testMissingCurrentYearFindsOlderYearWithoutRequiringDigestCatalog() async {
+        let client = client()
+        InsightsTestProtocol.handler = { mock in
+            let url = mock.request.url!
+            if url.path.hasSuffix("/tracked_months") {
+                mock.respond(data: Data(#"[{"year":2025,"months":["Jan"]}]"#.utf8))
+            } else if url.path.hasSuffix("/insights"), url.query?.contains("year=2025") == true {
+                mock.respond(data: DawarichInsightsFixtures.data("overview"))
+            } else { mock.respond(status: 404) }
+        }
+        let model = DawarichInsightsModel(initialYear: 2026, clientFactory: { _ in client })
+        await model.load(connection: connection())
+        XCTAssertEqual(model.year, 2025)
+        XCTAssertEqual(model.snapshot.overview?.year, 2025)
+        XCTAssertEqual(model.years, [2026, 2025])
+        XCTAssertFalse(model.loading)
+        await model.selectYear(2026)
+        XCTAssertEqual(model.year, 2026)
+        XCTAssertNil(model.snapshot.overview)
+        XCTAssertTrue(model.showEmptyState)
+    }
+
+    @MainActor func testReplacingYearCancelsPriorRequestsAndKeepsNewYear() async {
+        let client = client(timeout: 2)
+        let model = DawarichInsightsModel(initialYear: 2025, clientFactory: { _ in client })
+        InsightsTestProtocol.handler = { self.respondFixture($0) }
+        await model.load(connection: connection())
+        let started = expectation(description: "Held refresh")
+        let counter = InsightsRequestCounter()
+        InsightsTestProtocol.handler = { _ in if counter.increment() == 1 { started.fulfill() } }
+        let previous = Task { await model.load(connection: connection(), force: true) }
+        await fulfillment(of: [started], timeout: 2)
+        InsightsTestProtocol.handler = { self.respondFixture($0, year: 2024) }
+        await model.selectYear(2024)
+        await previous.value
+        XCTAssertEqual(model.year, 2024)
+        XCTAssertEqual(model.snapshot.overview?.year, 2024)
+        XCTAssertFalse(model.loading)
+    }
+
+    @MainActor func testSuccessfulEmptyResponsesDescribeWhatServerReturned() async {
+        let client = client()
+        InsightsTestProtocol.handler = { mock in
+            let path = mock.request.url!.path
+            let json: String
+            if path.hasSuffix("/insights") || path.hasSuffix("/details") || path.hasSuffix("/digests/2025") { json = #"{"year":2025}"# }
+            else if path.hasSuffix("/visited") || path.hasSuffix("/residency") { json = #"{"countries":[]}"# }
+            else if path.hasSuffix("/visited_cities") { json = #"{"data":[]}"# }
+            else if path.hasSuffix("/digests") { json = #"{"digests":[],"availableYears":[]}"# }
+            else { json = "[]" }
+            mock.respond(data: Data(json.utf8))
+        }
+        let model = DawarichInsightsModel(initialYear: 2025, clientFactory: { _ in client })
+        await model.load(connection: connection())
+        XCTAssertTrue(model.showEmptyState)
+        XCTAssertFalse(model.loading)
+        XCTAssertTrue(model.emptyMessage.contains("Returned no data"))
+        for section in DawarichInsightsSection.allCases { XCTAssertEqual(model.state(for: section), .empty) }
+    }
+
+    @MainActor func testLoadingAndPartialPreviewStatesAreDeterministicAndReadOnly() async {
+        InsightsTestProtocol.handler = { _ in XCTFail("Preview made a request") }
+        let loading = DawarichInsightsModel(preview: true, previewState: .loading)
+        await loading.load(connection: connection(), force: true)
+        XCTAssertTrue(loading.loading)
+        XCTAssertFalse(loading.showEmptyState)
+        XCTAssertTrue(loading.snapshot.sections.isEmpty)
+        XCTAssertTrue(DawarichInsightsSection.allCases.allSatisfy { loading.state(for: $0).isLoading })
+        let partial = DawarichInsightsModel(preview: true, previewState: .partial)
+        await partial.load(connection: connection())
+        XCTAssertFalse(partial.loading)
+        XCTAssertFalse(partial.showEmptyState)
+        XCTAssertTrue(partial.snapshot.sections.contains("year"))
+        XCTAssertEqual(partial.state(for: .details), .failed(.http(500)))
+        XCTAssertEqual(partial.state(for: .photos), .failed(.timedOut))
+        XCTAssertEqual(partial.state(for: .residency), .unsupported(404))
+    }
+
+    @MainActor func testChartTapMapsOnlyValidMonthsToTrackerAndHasVoiceOverText() throws {
+        let months = DawarichInsightsFixtures.snapshot().months
+        let month = try XCTUnwrap(InsightsMonthChart.month(at: 2.2, in: months))
+        XCTAssertEqual(month.month, 2)
+        let request = try XCTUnwrap(month.navigationRequest)
+        XCTAssertEqual(request.date, month.date)
+        XCTAssertEqual(request.interval?.start, month.date)
+        XCTAssertTrue(month.accessibilityLabel.contains(month.title))
+        XCTAssertTrue(month.accessibilityLabel.contains("km"))
+        XCTAssertNil(InsightsMonthChart.month(at: .nan, in: months))
+        XCTAssertNil(InsightsMonthChart.month(at: .infinity, in: months))
+        XCTAssertNil(InsightsMonthChart.month(at: 13, in: months))
+        XCTAssertNil(InsightsMonthChart.month(at: 3, in: Array(months.prefix(2))))
+        for stat in DawarichInsightsFixtures.snapshot().heroStats {
+            XCTAssertEqual(stat.accessibilityLabel, stat.title + ", " + stat.value)
+        }
+    }
+
+    func testIncrementalPlaceNamesInvalidatePreparedRanking() throws {
+        var snapshot = DawarichInsightsFixtures.snapshot()
+        snapshot.prepare()
+        snapshot.places = try JSONDecoder().decode([DawarichInsights.Place].self,
+            from: Data(#"[{"id":101,"name":"Updated studio name"}]"#.utf8))
+        snapshot.prepare()
+        XCTAssertEqual(snapshot.topPlaces.first?.name, "Updated studio name")
+        XCTAssertEqual(snapshot.topPlaces.first?.minutes, 900)
+    }
+
+    private func respondFixture(_ mock: InsightsTestProtocol, year: Int = 2025) {
+        let path = mock.request.url!.path
+        let name: String
+        if path.hasSuffix("/tracked_months") { name = "trackedMonths" }
+        else if path.hasSuffix("/insights") { name = "overview" }
+        else if path.hasSuffix("/details") { name = "details" }
+        else if path.hasSuffix("/visited") { name = "countries" }
+        else if path.hasSuffix("/visited_cities") { name = "cities" }
+        else if path.hasSuffix("/residency") { name = "residency" }
+        else if path.hasSuffix("/places") { name = "places" }
+        else if path.hasSuffix("/visits") { name = "visits" }
+        else if path.hasSuffix("/photos") { name = "photos" }
+        else if path.hasSuffix("/digests") { name = "digests" }
+        else { name = "digest" }
+        mock.respond(data: DawarichInsightsFixtures.data(name, year: year))
+    }
+
     func testEveryEndpointDecodesSpecExamplesAndSerializerFields() throws {
         let decoder = JSONDecoder()
         let tracked = try decoder.decode([DawarichInsights.TrackedYear].self,
@@ -408,12 +747,24 @@ final class DawarichInsightsTests: XCTestCase {
     }
 }
 
+private final class InsightsRequestCounter {
+    private let lock = NSLock()
+    private var count = 0
+    var value: Int { lock.withLock { count } }
+    @discardableResult func increment() -> Int { lock.withLock { count += 1; return count } }
+}
+
 private final class InsightsTestClock {
     var now = Date(timeIntervalSince1970: 1_000_000)
 }
 
 private final class InsightsTestProtocol: URLProtocol {
-    static var handler: ((InsightsTestProtocol) -> Void)?
+    private static let lock = NSLock()
+    private static var storedHandler: ((InsightsTestProtocol) -> Void)?
+    static var handler: ((InsightsTestProtocol) -> Void)? {
+        get { lock.withLock { storedHandler } }
+        set { lock.withLock { storedHandler = newValue } }
+    }
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {

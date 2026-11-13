@@ -216,6 +216,12 @@ enum DawarichInsights {
             result += [Stat.count("Countries", toponyms?.countriesCount), Stat.count("Cities", toponyms?.citiesCount)].compactMap { $0 }
             return result
         }
+        var isEmpty: Bool {
+            stats.isEmpty && months.isEmpty && (distance?.comparisonText?.isEmpty ?? true)
+                && (toponyms?.countries?.isEmpty ?? true) && (timeSpentByLocation?.rows.isEmpty ?? true)
+                && (firstTimeVisits?.rows.isEmpty ?? true) && (yearOverYear?.stats.isEmpty ?? true)
+                && (allTimeStats?.stats.isEmpty ?? true) && (travelPatterns?.isEmpty ?? true)
+        }
     }
 
     // These objects are intentionally open in the spec. Keep their hierarchy and literal units.
@@ -280,6 +286,7 @@ enum DawarichInsights {
         var date: Date { Calendar(identifier: .gregorian).date(from: DateComponents(year: year, month: month, day: 1))! }
         var title: String { date.formatted(.dateTime.month(.wide).year()) }
         var accessibilityLabel: String { title + ", " + distanceText(meters / 1_000) }
+        var navigationRequest: HistoryNavigationRequest? { .month(year: year, month: month) }
     }
     struct TopPlace: Identifiable {
         let id: String
@@ -302,7 +309,32 @@ enum DawarichInsights {
         private var preparedTopPlaces: [TopPlace]?
 
         init() { }
-        mutating func prepare() { preparedTopPlaces = topPlaces }
+        mutating func prepare() {
+            preparedTopPlaces = nil
+            preparedTopPlaces = topPlaces
+        }
+        var comparison: Comparison? {
+            if let value = details?.comparison, !value.stats.isEmpty { return value }
+            return digest?.yearOverYear
+        }
+        var heroStats: [Stat] {
+            var result: [Stat] = []
+            if let distance = overview?.totals?.totalDistance, distance.isFinite, distance >= 0 {
+                result.append(Stat(title: "Distance", value: distanceText(distance, unit: overview?.totals?.distanceUnit ?? "km")))
+            } else if let meters = digest?.distance?.meters, meters.isFinite, meters >= 0 {
+                result.append(Stat(title: "Distance", value: distanceText(meters / 1_000)))
+            }
+            let counts: [(String, Int?)] = [
+                ("Active Days", overview?.activityHeatmap?.activeDays),
+                ("Countries", overview?.totals?.countriesCount ?? digest?.toponyms?.countriesCount),
+                ("Cities", overview?.totals?.citiesCount ?? digest?.toponyms?.citiesCount)
+            ]
+            result += counts.compactMap { title, value in
+                guard let value, value >= 0 else { return nil }
+                return Stat(title: title, value: value.formatted())
+            }
+            return result
+        }
         var months: [Month] {
             let recorded = overview?.months ?? []
             return recorded.isEmpty ? digest?.months ?? [] : recorded
@@ -321,17 +353,33 @@ enum DawarichInsights {
         }
         var sections: Set<String> {
             var result = Set<String>()
-            if !(overview?.stats.isEmpty ?? true) || !months.isEmpty { result.insert("year") }
-            if !(details?.comparison?.stats.isEmpty ?? true) { result.insert("comparison") }
+            if !(overview?.stats.isEmpty ?? true) || !(digest?.stats.isEmpty ?? true) || !months.isEmpty { result.insert("year") }
+            if !(comparison?.stats.isEmpty ?? true) { result.insert("comparison") }
             if details?.travelPatterns?.isEmpty == false { result.insert("patterns") }
             if !(countries?.countries.isEmpty ?? true) || !(residency?.countries.isEmpty ?? true) { result.insert("countries") }
             if cities?.data.contains(where: { !$0.cities.isEmpty }) == true { result.insert("cities") }
             if !topPlaces.isEmpty { result.insert("places") }
             if visits.contains(where: { $0.status != "declined" }) { result.insert("visits") }
             if !photos.isEmpty { result.insert("photos") }
-            if let digest, !digest.stats.isEmpty || !digest.months.isEmpty { result.insert("digest") }
+            if let digest, !digest.isEmpty { result.insert("digest") }
             return result
         }
+    }
+
+    static func sortedVisits(_ values: [Visit]) -> [Visit] {
+        values.compactMap { visit -> (Visit, Date)? in
+            guard visit.status != "declined", let date = visit.date else { return nil }
+            return (visit, date)
+        }.sorted { $0.1 > $1.1 }.map(\.0)
+    }
+
+    static func sortedPhotos(_ values: [Photo]) -> [Photo] {
+        var identities = Set<String>()
+        return values.compactMap { photo -> (Photo, Date)? in
+            guard let date = photo.date, ["immich", "photoprism"].contains(photo.source),
+                  identities.insert(photo.identity).inserted else { return nil }
+            return (photo, date)
+        }.sorted { $0.1 > $1.1 }.map(\.0)
     }
 
     static func number(_ value: Double) -> String { value.formatted(.number.precision(.fractionLength(0...1))) }
