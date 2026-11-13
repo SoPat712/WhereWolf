@@ -52,7 +52,7 @@ struct ServerPendingQueue: Equatable, Sendable {
         let formatter = DateFormatter()
         formatter.locale = locale
         formatter.timeZone = timeZone
-        formatter.setLocalizedDateFormatFromTemplate("yMMMdjmmssz")
+        formatter.setLocalizedDateFormatFromTemplate("yMMMdjmmz")
         let first = formatter.string(from: oldest)
         if oldest == newest { return "Recorded \(first)" }
         return "Recorded \(first) – \(formatter.string(from: newest))"

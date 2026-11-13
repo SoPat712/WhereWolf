@@ -501,6 +501,7 @@ final class ServerQRReviewTests: XCTestCase {
         XCTAssertTrue(eastern.contains("EDT"))
         XCTAssertTrue(eastern.contains("EST"))
         XCTAssertTrue(eastern.contains(" – "))
+        XCTAssertFalse(eastern.contains(":30:00"), "Seconds add nothing to a range of days")
         let pacific = summary.rangeText(locale: locale, timeZone: try XCTUnwrap(TimeZone(identifier: "America/Los_Angeles")))
         XCTAssertTrue(pacific.contains("Oct 31, 2026"))
         XCTAssertTrue(pacific.contains("PDT"))

@@ -343,7 +343,8 @@ struct ServerQRCodeSheet: View {
                         }
                         .frame(width: 110, height: 110)
                         .scaleEffect(badgeVisible ? 0.32 : 1)
-                        .offset(x: badgeVisible ? 53 : 0, y: badgeVisible ? -53 : 0)
+                        // Inside the tile's 40-point corner arc, clear of the scan frame.
+                        .offset(x: badgeVisible ? 46 : 0, y: badgeVisible ? -46 : 0)
                     }
                 }
                 .scaleEffect(reduceMotion || checkVisible ? 1 : 0.4)
